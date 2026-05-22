@@ -410,7 +410,6 @@ export function buildFinalizeRenderedOutputArgs(params: {
   metadataTitle: string | null;
   variationProfile: Stage3VariationProfile;
 }): string[] {
-  const variationEnabled = params.variationProfile.appliedMode !== "off";
   const args = [
     "-y",
     "-i",
@@ -457,11 +456,7 @@ export function buildFinalizeRenderedOutputArgs(params: {
 
   args.push(
     "-movflags",
-    variationEnabled ? "+faststart+use_metadata_tags" : "+faststart",
-    "-empty_hdlr_name",
-    "1",
-    "-write_tmcd",
-    "false",
+    "+faststart",
     "-metadata",
     "comment=",
     "-metadata",
@@ -482,19 +477,6 @@ export function buildFinalizeRenderedOutputArgs(params: {
 
   if (params.metadataTitle) {
     args.push("-metadata", `title=${params.metadataTitle}`);
-  }
-
-  if (variationEnabled) {
-    args.push(
-      "-metadata",
-      `${params.variationProfile.container.metadataTagKey}=${params.variationProfile.seed}`,
-      "-metadata",
-      `variation_profile_version=${params.variationProfile.profileVersion}`,
-      "-metadata",
-      `variation_mode=${params.variationProfile.appliedMode}`,
-      "-metadata",
-      `variation_nonce=${params.variationProfile.container.metadataNonce}`
-    );
   }
 
   args.push(params.outputPath);

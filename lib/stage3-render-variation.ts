@@ -25,8 +25,7 @@ export type Stage3VariationEncodeProfile = {
 
 export type Stage3VariationContainerProfile = {
   faststart: true;
-  metadataNonce: string;
-  metadataTagKey: "variation_seed";
+  nonce: string;
 };
 
 export type Stage3VariationProfile = {
@@ -55,7 +54,7 @@ export type Stage3VariationManifest = {
   container: Stage3VariationContainerProfile;
 };
 
-const DEFAULT_MODE: Stage3VariationMode = "encode";
+const DEFAULT_MODE: Stage3VariationMode = "hybrid";
 const HEX_SEED_RE = /^[0-9a-f]{32}$/i;
 
 function clamp(value: number, min: number, max: number): number {
@@ -172,7 +171,7 @@ export function createStage3VariationProfile(input?: {
         baseFrequencyX: round(0.82 + readSeedUnit(seed, "signal:freq-x") * 0.34, 4),
         baseFrequencyY: round(0.94 + readSeedUnit(seed, "signal:freq-y") * 0.36, 4),
         numOctaves: readSeedChoice(seed, "signal:octaves", [1, 2] as const),
-        opacity: round(0.018 + readSeedUnit(seed, "signal:opacity") * 0.014, 4),
+        opacity: round(0.0025 + readSeedUnit(seed, "signal:opacity") * 0.003, 4),
         blendMode: "soft-light"
       }
     : defaultSignalProfile();
@@ -186,8 +185,7 @@ export function createStage3VariationProfile(input?: {
     encode,
     container: {
       faststart: true,
-      metadataNonce: createHash("sha256").update(seed).update(":container").digest("hex").slice(0, 16),
-      metadataTagKey: "variation_seed"
+      nonce: createHash("sha256").update(seed).update(":container").digest("hex").slice(0, 16)
     }
   };
 }

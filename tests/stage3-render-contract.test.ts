@@ -49,8 +49,7 @@ function createVariationProfile(mode: Stage3VariationProfile["appliedMode"]): St
     },
     container: {
       faststart: true,
-      metadataNonce: "nonce1234567890",
-      metadataTagKey: "variation_seed"
+      nonce: "nonce1234567890"
     }
   };
 }
@@ -317,7 +316,7 @@ test("final render args re-encode video into a stable limited-range contract", (
   );
 });
 
-test("final render args preserve variation metadata when variation is enabled", () => {
+test("final render args do not write variation metadata into the mp4 container", () => {
   const args = buildFinalizeRenderedOutputArgs({
     inputPath: "/tmp/raw.mp4",
     outputPath: "/tmp/final.mp4",
@@ -325,22 +324,28 @@ test("final render args preserve variation metadata when variation is enabled", 
     variationProfile: createVariationProfile("hybrid")
   });
 
-  assert.ok(args.includes("+faststart+use_metadata_tags"));
-  assert.ok(args.includes("variation_profile_version=1"));
-  assert.ok(args.includes("variation_mode=hybrid"));
-  assert.ok(args.includes("variation_seed=0123456789abcdef0123456789abcdef"));
+  assert.ok(args.includes("+faststart"));
+  assert.equal(args.includes("+faststart+use_metadata_tags"), false);
+  assert.equal(args.includes("-empty_hdlr_name"), false);
+  assert.equal(args.includes("-write_tmcd"), false);
+  assert.doesNotMatch(args.join("\n"), /variation_(seed|profile_version|mode|nonce)/);
+  assert.doesNotMatch(args.join("\n"), /0123456789abcdef0123456789abcdef/);
 });
 
-test("stage3 render variation defaults to encode mode when no override is set", () => {
+test("stage3 render variation defaults to ultra-subtle hybrid mode when no override is set", () => {
   const previous = process.env.STAGE3_RENDER_VARIATION_MODE;
   delete process.env.STAGE3_RENDER_VARIATION_MODE;
 
   try {
-    assert.equal(resolveStage3RenderVariationMode(), "encode");
+    assert.equal(resolveStage3RenderVariationMode(), "hybrid");
     const profile = createStage3VariationProfile();
-    assert.equal(profile.requestedMode, "encode");
-    assert.equal(profile.appliedMode, "encode");
-    assert.equal(profile.signal.enabled, false);
+    assert.equal(profile.requestedMode, "hybrid");
+    assert.equal(profile.appliedMode, "hybrid");
+    assert.equal(profile.signal.enabled, true);
+    assert.ok(profile.signal.opacity >= 0.0025);
+    assert.ok(profile.signal.opacity <= 0.0055);
+    assert.ok([17, 18, 19].includes(profile.encode.crf));
+    assert.ok(["slow", "medium"].includes(profile.encode.x264Preset));
   } finally {
     if (previous === undefined) {
       delete process.env.STAGE3_RENDER_VARIATION_MODE;
@@ -348,4 +353,13 @@ test("stage3 render variation defaults to encode mode when no override is set", 
       process.env.STAGE3_RENDER_VARIATION_MODE = previous;
     }
   }
+});
+
+test("stage3 render variation can still run encode-only without visual signal", () => {
+  const profile = createStage3VariationProfile({ requestedMode: "encode" });
+
+  assert.equal(profile.requestedMode, "encode");
+  assert.equal(profile.appliedMode, "encode");
+  assert.equal(profile.signal.enabled, false);
+  assert.equal(profile.signal.opacity, 0);
 });
