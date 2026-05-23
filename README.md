@@ -418,6 +418,7 @@ Publishing / YouTube queue:
 - во время `uploading` planner блокирует конфликтующие действия, а сервер не принимает мутации, которые могли бы сбросить lease и породить второй YouTube upload.
 - YouTube metadata sync для уже загруженных роликов теперь сохраняет валидный `snippet.categoryId`, поэтому простое редактирование title/description не ломает `videos.update`.
 - YouTube upload использует сохранённый resumable session URL и lease heartbeat, поэтому после сбоя процесс продолжает тот же upload session вместо открытия дублирующего.
+- YouTube publishing может быть разнесён по нескольким Google OAuth projects: канал сохраняет `oauthClientKey`, подключается и обновляет refresh token через выбранный project, а audit events фиксируют project key/label/number для будущего quota accounting.
 
 Подробная документация по текущей Stage 2 архитектуре:
 - [docs/stage2-runtime.md](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/stage2-runtime.md)
@@ -445,7 +446,31 @@ Publishing / YouTube queue:
 - `APP_BOOTSTRAP_SECRET` — обязателен в production и на Vercel для one-time owner bootstrap.
 - `APP_ENCRYPTION_KEY` — нужен для хранения OAuth credential payloads публикации. Для production задавайте стабильный ключ, а не dev fallback.
 - `YOUTUBE_DATA_API_KEY` — серверный API key для `YouTube Data API v3`. Это основной production path для комментариев YouTube с любых публичных каналов. Ownership/OAuth не нужны.
-- `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` — обязательны для подключения YouTube канала и публикации через OAuth.
+- `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` — legacy single-project config для подключения YouTube канала и публикации через OAuth.
+- `YOUTUBE_OAUTH_CLIENTS_JSON` — multi-project config для YouTube publishing pool. Если задан, он заменяет legacy single-project config:
+
+```json
+[
+  {
+    "key": "primary",
+    "label": "Clips API Project 1",
+    "projectNumber": "122834058966",
+    "clientId": "...apps.googleusercontent.com",
+    "clientSecret": "...",
+    "dailyUploadBudget": 8
+  },
+  {
+    "key": "secondary",
+    "label": "Clips API Project 2",
+    "projectNumber": "123456789012",
+    "clientId": "...apps.googleusercontent.com",
+    "clientSecret": "...",
+    "dailyUploadBudget": 8
+  }
+]
+```
+
+- `YOUTUBE_OAUTH_DEFAULT_CLIENT_KEY` — optional default project key from `YOUTUBE_OAUTH_CLIENTS_JSON`; if omitted, the first configured client is used.
 - `YTDLP_COOKIES` / `YTDLP_COOKIES_PATH` — optional fallback для `yt-dlp` comments/metadata paths и локального worker media path. Для hosted YouTube source download production path теперь использует `Visolix` и не пытается идти в `yt-dlp`.
 
 Для Stage 3 local worker YouTube source сначала пробуется локально, но при user-specific anti-bot/IP отказе worker может сделать защищенный fallback через хост. Если Step 1/2 у всех проходит, а Stage 3 ломается только у одного редактора, сначала проверьте personal worker status текущего пользователя и runtime compatibility, затем локальный runtime/IP конкретной машины.

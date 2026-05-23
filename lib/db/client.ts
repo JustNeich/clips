@@ -216,6 +216,8 @@ function applyDbMigrations(db: DatabaseSync): void {
     "notify_subscribers_default",
     "INTEGER NOT NULL DEFAULT 0"
   );
+  addColumnIfMissing(db, "channel_publish_integrations", "oauth_client_key", "TEXT");
+  addColumnIfMissing(db, "channel_youtube_oauth_states", "oauth_client_key", "TEXT");
   addColumnIfMissing(
     db,
     "channel_publications",

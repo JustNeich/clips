@@ -6,9 +6,13 @@ import test from "node:test";
 
 import {
   assertYouTubePublishingConnectReady,
+  buildYouTubeOAuthUrl,
+  exchangeYouTubeOAuthCode,
+  refreshYouTubeAccessToken,
   updateYouTubeScheduledVideo,
   uploadYouTubeVideo
 } from "../lib/youtube-publishing";
+import { listPublicYouTubeOAuthClients } from "../lib/youtube-oauth-clients";
 
 function withEnv<T>(patch: Record<string, string | undefined>, run: () => T): T {
   const previous = new Map<string, string | undefined>();
@@ -34,6 +38,30 @@ function withEnv<T>(patch: Record<string, string | undefined>, run: () => T): T 
   }
 }
 
+async function withEnvAsync<T>(patch: Record<string, string | undefined>, run: () => Promise<T>): Promise<T> {
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(patch)) {
+    previous.set(key, process.env[key]);
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+
+  try {
+    return await run();
+  } finally {
+    for (const [key, value] of previous.entries()) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
 test("YouTube connect readiness fails fast when OAuth client config is missing", () => {
   assert.throws(
     () =>
@@ -41,6 +69,7 @@ test("YouTube connect readiness fails fast when OAuth client config is missing",
         {
           NODE_ENV: "production",
           APP_ENCRYPTION_KEY: "test-encryption-key",
+          YOUTUBE_OAUTH_CLIENTS_JSON: undefined,
           GOOGLE_OAUTH_CLIENT_ID: undefined,
           GOOGLE_OAUTH_CLIENT_SECRET: undefined
         },
@@ -57,6 +86,7 @@ test("YouTube connect readiness fails fast when credential storage encryption is
         {
           NODE_ENV: "production",
           APP_ENCRYPTION_KEY: undefined,
+          YOUTUBE_OAUTH_CLIENTS_JSON: undefined,
           GOOGLE_OAUTH_CLIENT_ID: "client-id",
           GOOGLE_OAUTH_CLIENT_SECRET: "client-secret"
         },
@@ -64,6 +94,161 @@ test("YouTube connect readiness fails fast when credential storage encryption is
       ),
     /APP_ENCRYPTION_KEY is required in production/
   );
+});
+
+test("YouTube OAuth client list supports multiple Google projects without exposing secrets", () => {
+  const clients = withEnv(
+    {
+      YOUTUBE_OAUTH_CLIENTS_JSON: JSON.stringify([
+        {
+          key: "primary",
+          label: "Primary",
+          projectNumber: "111",
+          clientId: "primary-client",
+          clientSecret: "primary-secret",
+          dailyUploadBudget: 8
+        },
+        {
+          key: "secondary",
+          label: "Secondary",
+          projectNumber: "222",
+          clientId: "secondary-client",
+          clientSecret: "secondary-secret",
+          dailyUploadBudget: 8
+        }
+      ]),
+      YOUTUBE_OAUTH_DEFAULT_CLIENT_KEY: "secondary",
+      GOOGLE_OAUTH_CLIENT_ID: undefined,
+      GOOGLE_OAUTH_CLIENT_SECRET: undefined
+    },
+    () => listPublicYouTubeOAuthClients()
+  );
+
+  assert.deepEqual(clients, [
+    {
+      key: "primary",
+      label: "Primary",
+      projectNumber: "111",
+      dailyUploadBudget: 8,
+      isDefault: false,
+      configured: true
+    },
+    {
+      key: "secondary",
+      label: "Secondary",
+      projectNumber: "222",
+      dailyUploadBudget: 8,
+      isDefault: true,
+      configured: true
+    }
+  ]);
+});
+
+test("buildYouTubeOAuthUrl uses the selected OAuth project client id", () => {
+  const url = withEnv(
+    {
+      NODE_ENV: "test",
+      APP_ENCRYPTION_KEY: "test-encryption-key",
+      YOUTUBE_OAUTH_CLIENTS_JSON: JSON.stringify([
+        {
+          key: "primary",
+          label: "Primary",
+          clientId: "primary-client",
+          clientSecret: "primary-secret"
+        },
+        {
+          key: "secondary",
+          label: "Secondary",
+          clientId: "secondary-client",
+          clientSecret: "secondary-secret"
+        }
+      ]),
+      GOOGLE_OAUTH_CLIENT_ID: undefined,
+      GOOGLE_OAUTH_CLIENT_SECRET: undefined
+    },
+    () => buildYouTubeOAuthUrl(new Request("https://clips.example/admin"), "state-1", "secondary")
+  );
+
+  const parsed = new URL(url);
+  assert.equal(parsed.searchParams.get("client_id"), "secondary-client");
+  assert.equal(parsed.searchParams.get("state"), "state-1");
+});
+
+test("OAuth code exchange and refresh use the selected project secret", async () => {
+  const originalFetch = globalThis.fetch;
+  const observedSecrets: string[] = [];
+
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    if (url === "https://oauth2.googleapis.com/token") {
+      const body = init?.body instanceof URLSearchParams ? init.body : new URLSearchParams(String(init?.body ?? ""));
+      observedSecrets.push(body.get("client_secret") ?? "");
+      return Response.json({
+        access_token: `access-${observedSecrets.length}`,
+        expires_in: 3600,
+        refresh_token: observedSecrets.length === 1 ? "refresh-token" : undefined,
+        scope: "youtube.upload",
+        token_type: "Bearer"
+      });
+    }
+    if (url === "https://openidconnect.googleapis.com/v1/userinfo") {
+      return Response.json({ email: "owner@example.com" });
+    }
+    if (url.includes("youtube/v3/channels")) {
+      return Response.json({
+        items: [
+          {
+            id: "youtube-channel-1",
+            snippet: {
+              title: "Daily Dopamine",
+              customUrl: "@dailydopamine"
+            }
+          }
+        ]
+      });
+    }
+    throw new Error(`Unexpected fetch URL: ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const result = await withEnvAsync(
+      {
+        NODE_ENV: "test",
+        APP_ENCRYPTION_KEY: "test-encryption-key",
+        YOUTUBE_OAUTH_CLIENTS_JSON: JSON.stringify([
+          {
+            key: "primary",
+            label: "Primary",
+            clientId: "primary-client",
+            clientSecret: "primary-secret"
+          },
+          {
+            key: "secondary",
+            label: "Secondary",
+            clientId: "secondary-client",
+            clientSecret: "secondary-secret"
+          }
+        ]),
+        GOOGLE_OAUTH_CLIENT_ID: undefined,
+        GOOGLE_OAUTH_CLIENT_SECRET: undefined
+      },
+      async () => {
+        const exchanged = await exchangeYouTubeOAuthCode({
+          request: new Request("https://clips.example/admin"),
+          code: "code-1",
+          oauthClientKey: "secondary"
+        });
+        const refreshed = await refreshYouTubeAccessToken(exchanged.credential, "secondary");
+        return { exchanged, refreshed };
+      }
+    );
+
+    assert.equal(result.exchanged.credential.refreshToken, "refresh-token");
+    assert.equal(result.refreshed.accessToken, "access-2");
+    assert.deepEqual(observedSecrets, ["secondary-secret", "secondary-secret"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("uploadYouTubeVideo streams the artifact body instead of buffering the whole file in memory", async () => {

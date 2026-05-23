@@ -89,7 +89,8 @@ export async function GET(request: Request): Promise<Response> {
   try {
     const result = await exchangeYouTubeOAuthCode({
       request,
-      code
+      code,
+      oauthClientKey: state.oauth_client_key
     });
     const selected = result.availableChannels.length === 1 ? result.availableChannels[0]! : null;
     const integration = saveChannelPublishIntegration({
@@ -97,6 +98,7 @@ export async function GET(request: Request): Promise<Response> {
       channelId: state.channel_id,
       userId: state.user_id,
       status: selected ? "connected" : "pending_selection",
+      oauthClientKey: state.oauth_client_key,
       credential: result.credential,
       googleAccountEmail: result.googleAccountEmail,
       selectedYoutubeChannelId: selected?.id ?? null,

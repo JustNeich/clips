@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Channel, ChannelPublishSettings } from "./types";
+import type { Channel, ChannelPublishSettings, YouTubeOAuthClientOption } from "./types";
 
 type ChannelManagerPublishingTabProps = {
   channel: Channel | null;
   canEditSetup: boolean;
   onSaveSettings: (channelId: string, patch: Partial<ChannelPublishSettings>) => Promise<void>;
-  onConnectYouTube: (channelId: string) => Promise<void>;
+  onConnectYouTube: (channelId: string, oauthClientKey?: string) => Promise<void>;
   onDisconnectYouTube: (channelId: string) => Promise<void>;
   onSelectYouTubeDestination: (channelId: string, selectedYoutubeChannelId: string) => Promise<void>;
 };
@@ -50,6 +50,11 @@ export function ChannelManagerPublishingTab({
   const [selectedChannelId, setSelectedChannelId] = useState(
     channel?.publishIntegration?.selectedYoutubeChannelId ?? ""
   );
+  const [oauthClients, setOauthClients] = useState<YouTubeOAuthClientOption[]>([]);
+  const [oauthClientsLoaded, setOauthClientsLoaded] = useState(false);
+  const [selectedOauthClientKey, setSelectedOauthClientKey] = useState(
+    channel?.publishIntegration?.youtubeOAuthClientKey ?? ""
+  );
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusTone, setStatusTone] = useState<"idle" | "saving" | "success" | "error">("idle");
   const [busyAction, setBusyAction] = useState<"" | "save" | "connect" | "disconnect" | "select">("");
@@ -57,14 +62,66 @@ export function ChannelManagerPublishingTab({
   useEffect(() => {
     setSettingsDraft(channel?.publishSettings ?? FALLBACK_PUBLISH_SETTINGS);
     setSelectedChannelId(channel?.publishIntegration?.selectedYoutubeChannelId ?? "");
+    setSelectedOauthClientKey(channel?.publishIntegration?.youtubeOAuthClientKey ?? "");
     setStatusMessage(null);
     setStatusTone("idle");
     setBusyAction("");
   }, [channel?.id, channel?.publishIntegration, channel?.publishSettings]);
 
   const integration = channel?.publishIntegration ?? null;
+  const channelId = channel?.id ?? "";
+  const integrationOauthClientKey = integration?.youtubeOAuthClientKey ?? "";
   const slotPreview = useMemo(() => buildSlotPreview(settingsDraft), [settingsDraft]);
   const selectionRequired = integration?.status === "pending_selection" || !integration?.selectedYoutubeChannelId;
+  const selectedOauthClient = oauthClients.find((client) => client.key === selectedOauthClientKey) ?? null;
+
+  useEffect(() => {
+    if (!channelId) {
+      setOauthClients([]);
+      setOauthClientsLoaded(false);
+      return;
+    }
+    setOauthClientsLoaded(false);
+    setOauthClients([]);
+    const controller = new AbortController();
+    void fetch(`/api/channels/${channelId}/publishing/youtube/connect`, {
+      signal: controller.signal
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Не удалось загрузить Google OAuth projects.");
+        }
+        return (await response.json()) as {
+          oauthClients?: YouTubeOAuthClientOption[];
+          defaultOauthClientKey?: string;
+        };
+      })
+      .then((body) => {
+        const clients = Array.isArray(body.oauthClients) ? body.oauthClients : [];
+        setOauthClients(clients);
+        setOauthClientsLoaded(true);
+        setSelectedOauthClientKey((current) => {
+          const preferred =
+            integrationOauthClientKey ||
+            current ||
+            body.defaultOauthClientKey ||
+            clients.find((client) => client.isDefault)?.key ||
+            clients[0]?.key ||
+            "";
+          return clients.some((client) => client.key === preferred) ? preferred : clients[0]?.key ?? "";
+        });
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setOauthClients([]);
+        setOauthClientsLoaded(true);
+        setStatusTone("error");
+        setStatusMessage(error instanceof Error ? error.message : "Не удалось загрузить Google OAuth projects.");
+      });
+    return () => controller.abort();
+  }, [channelId, integrationOauthClientKey]);
 
   const setBusy = (action: typeof busyAction, message: string) => {
     setBusyAction(action);
@@ -120,16 +177,52 @@ export function ChannelManagerPublishingTab({
               {integration?.selectedYoutubeChannelCustomUrl ?? integration?.selectedYoutubeChannelId ?? "Ожидает выбора"}
             </span>
           </div>
+          <div className="publishing-manager-status-card">
+            <strong>Google project</strong>
+            <span>{integration?.youtubeOAuthClientLabel ?? selectedOauthClient?.label ?? "Не выбран"}</span>
+            <span className="subtle-text">
+              {integration?.youtubeOAuthProjectNumber ?? selectedOauthClient?.projectNumber ?? "Project number не указан"}
+            </span>
+          </div>
         </div>
+
+        {oauthClients.length ? (
+          <label className="field-stack">
+            <span className="field-label">Google project для подключения</span>
+            <select
+              className="text-input"
+              value={selectedOauthClientKey}
+              disabled={!canEditSetup || busyAction === "connect"}
+              onChange={(event) => setSelectedOauthClientKey(event.target.value)}
+            >
+              {oauthClients.map((client) => (
+                <option key={client.key} value={client.key}>
+                  {client.label}
+                  {client.projectNumber ? ` (${client.projectNumber})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : oauthClientsLoaded ? (
+          <p className="danger-text subtle-text">
+            Google OAuth project не настроен на сервере.
+          </p>
+        ) : null}
 
         <div className="control-actions">
           <button
             type="button"
             className="btn btn-secondary"
-            disabled={!canEditSetup || busyAction === "connect"}
+            disabled={
+              !canEditSetup ||
+              busyAction === "connect" ||
+              !selectedOauthClientKey ||
+              !oauthClientsLoaded ||
+              oauthClients.length === 0
+            }
             onClick={() => {
               setBusy("connect", "Открываем Google OAuth…");
-              void onConnectYouTube(channel.id)
+              void onConnectYouTube(channel.id, selectedOauthClientKey)
                 .then(() => finishSuccess("YouTube успешно подключён."))
                 .catch((error) => finishError(error, "Не удалось подключить YouTube."));
             }}

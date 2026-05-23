@@ -25,6 +25,10 @@ import {
 import { getStage3Job } from "./stage3-job-store";
 import { tryAppendFlowAuditEvent } from "./audit-log-store";
 import { normalizeSupportedUrl } from "./supported-url";
+import {
+  getDefaultYouTubeOAuthClientKey,
+  resolvePublicYouTubeOAuthClientMetadata
+} from "./youtube-oauth-clients";
 
 export type StoredYoutubeCredential = {
   refreshToken: string;
@@ -55,6 +59,7 @@ type PublishIntegrationRow = {
   channel_id: string;
   provider: string;
   status: string;
+  oauth_client_key: string | null;
   encrypted_token_json: string | null;
   google_account_email: string | null;
   selected_youtube_channel_id: string | null;
@@ -75,6 +80,7 @@ type OAuthStateRow = {
   workspace_id: string;
   channel_id: string;
   user_id: string;
+  oauth_client_key: string | null;
   state_token_hash: string;
   expires_at: string;
   created_at: string;
@@ -292,6 +298,7 @@ function mapPublishIntegrationRow(row: PublishIntegrationRow | null): ChannelPub
   if (!row) {
     return null;
   }
+  const oauthClient = resolvePublicYouTubeOAuthClientMetadata(row.oauth_client_key);
   return {
     provider: "youtube",
     status:
@@ -303,6 +310,10 @@ function mapPublishIntegrationRow(row: PublishIntegrationRow | null): ChannelPub
         : "disconnected",
     connectedAt: row.connected_at ?? null,
     updatedAt: row.updated_at,
+    youtubeOAuthClientKey: oauthClient.key,
+    youtubeOAuthClientLabel: oauthClient.label,
+    youtubeOAuthProjectNumber: oauthClient.projectNumber,
+    youtubeOAuthDailyUploadBudget: oauthClient.dailyUploadBudget,
     selectedYoutubeChannelId: row.selected_youtube_channel_id ?? null,
     selectedYoutubeChannelTitle: row.selected_youtube_channel_title ?? null,
     selectedYoutubeChannelCustomUrl: row.selected_youtube_channel_custom_url ?? null,
@@ -536,6 +547,7 @@ export function saveChannelPublishIntegration(input: {
   channelId: string;
   userId: string;
   status: ChannelPublishIntegration["status"];
+  oauthClientKey?: string | null;
   credential: StoredYoutubeCredential | null;
   googleAccountEmail: string | null;
   selectedYoutubeChannelId: string | null;
@@ -550,12 +562,18 @@ export function saveChannelPublishIntegration(input: {
   const now = nowIso();
   const encrypted =
     input.credential !== null ? encryptJsonPayload(input.credential) : current?.encrypted_token_json ?? null;
+  const oauthClientKey =
+    input.oauthClientKey?.trim() ||
+    current?.oauth_client_key?.trim() ||
+    getDefaultYouTubeOAuthClientKey();
+  const oauthClient = resolvePublicYouTubeOAuthClientMetadata(oauthClientKey);
   const db = getDb();
 
   if (current) {
     db.prepare(
       `UPDATE channel_publish_integrations
           SET status = ?,
+              oauth_client_key = ?,
               encrypted_token_json = ?,
               google_account_email = ?,
               selected_youtube_channel_id = ?,
@@ -571,6 +589,7 @@ export function saveChannelPublishIntegration(input: {
         WHERE channel_id = ?`
     ).run(
       input.status,
+      oauthClientKey,
       encrypted,
       input.googleAccountEmail,
       input.selectedYoutubeChannelId,
@@ -588,13 +607,14 @@ export function saveChannelPublishIntegration(input: {
   } else {
     db.prepare(
       `INSERT INTO channel_publish_integrations
-        (id, workspace_id, channel_id, provider, status, encrypted_token_json, google_account_email, selected_youtube_channel_id, selected_youtube_channel_title, selected_youtube_channel_custom_url, available_channels_json, scopes_json, connected_by_user_id, connected_at, last_verified_at, last_error, created_at, updated_at)
-        VALUES (?, ?, ?, 'youtube', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (id, workspace_id, channel_id, provider, status, oauth_client_key, encrypted_token_json, google_account_email, selected_youtube_channel_id, selected_youtube_channel_title, selected_youtube_channel_custom_url, available_channels_json, scopes_json, connected_by_user_id, connected_at, last_verified_at, last_error, created_at, updated_at)
+        VALUES (?, ?, ?, 'youtube', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       newId(),
       input.workspaceId,
       input.channelId,
       input.status,
+      oauthClientKey,
       encrypted,
       input.googleAccountEmail,
       input.selectedYoutubeChannelId,
@@ -616,6 +636,10 @@ export function saveChannelPublishIntegration(input: {
     status: input.status,
     connectedAt: now,
     updatedAt: now,
+    youtubeOAuthClientKey: oauthClient.key,
+    youtubeOAuthClientLabel: oauthClient.label,
+    youtubeOAuthProjectNumber: oauthClient.projectNumber,
+    youtubeOAuthDailyUploadBudget: oauthClient.dailyUploadBudget,
     selectedYoutubeChannelId: input.selectedYoutubeChannelId,
     selectedYoutubeChannelTitle: input.selectedYoutubeChannelTitle,
     selectedYoutubeChannelCustomUrl: input.selectedYoutubeChannelCustomUrl,
@@ -698,21 +722,24 @@ export function createChannelYoutubeOAuthState(input: {
   workspaceId: string;
   channelId: string;
   userId: string;
+  oauthClientKey?: string | null;
   ttlMs?: number;
 }): { state: string; expiresAt: string } {
   const ttlMs = Math.max(60_000, Math.min(30 * 60_000, input.ttlMs ?? 10 * 60_000));
   const state = randomUUID();
   const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+  const oauthClientKey = input.oauthClientKey?.trim() || getDefaultYouTubeOAuthClientKey();
   const db = getDb();
   db.prepare(
     `INSERT INTO channel_youtube_oauth_states
-      (id, workspace_id, channel_id, user_id, state_token_hash, expires_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`
+      (id, workspace_id, channel_id, user_id, oauth_client_key, state_token_hash, expires_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     newId(),
     input.workspaceId,
     input.channelId,
     input.userId,
+    oauthClientKey,
     hashStateToken(state),
     expiresAt,
     nowIso()
@@ -925,6 +952,7 @@ function auditChannelPublication(
     payload?: Record<string, unknown>;
   }
 ): void {
+  const integration = mapPublishIntegrationRow(readPublishIntegrationRow(publication.channelId));
   tryAppendFlowAuditEvent({
     workspaceId: publication.workspaceId,
     userId: options?.userId ?? null,
@@ -947,6 +975,9 @@ function auditChannelPublication(
       renderExportId: publication.renderExportId,
       sourceUrl: publication.sourceUrl,
       lastError: publication.lastError,
+      youtubeOAuthClientKey: integration?.youtubeOAuthClientKey ?? null,
+      youtubeOAuthClientLabel: integration?.youtubeOAuthClientLabel ?? null,
+      youtubeOAuthProjectNumber: integration?.youtubeOAuthProjectNumber ?? null,
       ...options?.payload
     },
     createdAt: publication.updatedAt

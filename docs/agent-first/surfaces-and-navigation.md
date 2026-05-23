@@ -674,6 +674,7 @@
 - `default behavior`: новые каналы и fallback-state держат `notify subscribers` выключенным, пока оператор не включит его явно.
 - `controls`:
   - section `YouTube`
+  - select `Google project для подключения`
   - button `Подключить YouTube` / `Переподключить YouTube`
   - button `Отключить`
   - select `Канал, куда публикуем`
@@ -688,6 +689,7 @@
   - checkbox `По умолчанию публиковать в фид подписок и уведомлять подписчиков`
   - button `Сохранить настройки`
 - `related APIs`:
+  - `GET /api/channels/[id]/publishing/youtube/connect`
   - `POST /api/channels/[id]/publishing/youtube/connect`
   - `GET /api/channels/[id]/publishing/youtube/connection`
   - `POST /api/channels/[id]/publishing/settings`

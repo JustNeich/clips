@@ -507,10 +507,11 @@
 ### Happy path
 
 1. Администратор открывает Channel Manager → `Publishing`.
-2. Подключает или переподключает YouTube.
-3. Выбирает destination channel.
-4. Настраивает timezone, first slot, daily slots, interval, upload lead.
-5. Сохраняет настройки.
+2. Выбирает Google project для подключения, если в production настроено несколько OAuth projects.
+3. Подключает или переподключает YouTube.
+4. Выбирает destination channel.
+5. Настраивает timezone, first slot, daily slots, interval, upload lead.
+6. Сохраняет настройки.
 
 ### Alternate path
 
@@ -521,7 +522,7 @@
 
 1. Роль не может edit setup.
 2. OAuth требует reauth.
-3. Google project ограничения мешают публичной публикации.
+3. Google project ограничения или дневная upload quota мешают публикации через API.
 
 ### Failure / recovery
 

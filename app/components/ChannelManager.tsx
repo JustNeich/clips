@@ -338,7 +338,7 @@ type ChannelManagerProps = {
     channelId: string,
     patch: Partial<NonNullable<Channel["publishSettings"]>>
   ) => Promise<void>;
-  onConnectYouTube: (channelId: string) => Promise<void>;
+  onConnectYouTube: (channelId: string, oauthClientKey?: string) => Promise<void>;
   onDisconnectYouTube: (channelId: string) => Promise<void>;
   onSelectYouTubeDestination: (channelId: string, selectedYoutubeChannelId: string) => Promise<void>;
 };

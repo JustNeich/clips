@@ -4,6 +4,7 @@ import { assertAppEncryptionReady } from "./app-crypto";
 import { resolvePublicAppOrigin } from "./public-app-origin";
 import type { ChannelPublishIntegrationOption } from "../app/components/types";
 import type { StoredYoutubeCredential } from "./publication-store";
+import { resolveYouTubeOAuthClient } from "./youtube-oauth-clients";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
@@ -39,20 +40,8 @@ type YouTubeTokenResponse = {
   error_description?: string;
 };
 
-function requireGoogleOAuthConfig(): {
-  clientId: string;
-  clientSecret: string;
-} {
-  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID?.trim() ?? "";
-  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim() ?? "";
-  if (!clientId || !clientSecret) {
-    throw new Error("GOOGLE_OAUTH_CLIENT_ID и GOOGLE_OAUTH_CLIENT_SECRET должны быть настроены на сервере.");
-  }
-  return { clientId, clientSecret };
-}
-
-export function assertYouTubePublishingConnectReady(): void {
-  requireGoogleOAuthConfig();
+export function assertYouTubePublishingConnectReady(oauthClientKey?: string | null): void {
+  resolveYouTubeOAuthClient(oauthClientKey);
   assertAppEncryptionReady();
 }
 
@@ -171,9 +160,9 @@ async function youtubeApiJson<T>(input: {
   return (payload ?? {}) as T;
 }
 
-export function buildYouTubeOAuthUrl(request: Request, state: string): string {
-  assertYouTubePublishingConnectReady();
-  const { clientId } = requireGoogleOAuthConfig();
+export function buildYouTubeOAuthUrl(request: Request, state: string, oauthClientKey?: string | null): string {
+  assertYouTubePublishingConnectReady(oauthClientKey);
+  const { clientId } = resolveYouTubeOAuthClient(oauthClientKey);
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: buildRedirectUri(request),
@@ -190,13 +179,14 @@ export function buildYouTubeOAuthUrl(request: Request, state: string): string {
 export async function exchangeYouTubeOAuthCode(input: {
   request: Request;
   code: string;
+  oauthClientKey?: string | null;
 }): Promise<{
   credential: StoredYoutubeCredential;
   googleAccountEmail: string | null;
   availableChannels: ChannelPublishIntegrationOption[];
 }> {
-  assertYouTubePublishingConnectReady();
-  const { clientId, clientSecret } = requireGoogleOAuthConfig();
+  assertYouTubePublishingConnectReady(input.oauthClientKey);
+  const { clientId, clientSecret } = resolveYouTubeOAuthClient(input.oauthClientKey);
   const payload = await fetchGoogleToken(
     new URLSearchParams({
       code: input.code,
@@ -240,14 +230,17 @@ export async function exchangeYouTubeOAuthCode(input: {
   };
 }
 
-export async function refreshYouTubeAccessToken(credential: StoredYoutubeCredential): Promise<StoredYoutubeCredential> {
+export async function refreshYouTubeAccessToken(
+  credential: StoredYoutubeCredential,
+  oauthClientKey?: string | null
+): Promise<StoredYoutubeCredential> {
   if (!credential.refreshToken) {
     throw new YouTubePublishError("Отсутствует refresh token для YouTube OAuth.", {
       recoverable: false,
       reauthRequired: true
     });
   }
-  const { clientId, clientSecret } = requireGoogleOAuthConfig();
+  const { clientId, clientSecret } = resolveYouTubeOAuthClient(oauthClientKey);
   const payload = await fetchGoogleToken(
     new URLSearchParams({
       client_id: clientId,

@@ -1199,11 +1199,24 @@ export type ChannelPublishIntegrationOption = {
   customUrl: string | null;
 };
 
+export type YouTubeOAuthClientOption = {
+  key: string;
+  label: string;
+  projectNumber: string | null;
+  dailyUploadBudget: number | null;
+  isDefault: boolean;
+  configured: boolean;
+};
+
 export type ChannelPublishIntegration = {
   provider: "youtube";
   status: ChannelPublishIntegrationStatus;
   connectedAt: string | null;
   updatedAt: string;
+  youtubeOAuthClientKey: string;
+  youtubeOAuthClientLabel: string;
+  youtubeOAuthProjectNumber: string | null;
+  youtubeOAuthDailyUploadBudget: number | null;
   selectedYoutubeChannelId: string | null;
   selectedYoutubeChannelTitle: string | null;
   selectedYoutubeChannelCustomUrl: string | null;

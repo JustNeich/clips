@@ -169,6 +169,9 @@ function summarizeCopscopesPublishing(channel: ChannelRow, limit = 12): Record<s
           selectedYoutubeChannelTitle: integration.selectedYoutubeChannelTitle,
           selectedYoutubeChannelCustomUrl: integration.selectedYoutubeChannelCustomUrl,
           selectedGoogleAccountEmail: integration.selectedGoogleAccountEmail,
+          youtubeOAuthClientKey: integration.youtubeOAuthClientKey,
+          youtubeOAuthClientLabel: integration.youtubeOAuthClientLabel,
+          youtubeOAuthProjectNumber: integration.youtubeOAuthProjectNumber,
           lastVerifiedAt: integration.lastVerifiedAt,
           lastError: integration.lastError
         }
@@ -180,6 +183,9 @@ function summarizeCopscopesPublishing(channel: ChannelRow, limit = 12): Record<s
           selectedYoutubeChannelTitle: null,
           selectedYoutubeChannelCustomUrl: null,
           selectedGoogleAccountEmail: null,
+          youtubeOAuthClientKey: null,
+          youtubeOAuthClientLabel: null,
+          youtubeOAuthProjectNumber: null,
           lastVerifiedAt: null,
           lastError: "YouTube publishing is not connected."
         },

@@ -379,7 +379,7 @@ async function ensureFreshYouTubeCredential(channelId: string): Promise<{
   }
 
   if (isYoutubeAccessTokenExpired(credential)) {
-    credential = await refreshYouTubeAccessToken(credential);
+    credential = await refreshYouTubeAccessToken(credential, integration.youtubeOAuthClientKey);
     updateStoredChannelPublishCredential(channelId, credential);
   }
 

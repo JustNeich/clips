@@ -6426,9 +6426,11 @@ export default function HomePage() {
     }
   }, [activeChannelId, parseError, refreshChannelPublications]);
 
-  const handleConnectYouTube = useCallback(async (channelId: string): Promise<void> => {
+  const handleConnectYouTube = useCallback(async (channelId: string, oauthClientKey?: string): Promise<void> => {
     const response = await fetch(`/api/channels/${channelId}/publishing/youtube/connect`, {
-      method: "POST"
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ oauthClientKey })
     });
     if (!response.ok) {
       throw new Error(await parseError(response, "Не удалось начать YouTube OAuth."));
