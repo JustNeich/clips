@@ -417,6 +417,20 @@ export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord 
           return existing;
         }
 
+        const resetAttempts = input.reuseCompleted === false;
+        const previousAttempts = Math.max(0, Number(existing.attempts) || 0);
+        const terminalRetry =
+          existing.status === "failed" || existing.status === "interrupted";
+        if (terminalRetry && !resetAttempts && previousAttempts >= attemptLimit) {
+          appendStage3JobEvent(existing.id, "warn", "Skipped automatic retry after max attempts.", {
+            kind: existing.kind,
+            dedupeKey,
+            attempts: previousAttempts,
+            attemptLimit
+          });
+          return existing;
+        }
+
         clearStage3JobArtifacts(existing.id);
         db.prepare(
           `UPDATE stage3_jobs
@@ -432,7 +446,7 @@ export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord 
                   error_code = NULL,
                   error_message = NULL,
                   recoverable = 1,
-                  attempts = 0,
+                  attempts = ?,
                   started_at = NULL,
                   completed_at = NULL,
                   attempt_limit = ?,
@@ -444,6 +458,7 @@ export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord 
           input.userId,
           executionTarget,
           input.payloadJson,
+          resetAttempts || !terminalRetry ? 0 : previousAttempts,
           attemptLimit,
           attemptGroup,
           stamp,
@@ -452,7 +467,8 @@ export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord 
         appendStage3JobEvent(existing.id, "info", "Queued job for retry.", {
           kind: existing.kind,
           dedupeKey,
-          executionTarget
+          executionTarget,
+          resetAttempts
         });
         return mapJobRow(readJobRow(existing.id)) as Stage3JobRecord;
       }

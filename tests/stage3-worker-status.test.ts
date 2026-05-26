@@ -223,6 +223,69 @@ test("render dedupe can requeue completed or failed jobs without keeping stale a
   });
 });
 
+test("automatic failed job retry preserves attempts and stops after limit", async () => {
+  await withIsolatedAppData(async () => {
+    const workspaceId = "w1";
+    const userId = "u1";
+    seedWorkspace(workspaceId, userId);
+
+    const first = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "editing-proxy",
+      executionTarget: "local",
+      dedupeKey: "editing-proxy:w1:u1:stable",
+      payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=abc123" })
+    });
+    const db = getDb();
+    db.prepare("UPDATE stage3_jobs SET attempts = 2 WHERE id = ?").run(first.id);
+    finishStage3Job(first.id, {
+      status: "failed",
+      errorCode: "editing_proxy_timeout",
+      errorMessage: "Stage 3 local executor timed out while running editing-proxy after 300s.",
+      recoverable: true
+    });
+
+    const automaticRetry = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "editing-proxy",
+      executionTarget: "local",
+      dedupeKey: "editing-proxy:w1:u1:stable",
+      payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=abc123" })
+    });
+    assert.equal(automaticRetry.id, first.id);
+    assert.equal(automaticRetry.status, "queued");
+    assert.equal(automaticRetry.attempts, 2);
+
+    db.prepare("UPDATE stage3_jobs SET attempts = 3 WHERE id = ?").run(first.id);
+    finishStage3Job(first.id, {
+      status: "failed",
+      errorCode: "editing_proxy_timeout",
+      errorMessage: "Stage 3 local executor timed out while running editing-proxy after 300s.",
+      recoverable: true
+    });
+
+    const blockedRetry = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "editing-proxy",
+      executionTarget: "local",
+      dedupeKey: "editing-proxy:w1:u1:stable",
+      payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=abc123" })
+    });
+    assert.equal(blockedRetry.id, first.id);
+    assert.equal(blockedRetry.status, "failed");
+    assert.equal(blockedRetry.attempts, 3);
+    assert.equal(blockedRetry.errorCode, "editing_proxy_timeout");
+
+    const events = db
+      .prepare("SELECT message FROM stage3_job_events WHERE job_id = ? ORDER BY created_at ASC")
+      .all(first.id) as Array<{ message: string }>;
+    assert.ok(events.some((event) => event.message === "Skipped automatic retry after max attempts."));
+  });
+});
+
 test("local render sweep interrupts older queued renders for the same chat", async () => {
   await withIsolatedAppData(async () => {
     const workspaceId = "w1";

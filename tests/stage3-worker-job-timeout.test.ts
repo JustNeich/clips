@@ -9,7 +9,7 @@ import {
 import { classifyStage3HeavyJobError } from "../lib/stage3-job-executor";
 
 test("worker job timeout defaults keep preview responsive without killing normal renders", () => {
-  assert.equal(resolveStage3WorkerJobTimeoutMs("editing-proxy", {}), 90_000);
+  assert.equal(resolveStage3WorkerJobTimeoutMs("editing-proxy", {}), 5 * 60_000);
   assert.equal(resolveStage3WorkerJobTimeoutMs("preview", {}), 150_000);
   assert.equal(resolveStage3WorkerJobTimeoutMs("render", {}), 10 * 60_000);
 });
@@ -31,7 +31,7 @@ test("worker job timeout supports global and kind-specific overrides", () => {
 });
 
 test("worker timeout error is classifiable", () => {
-  const error = new Stage3WorkerJobTimeoutError("editing-proxy", 90_000);
+  const error = new Stage3WorkerJobTimeoutError("editing-proxy", 5 * 60_000);
   assert.equal(isStage3WorkerJobTimeoutError(error), true);
   assert.equal(error.kind, "editing-proxy");
   assert.match(error.message, /timed out/i);

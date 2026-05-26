@@ -247,12 +247,12 @@ UI worker list теперь при каждом poll автоматически 
 
 Если тяжелая local job зависла внутри executor и продолжает держать `Busy`, worker теперь имеет hard watchdog:
 
-- `editing-proxy`: 90 секунд;
+- `editing-proxy`: 5 минут;
 - `preview`: 150 секунд;
 - `source-download`: 5 минут;
 - `render` и `agent-media-step`: 10 минут.
 
-После watchdog timeout job помечается как recoverable failure на хосте, а локальный worker завершает процесс, чтобы не продолжать держать скрытый зависший render/proxy. Оператор должен перезапустить свежую команду из Step 3 и повторить действие. Таймауты можно временно переопределить через `STAGE3_WORKER_JOB_TIMEOUT_MS` или kind-specific env вроде `STAGE3_WORKER_RENDER_TIMEOUT_MS`.
+После watchdog timeout job помечается как recoverable failure на хосте, а локальный worker завершает процесс, чтобы не продолжать держать скрытый зависший render/proxy. Автоматические повторные запросы по той же dedupe-key сохраняют счётчик попыток и останавливаются на лимите, чтобы перезапуск executor-а не возвращал один и тот же проблемный proxy/render в бесконечный цикл. Оператор должен перезапустить свежую команду из Step 3 и повторить действие. Таймауты можно временно переопределить через `STAGE3_WORKER_JOB_TIMEOUT_MS` или kind-specific env вроде `STAGE3_WORKER_RENDER_TIMEOUT_MS`.
 
 Preview/render больше не должны тихо падать обратно на host. Если worker offline, job останется в очереди и UI покажет честное состояние ожидания.
 

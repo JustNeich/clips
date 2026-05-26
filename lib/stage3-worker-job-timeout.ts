@@ -6,7 +6,7 @@ export type Stage3WorkerJobKind =
   | "agent-media-step";
 
 const DEFAULT_TIMEOUT_MS_BY_KIND: Record<Stage3WorkerJobKind, number> = {
-  "editing-proxy": 90_000,
+  "editing-proxy": 5 * 60_000,
   preview: 150_000,
   render: 10 * 60_000,
   "source-download": 5 * 60_000,
