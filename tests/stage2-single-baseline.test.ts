@@ -93,6 +93,7 @@ test("default classic Stage 2 prompt uses the V6 voice with the classic prompt-f
   assert.match(classicPrompt, /Paused Frame Rule/);
   assert.doesNotMatch(classicPrompt, /storyOptions/);
   assert.match(storyPrompt, /story_lead_main_caption/);
+  assert.doesNotMatch(storyPrompt, /titles.*ALL CAPS/i);
 });
 
 test("quick regenerate prompt uses the minimal video-first contract", () => {
@@ -221,8 +222,8 @@ test("prompt-first story run sends all active examples as raw examples_json", as
           })),
           winner_candidate_id: "cand_1",
           titles: Array.from({ length: 5 }, (_, index) => ({
-            title: `SEALED CHAMBER CLUE ${index + 1}`,
-            title_ru: `SEALED CHAMBER CLUE ${index + 1}`
+            title: `Sealed chamber clue ${index + 1}`,
+            title_ru: `Подсказка камеры ${index + 1}`
           }))
         } as T;
       }
@@ -275,7 +276,7 @@ test("prompt-first story run sends all active examples as raw examples_json", as
       title: "Sealed chamber clue in a cave wall",
       description: "A guide points out the tiny cave wall mark before the sealed chamber reveal.",
       frameDescriptions: ["A guide points at a cave wall.", "A sealed chamber entrance appears."],
-      userInstruction: "Keep the AI Studio prompt behavior."
+      userInstruction: "Do not use all caps for titles."
     }),
     imagePaths: [],
     executor,
@@ -303,6 +304,8 @@ test("prompt-first story run sends all active examples as raw examples_json", as
   assert.equal(result.output.formatPipeline, "story_lead_main_caption");
   assert.equal(result.output.storyOptions?.length, 5);
   assert.equal(result.output.storyOptions?.[0]?.lead, "Cave clue 1");
+  assert.equal(result.output.titleOptions[0]?.title, "Sealed chamber clue 1");
+  assert.equal(result.output.titleOptions[0]?.titleRu, "Подсказка камеры 1");
   assert.equal(result.output.pipeline?.availableExamplesCount, 4);
   assert.equal(result.output.pipeline?.selectedExamplesCount, 4);
   assert.equal(result.diagnostics.examples.activeCorpusCount, 4);
@@ -413,8 +416,8 @@ test("prompt-first classic run uses classicOneShot schema without story fields",
           })),
           winner_candidate_id: "cand_1",
           titles: Array.from({ length: 5 }, (_, index) => ({
-            title: `CLEAN MACHINE MOVE ${index + 1}`,
-            title_ru: `CLEAN MACHINE MOVE ${index + 1}`
+            title: `Clean machine move ${index + 1}`,
+            title_ru: `Clean machine move ${index + 1}`
           }))
         } as T;
       }
@@ -460,6 +463,7 @@ test("prompt-first classic run uses classicOneShot schema without story fields",
   assert.doesNotMatch(JSON.stringify(oneShotCall.schema), /mainCaption/);
   assert.equal(result.output.formatPipeline, "classic_top_bottom");
   assert.equal(result.output.classicOptions?.[0]?.top, "The machine movement makes the whole setup readable 1");
+  assert.equal(result.output.titleOptions[0]?.title, "CLEAN MACHINE MOVE 1");
 });
 
 test("channel persistence keeps active examples and channel-level Stage 2 prompt overrides", async () => {

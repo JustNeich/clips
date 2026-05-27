@@ -7591,6 +7591,11 @@ function normalizeAllCapsTitleText(value: string): string {
   return sanitizeTitleText(value).toUpperCase();
 }
 
+function normalizeStage2TitleCase(value: string, options: { forceAllCaps: boolean }): string {
+  const sanitized = sanitizeTitleText(value);
+  return options.forceAllCaps ? sanitized.toUpperCase() : sanitized;
+}
+
 function sanitizeTitleText(value: string): string {
   return value
     .replace(/[|]{2,}/g, "|")
@@ -8669,6 +8674,9 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
   const titleByOption = new Map(
     oneShotResult.titles.map((entry, index) => [entry.option ?? index + 1, entry] as const)
   );
+  const titleCasePolicy = {
+    forceAllCaps: oneShotStageId !== "storyOneShot"
+  };
   const titleFallbackOptions: number[] = [];
   const titleLengthGuardOptions: number[] = [];
   const titleOptions = Array.from({ length: 5 }, (_, index) => {
@@ -8688,16 +8696,18 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     if (existingTitle && useFallbackTitle) {
       titleLengthGuardOptions.push(option);
     }
-    const title = normalizeAllCapsTitleText(
+    const title = normalizeStage2TitleCase(
       useFallbackTitle
         ? compactStage2TitleText(existingTitle || fallbackTitle, fallbackTitle)
-        : existingTitle
+        : existingTitle,
+      titleCasePolicy
     );
     const existingTitleRu = existing?.titleRu?.trim() || title;
-    const titleRu = normalizeAllCapsTitleText(
+    const titleRu = normalizeStage2TitleCase(
       useFallbackTitle || isPromptFirstTitleTooLong(existingTitleRu)
         ? compactStage2TitleText(existingTitleRu, title)
-        : existingTitleRu
+        : existingTitleRu,
+      titleCasePolicy
     );
     const titleRuSource =
       !useFallbackTitle && existing?.titleRu?.trim() ? existing.titleRuSource ?? "llm" : "fallback";

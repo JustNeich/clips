@@ -211,7 +211,8 @@ Rules:
 - If format_contract_json.template_render_metadata.top_field.visible is false, lead must be an empty string and the full visible story text belongs in mainCaption.
 - Do not return top or bottom fields.
 - titles must contain exactly 5 short, click-worthy items.
-- Each title must be 3-7 words, ALL CAPS, and must not be the opening fragment of lead or mainCaption.`;
+- Each title must be 3-7 words and must not be the opening fragment of lead or mainCaption.
+- Use the title casing requested in user_instruction; otherwise use natural title case and do not force ALL CAPS.`;
 
 export const STAGE2_REFERENCE_ONE_SHOT_PROMPT = `SYSTEM PROMPT v6 — Viral Shorts Overlays (Visually Anchored & Human-Like)
 
