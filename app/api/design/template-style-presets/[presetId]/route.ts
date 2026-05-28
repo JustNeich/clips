@@ -3,6 +3,8 @@ import {
   readTemplateStylePreset,
   updateTemplateStylePreset
 } from "../../../../../lib/template-style-preset-store";
+import { requireAuth } from "../../../../../lib/auth/guards";
+import { requireSensitiveArtifactAccess } from "../../../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
@@ -22,6 +24,8 @@ export async function GET(
     return disabled;
   }
 
+  const auth = await requireAuth(_request);
+  requireSensitiveArtifactAccess(auth);
   const { presetId } = await params;
   const preset = await readTemplateStylePreset(presetId);
   if (!preset) {
@@ -39,6 +43,8 @@ export async function PUT(
     return disabled;
   }
 
+  const auth = await requireAuth(request);
+  requireSensitiveArtifactAccess(auth);
   const { presetId } = await params;
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   const preset = await updateTemplateStylePreset(presetId, body ?? {});
@@ -57,6 +63,8 @@ export async function DELETE(
     return disabled;
   }
 
+  const auth = await requireAuth(_request);
+  requireSensitiveArtifactAccess(auth);
   const { presetId } = await params;
   const deleted = await deleteTemplateStylePreset(presetId);
   if (!deleted) {

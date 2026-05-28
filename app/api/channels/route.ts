@@ -26,6 +26,10 @@ import { resolveStage3Execution } from "../../../lib/stage3-execution";
 import { resolveWorkspaceCodexModelConfig } from "../../../lib/workspace-codex-models";
 import { getWorkspaceAnthropicStatus } from "../../../lib/workspace-anthropic";
 import { getWorkspaceOpenRouterStatus } from "../../../lib/workspace-openrouter";
+import {
+  canInspectSensitiveArtifacts,
+  sanitizeChannelForRole
+} from "../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
@@ -78,6 +82,7 @@ export async function GET(request: Request): Promise<Response> {
         : null;
     const stage3ExecutionTarget = getWorkspaceStage3ExecutionTarget(auth.workspace.id);
     const stage3Execution = resolveStage3Execution(stage3ExecutionTarget);
+    const canInspectSensitive = canInspectSensitiveArtifacts(auth.membership.role);
     const visibleChannels = await Promise.all(
       channels.map(async (channel) => {
         const explicitAccess = accessByChannelId.get(channel.id) ?? null;
@@ -89,8 +94,9 @@ export async function GET(request: Request): Promise<Response> {
         if (!permissions.isVisible) {
           return null;
         }
+        const visibleChannel = sanitizeChannelForRole(channel, auth.membership.role);
         return {
-          ...channel,
+          ...visibleChannel,
           publishSettings: getChannelPublishSettings(channel.id),
           publishIntegration: getChannelPublishIntegration(channel.id),
           currentUserCanOperate: permissions.canOperate,
@@ -105,22 +111,30 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json(
       {
         channels: visibleChannels.filter(Boolean),
-        workspaceStage2ExamplesCorpusJson: getWorkspaceStage2ExamplesCorpusJson(auth.workspace.id),
-        workspaceStage2HardConstraints: getWorkspaceStage2HardConstraints(auth.workspace.id),
-        workspaceStage2PromptConfig: auth.workspace.stage2PromptConfig,
-        workspaceCodexModelConfig: getWorkspaceCodexModelConfig(auth.workspace.id),
-        workspaceStage2CaptionProviderConfig: getWorkspaceStage2CaptionProviderConfig(auth.workspace.id),
+        workspaceStage2ExamplesCorpusJson: canInspectSensitive
+          ? getWorkspaceStage2ExamplesCorpusJson(auth.workspace.id)
+          : undefined,
+        workspaceStage2HardConstraints: canInspectSensitive
+          ? getWorkspaceStage2HardConstraints(auth.workspace.id)
+          : undefined,
+        workspaceStage2PromptConfig: canInspectSensitive ? auth.workspace.stage2PromptConfig : undefined,
+        workspaceCodexModelConfig: canInspectSensitive ? getWorkspaceCodexModelConfig(auth.workspace.id) : undefined,
+        workspaceStage2CaptionProviderConfig: canInspectSensitive
+          ? getWorkspaceStage2CaptionProviderConfig(auth.workspace.id)
+          : undefined,
         workspaceStage3ExecutionTarget: stage3Execution.configuredTarget,
         workspaceResolvedStage3ExecutionTarget: stage3Execution.resolvedTarget,
         workspaceStage3ExecutionCapabilities: stage3Execution.capabilities,
         workspaceAnthropicIntegration,
         workspaceOpenRouterIntegration,
-        workspaceResolvedCodexModelConfig: resolveWorkspaceCodexModelConfig({
-          config: getWorkspaceCodexModelConfig(auth.workspace.id),
-          deployStage2Model: process.env.CODEX_STAGE2_MODEL,
-          deployStage2SeoModel: process.env.CODEX_STAGE2_DESCRIPTION_MODEL,
-          deployStage3Model: process.env.CODEX_STAGE3_MODEL
-        })
+        workspaceResolvedCodexModelConfig: canInspectSensitive
+          ? resolveWorkspaceCodexModelConfig({
+              config: getWorkspaceCodexModelConfig(auth.workspace.id),
+              deployStage2Model: process.env.CODEX_STAGE2_MODEL,
+              deployStage2SeoModel: process.env.CODEX_STAGE2_DESCRIPTION_MODEL,
+              deployStage3Model: process.env.CODEX_STAGE3_MODEL
+            })
+          : undefined
       },
       { status: 200 }
     );

@@ -1,5 +1,7 @@
 import { saveTemplateCalibrationArtifacts } from "../../../../../../lib/template-calibration-store";
 import { TemplateDiffReport } from "../../../../../components/types";
+import { requireAuth } from "../../../../../../lib/auth/guards";
+import { requireSensitiveArtifactAccess } from "../../../../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
@@ -19,6 +21,8 @@ export async function POST(
     return disabled;
   }
 
+  const auth = await requireAuth(request);
+  requireSensitiveArtifactAccess(auth);
   const { templateId } = await params;
   const formData = await request.formData();
   const currentFile = formData.get("current");

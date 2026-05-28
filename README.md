@@ -86,9 +86,12 @@ npm run dev
 ## Команда и роли
 
 - Публичная регистрация закрыта: аккаунт редактора больше нельзя создать без owner/manager-issued invite.
-- В интерфейсе команды приглашение создаётся на конкретную почту; по умолчанию оно выдаёт полного редактора (`redactor`).
+- В интерфейсе команды приглашение создаётся на конкретную почту; после создания UI показывает готовую ссылку `/accept-invite?token=...`.
+- По умолчанию invite выдаёт полного редактора (`redactor`), но owner/manager может выбрать `redactor_limited`.
 - Участника можно удалить из команды: активные сессии закрываются, channel grants отзываются, а исторические артефакты не каскадно удаляются.
-- `redactor_limited` остаётся отдельной явной ролью для случаев, когда нужно оставить доступ к работе с каналом без права менять setup.
+- `redactor_limited` остаётся отдельной явной ролью для случаев, когда нужно оставить доступ только к production flow по выданным каналам без права менять setup.
+- `redactor_limited` не видит Channel Manager, Team, admin flows, trace/history export, Stage 2 diagnostics/debug artifacts, JSON export, template customization и internal design tooling.
+- API для `redactor_limited` дополнительно очищает channel/workspace prompt config, Stage 2 diagnostics, token usage, pipeline internals, raw debug refs и frame-level prompt context.
 - `owner` управляет workspace-wide AI integrations: Shared Codex как baseline executor и Anthropic/OpenRouter caption provider overlays.
 
 ## Как это работает

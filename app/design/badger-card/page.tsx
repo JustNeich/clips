@@ -1,4 +1,7 @@
 import Script from "next/script";
+import { notFound } from "next/navigation";
+import { getCurrentAuthContext } from "../../../lib/auth/session";
+import { canInspectSensitiveArtifacts } from "../../../lib/sensitive-access";
 
 type BadgerCardPageProps = {
   searchParams?: Promise<{
@@ -48,6 +51,10 @@ function Highlight({ children }: { children: string }) {
 }
 
 export default async function BadgerCardPage({ searchParams }: BadgerCardPageProps) {
+  const auth = await getCurrentAuthContext();
+  if (!auth || !canInspectSensitiveArtifacts(auth.membership.role)) {
+    notFound();
+  }
   const params = (await searchParams) ?? {};
   const exportMode = params.export === "1";
   const scale = numberParam(params.scale, 1, 0.25, 1);

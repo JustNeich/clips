@@ -63,11 +63,9 @@ import {
   WorkspaceAnthropicIntegrationRecord,
   WorkspaceOpenRouterIntegrationRecord
 } from "./components/types";
-import {
-  DEFAULT_STAGE2_PROMPT_CONFIG,
-  normalizeStage2PromptConfig,
-  type Stage2ProgressSnapshot,
-  type Stage2PromptConfig
+import type {
+  Stage2ProgressSnapshot,
+  Stage2PromptConfig
 } from "../lib/stage2-pipeline";
 import {
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
@@ -388,6 +386,46 @@ const ChannelManager = dynamic(
   }
 );
 
+const SAFE_STAGE2_PROMPT_STAGE_IDS = [
+  "classicOneShot",
+  "storyOneShot",
+  "oneShotReference",
+  "analyzer",
+  "selector",
+  "writer",
+  "critic",
+  "rewriter",
+  "finalSelector",
+  "titles",
+  "seo",
+  "contextPacket",
+  "candidateGenerator",
+  "qualityCourt",
+  "targetedRepair",
+  "captionHighlighting",
+  "captionTranslation",
+  "titleWriter"
+] as const;
+
+const SAFE_EMPTY_STAGE2_PROMPT_CONFIG: Stage2PromptConfig = {
+  version: 5,
+  sourceMode: "system",
+  stages: Object.fromEntries(
+    SAFE_STAGE2_PROMPT_STAGE_IDS.map((stageId) => [
+      stageId,
+      {
+        prompt: "",
+        reasoningEffort: "low",
+        compatibility: null
+      }
+    ])
+  ) as Stage2PromptConfig["stages"]
+};
+
+function normalizeStage2PromptConfigForShell(input: Stage2PromptConfig | null | undefined): Stage2PromptConfig {
+  return input && typeof input === "object" ? input : SAFE_EMPTY_STAGE2_PROMPT_CONFIG;
+}
+
 const ChannelOnboardingWizard = dynamic(
   () =>
     loadRecoverablePageChunk("ChannelOnboardingWizard", () => import("./components/ChannelOnboardingWizard")).then(
@@ -450,7 +488,7 @@ export default function HomePage() {
     DEFAULT_STAGE2_HARD_CONSTRAINTS
   );
   const [workspaceStage2PromptConfig, setWorkspaceStage2PromptConfig] = useState<Stage2PromptConfig>(
-    DEFAULT_STAGE2_PROMPT_CONFIG
+    SAFE_EMPTY_STAGE2_PROMPT_CONFIG
   );
   const [workspaceStage2CaptionProviderConfig, setWorkspaceStage2CaptionProviderConfig] =
     useState<Stage2CaptionProviderConfig>(DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG);
@@ -633,6 +671,7 @@ export default function HomePage() {
   const codexLoggedIn = Boolean(codexAuth?.loggedIn);
   const codexRunning = codexAuth?.deviceAuth.status === "running";
   const currentRole = authState?.membership.role ?? null;
+  const canInspectSensitiveArtifacts = currentRole !== null && currentRole !== "redactor_limited";
   const canManageCodex = Boolean(authState?.effectivePermissions.canManageCodex);
   const canCreateChannel = Boolean(authState?.effectivePermissions.canCreateChannel);
   const fetchSourceAvailable = runtimeCapabilities?.features.fetchSource ?? true;
@@ -642,7 +681,9 @@ export default function HomePage() {
   const stage3LocalExecutorAvailable =
     runtimeCapabilities?.features.stage3LocalExecutor ?? process.env.NODE_ENV === "production";
   const stage3WorkerControlsEnabled =
-    workspaceResolvedStage3ExecutionTarget === "local" && stage3LocalExecutorAvailable;
+    canInspectSensitiveArtifacts &&
+    workspaceResolvedStage3ExecutionTarget === "local" &&
+    stage3LocalExecutorAvailable;
   const codexBlockedReason = runtimeCapabilities?.tools.codex.message ?? null;
   const currentSourceIsUploaded = Boolean(activeChat?.url && isUploadedSourceUrl(activeChat.url));
   const sourceAcquisitionBlockedReason = runtimeCapabilities
@@ -1379,7 +1420,7 @@ export default function HomePage() {
     setWorkspaceStage2HardConstraints(
       normalizeStage2HardConstraints(body.workspaceStage2HardConstraints)
     );
-    setWorkspaceStage2PromptConfig(normalizeStage2PromptConfig(body.workspaceStage2PromptConfig));
+    setWorkspaceStage2PromptConfig(normalizeStage2PromptConfigForShell(body.workspaceStage2PromptConfig));
     setWorkspaceStage2CaptionProviderConfig(
       normalizeStage2CaptionProviderConfig(body.workspaceStage2CaptionProviderConfig)
     );
@@ -4481,6 +4522,9 @@ export default function HomePage() {
     return effectiveStage2BlockedReason;
   }, [effectiveStage2BlockedReason, selectedStage2RunnableBaseRunId]);
   const chatTraceBlockedReason = useMemo(() => {
+    if (!canInspectSensitiveArtifacts) {
+      return "Ограниченный редактор не может выгружать trace и внутреннюю историю ролика.";
+    }
     if (!activeChat) {
       return "Сначала выберите ролик из истории или получите источник.";
     }
@@ -4488,7 +4532,7 @@ export default function HomePage() {
       return "У вас нет прав на выгрузку trace для этого канала.";
     }
     return null;
-  }, [activeChat, canOperateActiveChannel]);
+  }, [activeChat, canInspectSensitiveArtifacts, canOperateActiveChannel]);
   const canDownloadChatTrace = useMemo(
     () => !chatTraceBlockedReason && busyAction !== "trace-export",
     [busyAction, chatTraceBlockedReason]
@@ -6672,7 +6716,7 @@ export default function HomePage() {
         setWorkspaceStage2HardConstraints(normalizeStage2HardConstraints(body.stage2HardConstraints));
       }
       if (body.stage2PromptConfig) {
-        setWorkspaceStage2PromptConfig(normalizeStage2PromptConfig(body.stage2PromptConfig));
+        setWorkspaceStage2PromptConfig(normalizeStage2PromptConfigForShell(body.stage2PromptConfig));
       }
       if (body.stage2CaptionProviderConfig) {
         setWorkspaceStage2CaptionProviderConfig(
@@ -7050,6 +7094,11 @@ export default function HomePage() {
 
   const handleDownloadChatTrace = async (): Promise<void> => {
     const chat = activeChat;
+    if (!canInspectSensitiveArtifacts) {
+      setStatusType("error");
+      setStatus("Ограниченный редактор не может выгружать trace и внутреннюю историю ролика.");
+      return;
+    }
     if (!chat) {
       setStatusType("error");
       setStatus("Сначала выберите ролик из истории или получите источник.");
@@ -7215,6 +7264,7 @@ export default function HomePage() {
       toasts={appToasts}
       onDismissToast={dismissAppToast}
       headerActions={
+        canInspectSensitiveArtifacts ? (
         <button
           type="button"
           className="btn btn-ghost"
@@ -7227,6 +7277,7 @@ export default function HomePage() {
         >
           {busyAction === "trace-export" ? "Выгружаем..." : "Скачать историю"}
         </button>
+        ) : null
       }
       details={
         <DetailsDrawer
@@ -7247,7 +7298,7 @@ export default function HomePage() {
         />
       }
       afterDetails={
-        currentStep === 2 ? (
+        currentStep === 2 && canInspectSensitiveArtifacts ? (
           <details className="advanced-block">
             <summary>Диагностика Stage 2</summary>
             <div className="advanced-content">
@@ -7266,6 +7317,7 @@ export default function HomePage() {
               publications={channelPublications}
               activeChatId={activeChat?.id ?? null}
               loading={isChannelPublicationsLoading}
+              canOpenPublishingSettings={Boolean(activeChannel.currentUserCanEditSetup)}
               onSavePublication={handleSavePublication}
               onRunAction={handlePublicationAction}
               onShiftPublication={handleShiftPublication}
@@ -7439,6 +7491,8 @@ export default function HomePage() {
           publishAfterRenderInfo={stage3PublishAfterRenderInfo}
           publishAfterRenderDisabledReason={stage3PublishAfterRenderDisabledReason}
           renderState={stage3RenderState}
+          canExportJson={canInspectSensitiveArtifacts}
+          canOpenTemplateCustomization={Boolean(activeChannel?.currentUserCanEditSetup)}
           isOptimizing={busyAction === "stage3-optimize"}
           isUploadingBackground={busyAction === "background-upload"}
           isUploadingMusic={busyAction === "music-upload"}

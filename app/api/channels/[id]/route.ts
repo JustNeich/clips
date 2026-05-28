@@ -20,6 +20,7 @@ import {
   Stage2SourceOverlayConfig
 } from "../../../../lib/stage2-channel-config";
 import { Stage2StyleProfile } from "../../../../lib/stage2-channel-learning";
+import { sanitizeChannelForRole } from "../../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
@@ -71,7 +72,7 @@ export async function GET(_request: Request, context: Context): Promise<Response
     return Response.json(
       {
         channel: {
-          ...channel,
+          ...sanitizeChannelForRole(channel, auth.membership.role),
           publishSettings: getChannelPublishSettings(channel.id),
           publishIntegration: getChannelPublishIntegration(channel.id),
           currentUserCanOperate: permissions.canOperate,

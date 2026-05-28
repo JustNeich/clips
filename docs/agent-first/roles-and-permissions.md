@@ -3,7 +3,7 @@
 ## Источники
 
 - `browser-verified`: owner, manager, redactor, redactor_limited walkthrough в изолированной среде
-- `code-verified`: [`lib/acl.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/acl.ts), [`lib/team-store.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/team-store.ts), [`lib/auth/guards.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/auth/guards.ts), [`lib/channel-edit-permissions.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/channel-edit-permissions.ts)
+- `code-verified`: [`lib/acl.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/acl.ts), [`lib/team-store.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/team-store.ts), [`lib/auth/guards.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/auth/guards.ts), [`lib/channel-edit-permissions.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/channel-edit-permissions.ts), [`lib/sensitive-access.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/sensitive-access.ts)
 - `db-verified`: cloned SQLite data и seeded role accounts
 
 ## Поддерживаемые роли
@@ -24,7 +24,8 @@
 | Manage Anthropic caption integration | yes | no | no | no | `team-store.ts`, `workspace-anthropic.ts` |
 | Create channel | yes | yes | yes | no | `team-store.ts` |
 | Manage any channel access | yes | yes | no | no | `team-store.ts`, `acl.ts` |
-| View internal design routes | yes | yes | yes | yes / unguarded | browser + code pages |
+| View internal design routes | yes | yes | yes | no | browser + code pages |
+| Inspect prompts, traces, debug artifacts, template internals | yes | yes | yes | no | `sensitive-access.ts`, API tests |
 
 ## Channel-level permissions
 
@@ -49,10 +50,10 @@
 | `/` | allow | allow | allow | allow | Главный shell |
 | `/team` | allow | allow | forbidden | forbidden | Browser-verified |
 | `/admin/flows` | allow | forbidden | forbidden | forbidden | Owner observability |
-| `/design/template-lab` | allow | allow | allow | allow / unguarded | Internal tooling |
-| `/design/template-road` | allow | allow | allow | allow / unguarded | Internal tooling |
-| `/design/science-card` | allow | allow | allow | allow / unguarded | Preview route |
-| `/design/badger-card` | allow | allow | allow | allow / unguarded | Preview route |
+| `/design/template-lab` | allow | allow | allow | not found | Internal tooling |
+| `/design/template-road` | allow | allow | allow | not found | Internal tooling |
+| `/design/science-card` | allow | allow | allow | not found | Preview route |
+| `/design/badger-card` | allow | allow | allow | not found | Preview route |
 
 ## UI visibility matrix
 
@@ -63,7 +64,7 @@
 | `Каналы` | visible | visible | visible | hidden | browser-verified |
 | `Команда` | visible | visible | hidden | hidden | browser-verified |
 | `Журнал процессов` | visible | hidden | hidden | hidden | code-verified |
-| `Скачать историю` | visible | visible | visible | visible | browser-verified |
+| `Скачать историю` | visible | visible | visible | hidden | browser-verified |
 
 ## User block
 
@@ -127,6 +128,8 @@
 | Copy options | yes | yes | yes | yes |
 | Submit channel feedback | yes | yes | yes if channel visible | yes if channel granted and flow open |
 | Delete feedback event | yes | yes | conditional by UI callback | generally no channel admin tools |
+| View Stage 2 diagnostics / debug details | yes | yes | yes | no |
+| Open raw Stage 2 debug artifact | yes | yes | yes | no |
 
 Примечание: feedback write path зависит не от workspace role, а от доступности канала и того, подключён ли callback на удаление/сохранение в конкретной surface state.
 
@@ -138,7 +141,9 @@
 | Edit timing/fragments | yes | yes | yes | yes |
 | Upload background/music assets into draft | yes | yes | yes | yes |
 | Export / render | yes | yes | yes | yes |
-| Pair local executor | yes | yes | yes | yes if Step 3 surface reachable |
+| Export JSON payload | yes | yes | yes | no |
+| Pair local executor | yes | yes | yes | no |
+| Open template customization tooling | yes | yes | yes if can edit setup | no |
 | Open version drawer | yes | yes | yes | yes |
 
 ## Publishing
@@ -204,9 +209,10 @@ Browser-verified:
 
 - в overflow нет `Каналы`;
 - в overflow нет `Команда`;
-- остаётся только `Скачать историю`;
+- нет `Скачать историю`;
 - `/team` открывается как forbidden page;
-- основной shell и шаги 1-3 доступны.
+- внутренние `/design/*` страницы отдают not found;
+- основной shell и шаги 1-3 доступны только для granted channel daily flow.
 
 Code-verified:
 
@@ -214,7 +220,12 @@ Code-verified:
 - не создаёт канал;
 - не меняет setup канала;
 - не выдаёт и не отзывает channel access;
-- не удаляет канал.
+- не удаляет канал;
+- не получает channel/workspace prompt config через `/api/channels`, `/api/channels/[id]`, `/api/workspace`, `/api/auth/me`;
+- не получает trace export через `/api/chat-trace/[id]`;
+- не получает raw Stage 2 debug artifact через `/api/pipeline/stage2/debug`;
+- Stage 2 response и chat event payload очищаются от diagnostics, token usage, pipeline internals, raw debug ref и frame-level prompt context;
+- template library/session/style preset APIs закрыты для роли.
 
 ## Hidden vs disabled vs forbidden
 
@@ -225,6 +236,7 @@ Code-verified:
 | Hidden | `redactor` не видит `Команда` | Вероятнее всего ACL/UI visibility, а не runtime failure |
 | Disabled | `Удалить канал` видно, но disabled | Пользователь внутри правильной поверхности, но не проходит guard/precondition |
 | Forbidden route | `/team` показывает `Доступ запрещён.` | Прямой route guard сработал корректно или ошибочно |
+| Not found route | `redactor_limited` открывает `/design/template-road` и видит 404 | Внутренний tooling скрыт от роли полностью |
 
 ## Быстрые правила для intake-агента
 
@@ -232,4 +244,5 @@ Code-verified:
 2. Если пользователь говорит "кнопка есть, но серая", ищите disabled precondition.
 3. Если пользователь говорит "меня выкидывает" или "страница запрещена", ищите route guard или missing membership.
 4. Если `redactor_limited` жалуется на отсутствие Channel Manager, это ожидаемое поведение, а не баг.
-5. Если `redactor` не видит granted channel, это почти всегда issue в `channel_access` или ACL resolution.
+5. Если `redactor_limited` жалуется на отсутствие скачивания истории, diagnostics, JSON export или design tooling, это ожидаемое поведение.
+6. Если `redactor` не видит granted channel, это почти всегда issue в `channel_access` или ACL resolution.

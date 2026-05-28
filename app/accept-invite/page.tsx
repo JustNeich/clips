@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 export default function AcceptInvitePage() {
   const router = useRouter();
@@ -11,6 +11,16 @@ export default function AcceptInvitePage() {
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const tokenParam =
+      typeof window === "undefined"
+        ? ""
+        : new URLSearchParams(window.location.search).get("token")?.trim();
+    if (tokenParam) {
+      setToken(tokenParam);
+    }
+  }, []);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

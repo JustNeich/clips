@@ -5,6 +5,7 @@ import {
 } from "../../../../../lib/auth/guards";
 import { getStage2RunOrThrow } from "../../../../../lib/stage2-run-runtime";
 import { loadStage2RunDebugArtifact } from "../../../../../lib/stage2-debug-artifacts";
+import { requireSensitiveArtifactAccess } from "../../../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
@@ -46,7 +47,8 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
+    requireSensitiveArtifactAccess(auth);
     const run = getStage2RunOrThrow(runId);
     await requireRunVisibility(auth, run);
     const artifact = await loadStage2RunDebugArtifact(runId, debugRef);

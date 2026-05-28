@@ -3,12 +3,14 @@ import {
   createManagedTemplate,
   listManagedTemplateSummaries
 } from "../../../../lib/managed-template-store";
+import { requireSensitiveArtifactAccess } from "../../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request): Promise<Response> {
   try {
     const auth = await requireAuth(request);
+    requireSensitiveArtifactAccess(auth);
     const templates = await listManagedTemplateSummaries(auth.workspace.id);
     return Response.json(
       {
@@ -31,6 +33,7 @@ export async function GET(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   try {
     const auth = await requireAuth(request);
+    requireSensitiveArtifactAccess(auth);
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     const template = await createManagedTemplate(body ?? {}, {
       workspaceId: auth.workspace.id,

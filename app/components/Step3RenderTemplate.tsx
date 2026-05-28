@@ -261,6 +261,8 @@ type Step3RenderTemplateProps = {
     authoritativePreviewSnapshot?: Step3AuthoritativePreviewSnapshot | null
   ) => void;
   onPublishAfterRenderChange?: (value: boolean) => void;
+  canExportJson?: boolean;
+  canOpenTemplateCustomization?: boolean;
   onExport: () => void;
   onOptimize: (
     overrides?: Stage3EditorDraftOverrides,
@@ -2356,6 +2358,8 @@ export function Step3RenderTemplate({
   publishAfterRenderDisabledReason = null,
   onRender,
   onPublishAfterRenderChange = () => undefined,
+  canExportJson = true,
+  canOpenTemplateCustomization = true,
   onExport,
   onOptimize,
   onResumeAgent,
@@ -5202,9 +5206,11 @@ export function Step3RenderTemplate({
               Взять option {suggestedHighlightedSource.option} с выделениями
             </button>
           ) : null}
-          <a className="btn btn-ghost" href={templateCustomizationHref} target="_blank" rel="noreferrer">
-            Открыть template customization
-          </a>
+          {canOpenTemplateCustomization ? (
+            <a className="btn btn-ghost" href={templateCustomizationHref} target="_blank" rel="noreferrer">
+              Открыть template customization
+            </a>
+          ) : null}
         </div>
       </div>
 
@@ -5309,9 +5315,11 @@ export function Step3RenderTemplate({
       >
         Новый чат
       </button>
-      <button type="button" className="btn btn-secondary" onClick={onExport} disabled={!sourceUrl}>
-        Экспорт JSON
-      </button>
+      {canExportJson ? (
+        <button type="button" className="btn btn-secondary" onClick={onExport} disabled={!sourceUrl}>
+          Экспорт JSON
+        </button>
+      ) : null}
       <button
         type="button"
         className="btn btn-primary"

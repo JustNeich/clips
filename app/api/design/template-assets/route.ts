@@ -12,6 +12,7 @@ import {
   validateManagedTemplateFontUpload
 } from "../../../../lib/managed-template-assets";
 import { requireAuth } from "../../../../lib/auth/guards";
+import { requireSensitiveArtifactAccess } from "../../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
@@ -80,6 +81,7 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const auth = await requireAuth(request);
+    requireSensitiveArtifactAccess(auth);
     const assetId = randomUUID().replace(/-/g, "");
     const asset =
       uploadKind === "font"

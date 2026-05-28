@@ -1,5 +1,6 @@
 import { appendChatEvent, getChatById } from "../../../../lib/chat-history";
 import { requireAuth, requireChannelOperate } from "../../../../lib/auth/guards";
+import { sanitizeChatForRole } from "../../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
@@ -25,7 +26,7 @@ export async function POST(
   }
 
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
     const existingChat = await getChatById(id);
     if (!existingChat) {
       return Response.json({ error: "Chat not found." }, { status: 404 });
@@ -37,7 +38,7 @@ export async function POST(
       text,
       data: body?.data
     });
-    return Response.json({ chat }, { status: 200 });
+    return Response.json({ chat: sanitizeChatForRole(chat, auth.membership.role) }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) {
       return error;

@@ -31,6 +31,7 @@ import {
 } from "../../../lib/workspace-codex-models";
 import { type Stage2CaptionProviderConfig } from "../../../lib/stage2-caption-provider";
 import { type Stage3ExecutionTarget } from "../../../app/components/types";
+import { canInspectSensitiveArtifacts } from "../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
@@ -56,24 +57,33 @@ export async function GET(request: Request): Promise<Response> {
         : null;
     const stage3ExecutionTarget = getWorkspaceStage3ExecutionTarget(auth.workspace.id);
     const stage3Execution = resolveStage3Execution(stage3ExecutionTarget);
+    const canInspectSensitive = canInspectSensitiveArtifacts(auth.membership.role);
     return Response.json(
       {
-        stage2ExamplesCorpusJson: getWorkspaceStage2ExamplesCorpusJson(auth.workspace.id),
-        stage2HardConstraints: getWorkspaceStage2HardConstraints(auth.workspace.id),
-        stage2PromptConfig: getWorkspaceStage2PromptConfig(auth.workspace.id),
-        codexModelConfig: getWorkspaceCodexModelConfig(auth.workspace.id),
-        stage2CaptionProviderConfig: getWorkspaceStage2CaptionProviderConfig(auth.workspace.id),
+        stage2ExamplesCorpusJson: canInspectSensitive
+          ? getWorkspaceStage2ExamplesCorpusJson(auth.workspace.id)
+          : undefined,
+        stage2HardConstraints: canInspectSensitive
+          ? getWorkspaceStage2HardConstraints(auth.workspace.id)
+          : undefined,
+        stage2PromptConfig: canInspectSensitive ? getWorkspaceStage2PromptConfig(auth.workspace.id) : undefined,
+        codexModelConfig: canInspectSensitive ? getWorkspaceCodexModelConfig(auth.workspace.id) : undefined,
+        stage2CaptionProviderConfig: canInspectSensitive
+          ? getWorkspaceStage2CaptionProviderConfig(auth.workspace.id)
+          : undefined,
         stage3ExecutionTarget: stage3Execution.configuredTarget,
         resolvedStage3ExecutionTarget: stage3Execution.resolvedTarget,
         stage3ExecutionCapabilities: stage3Execution.capabilities,
         workspaceAnthropicIntegration,
         workspaceOpenRouterIntegration,
-        resolvedCodexModelConfig: resolveWorkspaceCodexModelConfig({
-          config: getWorkspaceCodexModelConfig(auth.workspace.id),
-          deployStage2Model: process.env.CODEX_STAGE2_MODEL,
-          deployStage2SeoModel: process.env.CODEX_STAGE2_DESCRIPTION_MODEL,
-          deployStage3Model: process.env.CODEX_STAGE3_MODEL
-        })
+        resolvedCodexModelConfig: canInspectSensitive
+          ? resolveWorkspaceCodexModelConfig({
+              config: getWorkspaceCodexModelConfig(auth.workspace.id),
+              deployStage2Model: process.env.CODEX_STAGE2_MODEL,
+              deployStage2SeoModel: process.env.CODEX_STAGE2_DESCRIPTION_MODEL,
+              deployStage3Model: process.env.CODEX_STAGE3_MODEL
+            })
+          : undefined
       },
       { status: 200 }
     );

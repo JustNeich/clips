@@ -6,6 +6,7 @@ import {
   readManagedTemplate,
   updateManagedTemplate
 } from "../../../../../lib/managed-template-store";
+import { requireSensitiveArtifactAccess } from "../../../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
@@ -45,6 +46,7 @@ export async function PUT(request: Request, context: Context): Promise<Response>
   try {
     const { templateId } = await context.params;
     const auth = await requireAuth(request);
+    requireSensitiveArtifactAccess(auth);
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     const template = await updateManagedTemplate(templateId, body ?? {}, {
       workspaceId: auth.workspace.id
@@ -65,6 +67,7 @@ export async function DELETE(_request: Request, context: Context): Promise<Respo
   try {
     const { templateId } = await context.params;
     const auth = await requireAuth(_request);
+    requireSensitiveArtifactAccess(auth);
 
     const result = await deleteManagedTemplateDetailed(templateId, {
       workspaceId: auth.workspace.id

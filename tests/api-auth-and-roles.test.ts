@@ -7,8 +7,12 @@ import test from "node:test";
 import { POST as fetchComments } from "../app/api/comments/route";
 import { POST as registerRoute } from "../app/api/auth/register/route";
 import { GET as getChatTrace } from "../app/api/chat-trace/[id]/route";
+import { GET as getChatRoute } from "../app/api/chats/[id]/route";
 import { GET as listChannelsRoute } from "../app/api/channels/route";
-import { PATCH as patchChannelRoute } from "../app/api/channels/[id]/route";
+import { GET as getChannelRoute, PATCH as patchChannelRoute } from "../app/api/channels/[id]/route";
+import { GET as getStage2DebugArtifact } from "../app/api/pipeline/stage2/debug/route";
+import { GET as getStage2RunRoute } from "../app/api/pipeline/stage2/route";
+import { GET as getWorkspaceRoute } from "../app/api/workspace/route";
 import {
   GET as listManagedTemplatesRoute,
   POST as createManagedTemplateRoute
@@ -42,6 +46,7 @@ import {
   loginWithPassword,
   registerPublicRedactor
 } from "../lib/team-store";
+import type { Stage2Response } from "../app/components/types";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
   const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-api-auth-test-"));
@@ -174,6 +179,221 @@ test("chat trace export route returns an attachment for authenticated workspace 
     assert.match(response.headers.get("content-disposition") ?? "", /attachment; filename="clip-trace-trace_route-/);
     assert.equal(body.version, "clip-trace-export-v3");
     assert.equal(body.chat?.id, chat.id);
+  });
+});
+
+test("redactor_limited cannot read prompts, traces, debug artifacts, or template library internals", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Restricted Editor Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const chatHistory = await import("../lib/chat-history");
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Restricted Channel",
+      username: "restricted_channel",
+      systemPrompt: "SECRET SYSTEM PROMPT",
+      descriptionPrompt: "SECRET SEO PROMPT"
+    });
+    const invite = await createInvite({
+      workspaceId: owner.workspace.id,
+      email: "limited@example.com",
+      role: "redactor_limited",
+      createdByUserId: owner.user.id
+    });
+    const limited = await acceptInviteRegistration({
+      token: invite.token,
+      password: "Password123!",
+      displayName: "Limited Editor"
+    });
+    setChannelAccess({
+      channelId: channel.id,
+      userId: limited.user.id,
+      grantedByUserId: owner.user.id
+    });
+    const cookie = `${APP_SESSION_COOKIE}=${limited.sessionToken}`;
+    const chat = await chatHistory.createOrGetChatByUrl(
+      "https://www.youtube.com/watch?v=restricted01",
+      channel.id
+    );
+    const sensitiveStage2 = {
+      source: {
+        url: chat.url,
+        title: "Sensitive Stage 2",
+        totalComments: 0,
+        topComments: [],
+        allComments: [],
+        commentsUsedForPrompt: 7,
+        commentsOmittedFromPrompt: 3,
+        frameDescriptions: ["secret frame notes"]
+      },
+      output: {
+        formatPipeline: "classic_top_bottom",
+        inputAnalysis: {
+          visualAnchors: ["anchor"],
+          commentVibe: "neutral",
+          keyPhraseToAdapt: "phrase"
+        },
+        captionOptions: [{ option: 1, top: "TOP", bottom: "BOTTOM" }],
+        titleOptions: [{ option: 1, title: "TITLE" }],
+        finalPick: { option: 1, reason: "visible reason" },
+        pipeline: {
+          channelId: channel.id,
+          mode: "codex_pipeline",
+          selectorOutput: { secret: "selector trace" },
+          availableExamplesCount: 1,
+          selectedExamplesCount: 1,
+          finalSelector: {
+            candidateOptionMap: [{ option: 1, candidateId: "cand_1" }],
+            shortlistCandidateIds: ["cand_1"],
+            finalPickCandidateId: "cand_1",
+            rationaleRaw: "visible",
+            rationaleInternalRaw: "SECRET INTERNAL RATIONALE",
+            rationaleInternalModelRaw: "SECRET MODEL TRACE"
+          }
+        }
+      },
+      warnings: [],
+      diagnostics: {
+        effectivePrompting: {
+          promptStages: [
+            {
+              stageId: "classicOneShot",
+              label: "Classic",
+              configuredPrompt: "SECRET CONFIGURED PROMPT",
+              promptText: null,
+              promptTextAvailable: true
+            }
+          ]
+        }
+      },
+      tokenUsage: { totalPromptChars: 1000, stages: [] },
+      debugMode: "raw",
+      debugRef: { kind: "stage2-run-debug", ref: "debug_secret" },
+      model: "secret-model",
+      reasoningEffort: "high",
+      userInstructionUsed: "secret instruction",
+      stage2Spec: { name: "secret", outputSections: [], topLengthRule: "", bottomLengthRule: "", enforcedVia: "" },
+      stage2Worker: { runId: "secret-worker" },
+      rawDebugArtifact: { promptStages: [{ stageId: "classicOneShot", promptText: "SECRET RAW PROMPT" }] }
+    } as unknown as Stage2Response;
+
+    await chatHistory.appendChatEvent(chat.id, {
+      role: "assistant",
+      type: "stage2",
+      text: "Stage 2 завершен.",
+      data: sensitiveStage2
+    });
+
+    const stage2Store = await import("../lib/stage2-progress-store");
+    const run = stage2Store.createStage2Run({
+      workspaceId: owner.workspace.id,
+      creatorUserId: limited.user.id,
+      chatId: chat.id,
+      request: {
+        sourceUrl: chat.url,
+        userInstruction: null,
+        mode: "manual",
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username,
+          templateId: channel.templateId,
+          stage2ExamplesConfig: channel.stage2ExamplesConfig,
+          stage2HardConstraints: channel.stage2HardConstraints,
+          stage2PromptConfig: channel.stage2PromptConfig
+        }
+      }
+    });
+    stage2Store.finalizeStage2RunSuccess(run.runId, { resultData: sensitiveStage2 });
+
+    const channelsResponse = await listChannelsRoute(
+      new Request("http://localhost/api/channels", {
+        headers: { cookie }
+      })
+    );
+    const channelsBody = (await channelsResponse.json()) as {
+      channels: Array<Record<string, unknown>>;
+      workspaceStage2PromptConfig?: unknown;
+      workspaceStage2ExamplesCorpusJson?: unknown;
+    };
+    assert.equal(channelsResponse.status, 200);
+    assert.equal(channelsBody.channels[0]?.systemPrompt, "");
+    assert.equal("stage2PromptConfig" in (channelsBody.channels[0] ?? {}), false);
+    assert.equal(channelsBody.workspaceStage2PromptConfig, undefined);
+    assert.equal(channelsBody.workspaceStage2ExamplesCorpusJson, undefined);
+
+    const channelResponse = await getChannelRoute(
+      new Request(`http://localhost/api/channels/${channel.id}`, {
+        headers: { cookie }
+      }),
+      { params: Promise.resolve({ id: channel.id }) }
+    );
+    const channelBody = (await channelResponse.json()) as { channel: Record<string, unknown> };
+    assert.equal(channelResponse.status, 200);
+    assert.equal(channelBody.channel.systemPrompt, "");
+    assert.equal("stage2PromptConfig" in channelBody.channel, false);
+
+    const workspaceResponse = await getWorkspaceRoute(
+      new Request("http://localhost/api/workspace", {
+        headers: { cookie }
+      })
+    );
+    const workspaceBody = (await workspaceResponse.json()) as Record<string, unknown>;
+    assert.equal(workspaceResponse.status, 200);
+    assert.equal(workspaceBody.stage2PromptConfig, undefined);
+    assert.equal(workspaceBody.stage2ExamplesCorpusJson, undefined);
+
+    const chatResponse = await getChatRoute(
+      new Request(`http://localhost/api/chats/${chat.id}`, {
+        headers: { cookie }
+      }),
+      { params: Promise.resolve({ id: chat.id }) }
+    );
+    const chatBody = (await chatResponse.json()) as { chat: { events: Array<{ data?: Record<string, unknown> }> } };
+    const stage2EventData = chatBody.chat.events.find((event) => event.data)?.data ?? {};
+    assert.equal(chatResponse.status, 200);
+    assert.equal(stage2EventData.diagnostics, undefined);
+    assert.equal(stage2EventData.tokenUsage, undefined);
+    assert.equal(stage2EventData.debugRef, null);
+    assert.equal((stage2EventData.output as Record<string, unknown>).pipeline, undefined);
+
+    const runResponse = await getStage2RunRoute(
+      new Request(`http://localhost/api/pipeline/stage2?runId=${run.runId}`, {
+        headers: { cookie }
+      })
+    );
+    const runBody = (await runResponse.json()) as { run: { result: Record<string, unknown> } };
+    assert.equal(runResponse.status, 200);
+    assert.equal(runBody.run.result.diagnostics, undefined);
+    assert.equal(runBody.run.result.debugRef, null);
+    assert.equal((runBody.run.result.output as Record<string, unknown>).pipeline, undefined);
+
+    const traceResponse = await getChatTrace(
+      new Request(`http://localhost/api/chat-trace/${chat.id}`, {
+        headers: { cookie }
+      }),
+      { params: Promise.resolve({ id: chat.id }) }
+    );
+    assert.equal(traceResponse.status, 403);
+
+    const debugResponse = await getStage2DebugArtifact(
+      new Request(`http://localhost/api/pipeline/stage2/debug?runId=${run.runId}&debugRef=debug_secret`, {
+        headers: { cookie }
+      })
+    );
+    assert.equal(debugResponse.status, 403);
+
+    const templateLibraryResponse = await listManagedTemplatesRoute(
+      new Request("http://localhost/api/design/templates", {
+        headers: { cookie }
+      })
+    );
+    assert.equal(templateLibraryResponse.status, 403);
   });
 });
 

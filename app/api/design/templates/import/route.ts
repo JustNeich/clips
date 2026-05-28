@@ -1,11 +1,13 @@
 import { requireAuth } from "../../../../../lib/auth/guards";
 import { importManagedTemplateBackup } from "../../../../../lib/managed-template-store";
+import { requireSensitiveArtifactAccess } from "../../../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request): Promise<Response> {
   try {
     const auth = await requireAuth(request);
+    requireSensitiveArtifactAccess(auth);
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     const template = await importManagedTemplateBackup(body ?? {}, {
       workspaceId: auth.workspace.id,

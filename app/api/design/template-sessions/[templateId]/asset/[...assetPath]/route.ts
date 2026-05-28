@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { readTemplateCalibrationAsset } from "../../../../../../../lib/template-calibration-store";
+import { requireAuth } from "../../../../../../../lib/auth/guards";
+import { requireSensitiveArtifactAccess } from "../../../../../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
@@ -35,6 +37,8 @@ export async function GET(
     return disabled;
   }
 
+  const auth = await requireAuth(_request);
+  requireSensitiveArtifactAccess(auth);
   const { templateId, assetPath } = await params;
   const relative = assetPath.join("/");
   if (!relative || relative.includes("..")) {

@@ -3,6 +3,7 @@ import { getEffectivePermissions } from "../../../../lib/team-store";
 import { getWorkspaceCodexStatus } from "../../../../lib/workspace-codex";
 import { asErrorResponse } from "../../../../lib/http";
 import { scheduleChannelPublicationProcessing } from "../../../../lib/channel-publication-runtime";
+import { sanitizeWorkspaceForRole } from "../../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
@@ -16,7 +17,7 @@ export async function GET(): Promise<Response> {
     return Response.json(
       {
         user: auth.user,
-        workspace: auth.workspace,
+        workspace: sanitizeWorkspaceForRole(auth.workspace, auth.membership.role),
         membership: auth.membership,
         sharedCodexStatus: integration
           ? {

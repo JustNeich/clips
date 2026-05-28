@@ -63,6 +63,7 @@ type PublishingPlannerProps = {
   publications: ChannelPublication[];
   activeChatId: string | null;
   loading: boolean;
+  canOpenPublishingSettings?: boolean;
   onSavePublication: (
     publicationId: string,
     patch: Partial<{
@@ -179,7 +180,8 @@ export function PublishingPlanner({
   onSavePublication,
   onRunAction,
   onShiftPublication,
-  onOpenPublishingSettings
+  onOpenPublishingSettings,
+  canOpenPublishingSettings = true
 }: PublishingPlannerProps) {
   const [selectedPublicationId, setSelectedPublicationId] = useState<string | null>(null);
   const [filter, setFilter] = useState<PublicationWorkspaceFilter>("all");
@@ -1201,9 +1203,11 @@ export function PublishingPlanner({
           </p>
         </div>
         <div className="control-actions">
-          <button type="button" className="btn btn-secondary" onClick={onOpenPublishingSettings}>
-            Настроить канал
-          </button>
+          {canOpenPublishingSettings ? (
+            <button type="button" className="btn btn-secondary" onClick={onOpenPublishingSettings}>
+              Настроить канал
+            </button>
+          ) : null}
           {isCompactLayout && selectedPublication ? (
             <button
               type="button"

@@ -1,5 +1,6 @@
 import type { JSX } from "react";
 import Script from "next/script";
+import { notFound } from "next/navigation";
 import { Stage3TemplateRenderer } from "../../../lib/stage3-template-renderer";
 import {
   AMERICAN_NEWS_TEMPLATE_ID,
@@ -22,6 +23,8 @@ import {
   Stage3TemplateViewport,
   getTemplatePreviewViewportMetrics
 } from "../../../lib/stage3-template-viewport";
+import { getCurrentAuthContext } from "../../../lib/auth/session";
+import { canInspectSensitiveArtifacts } from "../../../lib/sensitive-access";
 
 const DEFAULT_TOP_TEXT =
   "Between the tight close-up and that wider shot with the round mic, he doesn’t look fired up at all. That’s what makes it land harder. He’s dressed like a gentleman and talking like a foreman.";
@@ -461,6 +464,10 @@ function renderMediaPlaceholder(templateId: string) {
 }
 
 export default async function ScienceCardDesignPage({ searchParams }: ScienceCardDesignPageProps) {
+  const auth = await getCurrentAuthContext();
+  if (!auth || !canInspectSensitiveArtifacts(auth.membership.role)) {
+    notFound();
+  }
   const params = (await searchParams) ?? {};
   const managedTemplate = await resolveManagedTemplateRuntime(params.template);
   const templateId = resolveTemplateId(managedTemplate.baseTemplateId);

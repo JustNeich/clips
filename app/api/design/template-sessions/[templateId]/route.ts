@@ -6,6 +6,8 @@ import {
   TemplateCalibrationSession,
   TemplateContentFixture
 } from "../../../../components/types";
+import { requireAuth } from "../../../../../lib/auth/guards";
+import { requireSensitiveArtifactAccess } from "../../../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
@@ -25,6 +27,8 @@ export async function GET(
     return disabled;
   }
 
+  const auth = await requireAuth(_request);
+  requireSensitiveArtifactAccess(auth);
   const { templateId } = await params;
   const bundle = await readTemplateCalibrationBundle(templateId);
   return Response.json(bundle, { status: 200 });
@@ -39,6 +43,8 @@ export async function PUT(
     return disabled;
   }
 
+  const auth = await requireAuth(request);
+  requireSensitiveArtifactAccess(auth);
   const { templateId } = await params;
   const body = (await request.json().catch(() => null)) as {
     content?: TemplateContentFixture;

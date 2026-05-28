@@ -225,12 +225,12 @@
   - `owner`: `Каналы`, `Команда`, `Журнал процессов`, `Скачать историю`
   - `manager`: `Каналы`, `Команда`, `Скачать историю`
   - `redactor`: `Каналы`, `Скачать историю`
-  - `redactor_limited`: только `Скачать историю`
+  - `redactor_limited`: no secondary actions
 - `controls`:
   - `Каналы`: открывает Channel Manager
   - `Команда`: ведёт на `/team`
   - `Журнал процессов`: ведёт на `/admin/flows`
-  - `Скачать историю`: экспорт trace/history, может быть disabled
+  - `Скачать историю`: экспорт trace/history, скрыт для `redactor_limited`
 - `related APIs`:
   - `GET /api/admin/flows`
   - `GET /api/admin/audit-events`
@@ -776,7 +776,7 @@
   - `POST /api/admin/mcp-tokens`
   - `DELETE /api/admin/mcp-tokens/[tokenId]`
 - `entities`: `audit_log`, `mcp_access_tokens`, `source_jobs`, `stage2_runs`, `stage3_jobs`, `render_exports`, `channel_publications`
-- `security`: trace payloads are redacted; prompts/model/provider data remain visible, secrets do not.
+- `security`: trace payloads are redacted; prompts/model/provider data remain visible only to roles allowed to inspect sensitive artifacts. `redactor_limited` cannot use trace export.
 - `common user phrasings`:
   - "хочу достать весь flow"
   - "какой prompt/model был в проде"
@@ -786,7 +786,7 @@
 
 - `purpose`: pixel-perfect calibration workbench для reference-driven template matching.
 - `surface class`: internal tooling, не ежедневный операторский flow.
-- `browser-verified`: route открыт и рендерится в live инстансе.
+- `browser-verified`: route открыт для ролей с правом inspect sensitive artifacts; `redactor_limited` получает not found.
 - `controls`:
   - heading `Pixel-Perfect Workbench`
   - status chips `Repo-backed session`, template id, calibration state
@@ -813,6 +813,7 @@
   - `app/api/design/template-sessions/**`
   - `app/api/design/template-assets/**`
 - `entities`: `template session`, `reference asset`, `report`, `artifact`
+- `security`: недоступно для `redactor_limited`, потому что surface раскрывает reference assets, calibration artifacts и внутреннюю структуру шаблонов.
 - `common user phrasings`:
   - "diff невалиден"
   - "reference missing"
@@ -822,7 +823,7 @@
 
 - `purpose`: live style editor для production template-а.
 - `surface class`: internal tooling.
-- `browser-verified`: рендерится как full editor даже в live instance.
+- `browser-verified`: рендерится как full editor для ролей с правом inspect sensitive artifacts; `redactor_limited` получает not found.
 - `controls`:
   - top summary chips
   - actions `Сбросить оформление`, `Сбросить демо-текст`, `Показать подсказки`, `Новый шаблон`
@@ -863,6 +864,7 @@
   - `app/api/design/templates/**`
   - `app/api/design/template-style-presets/**`
 - `entities`: `template`, `template version`, `style preset`
+- `security`: template library и style preset APIs закрыты для `redactor_limited`; Step 3 остаётся доступным без ссылки на customization tooling.
 - `common user phrasings`:
   - "автосохранение сломалось"
   - "не сохраняется версия шаблона"
@@ -874,12 +876,14 @@
 
 - renderer-backed template preview page;
 - принимает search params для template/text/scale/highlights/export;
-- используется как dev/design scene, а не как операторский экран.
+- используется как dev/design scene, а не как операторский экран;
+- `redactor_limited` получает not found.
 
 ### `/design/badger-card`
 
 - отдельная card scene с export mode;
-- нужен для capture/export, а не для production operator workflow.
+- нужен для capture/export, а не для production operator workflow;
+- `redactor_limited` получает not found.
 
 ## Surface-to-API quick map
 

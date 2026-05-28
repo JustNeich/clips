@@ -127,6 +127,10 @@ export default function TeamPage() {
     auth?.membership.role === "owner"
       ? ["manager", "redactor", "redactor_limited"]
       : ["redactor", "redactor_limited"];
+  const inviteLink =
+    inviteToken && typeof window !== "undefined"
+      ? `${window.location.origin}/accept-invite?token=${encodeURIComponent(inviteToken)}`
+      : null;
 
   const getAssignableRoles = (memberRole: AppRole): AppRole[] => {
     if (!auth) {
@@ -255,7 +259,7 @@ export default function TeamPage() {
           </div>
           {inviteToken ? (
             <p className="subtle-text">
-              Токен приглашения: <strong>{inviteToken}</strong>
+              Ссылка приглашения: <strong>{inviteLink ?? inviteToken}</strong>
             </p>
           ) : null}
         </section>
