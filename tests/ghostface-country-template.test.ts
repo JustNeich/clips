@@ -6,6 +6,8 @@ import {
   GHOSTFACE_COUNTRY,
   GHOSTFACE_COUNTRY_TEMPLATE_ID
 } from "../lib/stage3-template";
+import { resolveStage3BackgroundMode } from "../lib/stage3-background-mode";
+import { getTemplateFigmaSpec } from "../lib/stage3-template-spec";
 import { resolveTemplateBackdropNode } from "../lib/stage3-template-runtime";
 import { buildTemplateRenderSnapshot } from "../lib/stage3-template-core";
 import {
@@ -107,4 +109,58 @@ test("Ghostface Country backdrop is solid black instead of the default gradient"
 
   assert.match(markup, /background:#000000/);
   assert.doesNotMatch(markup, /radial-gradient/);
+});
+
+test("Ghostface Country shell and runtime background stay full-frame black", () => {
+  const spec = getTemplateFigmaSpec(GHOSTFACE_COUNTRY_TEMPLATE_ID);
+
+  assert.deepEqual(spec.shell, {
+    x: 0,
+    y: 0,
+    width: 1080,
+    height: 1920,
+    radius: 0,
+    background: "#000000",
+    border: "none"
+  });
+  assert.equal(
+    resolveStage3BackgroundMode(GHOSTFACE_COUNTRY_TEMPLATE_ID, {
+      hasCustomBackground: false,
+      hasSourceVideo: true
+    }),
+    "built-in"
+  );
+});
+
+test("Ghostface Country auto-highlights the opening top phrase when generated text has no spans", () => {
+  const topText =
+    "You think that black pile is just dirty grease. It is actually a country workshop trick.";
+  const snapshot = buildTemplateRenderSnapshot({
+    templateId: GHOSTFACE_COUNTRY_TEMPLATE_ID,
+    templateConfigOverride: GHOSTFACE_COUNTRY,
+    content: {
+      topText,
+      bottomText: GHOSTFACE_COUNTRY_BOTTOM_TEXT,
+      channelName: "GHOSTFACE COUNTRY",
+      channelHandle: "@ghostfacecountry",
+      highlights: {
+        top: [],
+        bottom: []
+      },
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    }
+  });
+
+  assert.deepEqual(snapshot.content.highlights.top, [
+    {
+      start: 0,
+      end: "You think that black pile is just dirty grease.".length,
+      slotId: "slot1"
+    }
+  ]);
 });

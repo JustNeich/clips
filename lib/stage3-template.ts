@@ -1813,7 +1813,11 @@ export function getTemplateById(templateId: string): Stage3TemplateConfig {
 }
 
 export function templateUsesBuiltInBackdrop(templateId: string | null | undefined): boolean {
-  return templateId === SCIENCE_CARD_V7_TEMPLATE_ID || templateId === HEDGES_OF_HONOR_TEMPLATE_ID;
+  return (
+    templateId === SCIENCE_CARD_V7_TEMPLATE_ID ||
+    templateId === HEDGES_OF_HONOR_TEMPLATE_ID ||
+    templateId === GHOSTFACE_COUNTRY_TEMPLATE_ID
+  );
 }
 
 export function isClassicScienceCardTemplateId(templateId: string | null | undefined): boolean {

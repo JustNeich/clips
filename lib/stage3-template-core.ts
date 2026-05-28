@@ -365,6 +365,7 @@ export function buildTemplateRenderSnapshot(input: TemplateLayoutInput): Templat
     spec
   );
   const resolvedText = resolveTemplateRenderText({
+    templateId: resolvedTemplateId,
     templateConfig: effectiveTemplateConfig,
     topText: input.content.topText,
     bottomText: input.content.bottomText,

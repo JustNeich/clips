@@ -9,6 +9,7 @@ import {
   SCIENCE_CARD_TEMPLATE_ID,
   STAGE3_TEMPLATE_SHELL,
   STAGE3_TEMPLATE_ID,
+  GHOSTFACE_COUNTRY_TEMPLATE_ID,
   Stage3TemplateConfig,
   getTemplateById,
   getTemplateComputed
@@ -141,6 +142,17 @@ function getGeneratedTemplateShell(templateId: string, template: Stage3TemplateC
     return {
       ...STAGE3_TEMPLATE_SHELL,
       background: "#177fa6"
+    };
+  }
+  if (templateId === GHOSTFACE_COUNTRY_TEMPLATE_ID) {
+    return {
+      x: 0,
+      y: 0,
+      width: template.frame.width,
+      height: template.frame.height,
+      radius: 0,
+      background: "#000000",
+      border: "none"
     };
   }
   return {

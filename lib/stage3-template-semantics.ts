@@ -1,7 +1,11 @@
-import type { Stage3TemplateConfig } from "./stage3-template";
+import {
+  GHOSTFACE_COUNTRY_TEMPLATE_ID,
+  type Stage3TemplateConfig
+} from "./stage3-template";
 import {
   cloneTemplateCaptionHighlights,
-  type TemplateCaptionHighlights
+  type TemplateCaptionHighlights,
+  type TemplateHighlightSpan
 } from "./template-highlights";
 
 export type Stage3TemplateLayoutKind = "classic_top_bottom" | "channel_story";
@@ -33,6 +37,60 @@ function normalizeText(value: unknown): string {
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function isGhostfaceCountryTemplate(input: {
+  templateId?: string | null;
+  templateConfig?: Stage3TemplateConfig | null | undefined;
+}): boolean {
+  return (
+    input.templateId?.trim() === GHOSTFACE_COUNTRY_TEMPLATE_ID ||
+    input.templateConfig?.author.handle === "@ghostfacecountry"
+  );
+}
+
+function buildGhostfaceCountryFallbackTopHighlight(text: string): TemplateHighlightSpan[] {
+  const firstVisibleIndex = text.search(/\S/);
+  if (firstVisibleIndex < 0) {
+    return [];
+  }
+
+  const maxChars = 68;
+  const minBoundaryChars = 14;
+  const visibleText = text.slice(firstVisibleIndex);
+  const punctuationMatches = visibleText.matchAll(/[,.;!?](?=\s|$)/g);
+  for (const match of punctuationMatches) {
+    if (typeof match.index === "number" && match.index + 1 >= minBoundaryChars) {
+      return [
+        {
+          start: firstVisibleIndex,
+          end: firstVisibleIndex + Math.min(match.index + 1, maxChars),
+          slotId: "slot1"
+        }
+      ];
+    }
+  }
+
+  if (visibleText.length <= maxChars) {
+    return [
+      {
+        start: firstVisibleIndex,
+        end: firstVisibleIndex + visibleText.length,
+        slotId: "slot1"
+      }
+    ];
+  }
+
+  const clipped = visibleText.slice(0, maxChars);
+  const wordBoundary = clipped.lastIndexOf(" ");
+  const endOffset = wordBoundary >= minBoundaryChars ? wordBoundary : maxChars;
+  return [
+    {
+      start: firstVisibleIndex,
+      end: firstVisibleIndex + endOffset,
+      slotId: "slot1"
+    }
+  ];
 }
 
 function resolveChannelStoryClipCustomLengthTargets(
@@ -171,6 +229,7 @@ export function resolveTemplateTextFieldSemantics(
 }
 
 export function resolveTemplateRenderText(input: {
+  templateId?: string | null;
   templateConfig: Stage3TemplateConfig | null | undefined;
   topText: string;
   bottomText: string;
@@ -179,6 +238,15 @@ export function resolveTemplateRenderText(input: {
   const leadMode = resolveTemplateLeadMode(input.templateConfig);
   const nextHighlights = cloneTemplateCaptionHighlights(input.highlights);
   if (resolveTemplateLayoutKind(input.templateConfig) === "classic_top_bottom") {
+    if (
+      nextHighlights.top.length === 0 &&
+      isGhostfaceCountryTemplate({
+        templateId: input.templateId,
+        templateConfig: input.templateConfig
+      })
+    ) {
+      nextHighlights.top = buildGhostfaceCountryFallbackTopHighlight(input.topText);
+    }
     return {
       topText: input.topText,
       bottomText: input.bottomText,
