@@ -8,7 +8,8 @@ import {
   SCIENCE_CARD_RED_TEMPLATE_ID,
   SCIENCE_CARD_GREEN_TEMPLATE_ID,
   SCIENCE_CARD_V7_TEMPLATE_ID,
-  HEDGES_OF_HONOR_TEMPLATE_ID
+  HEDGES_OF_HONOR_TEMPLATE_ID,
+  GHOSTFACE_COUNTRY_TEMPLATE_ID
 } from "../../../lib/stage3-template";
 import { buildTemplateRenderSnapshot } from "../../../lib/stage3-template-core";
 import { resolveManagedTemplateRuntime } from "../../../lib/managed-template-runtime";
@@ -34,6 +35,10 @@ const SKYFRAME_TOP_TEXT =
   "This sailor is performing a mandatory abandon ship drill from the bow of hull to prove he can handle the height and keep his form tight before the unit heads back to sea.";
 const SKYFRAME_BOTTOM_TEXT =
   "You have to cover your nose and cross your arms or that water will hit you like a brick. It is a confidence builder that every new recruit has to pass to be ready.";
+const GHOSTFACE_COUNTRY_TOP_TEXT =
+  "100 battle rope: burn more calories, lose fat easier, boost calorie burn, speed up your metabolism, strengthen your abs and arms, improve endurance, and stay gentler on your joints.";
+const GHOSTFACE_COUNTRY_BOTTOM_TEXT =
+  "Keep your ribs down and core tight while using the ropes, because most of the benefit is lost when the lower back starts taking over.";
 
 type ScienceCardDesignPageProps = {
   searchParams?: Promise<{
@@ -64,7 +69,8 @@ const SUPPORTED_TEMPLATE_IDS = new Set([
   SCIENCE_CARD_RED_TEMPLATE_ID,
   SCIENCE_CARD_GREEN_TEMPLATE_ID,
   SCIENCE_CARD_V7_TEMPLATE_ID,
-  HEDGES_OF_HONOR_TEMPLATE_ID
+  HEDGES_OF_HONOR_TEMPLATE_ID,
+  GHOSTFACE_COUNTRY_TEMPLATE_ID
 ]);
 
 function normalizeScale(value: string | undefined): number {
@@ -110,6 +116,12 @@ function resolveDefaultTexts(templateId: string): { topText: string; bottomText:
     return {
       topText: SKYFRAME_TOP_TEXT,
       bottomText: SKYFRAME_BOTTOM_TEXT
+    };
+  }
+  if (templateId === GHOSTFACE_COUNTRY_TEMPLATE_ID) {
+    return {
+      topText: GHOSTFACE_COUNTRY_TOP_TEXT,
+      bottomText: GHOSTFACE_COUNTRY_BOTTOM_TEXT
     };
   }
   return {
@@ -214,6 +226,10 @@ function renderRuntimeBadge({
 }
 
 function renderMediaPlaceholder(templateId: string) {
+  if (templateId === GHOSTFACE_COUNTRY_TEMPLATE_ID) {
+    return <div style={{ width: "100%", height: "100%", background: "#d3d3d3" }} />;
+  }
+
   if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID || templateId === HEDGES_OF_HONOR_TEMPLATE_ID) {
     return (
       <div

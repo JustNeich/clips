@@ -6,7 +6,8 @@ import {
   SCIENCE_CARD_RED_TEMPLATE_ID,
   SCIENCE_CARD_GREEN_TEMPLATE_ID,
   SCIENCE_CARD_V7_TEMPLATE_ID,
-  HEDGES_OF_HONOR_TEMPLATE_ID
+  HEDGES_OF_HONOR_TEMPLATE_ID,
+  GHOSTFACE_COUNTRY_TEMPLATE_ID
 } from "./stage3-template";
 import { getTemplateVariant } from "./stage3-template-registry";
 
@@ -164,6 +165,25 @@ export const STAGE3_DESIGN_LAB_PRESETS: Stage3DesignLabPreset[] = [
       "Толщина и цвет обводки должны читаться как тонкий 2px black line, не как gray border.",
       "Внутренний inset-shadow должен давать карточке объём, но не превращать её в beveled button.",
       "Фон должен быть реальным backdrop layer, а не просто белым canvas позади."
+    ]
+  },
+  {
+    templateId: GHOSTFACE_COUNTRY_TEMPLATE_ID,
+    label: getTemplateVariant(GHOSTFACE_COUNTRY_TEMPLATE_ID).label,
+    channelName: "GHOSTFACE COUNTRY",
+    channelHandle: "@ghostfacecountry",
+    topText:
+      "100 battle rope: burn more calories, lose fat easier, boost calorie burn, speed up your metabolism, strengthen your abs and arms, improve endurance, and stay gentler on your joints.",
+    bottomText:
+      "Keep your ribs down and core tight while using the ropes, because most of the benefit is lost when the lower back starts taking over.",
+    note:
+      "Чёрный fitness/Twitter-card шаблон: крупный центрированный hook сверху, жёлтый акцент на первой пользе, широкий media box, затем compact social footer с аватаром, verified badge и коротким советом.",
+    defaultPreviewScale: 0.3,
+    initialStatus: "review",
+    checklist: [
+      "Top block должен занимать верхнюю треть кадра и выглядеть как heavy social caption, а не как журнальный заголовок.",
+      "Media box должен начинаться сразу после заголовка, быть широким, прямоугольным и без скругления.",
+      "Author/footer должны повторять Twitter-like пропорции: круглый аватар, плотное имя, серый handle, голубой verified badge и три строки body."
     ]
   }
 ];

@@ -7,6 +7,7 @@ import {
   SCIENCE_CARD,
   SCIENCE_CARD_V7_TEMPLATE_ID,
   DEFAULT_STAGE3_SOURCE_VIDEO_TEXT_FONT_FAMILY,
+  GHOSTFACE_COUNTRY_TEMPLATE_ID,
   HEDGES_OF_HONOR_TEMPLATE_ID,
   getStage3CardInnerRect,
   isClassicScienceCardTemplateId,
@@ -408,6 +409,18 @@ export function TemplateBackdrop({
           height: "100%",
           objectFit: "cover",
           display: "block"
+        }}
+      />
+    );
+  }
+
+  if (templateId === GHOSTFACE_COUNTRY_TEMPLATE_ID) {
+    return (
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "#000000"
         }}
       />
     );

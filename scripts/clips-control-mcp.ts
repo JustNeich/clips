@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { appendFlowAuditEvent } from "../lib/audit-log-store";
 import { COPSCOPES_CHANNEL_USERNAME } from "../lib/copscopes-channel-preset";
+import { GHOSTFACE_COUNTRY_CHANNEL_USERNAME } from "../lib/ghostface-country-channel-preset";
 import {
   exportCopscopesSourcePoolCsv,
   exportCopscopesSourcePoolMarkdown,
@@ -26,6 +27,7 @@ import {
   upsertChannelPublishSettings
 } from "../lib/publication-store";
 import { applyCopscopesChannelPreset } from "./apply-copscopes-channel-preset";
+import { applyGhostfaceCountryChannelTemplate } from "./apply-ghostface-country-channel-template";
 import type { Stage3SourceCrop } from "../app/components/types";
 
 type ChannelRow = {
@@ -112,6 +114,10 @@ function findChannelByUsername(username: string): ChannelRow {
 
 function resolveChannel(username?: string | null): ChannelRow {
   return findChannelByUsername(username?.trim() || COPSCOPES_CHANNEL_USERNAME);
+}
+
+function resolveGhostfaceChannel(username?: string | null): ChannelRow {
+  return findChannelByUsername(username?.trim() || GHOSTFACE_COUNTRY_CHANNEL_USERNAME);
 }
 
 function auditControl(input: {
@@ -307,6 +313,57 @@ server.registerTool(
         templateAction: result.templateAction,
         examplesCount: result.examplesCount,
         preserveTemplate: Boolean(preserveTemplate)
+      }
+    });
+    return jsonContent(result);
+  }
+);
+
+server.registerTool(
+  "clips_control_apply_ghostface_template",
+  {
+    title: "Apply Ghostface Country template",
+    description: "Create/update the Ghostface Country managed template and assign it to the target channel.",
+    inputSchema: z.object({
+      username: z.string().optional(),
+      dryRun: z.boolean().optional(),
+      templateOnly: z.boolean().optional()
+    })
+  },
+  async ({ username, dryRun, templateOnly }) => {
+    if (remoteMode) {
+      return remoteControl("clips_control_apply_ghostface_template", {
+        username,
+        dryRun: Boolean(dryRun),
+        templateOnly: Boolean(templateOnly)
+      });
+    }
+    const channel = resolveGhostfaceChannel(username);
+    auditControl({
+      action: "ghostface_control.apply_template.attempted",
+      channelId: channel.id,
+      status: "attempted",
+      payload: {
+        username: channel.username,
+        dryRun: Boolean(dryRun),
+        templateOnly: Boolean(templateOnly)
+      }
+    });
+    const result = await applyGhostfaceCountryChannelTemplate({
+      username: channel.username,
+      dryRun: Boolean(dryRun),
+      templateOnly: Boolean(templateOnly),
+      workspaceId: getLocalAuth().workspace.id
+    });
+    auditControl({
+      action: "ghostface_control.apply_template.succeeded",
+      channelId: channel.id,
+      status: "succeeded",
+      payload: {
+        dryRun: result.dryRun,
+        templateAction: result.templateAction,
+        channelAction: result.channelAction,
+        templateId: result.templateId
       }
     });
     return jsonContent(result);

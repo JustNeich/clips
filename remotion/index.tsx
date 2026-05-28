@@ -10,7 +10,8 @@ import {
   SCIENCE_CARD_GREEN_TEMPLATE_ID,
   SCIENCE_CARD_V7_TEMPLATE_ID,
   CHANNEL_STORY_TEMPLATE_ID,
-  HEDGES_OF_HONOR_TEMPLATE_ID
+  HEDGES_OF_HONOR_TEMPLATE_ID,
+  GHOSTFACE_COUNTRY_TEMPLATE_ID
 } from "../lib/stage3-template";
 import type { Stage3TemplateConfig } from "../lib/stage3-template";
 import type { TemplateCaptionHighlights } from "../lib/template-highlights";
@@ -92,6 +93,7 @@ export const SCIENCE_CARD_GREEN_SCENE_ID = SCIENCE_CARD_GREEN_TEMPLATE_ID;
 export const SCIENCE_CARD_V7_SCENE_ID = SCIENCE_CARD_V7_TEMPLATE_ID;
 export const CHANNEL_STORY_SCENE_ID = CHANNEL_STORY_TEMPLATE_ID;
 export const HEDGES_OF_HONOR_SCENE_ID = HEDGES_OF_HONOR_TEMPLATE_ID;
+export const GHOSTFACE_COUNTRY_SCENE_ID = GHOSTFACE_COUNTRY_TEMPLATE_ID;
 const DEFAULT_TEXT_SCALE = 1.25;
 const DEFAULT_DURATION_IN_FRAMES = DEFAULT_STAGE3_CLIP_DURATION_SEC * STAGE3_REMOTION_FPS;
 const calculateScienceCardMetadata: CalculateMetadataFunction<ScienceCardV1Props> = ({ props }) =>
@@ -219,6 +221,20 @@ export const RemotionRoot = () => {
         durationInFrames={DEFAULT_DURATION_IN_FRAMES}
         calculateMetadata={calculateScienceCardMetadata}
         defaultProps={buildDefaultProps(HEDGES_OF_HONOR_TEMPLATE_ID, "Echoes Of Honor", "@EchoesOfHonor50")}
+      />
+      <Composition
+        id={GHOSTFACE_COUNTRY_SCENE_ID}
+        component={ScienceCardV1}
+        width={1080}
+        height={1920}
+        fps={STAGE3_REMOTION_FPS}
+        durationInFrames={DEFAULT_DURATION_IN_FRAMES}
+        calculateMetadata={calculateScienceCardMetadata}
+        defaultProps={buildDefaultProps(
+          GHOSTFACE_COUNTRY_TEMPLATE_ID,
+          "GHOSTFACE COUNTRY",
+          "@ghostfacecountry"
+        )}
       />
     </>
   );

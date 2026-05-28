@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { requireOwnerOrMcpControlWrite } from "../../../../../lib/auth/guards";
 import { appendFlowAuditEvent } from "../../../../../lib/audit-log-store";
 import { COPSCOPES_CHANNEL_USERNAME } from "../../../../../lib/copscopes-channel-preset";
+import { GHOSTFACE_COUNTRY_CHANNEL_USERNAME } from "../../../../../lib/ghostface-country-channel-preset";
 import {
   exportCopscopesSourcePoolCsv,
   exportCopscopesSourcePoolMarkdown,
@@ -29,6 +30,7 @@ import {
   upsertChannelPublishSettings
 } from "../../../../../lib/publication-store";
 import { applyCopscopesChannelPreset } from "../../../../../scripts/apply-copscopes-channel-preset";
+import { applyGhostfaceCountryChannelTemplate } from "../../../../../scripts/apply-ghostface-country-channel-template";
 import type { Stage3SourceCrop } from "../../../../components/types";
 
 export const runtime = "nodejs";
@@ -74,8 +76,14 @@ function resolveNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function findChannelByUsername(workspaceId: string, username?: string | null): ChannelRow {
-  const normalized = (username?.trim() || COPSCOPES_CHANNEL_USERNAME).replace(/^@+/, "").toLowerCase();
+function resolveDefaultControlUsername(tool: string): string {
+  return tool === "clips_control_apply_ghostface_template"
+    ? GHOSTFACE_COUNTRY_CHANNEL_USERNAME
+    : COPSCOPES_CHANNEL_USERNAME;
+}
+
+function findChannelByUsername(workspaceId: string, tool: string, username?: string | null): ChannelRow {
+  const normalized = (username?.trim() || resolveDefaultControlUsername(tool)).replace(/^@+/, "").toLowerCase();
   const row = getDb()
     .prepare(
       `SELECT id, workspace_id, name, username, avatar_asset_id
@@ -242,7 +250,7 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const channelUsername = resolveString(input.username) ?? resolveString(input.channelUsername);
-    const channel = findChannelByUsername(auth.workspace.id, channelUsername);
+    const channel = findChannelByUsername(auth.workspace.id, tool, channelUsername);
 
     if (tool === "clips_control_apply_channel_preset") {
       auditControl({
@@ -274,6 +282,41 @@ export async function POST(request: Request): Promise<Response> {
           templateAction: result.templateAction,
           examplesCount: result.examplesCount,
           preserveTemplate: resolveBoolean(input.preserveTemplate)
+        }
+      });
+      return Response.json(result, { status: 200 });
+    }
+
+    if (tool === "clips_control_apply_ghostface_template") {
+      auditControl({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        action: "ghostface_control.apply_template.attempted",
+        channelId: channel.id,
+        status: "attempted",
+        payload: {
+          username: channel.username,
+          dryRun: resolveBoolean(input.dryRun),
+          templateOnly: resolveBoolean(input.templateOnly)
+        }
+      });
+      const result = await applyGhostfaceCountryChannelTemplate({
+        username: channel.username,
+        dryRun: resolveBoolean(input.dryRun),
+        templateOnly: resolveBoolean(input.templateOnly),
+        workspaceId: auth.workspace.id
+      });
+      auditControl({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        action: "ghostface_control.apply_template.succeeded",
+        channelId: channel.id,
+        status: "succeeded",
+        payload: {
+          dryRun: result.dryRun,
+          templateAction: result.templateAction,
+          channelAction: result.channelAction,
+          templateId: result.templateId
         }
       });
       return Response.json(result, { status: 200 });

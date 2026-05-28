@@ -7,6 +7,7 @@ import {
   SCIENCE_CARD_GREEN_TEMPLATE_ID,
   SCIENCE_CARD_V7_TEMPLATE_ID,
   HEDGES_OF_HONOR_TEMPLATE_ID,
+  GHOSTFACE_COUNTRY_TEMPLATE_ID,
   STAGE3_TEMPLATE_ID,
   getTemplateById,
   templateUsesBuiltInBackdrop
@@ -114,6 +115,17 @@ const TEMPLATE_VARIANTS: TemplateVariant[] = [
       usesBuiltInBackdrop: templateUsesBuiltInBackdrop(HEDGES_OF_HONOR_TEMPLATE_ID),
       builtInBackdropAssetPath: "/stage3-template-backdrops/hedges-of-honor-v1-shell.svg",
       avatarBorderColor: "rgba(0, 0, 0, 0.2)",
+      previewFrameMode: "full-frame"
+    }
+  },
+  {
+    id: GHOSTFACE_COUNTRY_TEMPLATE_ID,
+    label: "Ghostface Country",
+    formatGroup: "classic_top_bottom",
+    formatLabel: resolveTemplateFormatGroupLabel("classic_top_bottom"),
+    runtime: {
+      usesBuiltInBackdrop: templateUsesBuiltInBackdrop(GHOSTFACE_COUNTRY_TEMPLATE_ID),
+      avatarBorderColor: "rgba(255,255,255,0)",
       previewFrameMode: "full-frame"
     }
   },

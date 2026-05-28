@@ -25,6 +25,7 @@
     "copscopes:daily-production": "node scripts/run-copscopes-daily-production.mjs",
     "stage2-worker": "tsx scripts/viral-shorts-worker.ts",
     "stage3-worker": "tsx apps/stage3-worker/index.ts",
+    "ghostface:apply-template": "tsx scripts/apply-ghostface-country-channel-template.ts",
     "design:template:import": "tsx scripts/template-import-figma.ts",
     "design:template:capture": "tsx scripts/template-calibration-capture.ts",
     "design:template:batch": "tsx scripts/template-calibration-batch.ts",

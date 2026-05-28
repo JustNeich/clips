@@ -27,6 +27,7 @@ export const AMERICAN_NEWS_TEMPLATE_ID = "american-news-v1";
 export const SCIENCE_CARD_V7_TEMPLATE_ID = "science-card-v7";
 export const HEDGES_OF_HONOR_TEMPLATE_ID = "hedges-of-honor-v1";
 export const CHANNEL_STORY_TEMPLATE_ID = "channel-story-v1";
+export const GHOSTFACE_COUNTRY_TEMPLATE_ID = "ghostface-country-v1";
 export const STAGE3_TEMPLATE_ID = SCIENCE_CARD_TEMPLATE_ID;
 
 export type Stage3TemplateFontAsset = {
@@ -684,6 +685,125 @@ export const CHANNEL_STORY = {
     leadGlowOpacity: 0.76,
     leadGlowSpreadX: 180
   }
+} as const;
+
+export const GHOSTFACE_COUNTRY = {
+  ...SCIENCE_CARD,
+  card: {
+    x: 84,
+    y: 0,
+    width: 912,
+    height: 1920,
+    radius: 0,
+    borderWidth: 0,
+    borderColor: "#000000",
+    fill: "#000000",
+    shadow: "none"
+  },
+  slot: {
+    ...SCIENCE_CARD.slot,
+    topHeight: 601,
+    bottomHeight: 561,
+    topPaddingX: 8,
+    topPaddingY: 0,
+    topPaddingTop: 180,
+    topPaddingBottom: 0,
+    bottomMetaHeight: 150,
+    bottomMetaPaddingX: 0,
+    bottomMetaPaddingY: 0,
+    bottomTextPaddingX: 0,
+    bottomTextPaddingY: 0,
+    bottomTextPaddingTop: 0,
+    bottomTextPaddingBottom: 0,
+    bottomTextPaddingLeft: 0,
+    bottomTextPaddingRight: 0
+  },
+  author: {
+    ...SCIENCE_CARD.author,
+    name: "GHOSTFACE COUNTRY",
+    handle: "@ghostfacecountry",
+    avatarSize: 98,
+    avatarBorder: 0,
+    checkSize: 42,
+    gap: 18,
+    copyGap: 0,
+    nameCheckGap: 8,
+    checkAssetPath: "/stage3-template-badges/twitter-verified-badge.png"
+  },
+  typography: {
+    ...SCIENCE_CARD.typography,
+    top: {
+      ...SCIENCE_CARD.typography.top,
+      min: 52,
+      max: 62,
+      softLimit: 190,
+      penalty: 0.12,
+      lineHeight: 0.94,
+      maxLines: 6,
+      maxChars: 260,
+      horizontalSafety: 0.992,
+      glyphFactor: 0.5,
+      fillTargetMin: 0.86,
+      fillTargetMax: 0.94,
+      weight: 900,
+      letterSpacing: "0",
+      fontFamily:
+        '"Arial Rounded MT Bold","Helvetica Neue",Helvetica,Arial,sans-serif'
+    },
+    bottom: {
+      ...SCIENCE_CARD.typography.bottom,
+      min: 31,
+      max: 40,
+      softLimit: 170,
+      penalty: 0.16,
+      lineHeight: 1.05,
+      maxLines: 3,
+      maxChars: 220,
+      horizontalSafety: 0.985,
+      glyphFactor: 0.49,
+      fillTargetMin: 0.84,
+      fillTargetMax: 0.94,
+      weight: 400,
+      letterSpacing: "0",
+      fontStyle: "normal",
+      fontFamily: '"Helvetica Neue",Helvetica,Arial,sans-serif'
+    },
+    authorName: {
+      ...SCIENCE_CARD.typography.authorName,
+      font: 38,
+      lineHeight: 0.95,
+      weight: 800,
+      letterSpacing: "0",
+      fontFamily: '"Helvetica Neue",Helvetica,Arial,sans-serif'
+    },
+    authorHandle: {
+      ...SCIENCE_CARD.typography.authorHandle,
+      font: 31,
+      lineHeight: 1,
+      weight: 400,
+      letterSpacing: "0",
+      fontFamily: '"Helvetica Neue",Helvetica,Arial,sans-serif'
+    }
+  },
+  palette: {
+    cardFill: "#000000",
+    topSectionFill: "#000000",
+    bottomSectionFill: "#000000",
+    topTextColor: "#f8f8f8",
+    bottomTextColor: "#f8f8f8",
+    authorNameColor: "#ffffff",
+    authorHandleColor: "#9f9f9f",
+    checkBadgeColor: "#1da1f2",
+    borderColor: "#000000",
+    accentColor: "#ffd433"
+  },
+  sourceOverlay: {
+    ...DEFAULT_STAGE3_SOURCE_OVERLAY_CONFIG,
+    enabled: false
+  },
+  highlights: createDefaultTemplateHighlightConfig({
+    accentColor: "#ffd433"
+  })
 } as const;
 
 const CLASSIC_SCIENCE_CARD_TEMPLATE_IDS = new Set([
@@ -1646,6 +1766,9 @@ export function getTemplateComputed(
   if (templateId === HEDGES_OF_HONOR_TEMPLATE_ID) {
     return getScienceCardComputed(topText, bottomText, fontOverrides, HEDGES_OF_HONOR);
   }
+  if (templateId === GHOSTFACE_COUNTRY_TEMPLATE_ID) {
+    return getScienceCardComputed(topText, bottomText, fontOverrides, GHOSTFACE_COUNTRY);
+  }
   return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD);
 }
 
@@ -1682,6 +1805,9 @@ export function getTemplateById(templateId: string): Stage3TemplateConfig {
   }
   if (templateId === HEDGES_OF_HONOR_TEMPLATE_ID) {
     return HEDGES_OF_HONOR;
+  }
+  if (templateId === GHOSTFACE_COUNTRY_TEMPLATE_ID) {
+    return GHOSTFACE_COUNTRY;
   }
   return SCIENCE_CARD;
 }
