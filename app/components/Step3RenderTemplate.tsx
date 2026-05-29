@@ -55,10 +55,13 @@ import {
 } from "../../lib/stage3-template-core";
 import {
   buildCaptionHighlightSourceState,
+  cloneTemplateCaptionHighlights,
   countEnabledTemplateHighlightSlots,
   countTemplateHighlightSpans,
   createEmptyTemplateCaptionHighlights,
   isTemplateHighlightingActive,
+  normalizeTemplateHighlightSpans,
+  type TemplateHighlightSlotId,
   type TemplateCaptionHighlights
 } from "../../lib/template-highlights";
 import {
@@ -152,7 +155,11 @@ import type {
   Stage2ToStage3HandoffSummary,
   Stage3CaptionApplyMode
 } from "../../lib/stage2-stage3-handoff";
-import type { Stage3DurationMode } from "../../lib/stage3-duration";
+import {
+  buildStage3ClipDurationOptions,
+  normalizeStage3ClipDurationSec,
+  type Stage3DurationMode
+} from "../../lib/stage3-duration";
 
 export type Step3ManagedTemplateState = Stage3SnapshotManagedTemplateState & {
   name: string;
@@ -250,6 +257,7 @@ type Step3RenderTemplateProps = {
   topFontScale: number;
   bottomFontScale: number;
   sourceAudioEnabled: boolean;
+  sourceAudioGain?: number;
   musicGain: number;
   publishAfterRender?: boolean;
   publishAfterRenderEnabled?: boolean;
@@ -273,6 +281,7 @@ type Step3RenderTemplateProps = {
   onTopTextChange: (value: string) => void;
   onBottomTextChange: (value: string) => void;
   onSourceOverlayTextChange?: (value: string) => void;
+  onCaptionHighlightsChange?: (value: TemplateCaptionHighlights) => void;
   onApplyCaptionSource: (option: number, mode: Stage3CaptionApplyMode) => void;
   onResetCaptionText: (mode: Stage3CaptionApplyMode) => void;
   onUploadBackground: (file: File) => Promise<void>;
@@ -289,6 +298,7 @@ type Step3RenderTemplateProps = {
     editorSelectionMode: Stage3EditorSelectionMode;
   }) => void;
   onDurationModeChange?: (value: Stage3DurationMode) => void;
+  onClipDurationChange?: (value: number) => void;
   onClipStartChange: (value: number) => void;
   onFocusXChange: (value: number) => void;
   onFocusYChange: (value: number) => void;
@@ -304,6 +314,7 @@ type Step3RenderTemplateProps = {
   onTopFontScaleChange: (value: number) => void;
   onBottomFontScaleChange: (value: number) => void;
   onSourceAudioEnabledChange: (value: boolean) => void;
+  onSourceAudioGainChange?: (value: number) => void;
   onMusicGainChange: (value: number) => void;
   onCreateWorkerPairing: () => void;
   onOpenPlanner?: () => void;
@@ -805,6 +816,7 @@ function PreviewClipVideo({
   videoContrast,
   videoSaturation,
   muted,
+  volume,
   videoRef,
   isPlaying,
   loopEnabled,
@@ -824,6 +836,7 @@ function PreviewClipVideo({
   videoContrast: number;
   videoSaturation: number;
   muted: boolean;
+  volume: number;
   videoRef: MutableRefObject<HTMLVideoElement | null>;
   isPlaying: boolean;
   loopEnabled: boolean;
@@ -1115,6 +1128,14 @@ function PreviewClipVideo({
     if (!video) {
       return;
     }
+    video.volume = clamp(volume, 0, 1);
+  }, [videoRef, volume]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
 
     const handleSeeked = () => {
       finalizeStage3PreviewMappedSeek({
@@ -1206,6 +1227,7 @@ type Stage3LivePreviewPanelProps = {
   topFontScale: number;
   bottomFontScale: number;
   sourceAudioEnabled: boolean;
+  sourceAudioGain: number;
   musicGain: number;
   templateConfig: ReturnType<typeof getTemplateById>;
   selectedPositionKeyframeId: string | null;
@@ -1268,6 +1290,7 @@ function Stage3LivePreviewPanel({
   topFontScale,
   bottomFontScale,
   sourceAudioEnabled,
+  sourceAudioGain = 1,
   musicGain,
   templateConfig,
   selectedPositionKeyframeId,
@@ -2143,6 +2166,7 @@ function Stage3LivePreviewPanel({
                         videoContrast={videoContrast}
                         videoSaturation={videoSaturation}
                         muted={isMuted || !sourceAudioEnabled}
+                        volume={sourceAudioGain}
                         videoRef={slotPreviewRef}
                         isPlaying={isPlaying}
                         loopEnabled={loopEnabled}
@@ -2349,6 +2373,7 @@ export function Step3RenderTemplate({
   topFontScale,
   bottomFontScale,
   sourceAudioEnabled,
+  sourceAudioGain = 1,
   musicGain,
   publishAfterRender = false,
   publishAfterRenderEnabled = false,
@@ -2364,6 +2389,7 @@ export function Step3RenderTemplate({
   onTopTextChange,
   onBottomTextChange,
   onSourceOverlayTextChange = () => undefined,
+  onCaptionHighlightsChange = () => undefined,
   onApplyCaptionSource,
   onResetCaptionText,
   onUploadBackground,
@@ -2377,6 +2403,7 @@ export function Step3RenderTemplate({
   onAgentPromptChange,
   onFragmentStateChange,
   onDurationModeChange = () => undefined,
+  onClipDurationChange = () => undefined,
   onClipStartChange,
   onFocusXChange,
   onFocusYChange,
@@ -2392,12 +2419,14 @@ export function Step3RenderTemplate({
   onTopFontScaleChange,
   onBottomFontScaleChange,
   onSourceAudioEnabledChange,
+  onSourceAudioGainChange = () => undefined,
   onMusicGainChange,
   onCreateWorkerPairing,
   onOpenPlanner = () => undefined,
   onManagedTemplateStateChange
 }: Step3RenderTemplateProps) {
   const editorAlwaysNormalize = true;
+  const clipDurationOptions = useMemo(() => buildStage3ClipDurationOptions(), []);
   const clipCommitTimerRef = useRef<number | null>(null);
   const focusXCommitTimerRef = useRef<number | null>(null);
   const focusCommitTimerRef = useRef<number | null>(null);
@@ -2411,7 +2440,10 @@ export function Step3RenderTemplate({
   const scaleKeyframesCommitTimerRef = useRef<number | null>(null);
   const topFontScaleCommitTimerRef = useRef<number | null>(null);
   const bottomFontScaleCommitTimerRef = useRef<number | null>(null);
+  const sourceAudioGainCommitTimerRef = useRef<number | null>(null);
   const musicGainCommitTimerRef = useRef<number | null>(null);
+  const topTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  const bottomTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const [localClipStartSec, setLocalClipStartSec] = useState(clipStartSec);
   const [localWholeClipWindowEndSec, setLocalWholeClipWindowEndSec] = useState(clipStartSec + clipDurationSec);
@@ -2429,6 +2461,7 @@ export function Step3RenderTemplate({
   const [requestedTimelineSec, setRequestedTimelineSec] = useState<number | null>(null);
   const [localTopFontScale, setLocalTopFontScale] = useState(topFontScale);
   const [localBottomFontScale, setLocalBottomFontScale] = useState(bottomFontScale);
+  const [localSourceAudioGain, setLocalSourceAudioGain] = useState(sourceAudioGain);
   const [localMusicGain, setLocalMusicGain] = useState(musicGain);
   const [workerSetupOpen, setWorkerSetupOpen] = useState(false);
   const [workerGuidePlatform, setWorkerGuidePlatform] = useState<WorkerGuidePlatform>(() => detectWorkerGuidePlatform());
@@ -2670,6 +2703,20 @@ export function Step3RenderTemplate({
   const templateHighlightProfile = templateConfig.highlights;
   const templateHighlightProfileEnabled = isTemplateHighlightingActive(templateHighlightProfile);
   const templateHighlightSlotCount = countEnabledTemplateHighlightSlots(templateHighlightProfile);
+  const enabledManualHighlightSlots = useMemo(
+    () => templateHighlightProfile.slots.filter((slot) => slot.enabled),
+    [templateHighlightProfile.slots]
+  );
+  const [manualHighlightSlotId, setManualHighlightSlotId] = useState<TemplateHighlightSlotId>(
+    enabledManualHighlightSlots[0]?.slotId ?? "slot1"
+  );
+  useEffect(() => {
+    if (enabledManualHighlightSlots.some((slot) => slot.slotId === manualHighlightSlotId)) {
+      return;
+    }
+    setManualHighlightSlotId(enabledManualHighlightSlots[0]?.slotId ?? "slot1");
+  }, [enabledManualHighlightSlots, manualHighlightSlotId]);
+  const canApplyManualHighlight = templateHighlightProfileEnabled && enabledManualHighlightSlots.length > 0;
   const currentCaptionHighlightCount = countTemplateHighlightSpans(captionHighlights);
   const selectedSourceHighlightCount = countTemplateHighlightSpans(selectedCaptionSource?.highlights);
   const {
@@ -3307,6 +3354,10 @@ export function Step3RenderTemplate({
   }, [bottomFontScale]);
 
   useEffect(() => {
+    setLocalSourceAudioGain(clamp(sourceAudioGain, 0, 2));
+  }, [sourceAudioGain]);
+
+  useEffect(() => {
     setLocalMusicGain(clamp(musicGain, 0, 1));
   }, [musicGain]);
 
@@ -3421,6 +3472,9 @@ export function Step3RenderTemplate({
       }
       if (bottomFontScaleCommitTimerRef.current !== null) {
         window.clearTimeout(bottomFontScaleCommitTimerRef.current);
+      }
+      if (sourceAudioGainCommitTimerRef.current !== null) {
+        window.clearTimeout(sourceAudioGainCommitTimerRef.current);
       }
       if (musicGainCommitTimerRef.current !== null) {
         window.clearTimeout(musicGainCommitTimerRef.current);
@@ -3710,6 +3764,26 @@ export function Step3RenderTemplate({
     }, 320);
   };
 
+  const flushSourceAudioGainCommit = (value: number) => {
+    if (sourceAudioGainCommitTimerRef.current !== null) {
+      window.clearTimeout(sourceAudioGainCommitTimerRef.current);
+      sourceAudioGainCommitTimerRef.current = null;
+    }
+    onSourceAudioGainChange(clamp(value, 0, 2));
+  };
+
+  const scheduleSourceAudioGainCommit = (value: number) => {
+    const next = clamp(value, 0, 2);
+    setLocalSourceAudioGain(next);
+    if (sourceAudioGainCommitTimerRef.current !== null) {
+      window.clearTimeout(sourceAudioGainCommitTimerRef.current);
+    }
+    sourceAudioGainCommitTimerRef.current = window.setTimeout(() => {
+      onSourceAudioGainChange(next);
+      sourceAudioGainCommitTimerRef.current = null;
+    }, 320);
+  };
+
   const flushMusicGainCommit = (value: number) => {
     if (musicGainCommitTimerRef.current !== null) {
       window.clearTimeout(musicGainCommitTimerRef.current);
@@ -3781,6 +3855,7 @@ export function Step3RenderTemplate({
       normalizeToTargetEnabled: fragmentOverrides.normalizeToTargetEnabled,
       topFontScale: clampStage3TextScaleUi(localTopFontScale),
       bottomFontScale: clampStage3TextScaleUi(localBottomFontScale),
+      sourceAudioGain: clamp(localSourceAudioGain, 0, 2),
       musicGain: clamp(localMusicGain, 0, 1)
     };
     flushClipCommit(overrides.clipStartSec);
@@ -3796,6 +3871,7 @@ export function Step3RenderTemplate({
     flushScaleKeyframesCommit(overrides.cameraScaleKeyframes);
     flushTopFontScaleCommit(overrides.topFontScale);
     flushBottomFontScaleCommit(overrides.bottomFontScale);
+    flushSourceAudioGainCommit(overrides.sourceAudioGain);
     flushMusicGainCommit(overrides.musicGain);
     return overrides;
   };
@@ -4402,6 +4478,12 @@ export function Step3RenderTemplate({
     flushBottomFontScaleCommit(next);
   };
 
+  const applySourceAudioGainImmediate = (value: number) => {
+    const next = clamp(value, 0, 2);
+    setLocalSourceAudioGain(next);
+    flushSourceAudioGainCommit(next);
+  };
+
   const applyMusicGainImmediate = (value: number) => {
     const next = clamp(value, 0, 1);
     setLocalMusicGain(next);
@@ -4469,6 +4551,19 @@ export function Step3RenderTemplate({
       onDurationModeChange("channel_default");
     },
     [clipDurationSec, fragmentSourceDurationSec, onClipStartChange, onDurationModeChange]
+  );
+
+  const handleClipDurationSelect = useCallback(
+    (value: number) => {
+      const nextDurationSec = normalizeStage3ClipDurationSec(value, clipDurationSec);
+      onClipDurationChange(nextDurationSec);
+      if (!sourceFullDurationEnabled) {
+        setLocalWholeClipWindowEndSec((current) =>
+          Math.max(localClipStartSec + minimumSelectionDurationSec, current)
+        );
+      }
+    },
+    [clipDurationSec, localClipStartSec, minimumSelectionDurationSec, onClipDurationChange, sourceFullDurationEnabled]
   );
 
   const buildCommittedSegmentsFromDrafts = useCallback((): Stage3Segment[] => {
@@ -5068,6 +5163,28 @@ export function Step3RenderTemplate({
 
   const isPreparingRenderText = Boolean(pendingTextFitAction);
   const renderPublishLabel = formatRenderPublishLabel(publishAfterRenderInfo);
+  const applyManualHighlightSelection = (block: keyof TemplateCaptionHighlights) => {
+    const textarea = block === "top" ? topTextAreaRef.current : bottomTextAreaRef.current;
+    const text = block === "top" ? topText : bottomText;
+    if (!textarea || !canApplyManualHighlight) {
+      return;
+    }
+    const start = Math.min(textarea.selectionStart ?? 0, textarea.selectionEnd ?? 0);
+    const end = Math.max(textarea.selectionStart ?? 0, textarea.selectionEnd ?? 0);
+    if (end <= start || !text.slice(start, end).trim()) {
+      return;
+    }
+    const nextHighlights = cloneTemplateCaptionHighlights(captionHighlights);
+    nextHighlights[block] = normalizeTemplateHighlightSpans(
+      [...nextHighlights[block], { start, end, slotId: manualHighlightSlotId }],
+      text
+    );
+    onCaptionHighlightsChange(nextHighlights);
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start, end);
+    });
+  };
 
   const finishCaptionEditorCard = (
     <section className="control-card control-card-priority stage3-caption-editor-card">
@@ -5085,6 +5202,7 @@ export function Step3RenderTemplate({
           <label className="field-stack">
             <span className="field-label">{topFieldLabel}</span>
             <textarea
+              ref={topTextAreaRef}
               className="text-area stage3-caption-textarea"
               rows={4}
               value={topText}
@@ -5096,6 +5214,7 @@ export function Step3RenderTemplate({
         <label className="field-stack">
           <span className="field-label">{bottomFieldLabel}</span>
           <textarea
+            ref={bottomTextAreaRef}
             className="text-area stage3-caption-textarea"
             rows={4}
             value={bottomText}
@@ -5193,6 +5312,40 @@ export function Step3RenderTemplate({
                   : "У текущих вариантов Stage 2 пока нет цветных слов. Обычно это значит, что template profile ещё не включён или Stage 2 не перегонялся после правки шаблона."}
         </p>
         <div className="control-actions">
+          {enabledManualHighlightSlots.length > 1 ? (
+            <select
+              className="text-input compact-select"
+              value={manualHighlightSlotId}
+              disabled={!canApplyManualHighlight}
+              onChange={(event) => setManualHighlightSlotId(event.target.value as TemplateHighlightSlotId)}
+            >
+              {enabledManualHighlightSlots.map((slot) => (
+                <option key={slot.slotId} value={slot.slotId}>
+                  {slot.label}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          {templateTextSemantics.topVisible ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={!canApplyManualHighlight}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => applyManualHighlightSelection("top")}
+            >
+              Выделить {topFieldLabel}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={!canApplyManualHighlight}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => applyManualHighlightSelection("bottom")}
+          >
+            Выделить {bottomFieldLabel}
+          </button>
           {canRecoverHighlightsFromAnotherOption && suggestedHighlightedSource ? (
             <button
               type="button"
@@ -5413,6 +5566,32 @@ export function Step3RenderTemplate({
                 <span className="meta-pill">Звук {audioModeLabel}</span>
                 <span className="meta-pill">Таймлайн 0 → {formatTimeSec(clipDurationSec)}</span>
               </div>
+              <div className="compact-grid stage3-duration-grid">
+                <div className="compact-field">
+                  <label className="field-label" htmlFor="stage3ClipDurationSec">
+                    Длина готового ролика
+                  </label>
+                  <select
+                    id="stage3ClipDurationSec"
+                    className="text-input"
+                    value={String(clipDurationSec)}
+                    disabled={sourceFullDurationEnabled || isRendering}
+                    onChange={(event) => handleClipDurationSelect(Number.parseInt(event.target.value, 10))}
+                  >
+                    {clipDurationOptions.map((value) => (
+                      <option key={`stage3-duration-${value}`} value={String(value)}>
+                        {value} сек
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="compact-field">
+                  <span className="field-label">Режим длительности</span>
+                  <span className="meta-pill">
+                    {sourceFullDurationEnabled ? "Вся длина исходника" : "Ручной ролик"}
+                  </span>
+                </div>
+              </div>
             </section>
 
             <details className="advanced-block">
@@ -5624,6 +5803,40 @@ export function Step3RenderTemplate({
                             Если отключить, из preview и финального render убирается звук исходника. Без музыки
                             клип будет беззвучным.
                           </p>
+                          <div className="slider-field">
+                            <div className="quick-edit-label-row">
+                              <label className="field-label" htmlFor="sourceAudioGainRange">
+                                Громкость исходника
+                              </label>
+                              <span className="quick-edit-value">{Math.round(localSourceAudioGain * 100)}%</span>
+                            </div>
+                            <input
+                              id="sourceAudioGainRange"
+                              type="range"
+                              min={0}
+                              max={2}
+                              step={0.01}
+                              value={localSourceAudioGain}
+                              disabled={!sourceAudioEnabled}
+                              onChange={(event) => scheduleSourceAudioGainCommit(Number.parseFloat(event.target.value))}
+                              onMouseUp={() => flushSourceAudioGainCommit(localSourceAudioGain)}
+                              onTouchEnd={() => flushSourceAudioGainCommit(localSourceAudioGain)}
+                              onBlur={() => flushSourceAudioGainCommit(localSourceAudioGain)}
+                            />
+                            <div className="preset-row">
+                              {[0, 0.5, 1, 1.5, 2].map((value) => (
+                                <button
+                                  key={`source-audio-${value}`}
+                                  type="button"
+                                  className="preset-chip"
+                                  disabled={!sourceAudioEnabled}
+                                  onClick={() => applySourceAudioGainImmediate(value)}
+                                >
+                                  {Math.round(value * 100)}%
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                           <div className="slider-field">
                             <div className="quick-edit-label-row">
                               <label className="field-label" htmlFor="musicGainRange">
@@ -6534,6 +6747,7 @@ export function Step3RenderTemplate({
             topFontScale={localTopFontScale}
             bottomFontScale={localBottomFontScale}
             sourceAudioEnabled={sourceAudioEnabled}
+            sourceAudioGain={localSourceAudioGain}
             musicGain={musicGain}
             templateConfig={templateConfig}
             selectedPositionKeyframeId={null}

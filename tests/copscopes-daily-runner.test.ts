@@ -433,6 +433,7 @@ test("CopScopes render snapshot hardening clamps unsafe zoom and focus before qu
       sourceCrop: null,
       topFontScale: 1.25,
       bottomFontScale: 1.25,
+      sourceAudioGain: 1,
       musicGain: 0,
       textPolicy: "strict_fit",
       segments: [

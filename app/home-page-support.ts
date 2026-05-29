@@ -616,6 +616,7 @@ export function fallbackRenderPlan(): Stage3RenderPlan {
     sourceCrop: null,
     topFontScale: DEFAULT_TEXT_SCALE,
     bottomFontScale: DEFAULT_TEXT_SCALE,
+    sourceAudioGain: 1,
     musicGain: 0.65,
     textPolicy: "strict_fit",
     segments: [],
@@ -733,6 +734,7 @@ export function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderP
     segments: plan.segments,
     policy: plan.policy,
     prompt: "",
+    sourceAudioGain: plan.sourceAudioGain,
     musicGain: plan.musicGain,
     musicAssetId: plan.musicAssetId,
     musicAssetMimeType: plan.musicAssetMimeType
@@ -842,6 +844,10 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
       typeof candidate?.bottomFontScale === "number" && Number.isFinite(candidate.bottomFontScale)
         ? clampStage3TextScaleUi(candidate.bottomFontScale)
         : base.bottomFontScale,
+    sourceAudioGain:
+      typeof candidate?.sourceAudioGain === "number" && Number.isFinite(candidate.sourceAudioGain)
+        ? Math.min(2, Math.max(0, candidate.sourceAudioGain))
+        : base.sourceAudioGain,
     musicGain:
       typeof candidate?.musicGain === "number" && Number.isFinite(candidate.musicGain)
         ? Math.min(1, Math.max(0, candidate.musicGain))

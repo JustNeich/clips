@@ -8,6 +8,10 @@ import {
 } from "../lib/stage3-render-plan";
 import { buildStage3SourceCropFfmpegFilter } from "../lib/stage3-source-crop";
 import { fallbackRenderPlan, normalizeRenderPlan } from "../app/home-page-support";
+import {
+  buildStage3DraftRenderPlanOverride,
+  sanitizeStage3DraftRenderPlanOverride
+} from "../lib/stage3-draft-render-plan";
 
 test("normalizeStage3RenderPlanSegments sorts fragments by source timing", () => {
   const normalized = normalizeStage3RenderPlanSegments([
@@ -33,6 +37,37 @@ test("normalizeStage3RenderPlanSegments sorts fragments by source timing", () =>
   assert.equal(normalized[0]?.focusX, 0.73);
   assert.equal(normalized[0]?.focusY, 0.21);
   assert.equal(normalized[1]?.label, "B");
+});
+
+test("stage 3 draft render-plan override keeps per-draft duration and source gain", () => {
+  const base = fallbackRenderPlan();
+  const current = normalizeRenderPlan(
+    {
+      ...base,
+      targetDurationSec: 12,
+      sourceAudioGain: 1.75
+    },
+    base
+  );
+
+  assert.deepEqual(buildStage3DraftRenderPlanOverride(current, base), {
+    targetDurationSec: 12,
+    sourceAudioGain: 1.75
+  });
+
+  assert.deepEqual(
+    sanitizeStage3DraftRenderPlanOverride({
+      targetDurationSec: 15,
+      durationMode: "channel_default",
+      sourceAudioGain: 0.5,
+      templateId: "template-owned-by-channel"
+    }),
+    {
+      durationMode: "channel_default",
+      targetDurationSec: 15,
+      sourceAudioGain: 0.5
+    }
+  );
 });
 
 test("resolveCanonicalStage3RenderPolicy forces fixed_segments when fragments exist", () => {
@@ -133,4 +168,25 @@ test("normalizeRenderPlan preserves and clamps Stage 3 vertical source scale", (
 
   assert.equal(normalized.videoScaleY, 0.72);
   assert.equal(clamped.videoScaleY, 1.5);
+});
+
+test("normalizeRenderPlan preserves and clamps source audio gain", () => {
+  const base = fallbackRenderPlan();
+  const boosted = normalizeRenderPlan(
+    {
+      ...base,
+      sourceAudioGain: 1.75
+    },
+    base
+  );
+  const clamped = normalizeRenderPlan(
+    {
+      ...base,
+      sourceAudioGain: 5
+    },
+    base
+  );
+
+  assert.equal(boosted.sourceAudioGain, 1.75);
+  assert.equal(clamped.sourceAudioGain, 2);
 });

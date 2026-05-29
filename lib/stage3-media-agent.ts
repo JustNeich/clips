@@ -1389,21 +1389,85 @@ async function replaceAudioWithSilence(
   return output;
 }
 
+export function buildStage3SourceAudioGainFfmpegArgs(params: {
+  inputPath: string;
+  outputPath: string;
+  durationSec: number;
+  sourceAudioGain: number;
+}): string[] {
+  const sourceAudioGain = clampNumber(params.sourceAudioGain, 0, 2);
+  return [
+    "-y",
+    "-i",
+    params.inputPath,
+    "-filter_complex",
+    `[0:a]volume=${sourceAudioGain.toFixed(3)}[a]`,
+    "-map",
+    "0:v:0",
+    "-map",
+    "[a]",
+    "-t",
+    params.durationSec.toFixed(3),
+    "-c:v",
+    "copy",
+    "-c:a",
+    "aac",
+    "-ar",
+    "48000",
+    "-ac",
+    "2",
+    params.outputPath
+  ];
+}
+
+async function applySourceAudioGainIfNeeded(params: {
+  inputPath: string;
+  tmpDir: string;
+  durationSec: number;
+  sourceAudioGain: number;
+}): Promise<string> {
+  const sourceAudioGain = clampNumber(params.sourceAudioGain, 0, 2);
+  if (Math.abs(sourceAudioGain - 1) < 0.001) {
+    return params.inputPath;
+  }
+  const output = path.join(params.tmpDir, "clip-source-gain.mp4");
+  await execFileAsync(
+    "ffmpeg",
+    buildStage3SourceAudioGainFfmpegArgs({
+      inputPath: params.inputPath,
+      outputPath: output,
+      durationSec: params.durationSec,
+      sourceAudioGain
+    }),
+    { timeout: 90_000, maxBuffer: 1024 * 1024 * 8 }
+  );
+  return output;
+}
+
 async function mixMusicIfNeeded(params: {
   inputPath: string;
   tmpDir: string;
   durationSec: number;
   audioMode: "source_only" | "source_plus_music";
   sourceAudioEnabled: boolean;
+  sourceAudioGain?: number;
   musicGain?: number;
   musicFilePath?: string | null;
 }): Promise<string> {
   const withAudio = params.sourceAudioEnabled
     ? await ensureAudioTrack(params.inputPath, params.tmpDir, params.durationSec)
     : await replaceAudioWithSilence(params.inputPath, params.tmpDir, params.durationSec);
+  const sourceAudioGain = params.sourceAudioEnabled ? clampNumber(params.sourceAudioGain ?? 1, 0, 2) : 1;
 
   if (params.audioMode !== "source_plus_music") {
-    return withAudio;
+    return params.sourceAudioEnabled
+      ? await applySourceAudioGainIfNeeded({
+          inputPath: withAudio,
+          tmpDir: params.tmpDir,
+          durationSec: params.durationSec,
+          sourceAudioGain
+        })
+      : withAudio;
   }
 
   const generatedMusicPath = path.join(params.tmpDir, "music-bed.wav");
@@ -1452,7 +1516,7 @@ async function mixMusicIfNeeded(params: {
       "-i",
       musicInputPath,
       "-filter_complex",
-      `[1:a]atrim=duration=${params.durationSec},asetpts=N/SR/TB[mus];[0:a]volume=1.0[a0];[mus]volume=${musicGain.toFixed(3)}[a1];[a0][a1]amix=inputs=2:duration=first:normalize=0[a]`,
+      `[1:a]atrim=duration=${params.durationSec},asetpts=N/SR/TB[mus];[0:a]volume=${sourceAudioGain.toFixed(3)}[a0];[mus]volume=${musicGain.toFixed(3)}[a1];[a0][a1]amix=inputs=2:duration=first:normalize=0[a]`,
       "-map",
       "0:v:0",
       "-map",
@@ -1536,6 +1600,7 @@ export async function prepareStage3SourceClip(params: {
     durationSec: params.renderPlan.targetDurationSec,
     audioMode: params.renderPlan.audioMode,
     sourceAudioEnabled: params.renderPlan.sourceAudioEnabled,
+    sourceAudioGain: params.renderPlan.sourceAudioGain,
     musicGain: params.renderPlan.musicGain,
     musicFilePath: params.musicFilePath
   });

@@ -815,6 +815,10 @@ export function normalizeRenderPlan(
       typeof rawPlan?.bottomFontScale === "number" && Number.isFinite(rawPlan.bottomFontScale)
         ? clampStage3TextScaleUi(rawPlan.bottomFontScale)
         : textScaleDefaults.bottomFontScale,
+    sourceAudioGain:
+      typeof rawPlan?.sourceAudioGain === "number" && Number.isFinite(rawPlan.sourceAudioGain)
+        ? Math.min(2, Math.max(0, rawPlan.sourceAudioGain))
+        : 1,
     musicGain:
       typeof rawPlan?.musicGain === "number" && Number.isFinite(rawPlan.musicGain)
         ? Math.min(1, Math.max(0, rawPlan.musicGain))

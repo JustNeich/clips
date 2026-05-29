@@ -713,6 +713,7 @@ function createDefaultRenderPlan(
     sourceCrop: null,
     topFontScale: textScaleDefaults.topFontScale,
     bottomFontScale: textScaleDefaults.bottomFontScale,
+    sourceAudioGain: 1,
     musicGain: 0.65,
     textPolicy: "strict_fit",
     segments: [],
@@ -817,6 +818,10 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
       typeof input?.bottomFontScale === "number" && Number.isFinite(input.bottomFontScale)
         ? clamp(input.bottomFontScale, FONT_SCALE_MIN, FONT_SCALE_MAX)
         : defaultPlan.bottomFontScale,
+    sourceAudioGain:
+      typeof input?.sourceAudioGain === "number" && Number.isFinite(input.sourceAudioGain)
+        ? clamp(input.sourceAudioGain, 0, 2)
+        : defaultPlan.sourceAudioGain,
     musicGain:
       typeof input?.musicGain === "number" && Number.isFinite(input.musicGain)
         ? clamp(input.musicGain, 0, 1)

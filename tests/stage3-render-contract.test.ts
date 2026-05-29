@@ -4,6 +4,7 @@ import {
   buildStage3ExtractSegmentFfmpegArgs,
   buildStage3FitClipVideoFilters,
   buildStage3PreparedDurationGuardFfmpegArgs,
+  buildStage3SourceAudioGainFfmpegArgs,
   buildNormalizeStage3SourceFfmpegArgs,
   resolveStage3SegmentExtractionMode,
   resolveStage3SourcePreparationScaleFilter,
@@ -93,6 +94,22 @@ test("render source preparation caps oversized clips before remotion decodes the
 
   assert.match(filters, /^scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos,/);
   assert.match(filters, /scale=trunc\(iw\/2\)\*2:trunc\(ih\/2\)\*2:flags=lanczos,setsar=1$/);
+});
+
+test("stage3 source audio gain re-encodes only the audio stream", () => {
+  const args = buildStage3SourceAudioGainFfmpegArgs({
+    inputPath: "/tmp/in.mp4",
+    outputPath: "/tmp/out.mp4",
+    durationSec: 9,
+    sourceAudioGain: 1.5
+  });
+
+  assert.deepEqual(args.slice(0, 4), ["-y", "-i", "/tmp/in.mp4", "-filter_complex"]);
+  assert.equal(args[args.indexOf("-filter_complex") + 1], "[0:a]volume=1.500[a]");
+  assert.ok(args.includes("-c:v"));
+  assert.equal(args[args.indexOf("-c:v") + 1], "copy");
+  assert.ok(args.includes("-c:a"));
+  assert.equal(args[args.indexOf("-t") + 1], "9.000");
 });
 
 test("render background still args avoid a second remotion source-video decode", () => {

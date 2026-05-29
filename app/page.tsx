@@ -2669,6 +2669,10 @@ export default function HomePage() {
             typeof draftOverrides?.bottomFontScale === "number" && Number.isFinite(draftOverrides.bottomFontScale)
               ? draftOverrides.bottomFontScale
               : stage3RenderPlan.bottomFontScale,
+          sourceAudioGain:
+            typeof draftOverrides?.sourceAudioGain === "number" && Number.isFinite(draftOverrides.sourceAudioGain)
+              ? draftOverrides.sourceAudioGain
+              : stage3RenderPlan.sourceAudioGain,
           musicGain:
             typeof draftOverrides?.musicGain === "number" && Number.isFinite(draftOverrides.musicGain)
               ? draftOverrides.musicGain
@@ -4909,6 +4913,9 @@ export default function HomePage() {
       latestVersion?.final.captionHighlights ??
       selectedCaption?.highlights ??
       createEmptyTemplateCaptionHighlights();
+    const hasCaptionHighlightOverride =
+      getCaptionHighlightsSignature(stage3CaptionHighlights) !==
+      getCaptionHighlightsSignature(baseCaptionHighlights);
     const baseClipStart = latestVersion?.final.clipStartSec ?? 0;
     const baseFocusY = latestVersion?.final.focusY ?? 0.5;
     const baseAgentPrompt = latestVersion?.prompt ?? defaults.agentPrompt ?? "";
@@ -4932,15 +4939,14 @@ export default function HomePage() {
             : null
       },
       stage3: {
-        topText: stage3TopText !== baseTopText ? stage3TopText : null,
-        bottomText: stage3BottomText !== baseBottomText ? stage3BottomText : null,
+        topText: stage3TopText !== baseTopText || hasCaptionHighlightOverride ? stage3TopText : null,
+        bottomText:
+          stage3BottomText !== baseBottomText || hasCaptionHighlightOverride ? stage3BottomText : null,
         sourceOverlayText:
           stage3SourceOverlayText !== baseSourceOverlayText ? stage3SourceOverlayText : null,
-        captionHighlights:
-          getCaptionHighlightsSignature(stage3CaptionHighlights) !==
-          getCaptionHighlightsSignature(baseCaptionHighlights)
-            ? cloneTemplateCaptionHighlights(stage3CaptionHighlights)
-            : null,
+        captionHighlights: hasCaptionHighlightOverride
+          ? cloneTemplateCaptionHighlights(stage3CaptionHighlights)
+          : null,
         clipStartSec: stage3ClipStartSec !== baseClipStart ? stage3ClipStartSec : null,
         focusY: stage3FocusY !== baseFocusY ? stage3FocusY : null,
         renderPlan: renderPlanOverride,
@@ -7433,6 +7439,7 @@ export default function HomePage() {
           topFontScale={stage3RenderPlan.topFontScale}
           bottomFontScale={stage3RenderPlan.bottomFontScale}
           sourceAudioEnabled={stage3RenderPlan.sourceAudioEnabled}
+          sourceAudioGain={stage3RenderPlan.sourceAudioGain}
           musicGain={stage3RenderPlan.musicGain}
           publishAfterRender={stage3PublishAfterRender}
           publishAfterRenderEnabled={isActiveChannelPublishingReady}
@@ -7459,6 +7466,7 @@ export default function HomePage() {
           onTopTextChange={handleStage3TopTextChange}
           onBottomTextChange={handleStage3BottomTextChange}
           onSourceOverlayTextChange={setStage3SourceOverlayText}
+          onCaptionHighlightsChange={setStage3CaptionHighlights}
           onApplyCaptionSource={handleApplyStage2CaptionToStage3}
           onResetCaptionText={handleResetStage3CaptionText}
           onUploadBackground={handleUploadBackground}
@@ -7562,6 +7570,30 @@ export default function HomePage() {
                 return 0;
               }
               return Math.min(prev, Math.max(0, sourceDurationSec - channelDurationSec));
+            });
+          }}
+          onClipDurationChange={(value) => {
+            const nextDurationSec = normalizeStage3ClipDurationSec(
+              value,
+              activeChannel?.defaultClipDurationSec ?? fallbackRenderPlan().targetDurationSec
+            );
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  durationMode: "channel_default",
+                  targetDurationSec: nextDurationSec,
+                  normalizeToTargetEnabled: true,
+                  policy: "fixed_segments"
+                },
+                fallbackRenderPlan()
+              )
+            );
+            setStage3ClipStartSec((prev) => {
+              if (!sourceDurationSec || sourceDurationSec <= nextDurationSec) {
+                return 0;
+              }
+              return Math.min(prev, Math.max(0, sourceDurationSec - nextDurationSec));
             });
           }}
           onSelectVersionId={(runId) => {
@@ -7743,6 +7775,17 @@ export default function HomePage() {
                 {
                   ...prev,
                   musicGain: value
+                },
+                fallbackRenderPlan()
+              )
+            )
+          }
+          onSourceAudioGainChange={(value) =>
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  sourceAudioGain: value
                 },
                 fallbackRenderPlan()
               )

@@ -13,7 +13,7 @@ This note captures the reliability rules for the manual fragment editor in Stage
 - `Высота исходника` changes only the source video's vertical scale. It must not scale the card, text, source-blur background, or surrounding template chrome.
 - The destructive action stays in the header, isolated from the timing fields, so accidental deletes are less likely during rapid editing.
 - The editor has a canonical output model per render plan:
-  - normal mode produces exactly the channel render target duration;
+  - normal mode produces exactly the current draft render target duration;
   - `source_full` mode produces exactly the source media duration for that individual video.
 - The red playhead always represents output time `0..targetDurationSec`; it is never allowed to drift onto source time.
 - Any timing edit resets preview playback back to `0s`.
@@ -23,7 +23,7 @@ This note captures the reliability rules for the manual fragment editor in Stage
   - drag the fragment body to move a manual fragment;
   - drag the left handle to trim `От`;
   - drag the right handle to trim `До`.
-- The old `Подогнать к 6с` toggle is removed. Normal mode always normalizes the selected material to the exact channel render target timeline.
+- The old `Подогнать к 6с` toggle is removed. Normal mode always normalizes the selected material to the exact draft render target timeline.
 - The `Вся длина исходника` toggle switches the render plan to `durationMode: source_full`; Stage 3 uses one full-source segment from `0` to the source duration, disables routine fragmentation, and keeps playback at `1x`.
 - Whole-window mode is no longer fixed to a 6-second source slice. In normal mode the selected source range may be shorter or longer than the channel target duration, and Stage 3 stretches or compresses it into that fixed output timeline. In `source_full` mode the selected range is always the full source and the output timeline expands to match it.
 

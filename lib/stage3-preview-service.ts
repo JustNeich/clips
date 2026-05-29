@@ -312,6 +312,10 @@ function normalizeRenderPlan(
       typeof rawPlan?.bottomFontScale === "number" && Number.isFinite(rawPlan.bottomFontScale)
         ? clampStage3TextScaleUi(rawPlan.bottomFontScale)
         : textScaleDefaults.bottomFontScale,
+    sourceAudioGain:
+      typeof rawPlan?.sourceAudioGain === "number" && Number.isFinite(rawPlan.sourceAudioGain)
+        ? Math.min(2, Math.max(0, rawPlan.sourceAudioGain))
+        : 1,
     musicGain:
       typeof rawPlan?.musicGain === "number" && Number.isFinite(rawPlan.musicGain)
         ? Math.min(1, Math.max(0, rawPlan.musicGain))
@@ -396,6 +400,7 @@ function buildPreviewCacheKey(params: {
       templateRevision: params.templateRevision,
       renderPlan: params.renderPlan,
       musicAssetId: params.renderPlan.musicAssetId,
+      sourceAudioGain: Number(params.renderPlan.sourceAudioGain.toFixed(3)),
       musicGain: Number(params.renderPlan.musicGain.toFixed(3))
     })
   );

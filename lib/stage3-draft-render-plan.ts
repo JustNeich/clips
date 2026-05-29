@@ -1,6 +1,8 @@
 import { Stage3RenderPlan } from "../app/components/types";
 
 const STAGE3_DRAFT_RENDER_PLAN_OVERRIDE_KEYS = [
+  "durationMode",
+  "targetDurationSec",
   "timingMode",
   "normalizeToTargetEnabled",
   "editorSelectionMode",
@@ -21,6 +23,7 @@ const STAGE3_DRAFT_RENDER_PLAN_OVERRIDE_KEYS = [
   "videoSaturation",
   "topFontScale",
   "bottomFontScale",
+  "sourceAudioGain",
   "musicGain",
   "textPolicy",
   "segments",

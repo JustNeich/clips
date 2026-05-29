@@ -4603,6 +4603,8 @@ test("stage 3 draft render-plan override strips channel-managed template fields"
   };
 
   assert.deepEqual(sanitizeStage3DraftRenderPlanOverride(rawOverride), {
+    durationMode: base.durationMode,
+    targetDurationSec: base.targetDurationSec,
     timingMode: base.timingMode,
     normalizeToTargetEnabled: base.normalizeToTargetEnabled,
     editorSelectionMode: base.editorSelectionMode,
@@ -4623,6 +4625,7 @@ test("stage 3 draft render-plan override strips channel-managed template fields"
     videoSaturation: base.videoSaturation,
     topFontScale: 1.6,
     bottomFontScale: base.bottomFontScale,
+    sourceAudioGain: base.sourceAudioGain,
     musicGain: base.musicGain,
     textPolicy: base.textPolicy,
     segments: base.segments,
@@ -4650,6 +4653,8 @@ test("stage 3 draft render-plan override persists only editable diffs and keeps 
       templateId: "hedges-of-honor-v1",
       videoZoom: 1.35,
       videoScaleY: 0.82,
+      targetDurationSec: 12,
+      durationMode: "channel_default",
       topFontScale: 1.55
     },
     fallbackRenderPlan()
@@ -4657,6 +4662,7 @@ test("stage 3 draft render-plan override persists only editable diffs and keeps 
 
   const persistedOverride = buildStage3DraftRenderPlanOverride(current, originalBase);
   assert.deepEqual(persistedOverride, {
+    targetDurationSec: 12,
     videoZoom: 1.35,
     videoScaleY: 0.82,
     topFontScale: 1.55
@@ -4680,6 +4686,8 @@ test("stage 3 draft render-plan override persists only editable diffs and keeps 
   assert.equal(hydrated.templateId, "science-card-v7");
   assert.equal(hydrated.authorName, "Echoes Of Honor");
   assert.equal(hydrated.authorHandle, "@EchoesOfHonor50");
+  assert.equal(hydrated.durationMode, "channel_default");
+  assert.equal(hydrated.targetDurationSec, 12);
   assert.equal(hydrated.avatarAssetId, "avatar_next");
   assert.equal(hydrated.avatarAssetMimeType, "image/jpeg");
   assert.equal(hydrated.backgroundAssetId, "background_next");
@@ -4882,6 +4890,8 @@ test("normalizeChatDraft removes legacy template id from stage 3 render-plan ove
 
   assert.ok(draft);
   assert.deepEqual(draft?.stage3.renderPlan, {
+    durationMode: fallbackRenderPlan().durationMode,
+    targetDurationSec: fallbackRenderPlan().targetDurationSec,
     timingMode: "auto",
     normalizeToTargetEnabled: false,
     editorSelectionMode: "window",
@@ -4895,12 +4905,14 @@ test("normalizeChatDraft removes legacy template id from stage 3 render-plan ove
     cameraScaleKeyframes: [],
     focusX: fallbackRenderPlan().focusX,
     videoZoom: 1.2,
+    videoScaleY: fallbackRenderPlan().videoScaleY,
     videoBrightness: fallbackRenderPlan().videoBrightness,
     videoExposure: fallbackRenderPlan().videoExposure,
     videoContrast: fallbackRenderPlan().videoContrast,
     videoSaturation: fallbackRenderPlan().videoSaturation,
     topFontScale: fallbackRenderPlan().topFontScale,
     bottomFontScale: fallbackRenderPlan().bottomFontScale,
+    sourceAudioGain: fallbackRenderPlan().sourceAudioGain,
     musicGain: fallbackRenderPlan().musicGain,
     textPolicy: fallbackRenderPlan().textPolicy,
     segments: [],

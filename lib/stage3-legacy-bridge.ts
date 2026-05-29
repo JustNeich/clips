@@ -68,6 +68,7 @@ function fallbackRenderPlan(): Stage3RenderPlan {
     sourceCrop: null,
     topFontScale: DEFAULT_TEXT_SCALE,
     bottomFontScale: DEFAULT_TEXT_SCALE,
+    sourceAudioGain: 1,
     musicGain: 0.65,
     textPolicy: "strict_fit",
     segments: [],
@@ -161,6 +162,10 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
       typeof candidate?.bottomFontScale === "number" && Number.isFinite(candidate.bottomFontScale)
         ? clampStage3TextScaleUi(candidate.bottomFontScale)
         : fallback.bottomFontScale,
+    sourceAudioGain:
+      typeof candidate?.sourceAudioGain === "number" && Number.isFinite(candidate.sourceAudioGain)
+        ? Math.min(2, Math.max(0, candidate.sourceAudioGain))
+        : fallback.sourceAudioGain,
     musicGain:
       typeof candidate?.musicGain === "number" && Number.isFinite(candidate.musicGain)
         ? Math.min(1, Math.max(0, candidate.musicGain))

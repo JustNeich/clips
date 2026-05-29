@@ -23,6 +23,7 @@
 - В Step 3 больше нет split surface `Редактор / Финал`.
 - Основной preview всегда работает от live draft и канонического `0..targetDurationSec` playback plan.
 - `targetDurationSec` обычно приходит из настройки длительности рендера канала, по умолчанию `6s`, с диапазоном `3..15s`.
+- Оператор может переопределить `targetDurationSec` прямо в Step 3 для текущего ролика; это сохраняется в draft/render plan и не меняет дефолт канала.
 - Для отдельных роликов render plan может включить `durationMode: source_full`; тогда effective duration берётся из metadata/proxy исходника и не сжимается в канал-дефолт.
 - Accurate/final artifact может собираться в фоне, но он не имеет права подменять главный preview transport и его red playhead.
 - История версий и точный артефакт открываются из drawer, а не через переключение режима поверхности.
@@ -91,7 +92,13 @@
 - Flow list / MCP summary отдаёт `stage3Runtime` backlog-снимок: queued/running local/host jobs, oldest queued/running age, expired local leases и свежие `worker_unavailable` события.
 - Template drift не должен выглядеть как generic render failure: он классифицируется как `template_snapshot_drift` и остаётся recoverable, потому что операторский recovery — обновить preview и повторить render.
 
-## 13. Пустые flash-кадры не должны попадать в preview/render artifact
+## 13. Per-draft audio и manual highlights
+
+- `sourceAudioGain` хранится в render plan рядом с `sourceAudioEnabled` и `musicGain`; final preview/render должен применять его к аудио исходника до микса с музыкой.
+- Ручные highlight-spans в Step 3 являются частью `captionHighlights` текущего draft. Они не переписывают template profile и не требуют нового Stage 2 run.
+- При ручной правке текста spans нормализуются к новому тексту тем же путём, что и Stage 2 highlight-spans.
+
+## 14. Пустые flash-кадры не должны попадать в preview/render artifact
 
 - Подготовленный Stage 3 source clip и сырой Remotion render проходят flash guard перед сохранением артефакта.
 - Guard ищет нейтральные пустые белые/чёрные кадры по full-frame сигналу, а final render дополнительно проверяет media slot из template snapshot.

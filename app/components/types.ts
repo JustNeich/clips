@@ -696,6 +696,7 @@ export type Stage3EditorDraftOverrides = {
   normalizeToTargetEnabled: boolean;
   topFontScale: number;
   bottomFontScale: number;
+  sourceAudioGain: number;
   musicGain: number;
 };
 
@@ -859,6 +860,7 @@ export type Stage3RenderPlan = {
   editorSelectionMode?: Stage3EditorSelectionMode;
   audioMode: Stage3AudioMode;
   sourceAudioEnabled: boolean;
+  sourceAudioGain: number;
   smoothSlowMo: boolean;
   mirrorEnabled: boolean;
   cameraMotion: Stage3CameraMotion;

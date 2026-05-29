@@ -382,7 +382,8 @@
   - при local-mode: executor chip и кнопка `Подключить executor` / `Executor`
   - details `Контекст шага`
   - section `Единый preview`
-  - status pills `Executor`, `Фон`, `Звук`, `Таймлайн 0 → 6с`
+  - status pills `Executor`, `Фон`, `Звук`, `Таймлайн 0 → Ns`
+  - select `Длина готового ролика` for per-draft `targetDurationSec`
   - details `Оформление и звук`
   - typography sliders:
     - `Размер верхнего текста`
@@ -397,6 +398,7 @@
     - music asset select
     - `Clear`
     - checkbox `Оставить звук исходника`
+    - slider `Громкость исходника`
     - slider `Громкость музыки`
   - card `Финальный текст`
     - textarea/inputs `TOP`, `BOTTOM`
@@ -405,6 +407,7 @@
       - current template highlight status
       - highlight count for current draft / selected option
       - count of caption options that already contain highlight-spans
+      - manual buttons `Выделить TOP/Lead` and `Выделить BOTTOM/Main Caption` for selected text
       - recovery CTA to apply the first option with color spans when the selected option has none
       - link `Открыть template customization`
   - details `Источники и быстрый mix`
