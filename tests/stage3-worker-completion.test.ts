@@ -150,3 +150,29 @@ test("completeRemoteStage3Artifact keeps retrying raw upload after transient 502
   assert.ok(calls[2]?.body instanceof Uint8Array);
   assert.match(warnings.join("\n"), /Raw Stage 3 completion retry 1 .* 502/);
 });
+
+test("completeRemoteStage3Artifact does not keep raw-retrying after storage pressure 507", async () => {
+  let callCount = 0;
+
+  await assert.rejects(
+    completeRemoteStage3Artifact({
+      url: "https://clips.example.com/api/stage3/worker/jobs/job-5/complete",
+      authHeaders: {
+        Authorization: "Bearer token-507"
+      },
+      jobId: "job-5",
+      artifactBytes: new Uint8Array([1, 1, 1]),
+      artifactName: "proxy.mp4",
+      artifactMimeType: "video/mp4",
+      resultJson: null,
+      retryDelaysMs: [0, 0, 0],
+      fetchImpl: async () => {
+        callCount += 1;
+        return jsonErrorResponse(507, "Stage 3 artifact storage is full");
+      }
+    }),
+    /raw upload retry failed: Stage 3 artifact storage is full/
+  );
+
+  assert.equal(callCount, 2);
+});

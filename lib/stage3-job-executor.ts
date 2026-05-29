@@ -24,6 +24,7 @@ import {
 import { executeStage3AgentMediaStep, type Stage3AgentMediaStepPayload } from "./stage3-agent-media-step";
 import { ensureStage3SourceCached } from "./stage3-server-control";
 import { isStage3WorkerJobTimeoutError } from "./stage3-worker-job-timeout";
+import { isStage3ArtifactStorageError } from "./stage3-job-artifacts";
 
 export type Stage3ExecutedJobResult = {
   resultJson: string | null;
@@ -164,6 +165,13 @@ export function classifyStage3HeavyJobError(
   if (isStage3WorkerJobTimeoutError(error)) {
     return {
       code: `${kind.replaceAll("-", "_")}_timeout`,
+      message,
+      recoverable: true
+    };
+  }
+  if (isStage3ArtifactStorageError(error)) {
+    return {
+      code: "artifact_storage_full",
       message,
       recoverable: true
     };

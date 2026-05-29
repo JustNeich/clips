@@ -91,6 +91,7 @@
 - Ошибки внутри job фиксируются в `stage3_jobs`, `stage3_job_events` и audit event `stage3_job.failed`.
 - Flow list / MCP summary отдаёт `stage3Runtime` backlog-снимок: queued/running local/host jobs, oldest queued/running age, expired local leases и свежие `worker_unavailable` события.
 - Template drift не должен выглядеть как generic render failure: он классифицируется как `template_snapshot_drift` и остаётся recoverable, потому что операторский recovery — обновить preview и повторить render.
+- Host artifact storage должен чистить старые `preview` / `render` / `editing-proxy` файлы до записи нового артефакта, а не только после успешной записи. Иначе заполненный persistent disk превращает worker completion в повторяющиеся `ENOSPC` / HTTP 500.
 
 ## 13. Per-draft audio и manual highlights
 

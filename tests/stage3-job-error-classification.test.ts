@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { classifyStage3HeavyJobError } from "../lib/stage3-job-executor";
+import { Stage3ArtifactStorageError, STAGE3_ARTIFACT_STORAGE_FULL_MESSAGE } from "../lib/stage3-job-artifacts";
 
 test("editing proxy anti-bot failures are marked as non-recoverable", () => {
   const classified = classifyStage3HeavyJobError(
@@ -23,4 +24,12 @@ test("generic render failures stay recoverable", () => {
   assert.equal(classified.code, "render_failed");
   assert.equal(classified.recoverable, true);
   assert.equal(classified.message, "Remotion crashed");
+});
+
+test("artifact storage pressure is a recoverable Stage 3 failure", () => {
+  const classified = classifyStage3HeavyJobError("editing-proxy", new Stage3ArtifactStorageError(new Error("ENOSPC")));
+
+  assert.equal(classified.code, "artifact_storage_full");
+  assert.equal(classified.recoverable, true);
+  assert.equal(classified.message, STAGE3_ARTIFACT_STORAGE_FULL_MESSAGE);
 });

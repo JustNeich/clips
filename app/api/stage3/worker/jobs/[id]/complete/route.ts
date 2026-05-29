@@ -5,7 +5,11 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { requireStage3WorkerAuth } from "../../../../../../../lib/auth/stage3-worker";
-import { publishStage3VideoArtifact } from "../../../../../../../lib/stage3-job-artifacts";
+import {
+  isStage3ArtifactStorageError,
+  publishStage3VideoArtifact,
+  STAGE3_ARTIFACT_STORAGE_FULL_MESSAGE
+} from "../../../../../../../lib/stage3-job-artifacts";
 import { buildStage3JobEnvelope } from "../../../../../../../lib/stage3-job-http";
 import {
   DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS,
@@ -314,9 +318,16 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     if (error instanceof Response) {
       return error;
     }
+    const storageFull = isStage3ArtifactStorageError(error);
     return Response.json(
-      { error: error instanceof Error ? error.message : "Не удалось завершить Stage 3 job." },
-      { status: 500 }
+      {
+        error: storageFull
+          ? STAGE3_ARTIFACT_STORAGE_FULL_MESSAGE
+          : error instanceof Error
+            ? error.message
+            : "Не удалось завершить Stage 3 job."
+      },
+      { status: storageFull ? 507 : 500 }
     );
   }
 }
