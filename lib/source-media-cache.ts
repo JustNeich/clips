@@ -16,6 +16,7 @@ import {
 } from "./source-acquisition";
 import { isUploadedSourceUrl } from "./uploaded-source";
 import { normalizeSupportedUrl } from "./ytdlp";
+import { cleanupAppStorageForWrite } from "./storage-maintenance";
 
 export type SourceMediaCacheState = "hit" | "miss" | "wait";
 
@@ -348,6 +349,11 @@ async function pruneSourceMediaCacheForWrite(incomingBytes: number, mode: "norma
   await pruneSourceMediaCacheWithLimits(
     mode === "emergency" ? getEmergencySourceMediaCacheLimits() : reserveSourceMediaCacheForIncoming(incomingBytes)
   ).catch(() => undefined);
+  await cleanupAppStorageForWrite({
+    reason: "source-media-cache",
+    incomingBytes,
+    mode
+  }).catch(() => undefined);
 }
 
 async function writeDownloadedSourceToCache(input: {

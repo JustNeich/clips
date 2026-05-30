@@ -2,8 +2,17 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import { getAppDataDir } from "./app-paths";
+import { cleanupAppStorageForWrite } from "./storage-maintenance";
 
 const RENDER_EXPORT_ARTIFACT_ROOT = path.join(getAppDataDir(), "render-exports");
+
+function isNoSpaceError(error: unknown): boolean {
+  const code =
+    error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = `${code} ${message}`.toLowerCase();
+  return normalized.includes("enospc") || normalized.includes("no space left on device");
+}
 
 function normalizeArtifactExtension(fileName: string): string {
   const ext = path.extname(fileName).trim().toLowerCase();
@@ -51,8 +60,33 @@ export async function persistRenderExportArtifact(input: {
     RENDER_EXPORT_ARTIFACT_ROOT,
     `${input.stage3JobId}.part-${Date.now()}${extension}`
   );
-  await fs.copyFile(resolvedSource, tempPath);
-  await fs.rename(tempPath, finalPath);
+  const sourceStat = await fs.stat(resolvedSource);
+  const writeOnce = async (): Promise<void> => {
+    await fs.rm(tempPath, { force: true }).catch(() => undefined);
+    await fs.rm(finalPath, { force: true }).catch(() => undefined);
+    await fs.copyFile(resolvedSource, tempPath);
+    await fs.rename(tempPath, finalPath);
+  };
+
+  await cleanupAppStorageForWrite({
+    reason: "render-export",
+    incomingBytes: sourceStat.size,
+    mode: "normal"
+  }).catch(() => undefined);
+  try {
+    await writeOnce();
+  } catch (error) {
+    await fs.rm(tempPath, { force: true }).catch(() => undefined);
+    if (!isNoSpaceError(error)) {
+      throw error;
+    }
+    await cleanupAppStorageForWrite({
+      reason: "render-export",
+      incomingBytes: sourceStat.size,
+      mode: "emergency"
+    }).catch(() => undefined);
+    await writeOnce();
+  }
   const stat = await fs.stat(finalPath);
   return {
     filePath: finalPath,

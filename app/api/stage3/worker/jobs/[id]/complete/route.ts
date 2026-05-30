@@ -16,9 +16,17 @@ import {
   appendStage3JobEvent,
   completeStage3Job,
   getStage3Job,
-  heartbeatStage3Job
+  heartbeatStage3Job,
+  type Stage3JobRecord
 } from "../../../../../../../lib/stage3-job-store";
-import { persistRenderExportCompletion } from "../../../../../../../lib/stage3-job-runtime";
+import {
+  persistRenderExportCompletion,
+  recoverRenderExportCompletion
+} from "../../../../../../../lib/stage3-job-runtime";
+import {
+  findLatestPublicationForRenderExport,
+  getRenderExportByStage3JobId
+} from "../../../../../../../lib/publication-store";
 import { touchStage3WorkerHeartbeat } from "../../../../../../../lib/stage3-worker-store";
 
 export const runtime = "nodejs";
@@ -173,6 +181,34 @@ function decodeResultJsonHeader(value: string | null): string | null {
   }
 }
 
+function buildCompletedArtifactUrl(job: Stage3JobRecord): string | null {
+  if (!job.artifact) {
+    return null;
+  }
+  return job.kind === "editing-proxy"
+    ? `/api/stage3/editing-proxy/jobs/${job.id}?download=1`
+    : `/api/stage3/${job.kind}/jobs/${job.id}?download=1`;
+}
+
+async function recoverCompletedRenderExportIfNeeded(job: Stage3JobRecord): Promise<void> {
+  if (job.kind !== "render" || job.status !== "completed" || !job.artifact || !job.artifactFilePath) {
+    return;
+  }
+  const renderExport = getRenderExportByStage3JobId(job.id);
+  const publication = renderExport ? findLatestPublicationForRenderExport(renderExport.id) : null;
+  if (renderExport && publication) {
+    return;
+  }
+  await recoverRenderExportCompletion(job, {
+    jobId: job.id,
+    artifactFileName: job.artifact.fileName,
+    artifactFilePath: job.artifactFilePath,
+    artifactMimeType: job.artifact.mimeType,
+    artifactSizeBytes: job.artifact.sizeBytes,
+    completedAt: job.completedAt ?? new Date().toISOString()
+  });
+}
+
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
   const startedAt = Date.now();
   try {
@@ -183,15 +219,9 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       return Response.json({ error: "Stage 3 job not found." }, { status: 404 });
     }
     if (current.status === "completed") {
+      await recoverCompletedRenderExportIfNeeded(current);
       return Response.json(
-        buildStage3JobEnvelope(
-          current,
-          current.artifact
-            ? current.kind === "editing-proxy"
-              ? `/api/stage3/editing-proxy/jobs/${current.id}?download=1`
-              : `/api/stage3/${current.kind}/jobs/${current.id}?download=1`
-            : null
-        ),
+        buildStage3JobEnvelope(current, buildCompletedArtifactUrl(current)),
         { status: 200 }
       );
     }
@@ -285,14 +315,16 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     });
 
     if (current.kind === "render" && artifactInput) {
-      await persistRenderExportCompletion(completed, {
-        jobId: completed.id,
-        artifactFileName: artifactInput.fileName,
-        artifactFilePath: artifactInput.filePath,
-        artifactMimeType: artifactInput.mimeType,
-        artifactSizeBytes: artifactInput.sizeBytes,
-        completedAt: completed.completedAt ?? new Date().toISOString()
-      }).catch((error) => {
+      try {
+        await persistRenderExportCompletion(completed, {
+          jobId: completed.id,
+          artifactFileName: artifactInput.fileName,
+          artifactFilePath: artifactInput.filePath,
+          artifactMimeType: artifactInput.mimeType,
+          artifactSizeBytes: artifactInput.sizeBytes,
+          completedAt: completed.completedAt ?? new Date().toISOString()
+        });
+      } catch (error) {
         appendStage3JobEvent(
           completed.id,
           "warn",
@@ -300,7 +332,8 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
             ? error.message
             : "Не удалось сохранить server-side результат Stage 3 render."
         );
-      });
+        throw error;
+      }
     }
 
     return Response.json(

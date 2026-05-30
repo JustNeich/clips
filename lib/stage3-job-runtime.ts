@@ -273,16 +273,6 @@ async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
           artifactMimeType: executed.artifact.mimeType,
           artifactSizeBytes: published.sizeBytes,
           completedAt: new Date().toISOString()
-        }).catch((error) => {
-          const message =
-            error instanceof Error
-              ? error.message
-              : "Не удалось сохранить server-side результат Stage 3 render.";
-          appendStage3JobEvent(job.id, "warn", message);
-          logStage3Runtime("render_completion_persist_fail", {
-            jobId: job.id,
-            message
-          });
         });
       }
       if (published && executed.artifact) {

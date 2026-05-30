@@ -92,6 +92,7 @@
 - Flow list / MCP summary отдаёт `stage3Runtime` backlog-снимок: queued/running local/host jobs, oldest queued/running age, expired local leases и свежие `worker_unavailable` события.
 - Template drift не должен выглядеть как generic render failure: он классифицируется как `template_snapshot_drift` и остаётся recoverable, потому что операторский recovery — обновить preview и повторить render.
 - Host artifact storage должен чистить старые `preview` / `render` / `editing-proxy` файлы до записи нового артефакта, а не только после успешной записи. Иначе заполненный persistent disk превращает worker completion в повторяющиеся `ENOSPC` / HTTP 500.
+- Persistent storage cleanup не должен удалять актуальные данные: активные source/stage3 jobs, свежие uploaded-чаты и artifacts активных публикаций защищены. Неактивные старые render exports и uploaded-source mp4 могут удаляться, чтобы local worker completion не падал на серверном `/var/data`.
 
 ## 13. Per-draft audio и manual highlights
 

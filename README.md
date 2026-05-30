@@ -267,6 +267,7 @@ npm run stage3-worker -- start
 - Для загруженного `mp4` комментарии недоступны, но Step 2 и Step 3 продолжают работать по видеоконтексту.
 - Если выбрать несколько `mp4`, Step 1 соберет их в один composite `upload://` source, после чего Stage 3 segment editor продолжит работать на единой таймлинии.
 - Hosted Step 1 source cache перед сохранением нового внешнего исходника очищает старые не-upload cache entries и при `ENOSPC` делает одну аварийную очистку/повтор. Загруженные вручную `mp4` не удаляются автоматически как обычный cache.
+- На Render дополнительно работает безопасная уборка persistent storage: перед сохранением Stage 3 artifacts, render exports и source cache приложение удаляет старые временные файлы, старые неактивные render exports и старые uploaded-source файлы, которые не привязаны к свежему чату, активному job или активной публикации. Если старый uploaded source уже удалён, старый чат попросит загрузить mp4 заново.
 
 ## Workspace AI integrations
 
@@ -475,6 +476,10 @@ Publishing / YouTube queue:
 
 - `YOUTUBE_OAUTH_DEFAULT_CLIENT_KEY` — optional default project key from `YOUTUBE_OAUTH_CLIENTS_JSON`; if omitted, the first configured client is used.
 - `YTDLP_COOKIES` / `YTDLP_COOKIES_PATH` — optional fallback для `yt-dlp` comments/metadata paths и локального worker media path. Для hosted YouTube source download production path теперь использует `Visolix` и не пытается идти в `yt-dlp`.
+- `APP_STORAGE_MIN_FREE_MB` — минимальный свободный запас на persistent disk перед записью нового media-файла. Если места меньше, cleanup автоматически переходит в аварийный режим. Production default: `768`.
+- `APP_STORAGE_RENDER_EXPORT_MAX_AGE_HOURS` / `APP_STORAGE_RENDER_EXPORT_EMERGENCY_MAX_AGE_HOURS` — сколько хранить неактивные render exports. Defaults: `168` часов в обычном режиме, `24` часа в аварийном. Файлы активных queued/uploading/scheduled/paused/failed публикаций защищены.
+- `APP_STORAGE_UPLOADED_SOURCE_MAX_AGE_HOURS` / `APP_STORAGE_UPLOADED_SOURCE_EMERGENCY_MAX_AGE_HOURS` — сколько хранить uploaded-source mp4, которые уже не относятся к свежему чату, активному source/stage3 job или активной публикации. Defaults: `168` часов в обычном режиме, `24` часа в аварийном.
+- `APP_STORAGE_RECENT_SOURCE_PROTECTION_HOURS` — сколько времени считать чат свежим для защиты его uploaded source от cleanup. Default: `168`.
 
 Для Stage 3 local worker YouTube source сначала пробуется локально, но при user-specific anti-bot/IP отказе worker может сделать защищенный fallback через хост. Если Step 1/2 у всех проходит, а Stage 3 ломается только у одного редактора, сначала проверьте personal worker status текущего пользователя и runtime compatibility, затем локальный runtime/IP конкретной машины.
 

@@ -7,6 +7,7 @@ import {
 } from "../../../../../../lib/publication-store";
 import { appendStage3JobEvent, sweepExpiredLocalStage3Jobs } from "../../../../../../lib/stage3-job-store";
 import { getStage3JobOrThrow, recoverRenderExportCompletion } from "../../../../../../lib/stage3-job-runtime";
+import { isStage3ArtifactStorageError } from "../../../../../../lib/stage3-job-artifacts";
 
 export const runtime = "nodejs";
 
@@ -35,6 +36,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
     }
     const renderExport = job.kind === "render" ? getRenderExportByStage3JobId(job.id) : null;
     const recoveredPublication = renderExport ? findLatestPublicationForRenderExport(renderExport.id) : null;
+    let recoveryError: unknown = null;
     if (job.kind === "render" && job.status === "completed" && job.artifact && job.artifactFilePath && (!renderExport || !recoveredPublication)) {
       await recoverRenderExportCompletion(job, {
         jobId: job.id,
@@ -51,10 +53,28 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
             ? error.message
             : "Не удалось восстановить render export и queued-публикацию."
         );
+        recoveryError = error;
       });
     }
 
     const url = new URL(request.url);
+    if (recoveryError && url.searchParams.get("download") !== "1") {
+      return Response.json(
+        buildStage3JobErrorBody({
+          message:
+            recoveryError instanceof Error
+              ? recoveryError.message
+              : "Не удалось восстановить render export и queued-публикацию.",
+          jobId: job.id,
+          recoverable: true
+        }),
+        {
+          status: isStage3ArtifactStorageError(recoveryError) ? 507 : 500,
+          headers: NO_STORE_HEADERS
+        }
+      );
+    }
+
     if (url.searchParams.get("download") === "1") {
       if (!job.artifactFilePath || !job.artifact) {
         return Response.json(

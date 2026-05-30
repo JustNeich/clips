@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { Stage3JobKind } from "../app/components/types";
 import { getAppDataDir } from "./app-paths";
+import { cleanupAppStorageForWrite } from "./storage-maintenance";
 
 type Stage3VideoArtifactKind = Extract<Stage3JobKind, "preview" | "render" | "editing-proxy">;
 
@@ -183,6 +184,11 @@ async function pruneArtifactStorageForWrite(
       await pruneArtifactDirectory(dirPath, retention).catch(() => undefined);
     })
   );
+  await cleanupAppStorageForWrite({
+    reason: `stage3-artifact:${targetKind}`,
+    incomingBytes,
+    mode
+  }).catch(() => undefined);
 }
 
 async function publishStage3VideoArtifactWithWriter(
