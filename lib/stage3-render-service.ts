@@ -389,6 +389,7 @@ function buildRenderFileStem(rawTitle: string | null | undefined, fallback: stri
 
 async function finalizeRenderedOutput(params: {
   inputPath: string;
+  audioInputPath?: string | null;
   outputPath: string;
   metadataTitle: string | null;
   variationProfile: Stage3VariationProfile;
@@ -406,18 +407,26 @@ async function finalizeRenderedOutput(params: {
 
 export function buildFinalizeRenderedOutputArgs(params: {
   inputPath: string;
+  audioInputPath?: string | null;
   outputPath: string;
   metadataTitle: string | null;
   variationProfile: Stage3VariationProfile;
 }): string[] {
+  const audioInputPath = params.audioInputPath?.trim() || null;
   const args = [
     "-y",
     "-i",
-    params.inputPath,
+    params.inputPath
+  ];
+  if (audioInputPath) {
+    args.push("-i", audioInputPath);
+  }
+
+  args.push(
     "-map",
     "0:v:0",
     "-map",
-    "0:a?",
+    audioInputPath ? "1:a?" : "0:a?",
     "-map_metadata",
     "-1",
     "-map_metadata:s:v",
@@ -452,7 +461,11 @@ export function buildFinalizeRenderedOutputArgs(params: {
     "bt709",
     "-c:a",
     "copy"
-  ];
+  );
+
+  if (audioInputPath) {
+    args.push("-shortest");
+  }
 
   args.push(
     "-movflags",
@@ -1201,6 +1214,7 @@ export async function renderStage3Video(
 
         await finalizeRenderedOutput({
           inputPath: flashGuarded.outputPath,
+          audioInputPath: prepared.preparedPath,
           outputPath,
           metadataTitle,
           variationProfile: appliedVariationProfile,

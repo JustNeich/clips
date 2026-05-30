@@ -345,6 +345,16 @@ function clearStage3JobArtifacts(jobId: string): void {
   db.prepare("DELETE FROM stage3_job_artifacts WHERE job_id = ?").run(jobId);
 }
 
+function shouldResetTerminalRetryAttempts(
+  existing: Stage3JobRecord,
+  input: EnqueueStage3JobInput
+): boolean {
+  if (input.reuseCompleted === false) {
+    return true;
+  }
+  return existing.status === "failed" && existing.errorCode === "artifact_storage_full";
+}
+
 export function getStage3Job(jobId: string): Stage3JobRecord | null {
   return mapJobRow(readJobRow(jobId));
 }
@@ -417,7 +427,7 @@ export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord 
           return existing;
         }
 
-        const resetAttempts = input.reuseCompleted === false;
+        const resetAttempts = shouldResetTerminalRetryAttempts(existing, input);
         const previousAttempts = Math.max(0, Number(existing.attempts) || 0);
         const terminalRetry =
           existing.status === "failed" || existing.status === "interrupted";

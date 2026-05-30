@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 import {
   buildStage3ExtractSegmentFfmpegArgs,
   buildStage3FitClipVideoFilters,
@@ -24,6 +29,8 @@ import {
   resolveStage3RenderVariationMode,
   type Stage3VariationProfile
 } from "../lib/stage3-render-variation";
+
+const execFileAsync = promisify(execFile);
 
 function createVariationProfile(mode: Stage3VariationProfile["appliedMode"]): Stage3VariationProfile {
   return {
@@ -332,6 +339,96 @@ test("final render args re-encode video into a stable limited-range contract", (
     args.some((value, index) => value === "-c" && args[index + 1] === "copy"),
     false
   );
+});
+
+test("final render args can take video from remotion output and audio from prepared source", () => {
+  const args = buildFinalizeRenderedOutputArgs({
+    inputPath: "/tmp/visual.mp4",
+    audioInputPath: "/tmp/prepared-source.mp4",
+    outputPath: "/tmp/final.mp4",
+    metadataTitle: "Stable Render",
+    variationProfile: createVariationProfile("off")
+  });
+
+  assert.deepEqual(args.slice(0, 7), [
+    "-y",
+    "-i",
+    "/tmp/visual.mp4",
+    "-i",
+    "/tmp/prepared-source.mp4",
+    "-map",
+    "0:v:0"
+  ]);
+  assert.ok(args.includes("1:a?"));
+  assert.equal(args.includes("0:a?"), false);
+  assert.ok(args.includes("-shortest"));
+});
+
+test("final render mux preserves prepared source audio when remotion output has only video", async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-final-audio-mux-"));
+  const visualPath = path.join(tmpDir, "visual.mp4");
+  const preparedPath = path.join(tmpDir, "prepared.mp4");
+  const finalPath = path.join(tmpDir, "final.mp4");
+
+  try {
+    await execFileAsync("ffmpeg", [
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=black:s=64x64:r=30:d=1",
+      "-an",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      visualPath
+    ]);
+    await execFileAsync("ffmpeg", [
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=blue:s=64x64:r=30:d=1",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:sample_rate=48000:duration=1",
+      "-map",
+      "0:v:0",
+      "-map",
+      "1:a:0",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "aac",
+      preparedPath
+    ]);
+    await execFileAsync("ffmpeg", buildFinalizeRenderedOutputArgs({
+      inputPath: visualPath,
+      audioInputPath: preparedPath,
+      outputPath: finalPath,
+      metadataTitle: null,
+      variationProfile: createVariationProfile("off")
+    }));
+    const { stdout } = await execFileAsync("ffprobe", [
+      "-v",
+      "error",
+      "-select_streams",
+      "a:0",
+      "-show_entries",
+      "stream=codec_type",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      finalPath
+    ]);
+
+    assert.equal(stdout.trim(), "audio");
+  } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test("final render args do not write variation metadata into the mp4 container", () => {

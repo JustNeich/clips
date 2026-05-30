@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 import {
   downloadSourceMedia,
   fetchSourceMetadata,
@@ -13,11 +15,54 @@ import {
 } from "../lib/source-acquisition";
 import { normalizeSupportedUrl } from "../lib/supported-url";
 
+const execFileAsync = promisify(execFile);
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" }
   });
+}
+
+async function writeVideoWithoutAudio(filePath: string): Promise<void> {
+  await execFileAsync("ffmpeg", [
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=black:s=64x64:r=30:d=6",
+    "-an",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    filePath
+  ]);
+}
+
+async function writeVideoWithAudio(filePath: string, durationSec: number, audioDurationSec = durationSec): Promise<void> {
+  await execFileAsync("ffmpeg", [
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    `color=c=blue:s=64x64:r=30:d=${durationSec}`,
+    "-f",
+    "lavfi",
+    "-i",
+    `sine=frequency=440:sample_rate=48000:duration=${audioDurationSec}`,
+    "-map",
+    "0:v:0",
+    "-map",
+    "1:a:0",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    filePath
+  ]);
 }
 
 test("summarizeProviderTextResponse compresses HTML gateway pages into a concise message", () => {
@@ -73,6 +118,108 @@ test("downloadSourceMedia keeps the primary provider error when yt-dlp fallback 
       fallbackProviderError: null,
       hostedFallbackSkippedReason: null
     });
+  } finally {
+    setSourceAcquisitionDownloadersForTests(null);
+    if (previousVisolixApiKey === undefined) {
+      delete process.env.VISOLIX_API_KEY;
+    } else {
+      process.env.VISOLIX_API_KEY = previousVisolixApiKey;
+    }
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("downloadSourceMedia falls back when Visolix returns a video without source audio", { concurrency: false }, async () => {
+  const previousVisolixApiKey = process.env.VISOLIX_API_KEY;
+  process.env.VISOLIX_API_KEY = "test-visolix-key";
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-acquisition-visolix-no-audio-"));
+
+  setSourceAcquisitionDownloadersForTests({
+    visolix: async (_rawUrl, dir) => {
+      const filePath = path.join(dir, "source.mp4");
+      await writeVideoWithoutAudio(filePath);
+      const stat = await fs.stat(filePath);
+      return {
+        provider: "visolix",
+        filePath,
+        fileName: "source",
+        title: "Silent Visolix",
+        durationSec: 6,
+        videoSizeBytes: stat.size
+      };
+    },
+    ytDlp: async (_rawUrl, dir) => {
+      const filePath = path.join(dir, "source.mp4");
+      await writeVideoWithAudio(filePath, 6);
+      const stat = await fs.stat(filePath);
+      return {
+        provider: "ytDlp",
+        filePath,
+        fileName: "source",
+        title: "Recovered audio",
+        durationSec: 6,
+        videoSizeBytes: stat.size
+      };
+    }
+  });
+
+  try {
+    const result = await downloadSourceMedia("https://www.instagram.com/reel/Cabc123defg/", tmpDir);
+    assert.equal(result.provider, "ytDlp");
+    assert.equal(result.downloadFallbackUsed, true);
+    assert.equal(result.primaryProviderError, "Visolix: Visolix вернул mp4 без аудиодорожки.");
+    assert.equal(result.providerErrorSummary?.fallbackProvider, "ytDlp");
+  } finally {
+    setSourceAcquisitionDownloadersForTests(null);
+    if (previousVisolixApiKey === undefined) {
+      delete process.env.VISOLIX_API_KEY;
+    } else {
+      process.env.VISOLIX_API_KEY = previousVisolixApiKey;
+    }
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("downloadSourceMedia falls back when Visolix audio ends far before the video", { concurrency: false }, async () => {
+  const previousVisolixApiKey = process.env.VISOLIX_API_KEY;
+  process.env.VISOLIX_API_KEY = "test-visolix-key";
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-acquisition-visolix-short-audio-"));
+
+  setSourceAcquisitionDownloadersForTests({
+    visolix: async (_rawUrl, dir) => {
+      const filePath = path.join(dir, "source.mp4");
+      await writeVideoWithAudio(filePath, 6, 3);
+      const stat = await fs.stat(filePath);
+      return {
+        provider: "visolix",
+        filePath,
+        fileName: "source",
+        title: "Short audio Visolix",
+        durationSec: 6,
+        videoSizeBytes: stat.size
+      };
+    },
+    ytDlp: async (_rawUrl, dir) => {
+      const filePath = path.join(dir, "source.mp4");
+      await writeVideoWithAudio(filePath, 6);
+      const stat = await fs.stat(filePath);
+      return {
+        provider: "ytDlp",
+        filePath,
+        fileName: "source",
+        title: "Recovered full audio",
+        durationSec: 6,
+        videoSizeBytes: stat.size
+      };
+    }
+  });
+
+  try {
+    const result = await downloadSourceMedia("https://www.instagram.com/reel/Cdef456ghij/", tmpDir);
+    assert.equal(result.provider, "ytDlp");
+    assert.equal(result.downloadFallbackUsed, true);
+    assert.match(result.primaryProviderError ?? "", /аудио короче видео/);
+    assert.equal(result.providerErrorSummary?.fallbackProvider, "ytDlp");
   } finally {
     setSourceAcquisitionDownloadersForTests(null);
     if (previousVisolixApiKey === undefined) {

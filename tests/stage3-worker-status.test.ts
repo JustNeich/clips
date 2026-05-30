@@ -286,6 +286,45 @@ test("automatic failed job retry preserves attempts and stops after limit", asyn
   });
 });
 
+test("artifact storage failures reset attempts so manual retries can recover after cleanup", async () => {
+  await withIsolatedAppData(async () => {
+    const workspaceId = "w1";
+    const userId = "u1";
+    seedWorkspace(workspaceId, userId);
+
+    const first = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "editing-proxy",
+      executionTarget: "local",
+      dedupeKey: "editing-proxy:w1:u1:storage",
+      payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=abc123" })
+    });
+    const db = getDb();
+    db.prepare("UPDATE stage3_jobs SET attempts = 3 WHERE id = ?").run(first.id);
+    finishStage3Job(first.id, {
+      status: "failed",
+      errorCode: "artifact_storage_full",
+      errorMessage: "Stage 3 artifact storage is full",
+      recoverable: true
+    });
+
+    const retried = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "editing-proxy",
+      executionTarget: "local",
+      dedupeKey: "editing-proxy:w1:u1:storage",
+      payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=abc123" })
+    });
+
+    assert.equal(retried.id, first.id);
+    assert.equal(retried.status, "queued");
+    assert.equal(retried.attempts, 0);
+    assert.equal(retried.errorCode, null);
+  });
+});
+
 test("local render sweep interrupts older queued renders for the same chat", async () => {
   await withIsolatedAppData(async () => {
     const workspaceId = "w1";

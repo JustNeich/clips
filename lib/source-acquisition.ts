@@ -182,6 +182,14 @@ function asPositiveNumber(value: unknown): number | null {
   return null;
 }
 
+function maxPositiveDuration(values: unknown[]): number | null {
+  const durations = values.map(asPositiveNumber).filter((value): value is number => value !== null);
+  if (!durations.length) {
+    return null;
+  }
+  return Math.max(...durations);
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -804,6 +812,52 @@ async function tryYtDlpDownload(rawUrl: string, tmpDir: string): Promise<SourceD
   };
 }
 
+async function findDownloadedMediaAudioIssue(filePath: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-show_entries",
+        "stream=codec_type,duration:format=duration",
+        "-of",
+        "json",
+        filePath
+      ],
+      { timeout: 30_000, maxBuffer: 1024 * 1024 }
+    );
+    const parsed = JSON.parse(stdout) as {
+      streams?: Array<{ codec_type?: unknown; duration?: unknown }>;
+      format?: { duration?: unknown };
+    };
+    const streams = Array.isArray(parsed.streams) ? parsed.streams : [];
+    const audioDurations = streams
+      .filter((stream) => stream.codec_type === "audio")
+      .map((stream) => stream.duration);
+    if (!audioDurations.length) {
+      return "Visolix вернул mp4 без аудиодорожки.";
+    }
+
+    const audioDurationSec = maxPositiveDuration(audioDurations);
+    const videoDurationSec =
+      maxPositiveDuration(streams.filter((stream) => stream.codec_type === "video").map((stream) => stream.duration)) ??
+      asPositiveNumber(parsed.format?.duration);
+    if (
+      audioDurationSec !== null &&
+      videoDurationSec !== null &&
+      videoDurationSec >= 4 &&
+      audioDurationSec + 0.75 < videoDurationSec &&
+      audioDurationSec / videoDurationSec < 0.9
+    ) {
+      return `Visolix вернул mp4, где аудио короче видео (${audioDurationSec.toFixed(1)}с из ${videoDurationSec.toFixed(1)}с).`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function downloadSourceMedia(
   rawUrl: string,
   tmpDir: string,
@@ -828,13 +882,35 @@ export async function downloadSourceMedia(
   if (shouldAttemptVisolix) {
     try {
       const downloaded = await visolixDownloader(sourceUrl, tmpDir);
-      return {
-        ...downloaded,
-        primaryProviderError: null,
-        downloadFallbackUsed: false,
-        providerErrorSummary: null
-      };
+      const audioIssue = await findDownloadedMediaAudioIssue(downloaded.filePath);
+      if (audioIssue) {
+        summary = createProviderErrorSummary({
+          primaryProvider: "visolix",
+          primaryProviderError: audioIssue,
+          hostedFallbackSkippedReason
+        });
+        primaryProviderError = formatLegacyPrimaryProviderError("visolix", audioIssue);
+        if (shouldSkipHostedFallback) {
+          throw new SourceDownloadError(
+            primaryProviderError ?? "Source fetch failed.",
+            buildSourceDownloadErrorContext(summary, {
+              attempt: 1,
+              maxAttempts: 1
+            })
+          );
+        }
+      } else {
+        return {
+          ...downloaded,
+          primaryProviderError: null,
+          downloadFallbackUsed: false,
+          providerErrorSummary: null
+        };
+      }
     } catch (error) {
+      if (error instanceof SourceDownloadError) {
+        throw error;
+      }
       const primaryErrorMessage =
         error instanceof Error ? error.message.trim() || "source fetch failed." : "source fetch failed.";
       const retryEligible =
