@@ -14571,6 +14571,18 @@ test("step 3 render template defaults to the finalization surface with stage 2 m
   assert.match(html, /Используется текущий live draft без сохраненной версии/);
 });
 
+test("step 3 render template uses a manual highlight color palette without per-block highlight buttons", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(Step3RenderTemplate, makeStep3RenderTemplateProps())
+  );
+
+  assert.match(html, /Цвет выделения/);
+  assert.match(html, /stage3-highlight-swatch/);
+  assert.match(html, /aria-label="Цвет выделения: Key nouns"/);
+  assert.doesNotMatch(html, /Выделить TOP/);
+  assert.doesNotMatch(html, /Выделить BOTTOM/);
+});
+
 test("step 3 uses lead/body mix actions for channel story templates", () => {
   const html = renderToStaticMarkup(
     React.createElement(

@@ -97,6 +97,7 @@
 
 - `sourceAudioGain` хранится в render plan рядом с `sourceAudioEnabled` и `musicGain`; final preview/render должен применять его к аудио исходника до микса с музыкой.
 - Ручные highlight-spans в Step 3 являются частью `captionHighlights` текущего draft. Они не переписывают template profile и не требуют нового Stage 2 run.
+- Если у шаблона включено несколько highlight-цветов, Step 3 показывает их как палитру: редактор выбирает цвет, затем выделяет слова в TOP/BOTTOM, а повторное выделение тем же цветом снимает только выбранный span.
 - При ручной правке текста spans нормализуются к новому тексту тем же путём, что и Stage 2 highlight-spans.
 
 ## 14. Пустые flash-кадры не должны попадать в preview/render artifact

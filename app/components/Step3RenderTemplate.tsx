@@ -54,13 +54,13 @@ import {
   buildTemplateRenderSnapshot
 } from "../../lib/stage3-template-core";
 import {
+  applyTemplateCaptionHighlightSelection,
   buildCaptionHighlightSourceState,
   cloneTemplateCaptionHighlights,
   countEnabledTemplateHighlightSlots,
   countTemplateHighlightSpans,
   createEmptyTemplateCaptionHighlights,
   isTemplateHighlightingActive,
-  normalizeTemplateHighlightSpans,
   type TemplateHighlightSlotId,
   type TemplateCaptionHighlights
 } from "../../lib/template-highlights";
@@ -2444,6 +2444,7 @@ export function Step3RenderTemplate({
   const musicGainCommitTimerRef = useRef<number | null>(null);
   const topTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  const lastManualHighlightBlockRef = useRef<keyof TemplateCaptionHighlights | null>(null);
 
   const [localClipStartSec, setLocalClipStartSec] = useState(clipStartSec);
   const [localWholeClipWindowEndSec, setLocalWholeClipWindowEndSec] = useState(clipStartSec + clipDurationSec);
@@ -2707,14 +2708,12 @@ export function Step3RenderTemplate({
     () => templateHighlightProfile.slots.filter((slot) => slot.enabled),
     [templateHighlightProfile.slots]
   );
-  const [manualHighlightSlotId, setManualHighlightSlotId] = useState<TemplateHighlightSlotId>(
-    enabledManualHighlightSlots[0]?.slotId ?? "slot1"
-  );
+  const [manualHighlightSlotId, setManualHighlightSlotId] = useState<TemplateHighlightSlotId | null>(null);
   useEffect(() => {
-    if (enabledManualHighlightSlots.some((slot) => slot.slotId === manualHighlightSlotId)) {
+    if (!manualHighlightSlotId || enabledManualHighlightSlots.some((slot) => slot.slotId === manualHighlightSlotId)) {
       return;
     }
-    setManualHighlightSlotId(enabledManualHighlightSlots[0]?.slotId ?? "slot1");
+    setManualHighlightSlotId(null);
   }, [enabledManualHighlightSlots, manualHighlightSlotId]);
   const canApplyManualHighlight = templateHighlightProfileEnabled && enabledManualHighlightSlots.length > 0;
   const currentCaptionHighlightCount = countTemplateHighlightSpans(captionHighlights);
@@ -5163,10 +5162,13 @@ export function Step3RenderTemplate({
 
   const isPreparingRenderText = Boolean(pendingTextFitAction);
   const renderPublishLabel = formatRenderPublishLabel(publishAfterRenderInfo);
-  const applyManualHighlightSelection = (block: keyof TemplateCaptionHighlights) => {
+  const applyManualHighlightSelection = (
+    block: keyof TemplateCaptionHighlights,
+    slotId: TemplateHighlightSlotId | null = manualHighlightSlotId
+  ) => {
     const textarea = block === "top" ? topTextAreaRef.current : bottomTextAreaRef.current;
     const text = block === "top" ? topText : bottomText;
-    if (!textarea || !canApplyManualHighlight) {
+    if (!textarea || !canApplyManualHighlight || !slotId) {
       return;
     }
     const start = Math.min(textarea.selectionStart ?? 0, textarea.selectionEnd ?? 0);
@@ -5174,16 +5176,27 @@ export function Step3RenderTemplate({
     if (end <= start || !text.slice(start, end).trim()) {
       return;
     }
-    const nextHighlights = cloneTemplateCaptionHighlights(captionHighlights);
-    nextHighlights[block] = normalizeTemplateHighlightSpans(
-      [...nextHighlights[block], { start, end, slotId: manualHighlightSlotId }],
-      text
-    );
+    const nextHighlights = applyTemplateCaptionHighlightSelection({
+      highlights: captionHighlights,
+      block,
+      text,
+      start,
+      end,
+      slotId
+    });
     onCaptionHighlightsChange(nextHighlights);
     window.requestAnimationFrame(() => {
       textarea.focus();
       textarea.setSelectionRange(start, end);
     });
+  };
+
+  const applyManualHighlightColor = (slotId: TemplateHighlightSlotId) => {
+    setManualHighlightSlotId(slotId);
+    const block = lastManualHighlightBlockRef.current;
+    if (block) {
+      applyManualHighlightSelection(block, slotId);
+    }
   };
 
   const finishCaptionEditorCard = (
@@ -5207,6 +5220,10 @@ export function Step3RenderTemplate({
               rows={4}
               value={topText}
               onChange={(event) => onTopTextChange(event.target.value)}
+              onFocus={() => {
+                lastManualHighlightBlockRef.current = "top";
+              }}
+              onMouseUp={() => applyManualHighlightSelection("top")}
               placeholder={`Финальный ${topFieldLabel} для рендера`}
             />
           </label>
@@ -5219,6 +5236,10 @@ export function Step3RenderTemplate({
             rows={4}
             value={bottomText}
             onChange={(event) => onBottomTextChange(event.target.value)}
+            onFocus={() => {
+              lastManualHighlightBlockRef.current = "bottom";
+            }}
+            onMouseUp={() => applyManualHighlightSelection("bottom")}
             placeholder={`Финальный ${bottomFieldLabel} для рендера`}
           />
         </label>
@@ -5311,41 +5332,28 @@ export function Step3RenderTemplate({
                   ? "В этом draft пока нет своих выделений, но в списке ниже уже есть варианты Stage 2 с highlight-spans."
                   : "У текущих вариантов Stage 2 пока нет цветных слов. Обычно это значит, что template profile ещё не включён или Stage 2 не перегонялся после правки шаблона."}
         </p>
-        <div className="control-actions">
-          {enabledManualHighlightSlots.length > 1 ? (
-            <select
-              className="text-input compact-select"
-              value={manualHighlightSlotId}
-              disabled={!canApplyManualHighlight}
-              onChange={(event) => setManualHighlightSlotId(event.target.value as TemplateHighlightSlotId)}
-            >
+        <div className="control-actions stage3-highlight-control-row">
+          <div className="stage3-highlight-palette" aria-label="Цвет выделения">
+            <span className="field-label">Цвет выделения</span>
+            <div className="stage3-highlight-swatches">
               {enabledManualHighlightSlots.map((slot) => (
-                <option key={slot.slotId} value={slot.slotId}>
-                  {slot.label}
-                </option>
+                <button
+                  key={slot.slotId}
+                  type="button"
+                  className={`stage3-highlight-swatch ${manualHighlightSlotId === slot.slotId ? "selected" : ""}`}
+                  style={{ "--highlight-color": slot.color } as React.CSSProperties}
+                  disabled={!canApplyManualHighlight}
+                  title={slot.label}
+                  aria-label={`Цвет выделения: ${slot.label}`}
+                  aria-pressed={manualHighlightSlotId === slot.slotId}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => applyManualHighlightColor(slot.slotId)}
+                >
+                  <span className="sr-only">{slot.label}</span>
+                </button>
               ))}
-            </select>
-          ) : null}
-          {templateTextSemantics.topVisible ? (
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={!canApplyManualHighlight}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => applyManualHighlightSelection("top")}
-            >
-              Выделить {topFieldLabel}
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={!canApplyManualHighlight}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => applyManualHighlightSelection("bottom")}
-          >
-            Выделить {bottomFieldLabel}
-          </button>
+            </div>
+          </div>
           {canRecoverHighlightsFromAnotherOption && suggestedHighlightedSource ? (
             <button
               type="button"

@@ -111,6 +111,53 @@ export function clearTemplateCaptionHighlightsBlock(
   return next;
 }
 
+export function applyTemplateCaptionHighlightSelection(input: {
+  highlights: TemplateCaptionHighlights | null | undefined;
+  block: keyof TemplateCaptionHighlights;
+  text: string;
+  start: number;
+  end: number;
+  slotId: TemplateHighlightSlotId;
+}): TemplateCaptionHighlights {
+  const start = Math.max(0, Math.min(input.text.length, Math.min(input.start, input.end)));
+  const end = Math.max(0, Math.min(input.text.length, Math.max(input.start, input.end)));
+  const next = cloneTemplateCaptionHighlights(input.highlights);
+  if (end <= start || !input.text.slice(start, end).trim()) {
+    return next;
+  }
+
+  const selectedRange = { start, end };
+  const currentBlock = normalizeTemplateHighlightSpans(next[input.block], input.text);
+  const overlapping = currentBlock.filter((span) => rangesOverlap(span, selectedRange));
+  const remaining = currentBlock.flatMap((span) => subtractRangeFromHighlightSpan(span, selectedRange));
+  const shouldRemoveOnly = overlapping.length > 0 && overlapping.every((span) => span.slotId === input.slotId);
+
+  next[input.block] = shouldRemoveOnly
+    ? normalizeTemplateHighlightSpans(remaining, input.text)
+    : normalizeTemplateHighlightSpans([...remaining, { start, end, slotId: input.slotId }], input.text);
+  return next;
+}
+
+function subtractRangeFromHighlightSpan(
+  span: TemplateHighlightSpan,
+  range: { start: number; end: number }
+): TemplateHighlightSpan[] {
+  if (!rangesOverlap(span, range)) {
+    return [span];
+  }
+
+  const pieces: TemplateHighlightSpan[] = [];
+  const beforeEnd = Math.min(range.start, span.end);
+  const afterStart = Math.max(range.end, span.start);
+  if (span.start < beforeEnd) {
+    pieces.push({ start: span.start, end: beforeEnd, slotId: span.slotId });
+  }
+  if (afterStart < span.end) {
+    pieces.push({ start: afterStart, end: span.end, slotId: span.slotId });
+  }
+  return pieces;
+}
+
 function resolveSharedPrefixLength(previousText: string, nextText: string): number {
   const max = Math.min(previousText.length, nextText.length);
   let index = 0;

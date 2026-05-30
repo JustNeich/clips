@@ -8283,6 +8283,50 @@ select.text-input:focus {
   flex-wrap: wrap;
 }
 
+.stage3-highlight-control-row {
+  align-items: center;
+}
+
+.stage3-highlight-palette {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+}
+
+.stage3-highlight-swatches {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stage3-highlight-swatch {
+  --highlight-color: #f3b31f;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0)),
+    var(--highlight-color);
+  box-shadow: inset 0 0 0 2px rgba(2, 6, 23, 0.55);
+  cursor: pointer;
+}
+
+.stage3-highlight-swatch:hover:not(:disabled),
+.stage3-highlight-swatch.selected {
+  border-color: rgba(255, 255, 255, 0.86);
+  box-shadow:
+    0 0 0 3px rgba(126, 169, 255, 0.22),
+    inset 0 0 0 2px rgba(2, 6, 23, 0.55);
+}
+
+.stage3-highlight-swatch:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .stage3-caption-source-list {
   display: grid;
   gap: 12px;

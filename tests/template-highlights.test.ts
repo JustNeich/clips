@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  applyTemplateCaptionHighlightSelection,
   buildDistributedTemplateHighlightSpansFromPhrases,
   buildCaptionHighlightSourceState,
   buildTemplateHighlightSpansFromPhrases,
@@ -11,7 +12,8 @@ import {
   isTemplateHighlightingActive,
   normalizeTemplateHighlightConfig,
   normalizeTemplateHighlightPhraseAnnotations,
-  remapTemplateHighlightSpansForTextEdit
+  remapTemplateHighlightSpansForTextEdit,
+  type TemplateCaptionHighlights
 } from "../lib/template-highlights";
 
 test("highlight config defaults stay enabled and seed slot1 from accent color", () => {
@@ -82,6 +84,78 @@ test("clearing one highlight block preserves the other block", () => {
 
   assert.deepEqual(cleared.top, []);
   assert.deepEqual(cleared.bottom, [{ start: 5, end: 9, slotId: "slot2" }]);
+});
+
+test("manual highlight selection adds, removes, and recolors only the selected block", () => {
+  const text = "Alpha bravo charlie delta";
+  const added = applyTemplateCaptionHighlightSelection({
+    highlights: {
+      top: [],
+      bottom: [{ start: 0, end: 5, slotId: "slot3" }]
+    },
+    block: "top",
+    text,
+    start: 6,
+    end: 11,
+    slotId: "slot1"
+  });
+
+  assert.deepEqual(added, {
+    top: [{ start: 6, end: 11, slotId: "slot1" }],
+    bottom: [{ start: 0, end: 5, slotId: "slot3" }]
+  });
+
+  const removed = applyTemplateCaptionHighlightSelection({
+    highlights: added,
+    block: "top",
+    text,
+    start: 6,
+    end: 11,
+    slotId: "slot1"
+  });
+
+  assert.deepEqual(removed.top, []);
+  assert.deepEqual(removed.bottom, [{ start: 0, end: 5, slotId: "slot3" }]);
+
+  const recolored = applyTemplateCaptionHighlightSelection({
+    highlights: added,
+    block: "top",
+    text,
+    start: 6,
+    end: 11,
+    slotId: "slot2"
+  });
+
+  assert.deepEqual(recolored.top, [{ start: 6, end: 11, slotId: "slot2" }]);
+
+  const wideHighlight: TemplateCaptionHighlights = {
+    top: [{ start: 6, end: 19, slotId: "slot1" }],
+    bottom: []
+  };
+  const removedSubrange = applyTemplateCaptionHighlightSelection({
+    highlights: wideHighlight,
+    block: "top",
+    text,
+    start: 12,
+    end: 19,
+    slotId: "slot1"
+  });
+
+  assert.deepEqual(removedSubrange.top, [{ start: 6, end: 12, slotId: "slot1" }]);
+
+  const recoloredSubrange = applyTemplateCaptionHighlightSelection({
+    highlights: wideHighlight,
+    block: "top",
+    text,
+    start: 12,
+    end: 19,
+    slotId: "slot2"
+  });
+
+  assert.deepEqual(recoloredSubrange.top, [
+    { start: 6, end: 12, slotId: "slot1" },
+    { start: 12, end: 19, slotId: "slot2" }
+  ]);
 });
 
 test("remapping highlight spans preserves unaffected spans and shifts later spans after an edit", () => {
