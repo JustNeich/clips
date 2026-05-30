@@ -54,13 +54,40 @@ const HOSTED_SOURCE_MEDIA_CACHE_MAX_BYTES = 512 * 1024 * 1024;
 const execFileAsync = promisify(execFile);
 const sourceMediaInflight = new Map<string, Promise<CachedSourceMediaCore>>();
 
+export const SOURCE_MEDIA_CACHE_STORAGE_FULL_MESSAGE =
+  "На сервере не хватило места, чтобы сохранить исходное видео Stage 1. Старый source cache уже очищен; повторите действие. Если ошибка повторится, нужно освободить persistent disk Render.";
+
+export class SourceMediaCacheStorageError extends Error {
+  readonly code = "source_media_cache_storage_full";
+
+  constructor(cause: unknown) {
+    super(SOURCE_MEDIA_CACHE_STORAGE_FULL_MESSAGE);
+    this.name = "SourceMediaCacheStorageError";
+    this.cause = cause;
+  }
+}
+
 type EnsureSourceMediaCachedOptions = SourceDownloadOptions;
+
+type SourceMediaCacheLimits = {
+  maxEntries: number;
+  maxAgeMs: number;
+  maxBytes: number;
+};
 
 function createDefaultProviderErrorSummary(): SourceProviderErrorSummary | null {
   return null;
 }
 
-function getSourceMediaCacheLimits() {
+function isNoSpaceError(error: unknown): boolean {
+  const code =
+    error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = `${code} ${message}`.toLowerCase();
+  return normalized.includes("enospc") || normalized.includes("no space left on device");
+}
+
+function getSourceMediaCacheLimits(): SourceMediaCacheLimits {
   if (isHostedRenderRuntime()) {
     return {
       maxEntries: HOSTED_SOURCE_MEDIA_CACHE_MAX_ENTRIES,
@@ -72,6 +99,26 @@ function getSourceMediaCacheLimits() {
     maxEntries: SOURCE_MEDIA_CACHE_MAX_ENTRIES,
     maxAgeMs: SOURCE_MEDIA_CACHE_MAX_AGE_MS,
     maxBytes: Number.POSITIVE_INFINITY
+  };
+}
+
+function reserveSourceMediaCacheForIncoming(incomingBytes: number): SourceMediaCacheLimits {
+  const limits = getSourceMediaCacheLimits();
+  const normalizedIncomingBytes = Math.max(0, Number.isFinite(incomingBytes) ? Math.floor(incomingBytes) : 0);
+  return {
+    ...limits,
+    maxEntries: Math.max(0, limits.maxEntries - 1),
+    maxBytes: Number.isFinite(limits.maxBytes)
+      ? Math.max(0, limits.maxBytes - normalizedIncomingBytes)
+      : limits.maxBytes
+  };
+}
+
+function getEmergencySourceMediaCacheLimits(): SourceMediaCacheLimits {
+  return {
+    maxEntries: 0,
+    maxAgeMs: 0,
+    maxBytes: 0
   };
 }
 
@@ -216,9 +263,8 @@ async function writeMeta(sourceKey: string, meta: CachedSourceMediaMeta): Promis
   await fs.writeFile(buildMetaPath(sourceKey), `${JSON.stringify(meta)}\n`, "utf-8");
 }
 
-async function pruneSourceMediaCache(): Promise<void> {
+async function pruneSourceMediaCacheWithLimits(limits: SourceMediaCacheLimits): Promise<void> {
   const now = Date.now();
-  const limits = getSourceMediaCacheLimits();
   const cacheDir = getSourceMediaCacheDir();
   const entries = await fs.readdir(cacheDir).catch(() => []);
   const filesWithMeta = (
@@ -291,6 +337,60 @@ async function pruneSourceMediaCache(): Promise<void> {
       fs.rm(entry.metaPath, { force: true }).catch(() => undefined)
     ])
   );
+}
+
+async function pruneSourceMediaCache(): Promise<void> {
+  await pruneSourceMediaCacheWithLimits(getSourceMediaCacheLimits());
+}
+
+async function pruneSourceMediaCacheForWrite(incomingBytes: number, mode: "normal" | "emergency"): Promise<void> {
+  await fs.mkdir(getSourceMediaCacheDir(), { recursive: true });
+  await pruneSourceMediaCacheWithLimits(
+    mode === "emergency" ? getEmergencySourceMediaCacheLimits() : reserveSourceMediaCacheForIncoming(incomingBytes)
+  ).catch(() => undefined);
+}
+
+async function writeDownloadedSourceToCache(input: {
+  downloaded: Awaited<ReturnType<typeof downloadSourceMedia>>;
+  sourcePath: string;
+  sourceKey: string;
+  meta: CachedSourceMediaMeta;
+  incomingBytes: number;
+}): Promise<void> {
+  const metaPath = buildMetaPath(input.sourceKey);
+  const tempPath = path.join(getSourceMediaCacheDir(), `${input.sourceKey}.downloading`);
+  const writeOnce = async (): Promise<void> => {
+    await fs.rm(tempPath, { force: true }).catch(() => undefined);
+    await fs.rm(input.sourcePath, { force: true }).catch(() => undefined);
+    await fs.rm(metaPath, { force: true }).catch(() => undefined);
+    await fs.copyFile(input.downloaded.filePath, tempPath);
+    await fs.rename(tempPath, input.sourcePath);
+    await writeMeta(input.sourceKey, input.meta);
+  };
+
+  await pruneSourceMediaCacheForWrite(input.incomingBytes, "normal");
+  try {
+    await writeOnce();
+  } catch (error) {
+    await fs.rm(tempPath, { force: true }).catch(() => undefined);
+    await fs.rm(input.sourcePath, { force: true }).catch(() => undefined);
+    await fs.rm(metaPath, { force: true }).catch(() => undefined);
+    if (!isNoSpaceError(error)) {
+      throw error;
+    }
+    await pruneSourceMediaCacheForWrite(input.incomingBytes, "emergency");
+    try {
+      await writeOnce();
+    } catch (retryError) {
+      await fs.rm(tempPath, { force: true }).catch(() => undefined);
+      await fs.rm(input.sourcePath, { force: true }).catch(() => undefined);
+      await fs.rm(metaPath, { force: true }).catch(() => undefined);
+      if (isNoSpaceError(retryError)) {
+        throw new SourceMediaCacheStorageError(retryError);
+      }
+      throw retryError;
+    }
+  }
 }
 
 export const pruneSourceMediaCacheForTests = pruneSourceMediaCache;
@@ -612,17 +712,23 @@ export async function ensureSourceMediaCached(
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-source-cache-build-"));
     try {
       const downloaded = await downloadSourceMedia(sourceUrl, tmpDir, options);
-      await fs.copyFile(downloaded.filePath, sourcePath);
+      const sourceStat = await fs.stat(downloaded.filePath);
       const meta: CachedSourceMediaMeta = {
         fileName: downloaded.fileName,
         title: downloaded.title,
-        videoSizeBytes: downloaded.videoSizeBytes,
+        videoSizeBytes: sourceStat.size,
         downloadProvider: downloaded.provider,
         primaryProviderError: downloaded.primaryProviderError,
         downloadFallbackUsed: downloaded.downloadFallbackUsed,
         providerErrorSummary: downloaded.providerErrorSummary
       };
-      await writeMeta(sourceKey, meta);
+      await writeDownloadedSourceToCache({
+        downloaded,
+        sourcePath,
+        sourceKey,
+        meta,
+        incomingBytes: sourceStat.size
+      });
       void pruneSourceMediaCache().catch(() => undefined);
       return {
         sourcePath,
