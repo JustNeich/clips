@@ -44,14 +44,14 @@ test("stage 3 draft render-plan override keeps per-draft duration and source gai
   const current = normalizeRenderPlan(
     {
       ...base,
-      targetDurationSec: 12,
+      targetDurationSec: 59,
       sourceAudioGain: 1.75
     },
     base
   );
 
   assert.deepEqual(buildStage3DraftRenderPlanOverride(current, base), {
-    targetDurationSec: 12,
+    targetDurationSec: 59,
     sourceAudioGain: 1.75
   });
 

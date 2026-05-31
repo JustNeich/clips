@@ -383,7 +383,7 @@
   - details `Контекст шага`
   - section `Единый preview`
   - status pills `Executor`, `Фон`, `Звук`, `Таймлайн 0 → Ns`
-  - select `Длина готового ролика` for per-draft `targetDurationSec`
+  - select `Длина готового ролика` for per-draft `targetDurationSec` in the `3..59s` range
   - details `Шаблон, фон и звук`
   - typography sliders:
     - `Размер верхнего текста`
@@ -667,7 +667,7 @@
   - в канале:
     - template picker
     - background/music default selects
-    - asset-dependent render defaults
+    - asset-dependent render defaults, including `Хронометраж по умолчанию` in the `3..59s` range
 - `redactor_limited`: может редактировать только channel render defaults: template backup/import selection, default background/music and default duration.
 - `related APIs`:
   - `GET /api/workspace`

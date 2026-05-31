@@ -6,6 +6,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 
 import { describeChannelManagerSavePatch } from "../app/components/ChannelManager";
 import { fallbackRenderPlan, normalizeRenderPlan } from "../app/home-page-support";
+import {
+  buildStage3ClipDurationOptions,
+  normalizeStage3ClipDurationSec
+} from "../lib/stage3-duration";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
   const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-channel-render-duration-test-"));
@@ -56,6 +60,48 @@ test("channel render duration defaults to 6 seconds and persists an explicit 9 s
 
     const reloaded = await chatHistory.getChannelById(channel.id);
     assert.equal(reloaded?.defaultClipDurationSec, 9);
+  });
+});
+
+test("stage 3 manual duration options extend through 59 seconds", () => {
+  const options = buildStage3ClipDurationOptions();
+
+  assert.equal(options[0], 3);
+  assert.equal(options.at(-1), 59);
+  assert.equal(options.includes(15), true);
+  assert.equal(options.includes(59), true);
+  assert.equal(options.includes(60), false);
+  assert.equal(normalizeStage3ClipDurationSec(59), 59);
+  assert.equal(normalizeStage3ClipDurationSec(60), 59);
+});
+
+test("channel render duration persists an explicit 59 second override", async () => {
+  await withIsolatedAppData(async () => {
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Long Channel Duration",
+      email: "owner-long@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Long Snack",
+      username: "long_snack"
+    });
+
+    const updated = await chatHistory.updateChannelById(channel.id, {
+      defaultClipDurationSec: 59
+    });
+
+    assert.equal(updated.defaultClipDurationSec, 59);
+
+    const reloaded = await chatHistory.getChannelById(channel.id);
+    assert.equal(reloaded?.defaultClipDurationSec, 59);
   });
 });
 
@@ -119,12 +165,12 @@ test("render plan normalization preserves a longer per-channel target duration",
   const normalized = normalizeRenderPlan(
     {
       ...fallbackRenderPlan(),
-      targetDurationSec: 9
+      targetDurationSec: 59
     },
     fallbackRenderPlan()
   );
 
-  assert.equal(normalized.targetDurationSec, 9);
+  assert.equal(normalized.targetDurationSec, 59);
 });
 
 test("channel manager classifies duration changes as render saves", () => {

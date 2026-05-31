@@ -127,6 +127,7 @@ for (const file of files) {
 const fs = require("node:fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
   const files = Array.isArray(manifest.libFiles) ? manifest.libFiles : [
+  "stage3-duration.ts",
   "stage3-template.ts",
   "stage3-template-semantics.ts",
   "stage3-template-fonts.ts",
@@ -146,6 +147,7 @@ const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
   "stage3-template-registry.ts",
   "stage3-background-mode.ts",
   "stage3-video-adjustments.ts",
+  "stage3-video-scale.ts",
   "stage3-video-placement.ts",
   "stage3-worker-job-timeout.ts"
 ];

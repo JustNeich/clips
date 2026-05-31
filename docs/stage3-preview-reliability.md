@@ -22,7 +22,7 @@
 
 - В Step 3 больше нет split surface `Редактор / Финал`.
 - Основной preview всегда работает от live draft и канонического `0..targetDurationSec` playback plan.
-- `targetDurationSec` обычно приходит из настройки длительности рендера канала, по умолчанию `6s`, с диапазоном `3..15s`.
+- `targetDurationSec` обычно приходит из настройки длительности рендера канала, по умолчанию `6s`, с диапазоном `3..59s`.
 - Оператор может переопределить `targetDurationSec` прямо в Step 3 для текущего ролика; это сохраняется в draft/render plan и не меняет дефолт канала.
 - Для отдельных роликов render plan может включить `durationMode: source_full`; тогда effective duration берётся из metadata/proxy исходника и не сжимается в канал-дефолт.
 - Accurate/final artifact может собираться в фоне, но он не имеет права подменять главный preview transport и его red playhead.

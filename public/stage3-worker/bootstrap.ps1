@@ -108,6 +108,7 @@ function Install-ClipsStage3Worker {
     $libFiles = @($manifest.libFiles)
     if ($libFiles.Count -eq 0) {
       $libFiles = @(
+        "stage3-duration.ts",
         "stage3-template.ts",
         "stage3-template-semantics.ts",
         "stage3-template-fonts.ts",
@@ -127,6 +128,7 @@ function Install-ClipsStage3Worker {
         "stage3-template-registry.ts",
         "stage3-background-mode.ts",
         "stage3-video-adjustments.ts",
+        "stage3-video-scale.ts",
         "stage3-video-placement.ts",
         "stage3-worker-job-timeout.ts"
       )
