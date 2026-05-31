@@ -137,6 +137,7 @@
 | Edit final TOP/BOTTOM | yes | yes | yes | yes |
 | Edit timing/fragments | yes | yes | yes | yes |
 | Upload background/music assets into draft | yes | yes | yes | yes |
+| Import template backup into current draft | yes | yes | yes | yes |
 | Export / render | yes | yes | yes | yes |
 | Pair local executor | yes | yes | yes | yes if Step 3 surface reachable |
 | Open version drawer | yes | yes | yes | yes |

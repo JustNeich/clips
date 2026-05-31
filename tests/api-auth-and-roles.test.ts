@@ -9,6 +9,7 @@ import { POST as registerRoute } from "../app/api/auth/register/route";
 import { GET as getChatTrace } from "../app/api/chat-trace/[id]/route";
 import { GET as listChannelsRoute } from "../app/api/channels/route";
 import { PATCH as patchChannelRoute } from "../app/api/channels/[id]/route";
+import { POST as uploadChannelAssetRoute } from "../app/api/channels/[id]/assets/route";
 import {
   GET as listManagedTemplatesRoute,
   POST as createManagedTemplateRoute
@@ -24,13 +25,21 @@ import { GET as getRuntimeCapabilities } from "../app/api/runtime/capabilities/r
 import { GET as readStage3Background } from "../app/api/stage3/background/[id]/route";
 import { POST as uploadStage3Background } from "../app/api/stage3/background/route";
 import { POST as fetchVideoMeta } from "../app/api/video/meta/route";
+import { PATCH as patchPublicationRoute } from "../app/api/publications/[id]/route";
+import { POST as shiftPublicationRoute } from "../app/api/publications/[id]/shift/route";
 import { DELETE as deleteWorkspaceMemberRoute } from "../app/api/workspace/members/[memberId]/route";
 import { APP_SESSION_COOKIE } from "../lib/auth/cookies";
+import {
+  buildPublicationSlotCandidateFromDateAndIndex,
+  DEFAULT_CHANNEL_PUBLISH_SETTINGS
+} from "../lib/channel-publishing";
+import { getDb, newId, nowIso } from "../lib/db/client";
 import {
   createManagedTemplate,
   deleteManagedTemplate,
   getWorkspaceDefaultTemplateId
 } from "../lib/managed-template-store";
+import { createChannelPublication, createRenderExport } from "../lib/publication-store";
 import { STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
 import { setChannelAccess } from "../lib/team-store";
 import {
@@ -67,6 +76,94 @@ async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
     }
     await rm(appDataDir, { recursive: true, force: true });
   }
+}
+
+function buildAssetUploadRequest(input: {
+  url: string;
+  cookie: string;
+  kind: "avatar" | "background" | "music";
+  fileName: string;
+  mimeType: string;
+}): Request {
+  const formData = new FormData();
+  formData.set("kind", input.kind);
+  formData.set("file", new File([new Uint8Array([1, 2, 3, 4])], input.fileName, { type: input.mimeType }));
+  return new Request(input.url, {
+    method: "POST",
+    headers: { cookie: input.cookie },
+    body: formData
+  });
+}
+
+async function createQueuedPublicationForChannel(input: {
+  workspaceId: string;
+  userId: string;
+  channelId: string;
+  sourceSuffix: string;
+  slotDate: string;
+  slotIndex: number;
+}) {
+  const db = getDb();
+  const stamp = nowIso();
+  const chatHistory = await import("../lib/chat-history");
+  const chat = await chatHistory.createOrGetChatByUrl(
+    `https://youtube.com/watch?v=${input.sourceSuffix}`,
+    input.channelId
+  );
+  const stage3JobId = newId();
+  db.prepare(
+    `INSERT INTO stage3_jobs
+      (id, workspace_id, user_id, kind, status, dedupe_key, payload_json, result_json, error_code, error_message, recoverable, attempts, created_at, updated_at, started_at, completed_at)
+      VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, ?, ?, ?, ?, NULL, NULL)`
+  ).run(
+    stage3JobId,
+    input.workspaceId,
+    input.userId,
+    "render",
+    "completed",
+    JSON.stringify({ chatId: chat.id, channelId: input.channelId }),
+    1,
+    0,
+    stamp,
+    stamp
+  );
+  const renderExport = createRenderExport({
+    workspaceId: input.workspaceId,
+    channelId: input.channelId,
+    chatId: chat.id,
+    stage3JobId,
+    artifactFileName: `${input.sourceSuffix}.mp4`,
+    artifactFilePath: `/tmp/${input.sourceSuffix}.mp4`,
+    artifactMimeType: "video/mp4",
+    artifactSizeBytes: 1024,
+    renderTitle: `Render ${input.sourceSuffix}`,
+    sourceUrl: chat.url,
+    snapshotJson: "{}",
+    createdByUserId: input.userId
+  });
+  const slot = buildPublicationSlotCandidateFromDateAndIndex({
+    settings: DEFAULT_CHANNEL_PUBLISH_SETTINGS,
+    slotDate: input.slotDate,
+    slotIndex: input.slotIndex
+  });
+
+  return createChannelPublication({
+    workspaceId: input.workspaceId,
+    channelId: input.channelId,
+    chatId: chat.id,
+    renderExportId: renderExport.id,
+    scheduleMode: "slot",
+    scheduledAt: slot.scheduledAt,
+    uploadReadyAt: slot.uploadReadyAt,
+    slotDate: slot.slotDate,
+    slotIndex: slot.slotIndex,
+    title: `Render ${input.sourceSuffix}`,
+    description: "",
+    tags: [],
+    notifySubscribers: false,
+    needsReview: false,
+    createdByUserId: input.userId
+  });
 }
 
 test("private API routes reject fake app-session cookies instead of trusting cookie presence", async () => {
@@ -345,6 +442,189 @@ test("channels API only returns channels visible to the current redactor", async
     assert.deepEqual(body.channels?.map((channel) => channel.id), [visibleChannel.id]);
     assert.equal(body.channels?.[0]?.currentUserCanOperate, true);
     assert.equal(body.channels?.[0]?.currentUserCanEditSetup, false);
+  });
+});
+
+test("redactor_limited can upload Step 3 background and music and change publication time", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Limited Operator Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const invite = await createInvite({
+      workspaceId: owner.workspace.id,
+      email: "limited-operator@example.com",
+      role: "redactor_limited",
+      createdByUserId: owner.user.id
+    });
+    const limited = await acceptInviteRegistration({
+      token: invite.token,
+      password: "Password123!",
+      displayName: "Limited Operator"
+    });
+    const chatHistory = await import("../lib/chat-history");
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Limited Ops Channel",
+      username: "limited_ops"
+    });
+    setChannelAccess({
+      channelId: channel.id,
+      userId: limited.user.id,
+      grantedByUserId: owner.user.id
+    });
+    const cookie = `${APP_SESSION_COOKIE}=${limited.sessionToken}`;
+
+    const sourceTemplate = await createManagedTemplate(
+      {
+        name: "Limited Draft Backup",
+        baseTemplateId: STAGE3_TEMPLATE_ID,
+        content: {
+          topText: "Limited import top",
+          bottomText: "Limited import bottom"
+        }
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        creatorDisplayName: owner.user.displayName
+      }
+    );
+    const templateImportResponse = await importManagedTemplateRoute(
+      new Request("http://localhost/api/design/templates/import", {
+        method: "POST",
+        headers: {
+          cookie,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          exportVersion: "managed-template-backup-v1",
+          exportedAt: "2040-05-01T00:00:00.000Z",
+          template: sourceTemplate
+        })
+      })
+    );
+    const templateImportBody = (await templateImportResponse.json()) as {
+      template?: { id?: string; name?: string };
+      error?: string;
+    };
+    assert.equal(templateImportResponse.status, 201);
+    assert.equal(templateImportBody.template?.name, "Limited Draft Backup");
+    assert.notEqual(templateImportBody.template?.id, sourceTemplate.id);
+    assert.equal((await chatHistory.getChannelById(channel.id))?.templateId, channel.templateId);
+
+    const uploadUrl = `http://localhost/api/channels/${channel.id}/assets`;
+
+    const backgroundResponse = await uploadChannelAssetRoute(
+      buildAssetUploadRequest({
+        url: uploadUrl,
+        cookie,
+        kind: "background",
+        fileName: "limited-bg.png",
+        mimeType: "image/png"
+      }),
+      { params: Promise.resolve({ id: channel.id }) }
+    );
+    const backgroundBody = (await backgroundResponse.json()) as {
+      asset?: { id?: string; kind?: string; mimeType?: string };
+      error?: string;
+    };
+    assert.equal(backgroundResponse.status, 200);
+    assert.equal(backgroundBody.asset?.kind, "background");
+    assert.equal(backgroundBody.asset?.mimeType, "image/png");
+
+    const musicResponse = await uploadChannelAssetRoute(
+      buildAssetUploadRequest({
+        url: uploadUrl,
+        cookie,
+        kind: "music",
+        fileName: "limited-music.mp3",
+        mimeType: "audio/mpeg"
+      }),
+      { params: Promise.resolve({ id: channel.id }) }
+    );
+    const musicBody = (await musicResponse.json()) as {
+      asset?: { id?: string; kind?: string; mimeType?: string };
+      error?: string;
+    };
+    assert.equal(musicResponse.status, 200);
+    assert.equal(musicBody.asset?.kind, "music");
+    assert.equal(musicBody.asset?.mimeType, "audio/mpeg");
+
+    const avatarResponse = await uploadChannelAssetRoute(
+      buildAssetUploadRequest({
+        url: uploadUrl,
+        cookie,
+        kind: "avatar",
+        fileName: "limited-avatar.png",
+        mimeType: "image/png"
+      }),
+      { params: Promise.resolve({ id: channel.id }) }
+    );
+    assert.equal(avatarResponse.status, 403);
+
+    const customTimePublication = await createQueuedPublicationForChannel({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      channelId: channel.id,
+      sourceSuffix: "limitedCustom001",
+      slotDate: "2040-05-05",
+      slotIndex: 0
+    });
+    const patchResponse = await patchPublicationRoute(
+      new Request(`http://localhost/api/publications/${customTimePublication.id}`, {
+        method: "PATCH",
+        headers: {
+          cookie,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          scheduleMode: "custom",
+          scheduledAtLocal: "2040-05-06T14:30"
+        })
+      }),
+      { params: Promise.resolve({ id: customTimePublication.id }) }
+    );
+    const patchBody = (await patchResponse.json()) as {
+      publication?: { scheduleMode?: string; scheduledAt?: string; slotDate?: string };
+      error?: string;
+    };
+    assert.equal(patchResponse.status, 200);
+    assert.equal(patchBody.publication?.scheduleMode, "custom");
+    assert.match(patchBody.publication?.scheduledAt ?? "", /^2040-05-06T/);
+
+    const shiftPublication = await createQueuedPublicationForChannel({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      channelId: channel.id,
+      sourceSuffix: "limitedShift001",
+      slotDate: "2040-05-07",
+      slotIndex: 0
+    });
+    const shiftResponse = await shiftPublicationRoute(
+      new Request(`http://localhost/api/publications/${shiftPublication.id}/shift`, {
+        method: "POST",
+        headers: {
+          cookie,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          axis: "slot",
+          direction: "next"
+        })
+      }),
+      { params: Promise.resolve({ id: shiftPublication.id }) }
+    );
+    const shiftBody = (await shiftResponse.json()) as {
+      publication?: { slotIndex?: number; slotDate?: string };
+      error?: string;
+    };
+    assert.equal(shiftResponse.status, 200);
+    assert.equal(shiftBody.publication?.slotIndex, 1);
+    assert.equal(shiftBody.publication?.slotDate, "2040-05-07");
   });
 });
 

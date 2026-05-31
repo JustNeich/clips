@@ -351,10 +351,10 @@
 
 1. Step 2 handoff передаёт caption/title в Step 3.
 2. Live preview строится на каноническом timeline текущего render plan: обычно draft target duration, либо полная длина источника при `durationMode: source_full`.
-3. Пользователь правит TOP/BOTTOM, длину готового ролика, typography, background, source audio gain, music gain, fragments.
+3. Пользователь правит TOP/BOTTOM, длину готового ролика, template backup для текущего draft, typography, background, source audio gain, music gain, fragments.
 4. Если нужны цветные слова, Step 3 показывает текущий highlight-status шаблона, позволяет вручную добавить spans к выбранным словам финального текста и ведёт в template customization для profile-level настроек.
 5. При ручной правке TOP/BOTTOM highlight-spans ремапятся к новому тексту и нормализуются, чтобы preview/render не использовали stale offsets.
-6. Render settings allow downloading a managed-template backup and importing the same backup JSON back into the workspace template library.
+6. Step 3 allows importing a managed-template backup into the workspace template library and immediately applying it to the current draft render plan without changing channel setup.
 7. Preview обновляется.
 8. Пользователь экспортирует или запускает render.
 

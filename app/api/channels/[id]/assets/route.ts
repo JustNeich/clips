@@ -17,6 +17,7 @@ import {
 } from "../../../../../lib/multipart-upload";
 import {
   requireAuth,
+  requireChannelOperate,
   requireChannelSetupEdit,
   requireChannelVisibility
 } from "../../../../../lib/auth/guards";
@@ -49,7 +50,7 @@ function maxSizeByKind(kind: ChannelAssetKind): number {
 export async function GET(request: Request, context: Context): Promise<Response> {
   const { id } = await context.params;
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
     await requireChannelVisibility(auth, id);
 
     const url = new URL(request.url);
@@ -121,8 +122,12 @@ export async function POST(request: Request, context: Context): Promise<Response
   }
 
   try {
-    const auth = await requireAuth();
-    await requireChannelSetupEdit(auth, id);
+    const auth = await requireAuth(request);
+    if (kind === "avatar") {
+      await requireChannelSetupEdit(auth, id);
+    } else {
+      await requireChannelOperate(auth, id);
+    }
     const assetId = randomUUID().replace(/-/g, "");
     const buffer = Buffer.from(file.bytes);
     const saved = await saveChannelAssetFile({

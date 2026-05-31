@@ -384,7 +384,7 @@
   - section `Единый preview`
   - status pills `Executor`, `Фон`, `Звук`, `Таймлайн 0 → Ns`
   - select `Длина готового ролика` for per-draft `targetDurationSec`
-  - details `Оформление и звук`
+  - details `Шаблон, фон и звук`
   - typography sliders:
     - `Размер верхнего текста`
     - `Размер нижнего текста`
@@ -393,6 +393,9 @@
     - `Upload`
     - background asset select
     - `Clear`
+  - template block:
+    - `Импорт backup`
+    - imported template applies to the current draft render plan without channel setup mutation
   - audio block:
     - `Upload`
     - music asset select

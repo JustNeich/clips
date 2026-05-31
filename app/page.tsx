@@ -411,6 +411,7 @@ type BusyAction =
   | "video-preview"
   | "background-upload"
   | "music-upload"
+  | "template-import"
   | "channel-load"
   | "channel-save"
   | "channel-create"
@@ -419,6 +420,14 @@ type BusyAction =
   | "trace-export"
   | "connect-codex"
   | "refresh-codex";
+
+type ManagedTemplateImportResponse = {
+  error?: string;
+  template?: {
+    id?: string;
+    name?: string;
+  };
+};
 
 type AppToastInput = {
   id: string;
@@ -4220,6 +4229,55 @@ export default function HomePage() {
     }
   };
 
+  const handleImportTemplateBackupForDraft = async (file: File): Promise<void> => {
+    if (!file) {
+      return;
+    }
+
+    setBusyAction("template-import");
+    setStatus("");
+    setStatusType("");
+
+    try {
+      const parsed = JSON.parse(await file.text()) as unknown;
+      const response = await fetch("/api/design/templates/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed)
+      });
+      const payload = (await response.json().catch(() => null)) as ManagedTemplateImportResponse | null;
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Не удалось импортировать backup шаблона.");
+      }
+      const templateId = payload?.template?.id?.trim();
+      if (!templateId) {
+        throw new Error("Template API вернул пустой идентификатор.");
+      }
+
+      setStage3RenderPlan((prev) =>
+        normalizeRenderPlan(
+          {
+            ...prev,
+            templateId
+          },
+          fallbackRenderPlan()
+        )
+      );
+      setStage3ManagedTemplateState(null);
+      setStatusType("ok");
+      setStatus(
+        payload?.template?.name
+          ? `Backup шаблона импортирован в текущий draft: ${payload.template.name}.`
+          : "Backup шаблона импортирован в текущий draft."
+      );
+    } catch (error) {
+      setStatusType("error");
+      setStatus(getUiErrorMessage(error, "Не удалось импортировать backup шаблона."));
+    } finally {
+      setBusyAction("");
+    }
+  };
+
   const handleClearBackground = (): void => {
     setStage3RenderPlan((prev) =>
       normalizeRenderPlan(
@@ -7449,6 +7507,7 @@ export default function HomePage() {
           isOptimizing={busyAction === "stage3-optimize"}
           isUploadingBackground={busyAction === "background-upload"}
           isUploadingMusic={busyAction === "music-upload"}
+          isImportingTemplate={busyAction === "template-import"}
           onPublishAfterRenderChange={setStage3PublishAfterRender}
 	          onRender={(overrides, textFitOverride, managedTemplateStateOverride) => {
 	            void handleRenderVideo(overrides, textFitOverride, managedTemplateStateOverride);
@@ -7471,6 +7530,7 @@ export default function HomePage() {
           onResetCaptionText={handleResetStage3CaptionText}
           onUploadBackground={handleUploadBackground}
           onUploadMusic={handleUploadMusic}
+          onImportTemplateBackup={handleImportTemplateBackupForDraft}
           onClearBackground={handleClearBackground}
           onClearMusic={handleClearMusic}
           onSelectBackgroundAssetId={(value) => {

@@ -263,6 +263,7 @@ type Step3RenderTemplateProps = {
   publishAfterRenderEnabled?: boolean;
   publishAfterRenderInfo?: string | null;
   publishAfterRenderDisabledReason?: string | null;
+  isImportingTemplate?: boolean;
   onRender: (
     overrides?: Stage3EditorDraftOverrides,
     textFitOverride?: Stage3TextFitSnapshot | null,
@@ -318,6 +319,7 @@ type Step3RenderTemplateProps = {
   onMusicGainChange: (value: number) => void;
   onCreateWorkerPairing: () => void;
   onOpenPlanner?: () => void;
+  onImportTemplateBackup?: (file: File) => Promise<void>;
   onManagedTemplateStateChange?: (value: Step3ManagedTemplateState) => void;
 };
 
@@ -2379,6 +2381,7 @@ export function Step3RenderTemplate({
   publishAfterRenderEnabled = false,
   publishAfterRenderInfo = null,
   publishAfterRenderDisabledReason = null,
+  isImportingTemplate = false,
   onRender,
   onPublishAfterRenderChange = () => undefined,
   onExport,
@@ -2423,6 +2426,7 @@ export function Step3RenderTemplate({
   onMusicGainChange,
   onCreateWorkerPairing,
   onOpenPlanner = () => undefined,
+  onImportTemplateBackup = async () => undefined,
   onManagedTemplateStateChange
 }: Step3RenderTemplateProps) {
   const editorAlwaysNormalize = true;
@@ -2476,6 +2480,7 @@ export function Step3RenderTemplate({
   const fragmentFieldRefs = useRef<Record<string, HTMLInputElement | HTMLSelectElement | null>>({});
   const fragmentSourceRailRef = useRef<HTMLDivElement | null>(null);
   const fragmentTimelineDragRef = useRef<FragmentTimelineDragState | null>(null);
+  const templateImportInputRef = useRef<HTMLInputElement | null>(null);
   const [activeFragmentIndex, setActiveFragmentIndex] = useState<number | null>(null);
   const [isFragmentTimelineDragging, setIsFragmentTimelineDragging] = useState(false);
   const [pendingFragmentFocus, setPendingFragmentFocus] = useState<FragmentFocusTarget | null>(null);
@@ -5603,7 +5608,7 @@ export function Step3RenderTemplate({
             </section>
 
             <details className="advanced-block">
-                  <summary>Оформление и звук</summary>
+                  <summary>Шаблон, фон и звук</summary>
                   <div className="advanced-content stage3-secondary-stack">
                     <section className="stage3-secondary-panel">
                       <div className="control-section-head">
@@ -5687,7 +5692,7 @@ export function Step3RenderTemplate({
                     <section className="stage3-secondary-panel">
                       <div className="control-section-head">
                         <div>
-                          <h3>Фон и звук</h3>
+                          <h3>Шаблон, фон и звук</h3>
                           <p className="subtle-text">
                             Финальные настройки фона и звука, которые пойдут в экспорт.
                           </p>
@@ -5695,6 +5700,39 @@ export function Step3RenderTemplate({
                       </div>
 
                       <div className="asset-grid">
+                        <div className="asset-card">
+                          <div className="quick-edit-label-row">
+                            <span className="field-label">Шаблон</span>
+                            <span className="quick-edit-value">{templateLabel}</span>
+                          </div>
+                          <div className="background-upload-row">
+                            <input
+                              ref={templateImportInputRef}
+                              type="file"
+                              accept="application/json,.json"
+                              className="sr-only"
+                              disabled={isImportingTemplate}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (!file) {
+                                  return;
+                                }
+                                void onImportTemplateBackup(file);
+                                event.currentTarget.value = "";
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={() => templateImportInputRef.current?.click()}
+                              disabled={isImportingTemplate}
+                              aria-busy={isImportingTemplate}
+                            >
+                              {isImportingTemplate ? "Импорт..." : "Импорт backup"}
+                            </button>
+                          </div>
+                          <p className="subtle-text">Импорт применится к текущему draft без изменения setup канала.</p>
+                        </div>
                         <div className="asset-card">
                           <div className="quick-edit-label-row">
                             <span className="field-label">Фон</span>
