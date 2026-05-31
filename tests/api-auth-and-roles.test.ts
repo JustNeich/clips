@@ -445,7 +445,7 @@ test("channels API only returns channels visible to the current redactor", async
   });
 });
 
-test("redactor_limited can upload Step 3 background and music and change publication time", async () => {
+test("redactor_limited can update channel render defaults and publication time without full setup", async () => {
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({
       workspaceName: "Limited Operator Workspace",
@@ -513,7 +513,9 @@ test("redactor_limited can upload Step 3 background and music and change publica
     };
     assert.equal(templateImportResponse.status, 201);
     assert.equal(templateImportBody.template?.name, "Limited Draft Backup");
-    assert.notEqual(templateImportBody.template?.id, sourceTemplate.id);
+    const importedTemplateId = templateImportBody.template?.id;
+    assert.ok(importedTemplateId);
+    assert.notEqual(importedTemplateId, sourceTemplate.id);
     assert.equal((await chatHistory.getChannelById(channel.id))?.templateId, channel.templateId);
 
     const uploadUrl = `http://localhost/api/channels/${channel.id}/assets`;
@@ -535,6 +537,8 @@ test("redactor_limited can upload Step 3 background and music and change publica
     assert.equal(backgroundResponse.status, 200);
     assert.equal(backgroundBody.asset?.kind, "background");
     assert.equal(backgroundBody.asset?.mimeType, "image/png");
+    const backgroundAssetId = backgroundBody.asset?.id;
+    assert.ok(backgroundAssetId);
 
     const musicResponse = await uploadChannelAssetRoute(
       buildAssetUploadRequest({
@@ -553,6 +557,39 @@ test("redactor_limited can upload Step 3 background and music and change publica
     assert.equal(musicResponse.status, 200);
     assert.equal(musicBody.asset?.kind, "music");
     assert.equal(musicBody.asset?.mimeType, "audio/mpeg");
+    const musicAssetId = musicBody.asset?.id;
+    assert.ok(musicAssetId);
+
+    const renderDefaultsResponse = await patchChannelRoute(
+      new Request(`http://localhost/api/channels/${channel.id}`, {
+        method: "PATCH",
+        headers: {
+          cookie,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          templateId: importedTemplateId,
+          defaultBackgroundAssetId: backgroundAssetId,
+          defaultMusicAssetId: musicAssetId,
+          defaultClipDurationSec: 8
+        })
+      }),
+      { params: Promise.resolve({ id: channel.id }) }
+    );
+    const renderDefaultsBody = (await renderDefaultsResponse.json()) as {
+      channel?: {
+        templateId?: string;
+        defaultBackgroundAssetId?: string | null;
+        defaultMusicAssetId?: string | null;
+        defaultClipDurationSec?: number;
+      };
+      error?: string;
+    };
+    assert.equal(renderDefaultsResponse.status, 200);
+    assert.equal(renderDefaultsBody.channel?.templateId, importedTemplateId);
+    assert.equal(renderDefaultsBody.channel?.defaultBackgroundAssetId, backgroundAssetId);
+    assert.equal(renderDefaultsBody.channel?.defaultMusicAssetId, musicAssetId);
+    assert.equal(renderDefaultsBody.channel?.defaultClipDurationSec, 8);
 
     const avatarResponse = await uploadChannelAssetRoute(
       buildAssetUploadRequest({
@@ -565,6 +602,36 @@ test("redactor_limited can upload Step 3 background and music and change publica
       { params: Promise.resolve({ id: channel.id }) }
     );
     assert.equal(avatarResponse.status, 403);
+
+    const forbiddenNameResponse = await patchChannelRoute(
+      new Request(`http://localhost/api/channels/${channel.id}`, {
+        method: "PATCH",
+        headers: {
+          cookie,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          name: "Limited Should Not Rename"
+        })
+      }),
+      { params: Promise.resolve({ id: channel.id }) }
+    );
+    assert.equal(forbiddenNameResponse.status, 403);
+
+    const forbiddenAvatarAssignResponse = await patchChannelRoute(
+      new Request(`http://localhost/api/channels/${channel.id}`, {
+        method: "PATCH",
+        headers: {
+          cookie,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          avatarAssetId: backgroundAssetId
+        })
+      }),
+      { params: Promise.resolve({ id: channel.id }) }
+    );
+    assert.equal(forbiddenAvatarAssignResponse.status, 403);
 
     const customTimePublication = await createQueuedPublicationForChannel({
       workspaceId: owner.workspace.id,

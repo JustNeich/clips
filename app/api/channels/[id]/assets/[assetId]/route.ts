@@ -21,7 +21,7 @@ type Context = { params: Promise<{ id: string; assetId: string }> };
 export async function GET(request: Request, context: Context): Promise<Response> {
   const { id, assetId } = await context.params;
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
     await requireChannelVisibility(auth, id);
 
     const asset = await getChannelAssetById(id, assetId);
@@ -56,7 +56,7 @@ export async function GET(request: Request, context: Context): Promise<Response>
 export async function DELETE(_request: Request, context: Context): Promise<Response> {
   const { id, assetId } = await context.params;
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(_request);
     const { channel } = await requireChannelSetupEdit(auth, id);
 
     const asset = await deleteChannelAssetById(id, assetId);

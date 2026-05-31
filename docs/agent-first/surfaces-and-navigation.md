@@ -225,7 +225,7 @@
   - `owner`: `Каналы`, `Команда`, `Журнал процессов`, `Скачать историю`
   - `manager`: `Каналы`, `Команда`, `Скачать историю`
   - `redactor`: `Каналы`, `Скачать историю`
-  - `redactor_limited`: только `Скачать историю`
+  - `redactor_limited`: `Каналы`, если есть granted channel, и `Скачать историю`
 - `controls`:
   - `Каналы`: открывает Channel Manager
   - `Команда`: ведёт на `/team`
@@ -557,7 +557,7 @@
   - `owner`: все каналы + `Общие настройки` + tab `Доступ`
   - `manager`: все каналы, нет `Общие настройки`, есть `Доступ`
   - `redactor`: только доступные каналы, нет `Доступ`, delete может быть disabled
-  - `redactor_limited`: в live UI вход в modal отсутствует
+  - `redactor_limited`: granted channels only; limited mode with tabs `Рендер` and `Ассеты`
 
 ## Channel onboarding wizard
 
@@ -668,6 +668,7 @@
     - template picker
     - background/music default selects
     - asset-dependent render defaults
+- `redactor_limited`: может редактировать только channel render defaults: template backup/import selection, default background/music and default duration.
 - `related APIs`:
   - `GET /api/workspace`
   - `PATCH /api/workspace`
@@ -707,6 +708,7 @@
   - upload by asset kind
   - delete asset
   - select asset for defaults
+- `redactor_limited`: upload/select allowed only for background/music; avatar and delete remain setup-only.
 - `related APIs`:
   - `GET /api/channels/[id]/assets`
   - `POST /api/channels/[id]/assets`

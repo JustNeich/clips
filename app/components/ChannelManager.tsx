@@ -121,6 +121,30 @@ export function resolveChannelManagerCanEditChannelPrompt(input: {
   return !input.isWorkspaceDefaultsSelection && input.currentUserCanEditSetup;
 }
 
+export function listAvailableChannelManagerTabs(input: {
+  hasActiveChannel: boolean;
+  isWorkspaceDefaultsSelection: boolean;
+  currentUserCanEditSetup: boolean;
+  currentUserCanOperate: boolean;
+  canManageAccess: boolean;
+}): TabId[] {
+  if (input.isWorkspaceDefaultsSelection) {
+    return ["stage2", "render"];
+  }
+  if (!input.hasActiveChannel) {
+    return [];
+  }
+  if (input.currentUserCanEditSetup) {
+    return input.canManageAccess
+      ? ["brand", "stage2", "render", "publishing", "assets", "access"]
+      : ["brand", "stage2", "render", "publishing", "assets"];
+  }
+  if (input.currentUserCanOperate) {
+    return ["render", "assets"];
+  }
+  return [];
+}
+
 type ChannelSavePatch = Partial<{
   name: string;
   username: string;
@@ -427,6 +451,28 @@ export function ChannelManager({
   }, [activeChannelId, managerSelectionId, managerTargets]);
   const isWorkspaceDefaultsSelection = selectedTarget?.kind === "workspace_defaults";
   const activeChannel = selectedTarget?.kind === "channel" ? selectedTarget.channel : null;
+  const canEditSetup = Boolean(activeChannel?.currentUserCanEditSetup);
+  const canOperateChannel = Boolean(activeChannel?.currentUserCanOperate);
+  const canEditWorkspaceDefaults = isOwner && isWorkspaceDefaultsSelection;
+  const canEditRenderSettings = Boolean(activeChannel && (canEditSetup || canOperateChannel));
+  const canUploadRenderAssets = canEditRenderSettings;
+  const canEditHardConstraints = isWorkspaceDefaultsSelection ? canEditWorkspaceDefaults : canEditSetup;
+  const canEditChannelPrompt = resolveChannelManagerCanEditChannelPrompt({
+    currentUserCanEditSetup: canEditSetup,
+    isWorkspaceDefaultsSelection
+  });
+  const availableTabs = useMemo(
+    () =>
+      listAvailableChannelManagerTabs({
+        hasActiveChannel: Boolean(activeChannel),
+        isWorkspaceDefaultsSelection,
+        currentUserCanEditSetup: canEditSetup,
+        currentUserCanOperate: canOperateChannel,
+        canManageAccess
+      }),
+    [activeChannel, canEditSetup, canManageAccess, canOperateChannel, isWorkspaceDefaultsSelection]
+  );
+  const activeTab = availableTabs.includes(tab) ? tab : availableTabs[0] ?? tab;
   const styleProfileStorageKey = activeChannel
     ? `clips:channel-style-profile-editor:${activeChannel.id}`
     : null;
@@ -785,18 +831,18 @@ export function ChannelManager({
   }, [managerSelectionId, onDismissGlobalToast]);
 
   useEffect(() => {
-    const normalizedTab = normalizeChannelManagerTabForSelection(tab, isWorkspaceDefaultsSelection);
-    if (normalizedTab !== tab) {
-      setTab(normalizedTab);
+    if (!open || availableTabs.length === 0 || availableTabs.includes(tab)) {
+      return;
     }
-  }, [isWorkspaceDefaultsSelection, tab]);
+    setTab(availableTabs[0]);
+  }, [availableTabs, open, tab]);
 
   useEffect(() => {
-    if (!open || !initialTab || isWorkspaceDefaultsSelection) {
+    if (!open || !initialTab || !availableTabs.includes(initialTab)) {
       return;
     }
     setTab(initialTab);
-  }, [initialTab, isWorkspaceDefaultsSelection, open]);
+  }, [availableTabs, initialTab, open]);
 
   useEffect(() => {
     if (!activeChannel || isWorkspaceDefaultsSelection) {
@@ -1080,14 +1126,6 @@ export function ChannelManager({
     };
   }, [open, mounted, onClose]);
 
-  const canEditSetup = Boolean(activeChannel?.currentUserCanEditSetup);
-  const canEditWorkspaceDefaults = isOwner && isWorkspaceDefaultsSelection;
-  const canEditHardConstraints = isWorkspaceDefaultsSelection ? canEditWorkspaceDefaults : canEditSetup;
-  const canEditChannelPrompt = resolveChannelManagerCanEditChannelPrompt({
-    currentUserCanEditSetup: canEditSetup,
-    isWorkspaceDefaultsSelection
-  });
-
   useEffect(() => {
     if (!activeChannel || !canEditSetup) {
       return;
@@ -1265,7 +1303,7 @@ export function ChannelManager({
   ]);
 
   useEffect(() => {
-    if (!activeChannel || !canEditSetup) {
+    if (!activeChannel || !canEditRenderSettings) {
       return;
     }
     if (skipAutosaveRef.current.render) {
@@ -1307,7 +1345,7 @@ export function ChannelManager({
     };
   }, [
     activeChannel,
-    canEditSetup,
+    canEditRenderSettings,
     clearAutosaveReset,
     resetAutosaveFeedbackIfNeeded,
     scheduleAutosaveReset,
@@ -2175,7 +2213,7 @@ export function ChannelManager({
               + Новый канал
             </button>
           ) : null}
-          {activeChannel ? (
+          {activeChannel && canEditSetup ? (
             <button
               type="button"
               className="btn btn-ghost"
@@ -2188,22 +2226,16 @@ export function ChannelManager({
         </section>
 
         <div className="channel-tabs">
-          {(isWorkspaceDefaultsSelection
-            ? (["stage2", "render"] as const)
-            : (["brand", "stage2", "render", "publishing", "assets", "access"] as const)
-          ).map((item) => {
-            if (item === "access" && !canManageAccess) {
-              return null;
-            }
+          {availableTabs.map((item) => {
             return (
-            <button
-              key={item}
-              type="button"
-              className={`channel-tab ${tab === item ? "active" : ""}`}
-              onClick={() => setTab(item)}
-            >
-              {formatTabLabel(item)}
-            </button>
+              <button
+                key={item}
+                type="button"
+                className={`channel-tab ${activeTab === item ? "active" : ""}`}
+                onClick={() => setTab(item)}
+              >
+                {formatTabLabel(item)}
+              </button>
             );
           })}
         </div>
@@ -2212,7 +2244,7 @@ export function ChannelManager({
           <p className="subtle-text">Выберите канал.</p>
         ) : (
           <div className="channel-tab-content">
-            {tab === "brand" ? (
+            {activeTab === "brand" ? (
               <div className="field-stack">
                 <label className="field-label">Название канала</label>
                 <input
@@ -2260,7 +2292,7 @@ export function ChannelManager({
               </div>
             ) : null}
 
-            {tab === "stage2" ? (
+            {activeTab === "stage2" ? (
               <ChannelManagerStage2Tab
                 isWorkspaceDefaultsSelection={isWorkspaceDefaultsSelection}
                 stage2HardConstraints={stage2HardConstraints}
@@ -2332,7 +2364,7 @@ export function ChannelManager({
               />
             ) : null}
 
-            {tab === "render" ? (
+            {activeTab === "render" ? (
               isWorkspaceDefaultsSelection ? (
                 <ChannelManagerWorkspaceRenderTab
                   canEditWorkspaceDefaults={canEditWorkspaceDefaults}
@@ -2350,7 +2382,7 @@ export function ChannelManager({
                   <select
                     className="text-input"
                     value={templateId}
-                    disabled={!canEditSetup}
+                    disabled={!canEditRenderSettings}
                     onChange={(event) => setTemplateId(event.target.value)}
                   >
                     {renderTemplateGroups.map((group) => (
@@ -2394,7 +2426,7 @@ export function ChannelManager({
                       type="button"
                       className="btn btn-ghost"
                       onClick={() => templateImportInputRef.current?.click()}
-                      disabled={!canEditSetup || templateImportBusy || templateExportBusy}
+                      disabled={!canEditRenderSettings || templateImportBusy || templateExportBusy}
                     >
                       {templateImportBusy ? "Импортируем…" : "Импортировать backup"}
                     </button>
@@ -2405,7 +2437,7 @@ export function ChannelManager({
                       <select
                         className="text-input"
                         value={String(defaultClipDurationSec)}
-                        disabled={!canEditSetup}
+                        disabled={!canEditRenderSettings}
                         onChange={(event) =>
                           setDefaultClipDurationSec(
                             normalizeStage3ClipDurationSec(Number.parseInt(event.target.value, 10))
@@ -2424,8 +2456,9 @@ export function ChannelManager({
                       <select
                         className="text-input"
                         value={activeChannel?.defaultBackgroundAssetId ?? ""}
+                        disabled={!canEditRenderSettings}
                         onChange={(event) =>
-                          activeChannel
+                          activeChannel && canEditRenderSettings
                             ? triggerManagedChannelSave(activeChannel.id, {
                                 defaultBackgroundAssetId: event.target.value || null
                               })
@@ -2445,8 +2478,9 @@ export function ChannelManager({
                       <select
                         className="text-input"
                         value={activeChannel?.defaultMusicAssetId ?? ""}
+                        disabled={!canEditRenderSettings}
                         onChange={(event) =>
-                          activeChannel
+                          activeChannel && canEditRenderSettings
                             ? triggerManagedChannelSave(activeChannel.id, {
                                 defaultMusicAssetId: event.target.value || null
                               })
@@ -2469,7 +2503,7 @@ export function ChannelManager({
               )
             ) : null}
 
-            {tab === "publishing" ? (
+            {activeTab === "publishing" ? (
               <ChannelManagerPublishingTab
                 channel={activeChannel}
                 canEditSetup={canEditSetup}
@@ -2480,17 +2514,21 @@ export function ChannelManager({
               />
             ) : null}
 
-            {tab === "assets" ? (
+            {activeTab === "assets" ? (
               <div className="field-stack">
                 <div className="control-actions">
-                  <label className="btn btn-ghost background-upload-btn">
+                  <label
+                    className={`btn btn-ghost background-upload-btn ${canUploadRenderAssets ? "" : "is-disabled"}`}
+                    aria-disabled={!canUploadRenderAssets}
+                  >
                     <input
                       type="file"
                       accept="image/*,video/*"
                       className="background-upload-input"
+                      disabled={!canUploadRenderAssets}
                       onChange={(event) => {
                         const file = event.target.files?.[0];
-                        if (!file) {
+                        if (!file || !canUploadRenderAssets) {
                           return;
                         }
                         onUploadAsset("background", file);
@@ -2499,14 +2537,18 @@ export function ChannelManager({
                     />
                     Загрузить фон
                   </label>
-                  <label className="btn btn-ghost background-upload-btn">
+                  <label
+                    className={`btn btn-ghost background-upload-btn ${canUploadRenderAssets ? "" : "is-disabled"}`}
+                    aria-disabled={!canUploadRenderAssets}
+                  >
                     <input
                       type="file"
                       accept="audio/*"
                       className="background-upload-input"
+                      disabled={!canUploadRenderAssets}
                       onChange={(event) => {
                         const file = event.target.files?.[0];
-                        if (!file) {
+                        if (!file || !canUploadRenderAssets) {
                           return;
                         }
                         onUploadAsset("music", file);
@@ -2526,8 +2568,9 @@ export function ChannelManager({
                           <button
                             type="button"
                             className="btn btn-ghost"
+                            disabled={!canEditRenderSettings}
                             onClick={() =>
-                              activeChannel
+                              activeChannel && canEditRenderSettings
                                 ? triggerManagedChannelSave(activeChannel.id, {
                                     defaultBackgroundAssetId: asset.id
                                   })
@@ -2536,7 +2579,12 @@ export function ChannelManager({
                           >
                             Сделать по умолчанию
                           </button>
-                          <button type="button" className="btn btn-ghost" onClick={() => onDeleteAsset(asset.id)}>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            disabled={!canEditSetup}
+                            onClick={() => onDeleteAsset(asset.id)}
+                          >
                             Удалить
                           </button>
                         </div>
@@ -2554,8 +2602,9 @@ export function ChannelManager({
                           <button
                             type="button"
                             className="btn btn-ghost"
+                            disabled={!canEditRenderSettings}
                             onClick={() =>
-                              activeChannel
+                              activeChannel && canEditRenderSettings
                                 ? triggerManagedChannelSave(activeChannel.id, {
                                     defaultMusicAssetId: asset.id
                                   })
@@ -2564,35 +2613,12 @@ export function ChannelManager({
                           >
                             Сделать по умолчанию
                           </button>
-                          <button type="button" className="btn btn-ghost" onClick={() => onDeleteAsset(asset.id)}>
-                            Удалить
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-                <section className="details-section">
-                  <h3>Аватары ({avatars.length})</h3>
-                  <ul className="details-log-list">
-                    {avatars.map((asset) => (
-                      <li key={asset.id} className="log-item">
-                        <p>{asset.originalName}</p>
-                        <div className="control-actions">
                           <button
                             type="button"
                             className="btn btn-ghost"
-                            onClick={() =>
-                              activeChannel
-                                ? triggerManagedChannelSave(activeChannel.id, {
-                                    avatarAssetId: asset.id
-                                  })
-                                : undefined
-                            }
+                            disabled={!canEditSetup}
+                            onClick={() => onDeleteAsset(asset.id)}
                           >
-                            Сделать аватаром
-                          </button>
-                          <button type="button" className="btn btn-ghost" onClick={() => onDeleteAsset(asset.id)}>
                             Удалить
                           </button>
                         </div>
@@ -2600,10 +2626,40 @@ export function ChannelManager({
                     ))}
                   </ul>
                 </section>
+                {canEditSetup ? (
+                  <section className="details-section">
+                    <h3>Аватары ({avatars.length})</h3>
+                    <ul className="details-log-list">
+                      {avatars.map((asset) => (
+                        <li key={asset.id} className="log-item">
+                          <p>{asset.originalName}</p>
+                          <div className="control-actions">
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={() =>
+                                activeChannel
+                                  ? triggerManagedChannelSave(activeChannel.id, {
+                                      avatarAssetId: asset.id
+                                    })
+                                  : undefined
+                              }
+                            >
+                              Сделать аватаром
+                            </button>
+                            <button type="button" className="btn btn-ghost" onClick={() => onDeleteAsset(asset.id)}>
+                              Удалить
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
               </div>
             ) : null}
 
-            {tab === "access" && canManageAccess ? (
+            {activeTab === "access" && canManageAccess ? (
               <div className="field-stack">
                 <p className="subtle-text">
                   Менеджеры и владелец могут выдавать рабочий доступ к каналам.

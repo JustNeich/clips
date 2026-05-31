@@ -7226,7 +7226,10 @@ export default function HomePage() {
       activeChannelId={activeChannelId}
       onSelectChannel={handleSwitchChannel}
       onManageChannels={() => openChannelManagerTab(null)}
-      canManageChannels={canCreateChannel || Boolean(activeChannel?.currentUserCanEditSetup)}
+      canManageChannels={
+        canCreateChannel ||
+        Boolean(activeChannel?.currentUserCanEditSetup || activeChannel?.currentUserCanOperate)
+      }
       canManageTeam={Boolean(authState?.effectivePermissions.canManageMembers)}
       onOpenTeam={() => {
         window.location.href = "/team";

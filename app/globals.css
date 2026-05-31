@@ -3692,11 +3692,21 @@ select.text-input:focus {
   overflow: hidden;
 }
 
+.background-upload-btn.is-disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
+
 .background-upload-input {
   position: absolute;
   inset: 0;
   opacity: 0;
   cursor: pointer;
+}
+
+.background-upload-btn.is-disabled .background-upload-input {
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .advanced-grid {

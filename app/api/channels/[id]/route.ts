@@ -8,6 +8,7 @@ import { tryAppendFlowAuditEvent } from "../../../../lib/audit-log-store";
 import { getChannelPublishIntegration, getChannelPublishSettings } from "../../../../lib/publication-store";
 import {
   requireAuth,
+  requireChannelOperate,
   requireChannelSetupEdit,
   requireChannelVisibility
 } from "../../../../lib/auth/guards";
@@ -43,6 +44,18 @@ type PatchBody = Partial<{
   defaultMusicAssetId: string | null;
   defaultClipDurationSec: number;
 }>;
+
+const CHANNEL_RENDER_OPERATOR_PATCH_FIELDS = new Set<keyof PatchBody>([
+  "templateId",
+  "defaultBackgroundAssetId",
+  "defaultMusicAssetId",
+  "defaultClipDurationSec"
+]);
+
+function hasOnlyRenderOperatorPatchFields(body: PatchBody): boolean {
+  const keys = Object.keys(body) as Array<keyof PatchBody>;
+  return keys.length > 0 && keys.every((key) => CHANNEL_RENDER_OPERATOR_PATCH_FIELDS.has(key));
+}
 
 async function ensureChannelTemplateSelectable(
   auth: Awaited<ReturnType<typeof requireAuth>>,
@@ -108,7 +121,11 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
 
   try {
     const auth = await requireAuth(request);
-    await requireChannelSetupEdit(auth, id);
+    if (hasOnlyRenderOperatorPatchFields(body)) {
+      await requireChannelOperate(auth, id);
+    } else {
+      await requireChannelSetupEdit(auth, id);
+    }
     const restrictedError = getRestrictedChannelEditError(auth.membership.role, body);
     if (restrictedError) {
       return Response.json({ error: restrictedError }, { status: 403 });

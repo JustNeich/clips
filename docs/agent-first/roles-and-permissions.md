@@ -13,7 +13,7 @@
 | Владелец | `owner` | Полный контроль workspace |
 | Управляющий | `manager` | Операционный администратор без owner-only прав |
 | Редактор | `redactor` | Полный production flow по доступным каналам |
-| Ограниченный редактор | `redactor_limited` | Только операторские действия без channel setup |
+| Ограниченный редактор | `redactor_limited` | Операторские действия и ограниченные render/assets настройки без полного channel setup |
 
 ## Workspace-level permissions
 
@@ -60,7 +60,7 @@
 
 | Control | owner | manager | redactor | redactor_limited | Verification |
 | --- | --- | --- | --- | --- | --- |
-| `Каналы` | visible | visible | visible | hidden | browser-verified |
+| `Каналы` | visible | visible | visible | visible when granted channel exists | browser-verified/code-verified |
 | `Команда` | visible | visible | hidden | hidden | browser-verified |
 | `Журнал процессов` | visible | hidden | hidden | hidden | code-verified |
 | `Скачать историю` | visible | visible | visible | visible | browser-verified |
@@ -77,17 +77,17 @@
 
 | Surface / control | owner | manager | redactor | redactor_limited | Verification |
 | --- | --- | --- | --- | --- | --- |
-| Open modal from overflow | yes | yes | yes | no | browser-verified |
+| Open modal from overflow | yes | yes | yes | yes, limited mode | browser-verified/code-verified |
 | See all channels in selector | yes | yes | no | no | browser + ACL |
 | See only granted/own channels | n/a | n/a | yes | yes | code-verified, redactor verified |
 | `Общие настройки` target | yes | no | no | no | browser-verified |
 | `+ Новый канал` | yes | yes | yes | no | browser-verified |
 | `Удалить канал` | yes | yes | conditional | no | browser + ACL |
-| Tab `Бренд` | yes | yes | yes | no modal | browser-verified |
-| Tab `Stage 2` | yes | yes | yes | no modal | browser-verified |
-| Tab `Рендер` | yes | yes | yes | no modal | browser-verified |
-| Tab `Publishing` | yes | yes | yes | no modal | browser-verified |
-| Tab `Ассеты` | yes | yes | yes | no modal | browser-verified |
+| Tab `Бренд` | yes | yes | yes | hidden | browser-verified/code-verified |
+| Tab `Stage 2` | yes | yes | yes | hidden | browser-verified/code-verified |
+| Tab `Рендер` | yes | yes | yes | limited render defaults | browser-verified/code-verified |
+| Tab `Publishing` | yes | yes | yes | hidden | browser-verified/code-verified |
+| Tab `Ассеты` | yes | yes | yes | background/music upload + defaults only | browser-verified/code-verified |
 | Tab `Доступ` | yes | yes | no | no | browser-verified |
 | Block `Caption provider` in `Общие настройки` | yes | no | no | no | browser + code |
 
@@ -199,13 +199,13 @@ Code-verified:
 
 ## Redactor Limited behavior
 
-`redactor_limited` — это оператор daily flow без channel setup.
+`redactor_limited` — это оператор daily flow без полного channel setup.
 
 Browser-verified:
 
-- в overflow нет `Каналы`;
+- в overflow есть `Каналы`, если у пользователя есть granted channel;
 - в overflow нет `Команда`;
-- остаётся только `Скачать историю`;
+- Channel Manager открывается только с вкладками `Рендер` и `Ассеты`;
 - `/team` открывается как forbidden page;
 - основной shell и шаги 1-3 доступны.
 
@@ -213,7 +213,9 @@ Code-verified:
 
 - видит только granted channels;
 - не создаёт канал;
-- не меняет setup канала;
+- может менять только render defaults канала: `templateId`, `defaultBackgroundAssetId`, `defaultMusicAssetId`, `defaultClipDurationSec`;
+- может загружать только background/music channel assets;
+- не меняет бренд, Stage 2 setup, Publishing setup, YouTube/OAuth, avatar/default avatar и доступы;
 - не выдаёт и не отзывает channel access;
 - не удаляет канал.
 
@@ -232,5 +234,5 @@ Code-verified:
 1. Если пользователь говорит "у меня нет кнопки", сначала проверяйте role-specific hidden state.
 2. Если пользователь говорит "кнопка есть, но серая", ищите disabled precondition.
 3. Если пользователь говорит "меня выкидывает" или "страница запрещена", ищите route guard или missing membership.
-4. Если `redactor_limited` жалуется на отсутствие Channel Manager, это ожидаемое поведение, а не баг.
+4. Если `redactor_limited` с granted channel не видит Channel Manager или видит disabled import backup в `Рендер`, это regression в limited render/settings доступе.
 5. Если `redactor` не видит granted channel, это почти всегда issue в `channel_access` или ACL resolution.

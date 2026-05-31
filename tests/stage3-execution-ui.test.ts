@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   buildManagedTemplateBackupFileName,
+  listAvailableChannelManagerTabs,
   normalizeChannelManagerTabForSelection
 } from "../app/components/ChannelManager";
 import { Step3RenderTemplate } from "../app/components/Step3RenderTemplate";
@@ -224,6 +225,29 @@ test("workspace defaults keep the render tab selected once the user switches to 
   assert.equal(normalizeChannelManagerTabForSelection("stage2", true), "stage2");
   assert.equal(normalizeChannelManagerTabForSelection("brand", true), "stage2");
   assert.equal(normalizeChannelManagerTabForSelection("render", false), "render");
+});
+
+test("limited channel operators only get render and assets tabs in Channel Manager", () => {
+  assert.deepEqual(
+    listAvailableChannelManagerTabs({
+      hasActiveChannel: true,
+      isWorkspaceDefaultsSelection: false,
+      currentUserCanEditSetup: false,
+      currentUserCanOperate: true,
+      canManageAccess: false
+    }),
+    ["render", "assets"]
+  );
+  assert.deepEqual(
+    listAvailableChannelManagerTabs({
+      hasActiveChannel: true,
+      isWorkspaceDefaultsSelection: false,
+      currentUserCanEditSetup: true,
+      currentUserCanOperate: true,
+      canManageAccess: true
+    }),
+    ["brand", "stage2", "render", "publishing", "assets", "access"]
+  );
 });
 
 test("managed template backup filenames are stable and filesystem-safe", () => {

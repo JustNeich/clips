@@ -184,7 +184,7 @@
 
 ### Blocked path
 
-1. `redactor_limited` не видит вход в Channel Manager и не может создать канал.
+1. `redactor_limited` видит Channel Manager только для granted channels и не может создать канал.
 2. Невалидные reference links ломают style discovery.
 
 ### Failure / recovery
@@ -217,7 +217,7 @@
 ### Blocked path
 
 1. `redactor` не видит tab `Доступ`.
-2. `redactor_limited` вообще не видит вход в Channel Manager.
+2. `redactor_limited` видит Channel Manager только в limited mode; вкладка `Доступ` скрыта.
 
 ### Failure / recovery
 
