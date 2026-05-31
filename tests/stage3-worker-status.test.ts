@@ -148,6 +148,141 @@ test("listStage3Workers sweeps expired local leases before deriving busy state",
   });
 });
 
+test("server watchdog fails heartbeat-fresh local jobs after the kind timeout", async () => {
+  await withIsolatedAppData(async () => {
+    const workspaceId = "w1";
+    const userId = "u1";
+    seedWorkspace(workspaceId, userId);
+
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "worker",
+      platform: "darwin-arm64"
+    });
+
+    const job = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "editing-proxy",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=abc123" })
+    });
+    const claimed = claimNextQueuedStage3JobForWorker({
+      workerId: exchanged.worker.id,
+      workspaceId,
+      userId,
+      supportedKinds: ["editing-proxy"]
+    });
+    assert.equal(claimed?.id, job.id);
+
+    const db = getDb();
+    const staleStartedAt = new Date(Date.now() - 6 * 60_000).toISOString();
+    const freshHeartbeatAt = new Date().toISOString();
+    const futureLeaseAt = new Date(Date.now() + 30 * 60_000).toISOString();
+    db.prepare(
+      `UPDATE stage3_jobs
+          SET started_at = ?,
+              heartbeat_at = ?,
+              lease_expires_at = ?,
+              updated_at = ?
+        WHERE id = ?`
+    ).run(staleStartedAt, freshHeartbeatAt, futureLeaseAt, freshHeartbeatAt, job.id);
+
+    const changed = sweepExpiredLocalStage3Jobs();
+    assert.equal(changed, 1);
+
+    const refreshedJob = getStage3Job(job.id);
+    assert.equal(refreshedJob?.status, "failed");
+    assert.equal(refreshedJob?.errorCode, "editing_proxy_timeout");
+    assert.equal(refreshedJob?.assignedWorkerId, null);
+    assert.equal(refreshedJob?.leaseUntil, null);
+    assert.equal(refreshedJob?.lastHeartbeatAt, null);
+
+    const workers = listStage3Workers({ workspaceId, userId });
+    assert.equal(workers[0]?.status, "online");
+    assert.equal(workers[0]?.currentJobId, null);
+
+    const events = db
+      .prepare("SELECT message FROM stage3_job_events WHERE job_id = ? ORDER BY created_at ASC")
+      .all(job.id) as Array<{ message: string }>;
+    assert.ok(events.some((event) => event.message === "Local worker job exceeded server watchdog; job failed."));
+  });
+});
+
+test("server watchdog frees render queue behind an overdue editing proxy", async () => {
+  await withIsolatedAppData(async () => {
+    const workspaceId = "w1";
+    const userId = "u1";
+    seedWorkspace(workspaceId, userId);
+
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "worker",
+      platform: "darwin-arm64"
+    });
+
+    const proxyJob = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "editing-proxy",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        chatId: "chat-1",
+        sourceUrl: "https://youtube.com/watch?v=abc123"
+      })
+    });
+    assert.equal(
+      claimNextQueuedStage3JobForWorker({
+        workerId: exchanged.worker.id,
+        workspaceId,
+        userId,
+        supportedKinds: ["editing-proxy", "render"]
+      })?.id,
+      proxyJob.id
+    );
+
+    const renderJob = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        chatId: "chat-1",
+        sourceUrl: "https://youtube.com/watch?v=abc123",
+        renderTitle: "Ready render"
+      })
+    });
+
+    const db = getDb();
+    const staleStartedAt = new Date(Date.now() - 6 * 60_000).toISOString();
+    const freshHeartbeatAt = new Date().toISOString();
+    const futureLeaseAt = new Date(Date.now() + 30 * 60_000).toISOString();
+    db.prepare(
+      `UPDATE stage3_jobs
+          SET started_at = ?,
+              heartbeat_at = ?,
+              lease_expires_at = ?,
+              updated_at = ?
+        WHERE id = ?`
+    ).run(staleStartedAt, freshHeartbeatAt, futureLeaseAt, freshHeartbeatAt, proxyJob.id);
+
+    const claimedRender = claimNextQueuedStage3JobForWorker({
+      workerId: exchanged.worker.id,
+      workspaceId,
+      userId,
+      supportedKinds: ["editing-proxy", "render"]
+    });
+
+    assert.equal(claimedRender?.id, renderJob.id);
+    assert.equal(claimedRender?.status, "running");
+    assert.equal(claimedRender?.kind, "render");
+    assert.equal(getStage3Job(proxyJob.id)?.status, "failed");
+    assert.equal(getStage3Job(proxyJob.id)?.errorCode, "editing_proxy_timeout");
+  });
+});
+
 test("render dedupe can requeue completed or failed jobs without keeping stale attempts", async () => {
   await withIsolatedAppData(async (appDataDir) => {
     const workspaceId = "w1";

@@ -328,7 +328,7 @@ test("flow list exposes Stage 3 backlog and worker-unavailable diagnostics", asy
                 updated_at = ?
           WHERE id = ?`
       )
-      .run("2001-01-02T03:04:05.000Z", "2001-01-02T03:04:05.000Z", "2001-01-02T03:04:05.000Z", running.id);
+      .run("2001-01-02T03:04:05.000Z", new Date().toISOString(), "2001-01-02T03:04:05.000Z", running.id);
 
     auditStage3RequestFailure({
       workspaceId: owner.workspace.id,

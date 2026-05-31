@@ -8,6 +8,7 @@ import {
 } from "../app/components/types";
 import { getDb, newId, nowIso, runInTransaction } from "./db/client";
 import { tryAppendFlowAuditEvent } from "./audit-log-store";
+import { resolveStage3WorkerJobTimeoutMs } from "./stage3-worker-job-timeout";
 
 type JobRow = {
   id: string;
@@ -93,6 +94,7 @@ type ClaimStage3WorkerJobInput = {
 
 export const DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS = 45 * 60_000;
 const LOCAL_STAGE3_WORKER_RESTART_RECOVERY_GRACE_MS = 20_000;
+const LOCAL_STAGE3_SERVER_WATCHDOG_GRACE_MS = 30_000;
 
 function normalizeJobKind(value: string): Stage3JobKind {
   if (
@@ -116,6 +118,19 @@ function normalizeJobStatus(value: string): Stage3JobStatus {
     return value;
   }
   return "failed";
+}
+
+function buildStage3JobTimeoutErrorCode(kind: Stage3JobKind): string {
+  return `${kind.replaceAll("-", "_")}_timeout`;
+}
+
+function resolveStage3ServerWatchdogTimeoutMs(kind: Stage3JobKind): number {
+  return resolveStage3WorkerJobTimeoutMs(kind) + LOCAL_STAGE3_SERVER_WATCHDOG_GRACE_MS;
+}
+
+function getStage3JobRunningStartedAtMs(row: Pick<JobRow, "started_at" | "updated_at" | "created_at">): number | null {
+  const startedAt = Date.parse(row.started_at ?? row.updated_at ?? row.created_at);
+  return Number.isFinite(startedAt) ? startedAt : null;
 }
 
 function buildHostStage3JobPrioritySql(column = "kind"): string {
@@ -569,6 +584,67 @@ function requeueExpiredLocalJobsInternal(db: ReturnType<typeof getDb>): void {
   }
 }
 
+function failOverdueLocalJobsInternal(db: ReturnType<typeof getDb>): number {
+  const nowMs = Date.now();
+  const stamp = new Date(nowMs).toISOString();
+  const running = db.prepare(
+    `SELECT *
+       FROM stage3_jobs
+      WHERE execution_target = 'local'
+        AND status = 'running'`
+  ).all() as JobRow[];
+  let failed = 0;
+
+  for (const row of running) {
+    const kind = normalizeJobKind(String(row.kind));
+    const startedAtMs = getStage3JobRunningStartedAtMs(row);
+    if (startedAtMs === null) {
+      continue;
+    }
+    const timeoutMs = resolveStage3ServerWatchdogTimeoutMs(kind);
+    if (nowMs - startedAtMs < timeoutMs) {
+      continue;
+    }
+
+    const timeoutSec = Math.round(resolveStage3WorkerJobTimeoutMs(kind) / 1000);
+    const result = db.prepare(
+      `UPDATE stage3_jobs
+          SET status = 'failed',
+              error_code = ?,
+              error_message = ?,
+              recoverable = 1,
+              completed_at = ?,
+              updated_at = ?,
+              assigned_worker_id = NULL,
+              lease_expires_at = NULL,
+              heartbeat_at = NULL
+        WHERE id = ?
+          AND execution_target = 'local'
+          AND status = 'running'`
+    ).run(
+      buildStage3JobTimeoutErrorCode(kind),
+      `Локальный executor не завершил ${kind} за ${timeoutSec} секунд; серверный watchdog остановил зависшую Stage 3 job.`,
+      stamp,
+      stamp,
+      row.id
+    );
+    if ((result.changes ?? 0) === 0) {
+      continue;
+    }
+    appendStage3JobEvent(String(row.id), "error", "Local worker job exceeded server watchdog; job failed.", {
+      kind,
+      timeoutMs,
+      workerId: row.assigned_worker_id ?? null,
+      startedAt: row.started_at ?? null,
+      lastHeartbeatAt: row.heartbeat_at ?? null,
+      leaseUntil: row.lease_expires_at ?? null
+    });
+    failed += 1;
+  }
+
+  return failed;
+}
+
 function requeueRunningJobsForWorkerInternal(
   db: ReturnType<typeof getDb>,
   input: Pick<ClaimStage3WorkerJobInput, "workerId" | "workspaceId" | "userId" | "supportedKinds">
@@ -800,11 +876,12 @@ export function sweepExpiredLocalStage3Jobs(): number {
           AND lease_expires_at IS NOT NULL
           AND lease_expires_at <= ?`
     ).get(stamp) as { count?: number } | undefined;
+    const overdue = failOverdueLocalJobsInternal(db);
     requeueExpiredLocalJobsInternal(db);
     const superseded =
       interruptSupersededQueuedLocalRenderJobsInternal(db) +
       interruptSupersededQueuedLocalPreviewJobsInternal(db);
-    return (Number(before?.count) || 0) + superseded;
+    return overdue + (Number(before?.count) || 0) + superseded;
   });
 }
 
@@ -862,6 +939,7 @@ export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInp
       : DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS;
 
   const job = runInTransaction((db) => {
+    failOverdueLocalJobsInternal(db);
     requeueExpiredLocalJobsInternal(db);
     requeueRunningJobsForWorkerInternal(db, input);
     interruptSupersededQueuedLocalRenderJobsInternal(db);
