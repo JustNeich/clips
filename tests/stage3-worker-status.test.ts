@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { POST as heartbeatWorkerStage3Job } from "../app/api/stage3/worker/jobs/[id]/heartbeat/route";
 import { getDb, newId, nowIso } from "../lib/db/client";
 import {
   claimNextQueuedStage3JobForWorker,
@@ -280,6 +281,75 @@ test("server watchdog frees render queue behind an overdue editing proxy", async
     assert.equal(claimedRender?.kind, "render");
     assert.equal(getStage3Job(proxyJob.id)?.status, "failed");
     assert.equal(getStage3Job(proxyJob.id)?.errorCode, "editing_proxy_timeout");
+  });
+});
+
+test("job heartbeat does not keep a worker online after server watchdog clears the lease", async () => {
+  await withIsolatedAppData(async () => {
+    const workspaceId = "w1";
+    const userId = "u1";
+    seedWorkspace(workspaceId, userId);
+
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "worker",
+      platform: "darwin-arm64"
+    });
+
+    const job = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "editing-proxy",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        sourceUrl: "https://youtube.com/watch?v=abc123"
+      })
+    });
+    assert.equal(
+      claimNextQueuedStage3JobForWorker({
+        workerId: exchanged.worker.id,
+        workspaceId,
+        userId,
+        supportedKinds: ["editing-proxy"]
+      })?.id,
+      job.id
+    );
+
+    const db = getDb();
+    const staleWorkerSeenAt = new Date(Date.now() - 60_000).toISOString();
+    db.prepare("UPDATE stage3_workers SET last_seen_at = ?, updated_at = ? WHERE id = ?").run(
+      staleWorkerSeenAt,
+      staleWorkerSeenAt,
+      exchanged.worker.id
+    );
+    finishStage3Job(job.id, {
+      status: "failed",
+      errorCode: "editing_proxy_timeout",
+      errorMessage: "server watchdog failed job",
+      recoverable: true
+    });
+
+    const response = await heartbeatWorkerStage3Job(
+      new Request(`http://localhost/api/stage3/worker/jobs/${job.id}/heartbeat`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${exchanged.sessionToken}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({ appVersion: "1.0.0+runtime.test" })
+      }),
+      { params: Promise.resolve({ id: job.id }) }
+    );
+
+    assert.equal(response.status, 409);
+    const workerRow = db
+      .prepare("SELECT last_seen_at FROM stage3_workers WHERE id = ?")
+      .get(exchanged.worker.id) as { last_seen_at?: string } | undefined;
+    assert.equal(workerRow?.last_seen_at, staleWorkerSeenAt);
+
+    const workers = listStage3Workers({ workspaceId, userId });
+    assert.equal(workers[0]?.status, "offline");
   });
 });
 

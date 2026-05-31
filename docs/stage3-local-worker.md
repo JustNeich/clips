@@ -253,6 +253,7 @@ UI worker list теперь при каждом poll автоматически 
 - `render` и `agent-media-step`: 10 минут.
 
 Host дополнительно зеркалит эти лимиты серверным watchdog-ом с небольшой grace-паузой. Если worker продолжает слать heartbeat, но job уже старше своего kind-timeout, host сам переводит её в recoverable `*_timeout`, сбрасывает `assigned_worker_id` / lease и освобождает очередь. Это защищает render от состояния, где зависший `editing-proxy` держит executor в `Busy` до длинного lease window без видимой ошибки.
+Job-specific heartbeat для уже очищенной/failed job не должен продлевать общий worker `last_seen_at`: иначе зависший executor мог бы выглядеть `Online`, хотя его loop уже не claim-ит новые jobs.
 
 После watchdog timeout job помечается как recoverable failure на хосте, а локальный worker завершает процесс, чтобы не продолжать держать скрытый зависший render/proxy. Автоматические повторные запросы по той же dedupe-key сохраняют счётчик попыток и останавливаются на лимите, чтобы перезапуск executor-а не возвращал один и тот же проблемный proxy/render в бесконечный цикл. Оператор должен перезапустить свежую команду из Step 3 и повторить действие. Таймауты можно временно переопределить через `STAGE3_WORKER_JOB_TIMEOUT_MS` или kind-specific env вроде `STAGE3_WORKER_RENDER_TIMEOUT_MS`.
 

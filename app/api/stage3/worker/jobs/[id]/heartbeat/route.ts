@@ -23,12 +23,12 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
   try {
     const auth = requireStage3WorkerAuth(request);
     const { id } = await context.params;
+    const job = heartbeatStage3Job(id, auth.worker.id, DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS);
     touchStage3WorkerHeartbeat({
       workerId: auth.worker.id,
       appVersion: body?.appVersion ?? null,
       capabilitiesJson: body?.capabilities ? JSON.stringify(body.capabilities) : null
     });
-    const job = heartbeatStage3Job(id, auth.worker.id, DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS);
     return Response.json(buildStage3JobEnvelope(job, null), { status: 200 });
   } catch (error) {
     if (error instanceof Response) {
