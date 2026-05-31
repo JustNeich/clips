@@ -812,7 +812,11 @@ async function tryYtDlpDownload(rawUrl: string, tmpDir: string): Promise<SourceD
   };
 }
 
-async function findDownloadedMediaAudioIssue(filePath: string): Promise<string | null> {
+export async function findDownloadedMediaAudioIssue(
+  filePath: string,
+  options: { providerLabel?: string } = {}
+): Promise<string | null> {
+  const providerLabel = options.providerLabel?.trim() || "Source provider";
   try {
     const { stdout } = await execFileAsync(
       "ffprobe",
@@ -836,7 +840,7 @@ async function findDownloadedMediaAudioIssue(filePath: string): Promise<string |
       .filter((stream) => stream.codec_type === "audio")
       .map((stream) => stream.duration);
     if (!audioDurations.length) {
-      return "Visolix вернул mp4 без аудиодорожки.";
+      return `${providerLabel} вернул mp4 без аудиодорожки.`;
     }
 
     const audioDurationSec = maxPositiveDuration(audioDurations);
@@ -850,7 +854,7 @@ async function findDownloadedMediaAudioIssue(filePath: string): Promise<string |
       audioDurationSec + 0.75 < videoDurationSec &&
       audioDurationSec / videoDurationSec < 0.9
     ) {
-      return `Visolix вернул mp4, где аудио короче видео (${audioDurationSec.toFixed(1)}с из ${videoDurationSec.toFixed(1)}с).`;
+      return `${providerLabel} вернул mp4, где аудио короче видео (${audioDurationSec.toFixed(1)}с из ${videoDurationSec.toFixed(1)}с).`;
     }
     return null;
   } catch {
@@ -882,7 +886,9 @@ export async function downloadSourceMedia(
   if (shouldAttemptVisolix) {
     try {
       const downloaded = await visolixDownloader(sourceUrl, tmpDir);
-      const audioIssue = await findDownloadedMediaAudioIssue(downloaded.filePath);
+      const audioIssue = await findDownloadedMediaAudioIssue(downloaded.filePath, {
+        providerLabel: "Visolix"
+      });
       if (audioIssue) {
         summary = createProviderErrorSummary({
           primaryProvider: "visolix",

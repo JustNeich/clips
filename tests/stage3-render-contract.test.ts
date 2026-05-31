@@ -11,6 +11,7 @@ import {
   buildStage3PreparedDurationGuardFfmpegArgs,
   buildStage3SourceAudioGainFfmpegArgs,
   buildNormalizeStage3SourceFfmpegArgs,
+  prepareStage3SourceClip,
   resolveStage3SegmentExtractionMode,
   resolveStage3SourcePreparationScaleFilter,
   STAGE3_RENDER_SAFE_SOURCE_SCALE_FILTER,
@@ -31,6 +32,56 @@ import {
 } from "../lib/stage3-render-variation";
 
 const execFileAsync = promisify(execFile);
+
+async function writeVideoWithAudio(filePath: string, durationSec: number, audioDurationSec = durationSec): Promise<void> {
+  await execFileAsync("ffmpeg", [
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    `testsrc2=s=64x64:r=30:d=${durationSec}`,
+    "-f",
+    "lavfi",
+    "-i",
+    `sine=frequency=440:sample_rate=48000:duration=${audioDurationSec}`,
+    "-map",
+    "0:v:0",
+    "-map",
+    "1:a:0",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    filePath
+  ]);
+}
+
+async function probeStreamDurations(filePath: string): Promise<{ video: number | null; audio: number | null; format: number | null }> {
+  const { stdout } = await execFileAsync("ffprobe", [
+    "-v",
+    "error",
+    "-show_entries",
+    "stream=codec_type,duration:format=duration",
+    "-of",
+    "json",
+    filePath
+  ]);
+  const parsed = JSON.parse(stdout) as {
+    streams?: Array<{ codec_type?: string; duration?: string }>;
+    format?: { duration?: string };
+  };
+  const readDuration = (value: unknown): number | null => {
+    const parsedValue = typeof value === "string" ? Number.parseFloat(value) : NaN;
+    return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : null;
+  };
+  return {
+    video: readDuration(parsed.streams?.find((stream) => stream.codec_type === "video")?.duration),
+    audio: readDuration(parsed.streams?.find((stream) => stream.codec_type === "audio")?.duration),
+    format: readDuration(parsed.format?.duration)
+  };
+}
 
 function createVariationProfile(mode: Stage3VariationProfile["appliedMode"]): Stage3VariationProfile {
   return {
@@ -150,6 +201,42 @@ test("render source duration guard pads short prepared clips with the final fram
   assert.match(filter, /apad=pad_dur=0\.900/);
   assert.ok(args.includes("-t"));
   assert.equal(args[args.indexOf("-t") + 1], "6.000");
+});
+
+test("render source preparation pads truncated source audio to the target duration", async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-prepared-audio-duration-"));
+  const sourcePath = path.join(tmpDir, "source-short-audio.mp4");
+
+  try {
+    await writeVideoWithAudio(sourcePath, 6, 3);
+    const renderPlan = normalizeServerRenderPlan(
+      {
+        targetDurationSec: 6,
+        durationMode: "channel_default",
+        audioMode: "source_only",
+        sourceAudioEnabled: true
+      },
+      6,
+      STAGE3_TEMPLATE_ID,
+      undefined
+    );
+    const prepared = await prepareStage3SourceClip({
+      sourcePath,
+      tmpDir,
+      sourceDurationSec: 6,
+      clipStartSec: 0,
+      clipDurationSec: 6,
+      renderPlan,
+      profile: "render"
+    });
+    const durations = await probeStreamDurations(prepared.preparedPath);
+
+    assert.ok((durations.video ?? 0) >= 5.8, `expected prepared video near target, got ${durations.video}`);
+    assert.ok((durations.audio ?? 0) >= 5.8, `expected prepared audio near target, got ${durations.audio}`);
+    assert.ok((durations.format ?? 0) >= 5.8, `expected prepared container near target, got ${durations.format}`);
+  } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test("stage3 video placement anchors zoom transform to Position X and Y", () => {
@@ -362,6 +449,21 @@ test("final render args can take video from remotion output and audio from prepa
   assert.ok(args.includes("1:a?"));
   assert.equal(args.includes("0:a?"), false);
   assert.ok(args.includes("-shortest"));
+});
+
+test("final render args can clamp muxed output to the render target duration", () => {
+  const args = buildFinalizeRenderedOutputArgs({
+    inputPath: "/tmp/visual.mp4",
+    audioInputPath: "/tmp/prepared-source.mp4",
+    outputPath: "/tmp/final.mp4",
+    metadataTitle: "Stable Render",
+    durationSec: 6,
+    variationProfile: createVariationProfile("off")
+  });
+
+  assert.ok(args.includes("-t"));
+  assert.equal(args[args.indexOf("-t") + 1], "6.000");
+  assert.equal(args.includes("-shortest"), false);
 });
 
 test("final render mux preserves prepared source audio when remotion output has only video", async () => {

@@ -430,6 +430,65 @@ export async function probeVideoDurationSeconds(videoPath: string): Promise<numb
   }
 }
 
+function parsePositiveDuration(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
+function maxDuration(values: unknown[]): number | null {
+  const durations = values
+    .map(parsePositiveDuration)
+    .filter((value): value is number => value !== null);
+  return durations.length ? Math.max(...durations) : null;
+}
+
+async function probeMediaDurations(videoPath: string): Promise<{
+  videoDurationSec: number | null;
+  audioDurationSec: number | null;
+  hasAudio: boolean;
+}> {
+  try {
+    const { stdout } = await execFileAsync(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-show_entries",
+        "stream=codec_type,duration:format=duration",
+        "-of",
+        "json",
+        videoPath
+      ],
+      { timeout: 30_000, maxBuffer: 1024 * 1024 }
+    );
+    const parsed = JSON.parse(stdout) as {
+      streams?: Array<{ codec_type?: unknown; duration?: unknown }>;
+      format?: { duration?: unknown };
+    };
+    const streams = Array.isArray(parsed.streams) ? parsed.streams : [];
+    const audioStreams = streams.filter((stream) => stream.codec_type === "audio");
+    return {
+      videoDurationSec:
+        maxDuration(streams.filter((stream) => stream.codec_type === "video").map((stream) => stream.duration)) ??
+        parsePositiveDuration(parsed.format?.duration),
+      audioDurationSec: maxDuration(audioStreams.map((stream) => stream.duration)),
+      hasAudio: audioStreams.length > 0
+    };
+  } catch {
+    return {
+      videoDurationSec: await probeVideoDurationSeconds(videoPath),
+      audioDurationSec: null,
+      hasAudio: await probeHasAudio(videoPath)
+    };
+  }
+}
+
 export async function probeVideoDimensions(videoPath: string): Promise<VideoDimensions | null> {
   try {
     const { stdout } = await execFileAsync(
@@ -1294,24 +1353,34 @@ async function guardPreparedClipDuration(params: {
   targetDurationSec: number;
   profile: Stage3MediaProfile;
 }): Promise<string> {
-  const durationSec = await probeVideoDurationSeconds(params.inputPath);
-  if (
-    durationSec !== null &&
-    Math.abs(durationSec - params.targetDurationSec) <= STAGE3_PREPARED_SOURCE_DURATION_EPSILON_SEC
-  ) {
+  const durations = await probeMediaDurations(params.inputPath);
+  const videoDurationSec = durations.videoDurationSec;
+  const audioDurationSec = durations.audioDurationSec;
+  const videoDurationOk =
+    videoDurationSec !== null &&
+    Math.abs(videoDurationSec - params.targetDurationSec) <= STAGE3_PREPARED_SOURCE_DURATION_EPSILON_SEC;
+  const audioDurationOk =
+    !durations.hasAudio ||
+    audioDurationSec === null ||
+    Math.abs(audioDurationSec - params.targetDurationSec) <= STAGE3_PREPARED_SOURCE_DURATION_EPSILON_SEC ||
+    audioDurationSec > params.targetDurationSec;
+  if (videoDurationOk && audioDurationOk) {
     return params.inputPath;
   }
 
-  const sourceHasAudio = await probeHasAudio(params.inputPath);
   const output = path.join(params.tmpDir, "clip-duration-guard.mp4");
+  const shortestKnownDuration =
+    durations.hasAudio && audioDurationSec !== null && videoDurationSec !== null
+      ? Math.min(videoDurationSec, audioDurationSec)
+      : videoDurationSec ?? audioDurationSec ?? 0;
   await execFileAsync(
     "ffmpeg",
     buildStage3PreparedDurationGuardFfmpegArgs({
       inputPath: params.inputPath,
       outputPath: output,
-      inputDurationSec: durationSec ?? 0,
+      inputDurationSec: shortestKnownDuration,
       targetDurationSec: params.targetDurationSec,
-      sourceHasAudio,
+      sourceHasAudio: durations.hasAudio,
       profile: params.profile
     }),
     { timeout: 2 * 60_000, maxBuffer: 1024 * 1024 * 16 }

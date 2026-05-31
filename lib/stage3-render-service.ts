@@ -392,6 +392,7 @@ async function finalizeRenderedOutput(params: {
   audioInputPath?: string | null;
   outputPath: string;
   metadataTitle: string | null;
+  durationSec?: number | null;
   variationProfile: Stage3VariationProfile;
   variationManifest: Stage3VariationManifest;
   variationManifestPath: string;
@@ -410,9 +411,14 @@ export function buildFinalizeRenderedOutputArgs(params: {
   audioInputPath?: string | null;
   outputPath: string;
   metadataTitle: string | null;
+  durationSec?: number | null;
   variationProfile: Stage3VariationProfile;
 }): string[] {
   const audioInputPath = params.audioInputPath?.trim() || null;
+  const durationSec =
+    typeof params.durationSec === "number" && Number.isFinite(params.durationSec) && params.durationSec > 0
+      ? params.durationSec
+      : null;
   const args = [
     "-y",
     "-i",
@@ -463,7 +469,9 @@ export function buildFinalizeRenderedOutputArgs(params: {
     "copy"
   );
 
-  if (audioInputPath) {
+  if (durationSec !== null) {
+    args.push("-t", durationSec.toFixed(3));
+  } else if (audioInputPath) {
     args.push("-shortest");
   }
 
@@ -1217,6 +1225,7 @@ export async function renderStage3Video(
           audioInputPath: prepared.preparedPath,
           outputPath,
           metadataTitle,
+          durationSec: renderPlan.targetDurationSec,
           variationProfile: appliedVariationProfile,
           variationManifest: appliedVariationManifest,
           variationManifestPath

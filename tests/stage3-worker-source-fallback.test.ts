@@ -1,16 +1,67 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 import { POST as postStage3WorkerSource } from "../app/api/stage3/worker/source/route";
 import { getDb, newId, nowIso } from "../lib/db/client";
-import { ensureSourceMediaCached } from "../lib/source-media-cache";
+import { ensureSourceMediaCached, storeUploadedSourceMedia } from "../lib/source-media-cache";
 import { downloadSourceVideo } from "../lib/stage3-media-agent";
+import { ensureStage3SourceCached } from "../lib/stage3-server-control";
 import { setSourceAcquisitionDownloadersForTests } from "../lib/source-acquisition";
 import { exchangeStage3WorkerPairingToken, issueStage3WorkerPairingToken } from "../lib/stage3-worker-store";
 import { buildUploadedSourceUrl } from "../lib/uploaded-source";
-import { storeUploadedSourceMedia } from "../lib/source-media-cache";
+import { normalizeSupportedUrl } from "../lib/supported-url";
+
+const execFileAsync = promisify(execFile);
+
+function getStage3SourceCacheKey(rawUrl: string): string {
+  return createHash("sha1").update(normalizeSupportedUrl(rawUrl)).digest("hex");
+}
+
+async function writeVideoWithAudio(filePath: string, durationSec: number, audioDurationSec = durationSec): Promise<void> {
+  await execFileAsync("ffmpeg", [
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    `testsrc2=s=64x64:r=30:d=${durationSec}`,
+    "-f",
+    "lavfi",
+    "-i",
+    `sine=frequency=440:sample_rate=48000:duration=${audioDurationSec}`,
+    "-map",
+    "0:v:0",
+    "-map",
+    "1:a:0",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    filePath
+  ]);
+}
+
+async function probeAudioDuration(filePath: string): Promise<number | null> {
+  const { stdout } = await execFileAsync("ffprobe", [
+    "-v",
+    "error",
+    "-select_streams",
+    "a:0",
+    "-show_entries",
+    "stream=duration",
+    "-of",
+    "default=noprint_wrappers=1:nokey=1",
+    filePath
+  ]);
+  const parsed = Number.parseFloat(stdout.trim());
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
 
 test("downloadSourceVideo prefers host source cache for local Stage 3 workers", { concurrency: false }, async () => {
   const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-worker-source-cache-"));
@@ -241,6 +292,93 @@ test("downloadSourceVideo reuses shared source cache on server-side Stage 3 runs
     }
     await fs.rm(tmpDir, { recursive: true, force: true });
     await fs.rm(appDataDir, { recursive: true, force: true });
+  }
+});
+
+test("ensureStage3SourceCached evicts stale stage3 cache with truncated audio before reuse", { concurrency: false }, async () => {
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-source-cache-bad-audio-app-"));
+  const stage3CacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-source-cache-bad-audio-stage3-"));
+  const previousAppDataDir = process.env.APP_DATA_DIR;
+  const previousStage3CacheRoot = process.env.CLIPS_STAGE3_CACHE_ROOT;
+  const previousServerOrigin = process.env.STAGE3_WORKER_SERVER_ORIGIN;
+  const previousSessionToken = process.env.STAGE3_WORKER_SESSION_TOKEN;
+  const previousVisolixApiKey = process.env.VISOLIX_API_KEY;
+  const url = "https://www.instagram.com/reel/stage3-cache-bad-audio/";
+  const sourceKey = getStage3SourceCacheKey(url);
+  const cacheDir = path.join(stage3CacheRoot, "sources");
+  let downloadCalls = 0;
+
+  process.env.APP_DATA_DIR = appDataDir;
+  process.env.CLIPS_STAGE3_CACHE_ROOT = stage3CacheRoot;
+  delete process.env.STAGE3_WORKER_SERVER_ORIGIN;
+  delete process.env.STAGE3_WORKER_SESSION_TOKEN;
+  delete process.env.VISOLIX_API_KEY;
+
+  await fs.mkdir(cacheDir, { recursive: true });
+  await writeVideoWithAudio(path.join(cacheDir, `${sourceKey}.mp4`), 6, 3);
+  await fs.writeFile(
+    path.join(cacheDir, `${sourceKey}.json`),
+    `${JSON.stringify({
+      fileName: "stale-stage3-source",
+      sourceDurationSec: 6,
+      normalizationVersion: 2
+    })}\n`,
+    "utf-8"
+  );
+
+  setSourceAcquisitionDownloadersForTests({
+    ytDlp: async (_rawUrl, tmpDir) => {
+      downloadCalls += 1;
+      const filePath = path.join(tmpDir, "source.mp4");
+      await writeVideoWithAudio(filePath, 6);
+      const stat = await fs.stat(filePath);
+      return {
+        provider: "ytDlp",
+        filePath,
+        fileName: "fresh-stage3-source",
+        title: "Fresh Stage 3 Source",
+        durationSec: 6,
+        videoSizeBytes: stat.size
+      };
+    }
+  });
+
+  try {
+    const cached = await ensureStage3SourceCached(url);
+    const audioDuration = await probeAudioDuration(cached.sourcePath);
+
+    assert.equal(cached.fileName, "fresh-stage3-source");
+    assert.equal(downloadCalls, 1);
+    assert.ok((audioDuration ?? 0) >= 5.8, `expected fresh full-length audio, got ${audioDuration}`);
+  } finally {
+    setSourceAcquisitionDownloadersForTests(null);
+    if (previousAppDataDir === undefined) {
+      delete process.env.APP_DATA_DIR;
+    } else {
+      process.env.APP_DATA_DIR = previousAppDataDir;
+    }
+    if (previousStage3CacheRoot === undefined) {
+      delete process.env.CLIPS_STAGE3_CACHE_ROOT;
+    } else {
+      process.env.CLIPS_STAGE3_CACHE_ROOT = previousStage3CacheRoot;
+    }
+    if (previousServerOrigin === undefined) {
+      delete process.env.STAGE3_WORKER_SERVER_ORIGIN;
+    } else {
+      process.env.STAGE3_WORKER_SERVER_ORIGIN = previousServerOrigin;
+    }
+    if (previousSessionToken === undefined) {
+      delete process.env.STAGE3_WORKER_SESSION_TOKEN;
+    } else {
+      process.env.STAGE3_WORKER_SESSION_TOKEN = previousSessionToken;
+    }
+    if (previousVisolixApiKey === undefined) {
+      delete process.env.VISOLIX_API_KEY;
+    } else {
+      process.env.VISOLIX_API_KEY = previousVisolixApiKey;
+    }
+    await fs.rm(appDataDir, { recursive: true, force: true });
+    await fs.rm(stage3CacheRoot, { recursive: true, force: true });
   }
 });
 

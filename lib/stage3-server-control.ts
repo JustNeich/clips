@@ -8,8 +8,10 @@ import {
   normalizeStage3SourceVideo,
   probeVideoDurationSeconds
 } from "./stage3-media-agent";
+import { findDownloadedMediaAudioIssue } from "./source-acquisition";
 import { clampHostedConcurrencyLimit } from "./hosted-resource-budget";
 import { queueThrottledBackgroundTask } from "./throttled-background-task";
+import { isUploadedSourceUrl } from "./uploaded-source";
 import { normalizeSupportedUrl } from "./ytdlp";
 
 export type Stage3CachedSource = {
@@ -24,7 +26,7 @@ export type Stage3HostedJobOptions = {
   waitTimeoutMs?: number | null;
 };
 
-const STAGE3_SOURCE_CACHE_NORMALIZATION_VERSION = 1;
+const STAGE3_SOURCE_CACHE_NORMALIZATION_VERSION = 2;
 const STAGE3_SOURCE_CACHE_MAX_ENTRIES = 24;
 const HOSTED_STAGE3_SOURCE_CACHE_MAX_ENTRIES = 8;
 const STAGE3_SOURCE_CACHE_PRUNE_INTERVAL_MS = 5 * 60_000;
@@ -368,33 +370,43 @@ export async function ensureStage3SourceCached(
     const rawMeta = await fs.readFile(metaPath, "utf-8").catch(() => "");
     const meta = readMetaFileName(rawMeta, sourceKey);
     let sourceDurationSec = meta.sourceDurationSec ?? (await probeVideoDurationSeconds(sourcePath));
+    const audioIssue = isUploadedSourceUrl(sourceUrl)
+      ? null
+      : await findDownloadedMediaAudioIssue(sourcePath, {
+          providerLabel: "Stage 3 cached source"
+        });
 
-    if (meta.normalizationVersion < STAGE3_SOURCE_CACHE_NORMALIZATION_VERSION) {
-      await normalizeCachedSourceIntoPlace({
-        inputPath: sourcePath,
+    if (audioIssue) {
+      await fs.rm(sourcePath, { force: true }).catch(() => undefined);
+      await fs.rm(metaPath, { force: true }).catch(() => undefined);
+    } else {
+      if (meta.normalizationVersion < STAGE3_SOURCE_CACHE_NORMALIZATION_VERSION) {
+        await normalizeCachedSourceIntoPlace({
+          inputPath: sourcePath,
+          sourcePath,
+          sourceKey
+        });
+        sourceDurationSec = await probeVideoDurationSeconds(sourcePath);
+        await writeSourceMeta({
+          metaPath,
+          fileName: meta.fileName,
+          sourceDurationSec
+        });
+      } else if (!rawMeta || meta.sourceDurationSec === null) {
+        await writeSourceMeta({
+          metaPath,
+          fileName: meta.fileName,
+          sourceDurationSec
+        });
+      }
+
+      return {
         sourcePath,
-        sourceKey
-      });
-      sourceDurationSec = await probeVideoDurationSeconds(sourcePath);
-      await writeSourceMeta({
-        metaPath,
-        fileName: meta.fileName,
-        sourceDurationSec
-      });
-    } else if (!rawMeta || meta.sourceDurationSec === null) {
-      await writeSourceMeta({
-        metaPath,
-        fileName: meta.fileName,
-        sourceDurationSec
-      });
+        sourceDurationSec,
+        sourceKey,
+        fileName: meta.fileName
+      };
     }
-
-    return {
-      sourcePath,
-      sourceDurationSec,
-      sourceKey,
-      fileName: meta.fileName
-    };
   }
 
   const running = sourceInflight.get(sourceKey);

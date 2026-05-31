@@ -12,6 +12,7 @@ import { getAppDataDir } from "./app-paths";
 import { isHostedRenderRuntime } from "./hosted-subprocess";
 import {
   downloadSourceMedia,
+  findDownloadedMediaAudioIssue,
   type SourceDownloadOptions
 } from "./source-acquisition";
 import { isUploadedSourceUrl } from "./uploaded-source";
@@ -252,6 +253,17 @@ export async function getCachedSourceMedia(rawUrl: string): Promise<CachedSource
     return null;
   }
   const meta = await readMeta(sourceKey);
+  const isUploadedSource = isUploadedSourceUrl(sourceUrl) || meta.downloadProvider === "upload" || meta.sticky === true;
+  if (!isUploadedSource) {
+    const audioIssue = await findDownloadedMediaAudioIssue(sourcePath, {
+      providerLabel: "Cached source"
+    });
+    if (audioIssue) {
+      await fs.rm(sourcePath, { force: true }).catch(() => undefined);
+      await fs.rm(buildMetaPath(sourceKey), { force: true }).catch(() => undefined);
+      return null;
+    }
+  }
   return {
     sourcePath,
     sourceKey,
@@ -691,13 +703,10 @@ export async function ensureSourceMediaCached(
   const sourcePath = buildSourcePath(sourceKey);
 
   if (await pathExists(sourcePath)) {
-    const meta = await readMeta(sourceKey);
-    return {
-      sourcePath,
-      sourceKey,
-      ...meta,
-      cacheState: "hit"
-    };
+    const cached = await getCachedSourceMedia(sourceUrl);
+    if (cached) {
+      return cached;
+    }
   }
 
   if (isUploadedSourceUrl(sourceUrl)) {

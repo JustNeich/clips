@@ -1,11 +1,44 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { ensureSourceMediaCached, pruneSourceMediaCacheForTests } from "../lib/source-media-cache";
+import { promisify } from "node:util";
+import {
+  ensureSourceMediaCached,
+  getSourceMediaCacheKey,
+  pruneSourceMediaCacheForTests
+} from "../lib/source-media-cache";
 import { setSourceAcquisitionDownloadersForTests } from "../lib/source-acquisition";
+
+const execFileAsync = promisify(execFile);
+
+async function writeVideoWithAudio(filePath: string, durationSec: number, audioDurationSec = durationSec): Promise<void> {
+  await execFileAsync("ffmpeg", [
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    `testsrc2=s=64x64:r=30:d=${durationSec}`,
+    "-f",
+    "lavfi",
+    "-i",
+    `sine=frequency=440:sample_rate=48000:duration=${audioDurationSec}`,
+    "-map",
+    "0:v:0",
+    "-map",
+    "1:a:0",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    filePath
+  ]);
+}
 
 test("ensureSourceMediaCached reuses the cached source artifact instead of redownloading", { concurrency: false }, async () => {
   const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-media-cache-test-"));
@@ -42,6 +75,66 @@ test("ensureSourceMediaCached reuses the cached source artifact instead of redow
     assert.equal(second.sourcePath, first.sourcePath);
     assert.equal(second.fileName, "cached-source");
     assert.equal(second.downloadProvider, "ytDlp");
+  } finally {
+    setSourceAcquisitionDownloadersForTests(null);
+    if (previousAppDataDir === undefined) {
+      delete process.env.APP_DATA_DIR;
+    } else {
+      process.env.APP_DATA_DIR = previousAppDataDir;
+    }
+    await fs.rm(appDataDir, { recursive: true, force: true });
+  }
+});
+
+test("ensureSourceMediaCached evicts cached external media with truncated audio before reuse", { concurrency: false }, async () => {
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-media-cache-bad-audio-test-"));
+  const previousAppDataDir = process.env.APP_DATA_DIR;
+  const url = "https://www.instagram.com/reel/cache-bad-audio/";
+  let downloadCalls = 0;
+
+  process.env.APP_DATA_DIR = appDataDir;
+
+  const cacheDir = path.join(appDataDir, "source-media-cache", "sources");
+  const sourceKey = getSourceMediaCacheKey(url);
+  await fs.mkdir(cacheDir, { recursive: true });
+  await writeVideoWithAudio(path.join(cacheDir, `${sourceKey}.mp4`), 6, 3);
+  await fs.writeFile(
+    path.join(cacheDir, `${sourceKey}.json`),
+    `${JSON.stringify({
+      fileName: "bad-visolix-source",
+      title: "Bad Visolix Source",
+      videoSizeBytes: 1,
+      downloadProvider: "visolix",
+      primaryProviderError: null,
+      downloadFallbackUsed: false,
+      providerErrorSummary: null
+    })}\n`,
+    "utf-8"
+  );
+
+  setSourceAcquisitionDownloadersForTests({
+    ytDlp: async (_rawUrl, tmpDir) => {
+      downloadCalls += 1;
+      const filePath = path.join(tmpDir, "source.mp4");
+      await writeVideoWithAudio(filePath, 6);
+      const stat = await fs.stat(filePath);
+      return {
+        provider: "ytDlp",
+        filePath,
+        fileName: "recovered-source",
+        title: "Recovered source",
+        durationSec: 6,
+        videoSizeBytes: stat.size
+      };
+    }
+  });
+
+  try {
+    const cached = await ensureSourceMediaCached(url);
+    assert.equal(cached.cacheState, "miss");
+    assert.equal(cached.fileName, "recovered-source");
+    assert.equal(cached.downloadProvider, "ytDlp");
+    assert.equal(downloadCalls, 1);
   } finally {
     setSourceAcquisitionDownloadersForTests(null);
     if (previousAppDataDir === undefined) {
