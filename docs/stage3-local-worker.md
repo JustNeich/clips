@@ -245,6 +245,8 @@ UI worker list теперь при каждом poll автоматически 
 
 Если executor перезапущен, пока за ним ещё числится активная Stage 3 job, следующий worker claim после короткого heartbeat grace возвращает эту job в очередь и забирает её заново тем же worker-ом вместо ожидания полного lease window.
 
+Если после deploy старый executor продолжает heartbeat/claim, но его runtime уже несовместим с серверным manifest, сервер больше не оставляет queued local jobs в вечном ожидании. Когда нет ни одного совместимого online worker-а для этого пользователя, ожидающие Stage 3 jobs получают recoverable failure `worker_runtime_outdated`, а оператор должен обновить/перезапустить worker через свежий bootstrap и повторить действие.
+
 Если тяжелая local job зависла внутри executor и продолжает держать `Busy`, worker теперь имеет hard watchdog:
 
 - `editing-proxy`: 5 минут;

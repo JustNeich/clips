@@ -10,6 +10,7 @@ import {
   claimNextQueuedStage3JobForWorker,
   completeStage3Job,
   enqueueStage3Job,
+  failQueuedLocalStage3JobsForWorkerUpdateRequired,
   finishStage3Job,
   getStage3Job,
   sweepExpiredLocalStage3Jobs
@@ -95,6 +96,62 @@ test("listStage3Workers reports busy worker with current job kind for active loc
     assert.equal(workers[0]?.status, "busy");
     assert.equal(workers[0]?.currentJobId, job.id);
     assert.equal(workers[0]?.currentJobKind, "editing-proxy");
+  });
+});
+
+test("outdated local worker marks queued render jobs failed instead of leaving them waiting", async () => {
+  await withIsolatedAppData(async () => {
+    const workspaceId = "w1";
+    const userId = "u1";
+    seedWorkspace(workspaceId, userId);
+
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "worker",
+      platform: "darwin-arm64",
+      appVersion: "1.0.0+runtime.old"
+    });
+
+    const render = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=render" })
+    });
+    const preview = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "preview",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=preview" })
+    });
+
+    const failed = failQueuedLocalStage3JobsForWorkerUpdateRequired({
+      workspaceId,
+      userId,
+      supportedKinds: ["render"],
+      workerId: exchanged.worker.id,
+      workerAppVersion: "1.0.0+runtime.old",
+      expectedRuntimeVersion: "1.0.0+runtime.new"
+    });
+
+    assert.equal(failed, 1);
+    const refreshedRender = getStage3Job(render.id);
+    assert.equal(refreshedRender?.status, "failed");
+    assert.equal(refreshedRender?.errorCode, "worker_runtime_outdated");
+    assert.equal(refreshedRender?.recoverable, true);
+    assert.match(refreshedRender?.errorMessage ?? "", /Обновите\/перезапустите worker/i);
+    assert.equal(refreshedRender?.assignedWorkerId, null);
+
+    const refreshedPreview = getStage3Job(preview.id);
+    assert.equal(refreshedPreview?.status, "queued");
+
+    const events = getDb()
+      .prepare("SELECT message FROM stage3_job_events WHERE job_id = ? ORDER BY created_at ASC")
+      .all(render.id) as Array<{ message: string }>;
+    assert.ok(events.some((event) => event.message === "Queued local job blocked by outdated worker runtime."));
   });
 });
 

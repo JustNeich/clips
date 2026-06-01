@@ -2,12 +2,14 @@ import { requireStage3WorkerAuth } from "../../../../../../lib/auth/stage3-worke
 import { buildStage3JobEnvelope } from "../../../../../../lib/stage3-job-http";
 import {
   DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS,
-  claimNextQueuedStage3JobForWorker
+  claimNextQueuedStage3JobForWorker,
+  failQueuedLocalStage3JobsForWorkerUpdateRequired
 } from "../../../../../../lib/stage3-job-store";
 import {
   getExpectedStage3WorkerRuntimeVersion,
   isStage3WorkerRuntimeVersionCompatible
 } from "../../../../../../lib/stage3-worker-runtime-manifest";
+import { resolveStage3LocalWorkerReadiness } from "../../../../../../lib/stage3-worker-readiness";
 import { touchStage3WorkerHeartbeat } from "../../../../../../lib/stage3-worker-store";
 
 export const runtime = "nodejs";
@@ -36,6 +38,21 @@ export async function POST(request: Request): Promise<Response> {
         expectedRuntimeVersion
       })
     ) {
+      const readiness = await resolveStage3LocalWorkerReadiness({
+        workspaceId: auth.workspaceId,
+        userId: auth.userId
+      });
+      const failedQueuedJobs =
+        readiness.compatibleOnlineWorkers === 0
+          ? failQueuedLocalStage3JobsForWorkerUpdateRequired({
+              workspaceId: auth.workspaceId,
+              userId: auth.userId,
+              supportedKinds: body?.supportedKinds,
+              workerId: auth.worker.id,
+              workerAppVersion,
+              expectedRuntimeVersion
+            })
+          : 0;
       const expected = expectedRuntimeVersion || "latest";
       return Response.json(
         {
@@ -43,7 +60,8 @@ export async function POST(request: Request): Promise<Response> {
             `Local Stage 3 worker is outdated (worker: ${workerAppVersion ?? "unknown"}, expected: ${expected}). ` +
             "Run Stage 3 bootstrap command again to update executor runtime.",
           code: "worker_update_required",
-          requiredAppVersion: expectedRuntimeVersion
+          requiredAppVersion: expectedRuntimeVersion,
+          failedQueuedJobs
         },
         {
           status: 409,

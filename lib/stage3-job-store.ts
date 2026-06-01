@@ -92,6 +92,15 @@ type ClaimStage3WorkerJobInput = {
   leaseDurationMs?: number;
 };
 
+type FailQueuedLocalJobsForWorkerUpdateInput = {
+  workspaceId: string;
+  userId: string;
+  supportedKinds?: Stage3JobKind[] | null;
+  workerId?: string | null;
+  workerAppVersion?: string | null;
+  expectedRuntimeVersion?: string | null;
+};
+
 export const DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS = 45 * 60_000;
 const LOCAL_STAGE3_WORKER_RESTART_RECOVERY_GRACE_MS = 20_000;
 const LOCAL_STAGE3_SERVER_WATCHDOG_GRACE_MS = 30_000;
@@ -863,6 +872,87 @@ function interruptSupersededQueuedLocalPreviewJobsInternal(db: ReturnType<typeof
   }
 
   return superseded.length;
+}
+
+export function failQueuedLocalStage3JobsForWorkerUpdateRequired(
+  input: FailQueuedLocalJobsForWorkerUpdateInput
+): number {
+  const userId = input.userId.trim();
+  if (!userId) {
+    return 0;
+  }
+  const kinds = (input.supportedKinds?.length ? input.supportedKinds : null) as Stage3JobKind[] | null;
+  const expectedRuntimeVersion = input.expectedRuntimeVersion?.trim() || "latest";
+  const workerAppVersion = input.workerAppVersion?.trim() || "unknown";
+  const message =
+    `Локальный executor устарел (worker: ${workerAppVersion}, требуется: ${expectedRuntimeVersion}). ` +
+    "Обновите/перезапустите worker через bootstrap и повторите Stage 3 render.";
+  const failedJobs = runInTransaction((db) => {
+    const query = kinds
+      ? `SELECT *
+           FROM stage3_jobs
+          WHERE execution_target = 'local'
+            AND workspace_id = ?
+            AND user_id = ?
+            AND status = 'queued'
+            AND kind IN (${kinds.map(() => "?").join(", ")})
+          ORDER BY created_at ASC`
+      : `SELECT *
+           FROM stage3_jobs
+          WHERE execution_target = 'local'
+            AND workspace_id = ?
+            AND user_id = ?
+            AND status = 'queued'
+          ORDER BY created_at ASC`;
+    const params = kinds ? [input.workspaceId, userId, ...kinds] : [input.workspaceId, userId];
+    const rows = db.prepare(query).all(...params) as JobRow[];
+    if (!rows.length) {
+      return [];
+    }
+    const stamp = nowIso();
+    const statement = db.prepare(
+      `UPDATE stage3_jobs
+          SET status = 'failed',
+              error_code = 'worker_runtime_outdated',
+              error_message = ?,
+              recoverable = 1,
+              completed_at = ?,
+              updated_at = ?,
+              assigned_worker_id = NULL,
+              lease_expires_at = NULL,
+              heartbeat_at = NULL
+        WHERE id = ?
+          AND execution_target = 'local'
+          AND status = 'queued'`
+    );
+    const updatedJobs: Stage3JobRecord[] = [];
+    for (const row of rows) {
+      const result = statement.run(message, stamp, stamp, row.id);
+      if ((result.changes ?? 0) === 0) {
+        continue;
+      }
+      appendStage3JobEvent(String(row.id), "error", "Queued local job blocked by outdated worker runtime.", {
+        workerId: input.workerId ?? null,
+        workerAppVersion,
+        expectedRuntimeVersion
+      });
+      const updated = mapJobRow(readJobRow(String(row.id)));
+      if (updated) {
+        updatedJobs.push(updated);
+      }
+    }
+    return updatedJobs;
+  });
+  for (const job of failedJobs) {
+    auditStage3Job("stage3_job.failed", job, "failed", {
+      errorCode: "worker_runtime_outdated",
+      recoverable: true,
+      workerId: input.workerId ?? null,
+      workerAppVersion,
+      expectedRuntimeVersion
+    });
+  }
+  return failedJobs.length;
 }
 
 export function sweepExpiredLocalStage3Jobs(): number {
