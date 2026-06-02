@@ -206,6 +206,14 @@ async function recoverCompletedRenderExportIfNeeded(job: Stage3JobRecord): Promi
     artifactMimeType: job.artifact.mimeType,
     artifactSizeBytes: job.artifact.sizeBytes,
     completedAt: job.completedAt ?? new Date().toISOString()
+  }).catch((error) => {
+    appendStage3JobEvent(
+      job.id,
+      "warn",
+      error instanceof Error
+        ? `Render already completed, but post-render export/publication recovery failed: ${error.message}`
+        : "Render already completed, but post-render export/publication recovery failed."
+    );
   });
 }
 
@@ -315,25 +323,22 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     });
 
     if (current.kind === "render" && artifactInput) {
-      try {
-        await persistRenderExportCompletion(completed, {
-          jobId: completed.id,
-          artifactFileName: artifactInput.fileName,
-          artifactFilePath: artifactInput.filePath,
-          artifactMimeType: artifactInput.mimeType,
-          artifactSizeBytes: artifactInput.sizeBytes,
-          completedAt: completed.completedAt ?? new Date().toISOString()
-        });
-      } catch (error) {
+      await persistRenderExportCompletion(completed, {
+        jobId: completed.id,
+        artifactFileName: artifactInput.fileName,
+        artifactFilePath: artifactInput.filePath,
+        artifactMimeType: artifactInput.mimeType,
+        artifactSizeBytes: artifactInput.sizeBytes,
+        completedAt: completed.completedAt ?? new Date().toISOString()
+      }).catch((error) => {
         appendStage3JobEvent(
           completed.id,
           "warn",
           error instanceof Error
-            ? error.message
-            : "Не удалось сохранить server-side результат Stage 3 render."
+            ? `Render completed, but post-render export/publication recovery failed: ${error.message}`
+            : "Render completed, but post-render export/publication recovery failed."
         );
-        throw error;
-      }
+      });
     }
 
     return Response.json(

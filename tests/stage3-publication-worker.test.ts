@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { GET as getRenderStage3Job } from "../app/api/stage3/render/jobs/[id]/route";
 import { POST as completeWorkerStage3Job } from "../app/api/stage3/worker/jobs/[id]/complete/route";
+import { APP_SESSION_COOKIE } from "../lib/auth/cookies";
 import { createChannel, createOrGetChatByUrl } from "../lib/chat-history";
 import { getDb, newId, nowIso } from "../lib/db/client";
 import {
@@ -24,11 +26,17 @@ import {
   listCopscopesSourcePool
 } from "../lib/copscopes-source-pool";
 import { createCopscopesTightSourceCrop } from "../lib/copscopes-quality-gate";
-import { claimNextQueuedStage3JobForWorker, enqueueStage3Job, getStage3Job } from "../lib/stage3-job-store";
+import {
+  claimNextQueuedStage3JobForWorker,
+  completeStage3Job,
+  enqueueStage3Job,
+  getStage3Job
+} from "../lib/stage3-job-store";
 import {
   exchangeStage3WorkerPairingToken,
   issueStage3WorkerPairingToken
 } from "../lib/stage3-worker-store";
+import { bootstrapOwner } from "../lib/team-store";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
   const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-stage3-publication-test-"));
@@ -211,6 +219,129 @@ test("local worker render completion creates a render export and queued publicat
     assert.equal(publications[0]?.title, "Rendered title");
     assert.equal(publications[0]?.chatId, chat.id);
     assert.equal(publications[0]?.notifySubscribers, false);
+  });
+});
+
+test("local worker render completion returns the completed artifact when post-render persistence fails", async () => {
+  await withIsolatedAppData(async () => {
+    const db = getDb();
+    const stamp = nowIso();
+    const workspaceId = "w1";
+    const userId = "u1";
+
+    db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+      workspaceId,
+      "Test workspace",
+      "test-workspace",
+      stamp,
+      stamp
+    );
+    db.prepare(
+      "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(userId, "u@example.com", "hash", "User", "active", stamp, stamp);
+    db.prepare(
+      "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(newId(), workspaceId, userId, "owner", stamp, stamp);
+
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "worker",
+      platform: "darwin-arm64"
+    });
+
+    const job = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "local",
+      payloadJson: "{not valid stage3 render payload"
+    });
+    const claimed = claimNextQueuedStage3JobForWorker({
+      workerId: exchanged.worker.id,
+      workspaceId,
+      userId,
+      supportedKinds: ["render"]
+    });
+    assert.equal(claimed?.id, job.id);
+
+    const response = await completeWorkerStage3Job(
+      new Request(`http://localhost/api/stage3/worker/jobs/${job.id}/complete`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${exchanged.sessionToken}`,
+          "Content-Type": "video/mp4",
+          "x-stage3-artifact-name": encodeURIComponent("out.mp4"),
+          "x-stage3-artifact-mime-type": encodeURIComponent("video/mp4"),
+          "x-stage3-result-json": Buffer.from(JSON.stringify({ ok: true }), "utf-8").toString("base64url")
+        },
+        body: new Uint8Array([1, 2, 3, 4])
+      }),
+      { params: Promise.resolve({ id: job.id }) }
+    );
+    const body = (await response.json()) as {
+      job?: { status?: string; artifact?: { downloadUrl?: string | null } | null };
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.job?.status, "completed");
+    assert.match(body.job?.artifact?.downloadUrl ?? "", new RegExp(`/api/stage3/render/jobs/${job.id}`));
+    assert.equal(getRenderExportByStage3JobId(job.id), null);
+
+    const completed = getStage3Job(job.id);
+    assert.equal(completed?.status, "completed");
+    assert.equal(completed?.errorCode, null);
+
+    const warning = db
+      .prepare("SELECT message FROM stage3_job_events WHERE job_id = ? AND level = 'warn' ORDER BY created_at DESC LIMIT 1")
+      .get(job.id) as { message?: string } | undefined;
+    assert.match(warning?.message ?? "", /post-render export\/publication recovery failed/i);
+  });
+});
+
+test("render status route returns a completed artifact when recovery fails", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Stage 3 Status Recovery",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const artifactPath = path.join(process.env.APP_DATA_DIR!, "completed-render.mp4");
+    await writeFile(artifactPath, new Uint8Array([1, 2, 3, 4]));
+
+    const job = enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "render",
+      executionTarget: "local",
+      payloadJson: "{not valid stage3 render payload"
+    });
+    completeStage3Job(job.id, {
+      resultJson: JSON.stringify({ ok: true }),
+      artifact: {
+        fileName: "completed-render.mp4",
+        mimeType: "video/mp4",
+        filePath: artifactPath,
+        sizeBytes: 4
+      }
+    });
+
+    const response = await getRenderStage3Job(
+      new Request(`http://localhost/api/stage3/render/jobs/${job.id}`, {
+        headers: {
+          cookie: `${APP_SESSION_COOKIE}=${owner.sessionToken}`
+        }
+      }),
+      { params: Promise.resolve({ id: job.id }) }
+    );
+    const body = (await response.json()) as {
+      job?: { status?: string; artifact?: { downloadUrl?: string | null } | null };
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.job?.status, "completed");
+    assert.match(body.job?.artifact?.downloadUrl ?? "", new RegExp(`/api/stage3/render/jobs/${job.id}`));
   });
 });
 

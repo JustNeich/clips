@@ -273,6 +273,14 @@ async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
           artifactMimeType: executed.artifact.mimeType,
           artifactSizeBytes: published.sizeBytes,
           completedAt: new Date().toISOString()
+        }).catch((error) => {
+          appendStage3JobEvent(
+            completed.id,
+            "warn",
+            error instanceof Error
+              ? `Render completed, but post-render export/publication recovery failed: ${error.message}`
+              : "Render completed, but post-render export/publication recovery failed."
+          );
         });
       }
       if (published && executed.artifact) {
