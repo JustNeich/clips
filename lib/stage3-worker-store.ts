@@ -8,6 +8,7 @@ import {
 import { getAppDataDir } from "./app-paths";
 import { getDb, newId, nowIso, runInTransaction } from "./db/client";
 import { sweepExpiredLocalStage3Jobs } from "./stage3-job-store";
+import { STAGE3_WORKER_ONLINE_WINDOW_MS } from "./stage3-worker-availability";
 
 const DEFAULT_PAIRING_TTL_MS = 60 * 60_000;
 const MIN_PAIRING_TTL_MS = DEFAULT_PAIRING_TTL_MS;
@@ -15,7 +16,6 @@ const PAIRING_TTL_MS = resolveStage3WorkerPairingTtlMs();
 const SESSION_TTL_MS = Number.parseInt(process.env.STAGE3_WORKER_SESSION_TTL_SEC ?? "", 10) > 0
   ? Number.parseInt(process.env.STAGE3_WORKER_SESSION_TTL_SEC ?? "", 10) * 1000
   : 30 * 24 * 60 * 60_000;
-const ONLINE_WINDOW_MS = 30_000;
 const WORKER_SWEEP_INTERVAL_MS = 15_000;
 const workerSweepAtByAppDataDir = new Map<string, number>();
 
@@ -186,7 +186,7 @@ function deriveWorkerStatus(lastSeenAt: string | null, hasActiveCurrentJob: bool
     return "offline";
   }
   const ageMs = Date.now() - new Date(lastSeenAt).getTime();
-  if (!Number.isFinite(ageMs) || ageMs > ONLINE_WINDOW_MS) {
+  if (!Number.isFinite(ageMs) || ageMs > STAGE3_WORKER_ONLINE_WINDOW_MS) {
     return "offline";
   }
   return hasActiveCurrentJob ? "busy" : "online";

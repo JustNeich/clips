@@ -8,6 +8,7 @@ import {
 } from "../app/components/types";
 import { getDb, newId, nowIso, runInTransaction } from "./db/client";
 import { tryAppendFlowAuditEvent } from "./audit-log-store";
+import { STAGE3_WORKER_ONLINE_WINDOW_MS } from "./stage3-worker-availability";
 import { resolveStage3WorkerJobTimeoutMs } from "./stage3-worker-job-timeout";
 
 type JobRow = {
@@ -104,6 +105,7 @@ type FailQueuedLocalJobsForWorkerUpdateInput = {
 export const DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS = 45 * 60_000;
 const LOCAL_STAGE3_WORKER_RESTART_RECOVERY_GRACE_MS = 20_000;
 const LOCAL_STAGE3_SERVER_WATCHDOG_GRACE_MS = 30_000;
+const LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS = 90_000;
 
 function normalizeJobKind(value: string): Stage3JobKind {
   if (
@@ -654,6 +656,92 @@ function failOverdueLocalJobsInternal(db: ReturnType<typeof getDb>): number {
   return failed;
 }
 
+function failQueuedLocalJobsWithoutOnlineWorkerInternal(db: ReturnType<typeof getDb>): number {
+  const nowMs = Date.now();
+  const stamp = new Date(nowMs).toISOString();
+  const queuedCutoff = new Date(nowMs - LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS).toISOString();
+  const workerOnlineCutoff = new Date(nowMs - STAGE3_WORKER_ONLINE_WINDOW_MS).toISOString();
+  const rows = db
+    .prepare(
+      `SELECT q.*
+         FROM stage3_jobs q
+        WHERE q.execution_target = 'local'
+          AND q.status = 'queued'
+          AND q.updated_at <= ?
+          AND NOT EXISTS (
+            SELECT 1
+              FROM stage3_jobs running
+             WHERE running.execution_target = 'local'
+               AND running.status = 'running'
+               AND running.workspace_id = q.workspace_id
+               AND running.user_id = q.user_id
+          )
+          AND NOT EXISTS (
+            SELECT 1
+              FROM stage3_workers worker
+             WHERE worker.workspace_id = q.workspace_id
+               AND worker.user_id = q.user_id
+               AND worker.revoked_at IS NULL
+               AND worker.last_seen_at IS NOT NULL
+               AND worker.last_seen_at > ?
+          )
+        ORDER BY q.updated_at ASC, q.created_at ASC`
+    )
+    .all(queuedCutoff, workerOnlineCutoff) as JobRow[];
+
+  if (!rows.length) {
+    return 0;
+  }
+
+  const statement = db.prepare(
+    `UPDATE stage3_jobs
+        SET status = 'failed',
+            error_code = 'worker_unavailable',
+            error_message = ?,
+            recoverable = 1,
+            completed_at = ?,
+            updated_at = ?,
+            assigned_worker_id = NULL,
+            lease_expires_at = NULL,
+            heartbeat_at = NULL
+      WHERE id = ?
+        AND execution_target = 'local'
+        AND status = 'queued'`
+  );
+  let failed = 0;
+  for (const row of rows) {
+    const kind = normalizeJobKind(String(row.kind));
+    const waitedSec = Math.round(LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS / 1000);
+    const result = statement.run(
+      `Локальный executor Stage 3 недоступен: ${kind} ждал executor больше ${waitedSec} секунд. ` +
+        "Перезапустите Clips Worker/bootstrap и повторите действие.",
+      stamp,
+      stamp,
+      row.id
+    );
+    if ((result.changes ?? 0) === 0) {
+      continue;
+    }
+    appendStage3JobEvent(String(row.id), "error", "Queued local job exceeded worker availability grace; job failed.", {
+      kind,
+      queuedSince: row.updated_at,
+      queuedGraceMs: LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS,
+      workerOnlineWindowMs: STAGE3_WORKER_ONLINE_WINDOW_MS
+    });
+    const updated = mapJobRow(readJobRow(String(row.id)));
+    if (updated) {
+      auditStage3Job("stage3_job.failed", updated, "failed", {
+        errorCode: "worker_unavailable",
+        recoverable: true,
+        reason: "queued_worker_unavailable"
+      });
+    }
+    failed += 1;
+  }
+
+  return failed;
+}
+
 function requeueRunningJobsForWorkerInternal(
   db: ReturnType<typeof getDb>,
   input: Pick<ClaimStage3WorkerJobInput, "workerId" | "workspaceId" | "userId" | "supportedKinds">
@@ -971,7 +1059,8 @@ export function sweepExpiredLocalStage3Jobs(): number {
     const superseded =
       interruptSupersededQueuedLocalRenderJobsInternal(db) +
       interruptSupersededQueuedLocalPreviewJobsInternal(db);
-    return overdue + (Number(before?.count) || 0) + superseded;
+    const unavailable = failQueuedLocalJobsWithoutOnlineWorkerInternal(db);
+    return overdue + (Number(before?.count) || 0) + superseded + unavailable;
   });
 }
 

@@ -341,6 +341,174 @@ test("server watchdog frees render queue behind an overdue editing proxy", async
   });
 });
 
+test("server watchdog fails stale queued render when the local worker disappeared after proxy timeout", async () => {
+  await withIsolatedAppData(async () => {
+    const workspaceId = "w1";
+    const userId = "u1";
+    seedWorkspace(workspaceId, userId);
+
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "worker",
+      platform: "darwin-arm64"
+    });
+
+    const proxyJob = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "editing-proxy",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        chatId: "chat-1",
+        sourceUrl: "https://youtube.com/watch?v=abc123"
+      })
+    });
+    assert.equal(
+      claimNextQueuedStage3JobForWorker({
+        workerId: exchanged.worker.id,
+        workspaceId,
+        userId,
+        supportedKinds: ["editing-proxy", "render"]
+      })?.id,
+      proxyJob.id
+    );
+
+    const renderJob = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        chatId: "chat-1",
+        sourceUrl: "https://youtube.com/watch?v=abc123",
+        renderTitle: "Queued behind proxy"
+      })
+    });
+
+    const db = getDb();
+    const staleProxyStartedAt = new Date(Date.now() - 6 * 60_000).toISOString();
+    const staleWorkerSeenAt = new Date(Date.now() - 2 * 60_000).toISOString();
+    const staleQueuedAt = new Date(Date.now() - 2 * 60_000).toISOString();
+    const futureLeaseAt = new Date(Date.now() + 30 * 60_000).toISOString();
+    db.prepare(
+      `UPDATE stage3_jobs
+          SET started_at = ?,
+              heartbeat_at = ?,
+              lease_expires_at = ?,
+              updated_at = ?
+        WHERE id = ?`
+    ).run(staleProxyStartedAt, staleProxyStartedAt, futureLeaseAt, staleProxyStartedAt, proxyJob.id);
+    db.prepare("UPDATE stage3_jobs SET created_at = ?, updated_at = ? WHERE id = ?").run(
+      staleQueuedAt,
+      staleQueuedAt,
+      renderJob.id
+    );
+    db.prepare("UPDATE stage3_workers SET last_seen_at = ?, updated_at = ? WHERE id = ?").run(
+      staleWorkerSeenAt,
+      staleWorkerSeenAt,
+      exchanged.worker.id
+    );
+
+    const changed = sweepExpiredLocalStage3Jobs();
+    assert.equal(changed, 2);
+
+    const refreshedProxy = getStage3Job(proxyJob.id);
+    assert.equal(refreshedProxy?.status, "failed");
+    assert.equal(refreshedProxy?.errorCode, "editing_proxy_timeout");
+
+    const refreshedRender = getStage3Job(renderJob.id);
+    assert.equal(refreshedRender?.status, "failed");
+    assert.equal(refreshedRender?.errorCode, "worker_unavailable");
+    assert.equal(refreshedRender?.recoverable, true);
+    assert.match(refreshedRender?.errorMessage ?? "", /Перезапустите Clips Worker\/bootstrap/i);
+
+    const events = db
+      .prepare("SELECT message FROM stage3_job_events WHERE job_id = ? ORDER BY created_at ASC")
+      .all(renderJob.id) as Array<{ message: string }>;
+    assert.ok(events.some((event) => event.message === "Queued local job exceeded worker availability grace; job failed."));
+  });
+});
+
+test("queued render is preserved after proxy timeout when a local worker is still online", async () => {
+  await withIsolatedAppData(async () => {
+    const workspaceId = "w1";
+    const userId = "u1";
+    seedWorkspace(workspaceId, userId);
+
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "worker",
+      platform: "darwin-arm64"
+    });
+
+    const proxyJob = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "editing-proxy",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        chatId: "chat-1",
+        sourceUrl: "https://youtube.com/watch?v=abc123"
+      })
+    });
+    claimNextQueuedStage3JobForWorker({
+      workerId: exchanged.worker.id,
+      workspaceId,
+      userId,
+      supportedKinds: ["editing-proxy", "render"]
+    });
+
+    const renderJob = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        chatId: "chat-1",
+        sourceUrl: "https://youtube.com/watch?v=abc123",
+        renderTitle: "Still safe to wait"
+      })
+    });
+
+    const db = getDb();
+    const staleProxyStartedAt = new Date(Date.now() - 6 * 60_000).toISOString();
+    const freshWorkerSeenAt = new Date().toISOString();
+    const staleQueuedAt = new Date(Date.now() - 2 * 60_000).toISOString();
+    const futureLeaseAt = new Date(Date.now() + 30 * 60_000).toISOString();
+    db.prepare(
+      `UPDATE stage3_jobs
+          SET started_at = ?,
+              heartbeat_at = ?,
+              lease_expires_at = ?,
+              updated_at = ?
+        WHERE id = ?`
+    ).run(staleProxyStartedAt, staleProxyStartedAt, futureLeaseAt, staleProxyStartedAt, proxyJob.id);
+    db.prepare("UPDATE stage3_jobs SET created_at = ?, updated_at = ? WHERE id = ?").run(
+      staleQueuedAt,
+      staleQueuedAt,
+      renderJob.id
+    );
+    db.prepare("UPDATE stage3_workers SET last_seen_at = ?, updated_at = ? WHERE id = ?").run(
+      freshWorkerSeenAt,
+      freshWorkerSeenAt,
+      exchanged.worker.id
+    );
+
+    const changed = sweepExpiredLocalStage3Jobs();
+    assert.equal(changed, 1);
+
+    const refreshedProxy = getStage3Job(proxyJob.id);
+    assert.equal(refreshedProxy?.status, "failed");
+    assert.equal(refreshedProxy?.errorCode, "editing_proxy_timeout");
+
+    const refreshedRender = getStage3Job(renderJob.id);
+    assert.equal(refreshedRender?.status, "queued");
+    assert.equal(refreshedRender?.errorCode, null);
+  });
+});
+
 test("job heartbeat does not keep a worker online after server watchdog clears the lease", async () => {
   await withIsolatedAppData(async () => {
     const workspaceId = "w1";
@@ -626,7 +794,7 @@ test("local render sweep interrupts older queued renders for the same chat", asy
     );
     db.prepare("UPDATE stage3_jobs SET created_at = ?, updated_at = ? WHERE id = ?").run(
       "2026-05-01T08:00:00.000Z",
-      "2026-05-01T08:00:00.000Z",
+      new Date().toISOString(),
       newer.id
     );
 
