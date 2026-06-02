@@ -133,17 +133,20 @@ export function buildStage3EditingProxyFfmpegArgs(params: {
   sourcePath: string;
   outputPath: string;
   profile: EditingProxyProfile;
+  sourceHasAudio: boolean;
 }): string[] {
   const videoFilter = [
     `fps=${params.profile.fps},scale=${params.profile.maxDimensionPx}:-2:force_original_aspect_ratio=decrease`,
     STAGE3_EVEN_DIMENSIONS_FILTER
   ].join(",");
-  return [
+  const args = [
     "-y",
     "-i",
     params.sourcePath,
     "-vf",
     videoFilter,
+    "-map",
+    "0:v:0",
     "-c:v",
     "libx264",
     "-preset",
@@ -161,17 +164,15 @@ export function buildStage3EditingProxyFfmpegArgs(params: {
     "-pix_fmt",
     "yuv420p",
     "-movflags",
-    "+faststart",
-    "-c:a",
-    "aac",
-    "-b:a",
-    "96k",
-    "-ar",
-    "48000",
-    "-ac",
-    "2",
-    params.outputPath
+    "+faststart"
   ];
+  if (params.sourceHasAudio) {
+    args.push("-map", "0:a:0", "-c:a", "aac", "-b:a", "96k", "-ar", "48000", "-ac", "2");
+  } else {
+    args.push("-an");
+  }
+  args.push(params.outputPath);
+  return args;
 }
 
 export function buildNormalizeStage3SourceFfmpegArgs(params: {
@@ -186,6 +187,8 @@ export function buildNormalizeStage3SourceFfmpegArgs(params: {
     params.sourcePath,
     "-vf",
     STAGE3_NORMALIZED_SOURCE_VIDEO_FILTER,
+    "-map",
+    "0:v:0",
     "-c:v",
     "libx264",
     "-preset",
@@ -209,7 +212,7 @@ export function buildNormalizeStage3SourceFfmpegArgs(params: {
   ];
 
   if (params.sourceHasAudio) {
-    args.push("-c:a", "aac", "-ar", "48000", "-ac", "2");
+    args.push("-map", "0:a:0", "-c:a", "aac", "-ar", "48000", "-ac", "2");
   } else {
     args.push("-an");
   }
@@ -1614,6 +1617,7 @@ export async function prepareStage3EditingProxy(params: {
   sourceFileName?: string | null;
 }): Promise<{ proxyPath: string; fileName: string }> {
   const profile = getEditingProxyProfile();
+  const sourceHasAudio = await probeHasAudio(params.sourcePath);
   const output = path.join(params.tmpDir, "editing-proxy.mp4");
   const fileBase =
     (params.sourceFileName ? path.parse(sanitizeFileName(params.sourceFileName)).name : "").trim() || "source";
@@ -1623,7 +1627,8 @@ export async function prepareStage3EditingProxy(params: {
     buildStage3EditingProxyFfmpegArgs({
       sourcePath: params.sourcePath,
       outputPath: output,
-      profile
+      profile,
+      sourceHasAudio
     }),
     { timeout: 10 * 60_000, maxBuffer: 1024 * 1024 * 16 }
   );

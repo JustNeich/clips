@@ -122,6 +122,8 @@ test("stage3 source normalization args force stable CFR and limited-range color 
 
   assert.deepEqual(args.slice(0, 4), ["-y", "-i", "/tmp/in.mp4", "-vf"]);
   assert.equal(args[4], STAGE3_NORMALIZED_SOURCE_VIDEO_FILTER);
+  assert.deepEqual(args.slice(args.indexOf("-map"), args.indexOf("-map") + 2), ["-map", "0:v:0"]);
+  assert.ok(args.includes("0:a:0"));
   assert.ok(args.includes("yuv420p"));
   assert.ok(args.includes("tv"));
   assert.ok(args.includes("bt709"));
