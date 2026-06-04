@@ -118,6 +118,7 @@ export const DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS = 45 * 60_000;
 const LOCAL_STAGE3_WORKER_RESTART_RECOVERY_GRACE_MS = 20_000;
 const LOCAL_STAGE3_SERVER_WATCHDOG_GRACE_MS = 30_000;
 const LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS = 90_000;
+const HOST_STAGE3_SERVER_WATCHDOG_GRACE_MS = 30_000;
 
 function normalizeJobKind(value: string): Stage3JobKind {
   if (
@@ -153,6 +154,14 @@ function resolveStage3LocalJobTimeoutMs(kind: Stage3JobKind, payloadJson: string
 
 function resolveStage3ServerWatchdogTimeoutMs(kind: Stage3JobKind, payloadJson: string): number {
   return resolveStage3LocalJobTimeoutMs(kind, payloadJson) + LOCAL_STAGE3_SERVER_WATCHDOG_GRACE_MS;
+}
+
+function resolveStage3HostJobTimeoutMs(kind: Stage3JobKind, payloadJson: string): number {
+  return resolveStage3WorkerJobTimeoutMs(kind, process.env, payloadJson);
+}
+
+function resolveStage3HostServerWatchdogTimeoutMs(kind: Stage3JobKind, payloadJson: string): number {
+  return resolveStage3HostJobTimeoutMs(kind, payloadJson) + HOST_STAGE3_SERVER_WATCHDOG_GRACE_MS;
 }
 
 function getStage3JobRunningStartedAtMs(row: Pick<JobRow, "started_at" | "updated_at" | "created_at">): number | null {
@@ -772,6 +781,77 @@ function failQueuedLocalJobsWithoutOnlineWorkerInternal(db: ReturnType<typeof ge
   return failed;
 }
 
+function failOverdueHostJobsInternal(db: ReturnType<typeof getDb>): number {
+  const nowMs = Date.now();
+  const stamp = new Date(nowMs).toISOString();
+  const running = db.prepare(
+    `SELECT *
+       FROM stage3_jobs
+      WHERE execution_target = 'host'
+        AND status = 'running'`
+  ).all() as JobRow[];
+  let failed = 0;
+
+  for (const row of running) {
+    const kind = normalizeJobKind(String(row.kind));
+    const startedAtMs = getStage3JobRunningStartedAtMs(row);
+    if (startedAtMs === null) {
+      continue;
+    }
+    const jobTimeoutMs = resolveStage3HostJobTimeoutMs(kind, row.payload_json);
+    const timeoutMs = resolveStage3HostServerWatchdogTimeoutMs(kind, row.payload_json);
+    if (nowMs - startedAtMs < timeoutMs) {
+      continue;
+    }
+
+    const timeoutSec = Math.round(jobTimeoutMs / 1000);
+    const result = db.prepare(
+      `UPDATE stage3_jobs
+          SET status = 'failed',
+              error_code = ?,
+              error_message = ?,
+              recoverable = 1,
+              completed_at = ?,
+              updated_at = ?,
+              assigned_worker_id = NULL,
+              lease_expires_at = NULL,
+              heartbeat_at = NULL
+        WHERE id = ?
+          AND execution_target = 'host'
+          AND status = 'running'`
+    ).run(
+      buildStage3JobTimeoutErrorCode(kind),
+      `Хостинг Stage 3 не завершил ${kind} за ${timeoutSec} секунд; watchdog освободил очередь.`,
+      stamp,
+      stamp,
+      row.id
+    );
+    if ((result.changes ?? 0) === 0) {
+      continue;
+    }
+    appendStage3JobEvent(String(row.id), "error", "Host job exceeded server watchdog; job failed.", {
+      kind,
+      timeoutMs,
+      jobTimeoutMs,
+      startedAt: row.started_at ?? null
+    });
+    const updated = mapJobRow(readJobRow(String(row.id)));
+    if (updated) {
+      auditStage3Job("stage3_job.failed", updated, "failed", {
+        errorCode: buildStage3JobTimeoutErrorCode(kind),
+        recoverable: true,
+        reason: "host_server_watchdog",
+        timeoutMs,
+        jobTimeoutMs,
+        startedAt: row.started_at ?? null
+      });
+    }
+    failed += 1;
+  }
+
+  return failed;
+}
+
 function requeueRunningJobsForWorkerInternal(
   db: ReturnType<typeof getDb>,
   input: Pick<ClaimStage3WorkerJobInput, "workerId" | "workspaceId" | "userId" | "supportedKinds">
@@ -876,17 +956,23 @@ function requeueRunningJobsForWorkerInternal(
   return recovered;
 }
 
-function interruptSupersededQueuedLocalRenderJobsInternal(db: ReturnType<typeof getDb>): number {
+function interruptSupersededQueuedMediaJobsInternal(
+  db: ReturnType<typeof getDb>,
+  input: {
+    executionTarget: Stage3ExecutionTarget;
+    kind: Extract<Stage3JobKind, "preview" | "render">;
+  }
+): number {
   const rows = db
     .prepare(
       `SELECT *
          FROM stage3_jobs
-        WHERE execution_target = 'local'
-          AND kind = 'render'
+        WHERE execution_target = ?
+          AND kind = ?
           AND status = 'queued'
         ORDER BY created_at DESC, rowid DESC`
     )
-    .all() as JobRow[];
+    .all(input.executionTarget, input.kind) as JobRow[];
   const seen = new Set<string>();
   const superseded: JobRow[] = [];
 
@@ -907,10 +993,12 @@ function interruptSupersededQueuedLocalRenderJobsInternal(db: ReturnType<typeof 
   }
 
   const stamp = nowIso();
+  const errorCode = input.kind === "render" ? "superseded_render_request" : "superseded_preview_request";
+  const humanKind = input.kind === "render" ? "render" : "preview";
   const statement = db.prepare(
     `UPDATE stage3_jobs
         SET status = 'interrupted',
-            error_code = 'superseded_render_request',
+            error_code = ?,
             error_message = ?,
             recoverable = 1,
             completed_at = ?,
@@ -919,77 +1007,55 @@ function interruptSupersededQueuedLocalRenderJobsInternal(db: ReturnType<typeof 
             lease_expires_at = NULL,
             heartbeat_at = NULL
       WHERE id = ?
-        AND execution_target = 'local'
-        AND kind = 'render'
+        AND execution_target = ?
+        AND kind = ?
         AND status = 'queued'`
   );
 
   for (const row of superseded) {
-    statement.run("Более новый render для этого материала заменил ожидающее Stage 3 задание.", stamp, stamp, row.id);
-    appendStage3JobEvent(String(row.id), "warn", "Queued render job superseded by a newer render request.", {
-      reason: "superseded_render_request"
+    statement.run(
+      errorCode,
+      `Более новый ${humanKind} для этого материала заменил ожидающее Stage 3 задание.`,
+      stamp,
+      stamp,
+      row.id,
+      input.executionTarget,
+      input.kind
+    );
+    appendStage3JobEvent(String(row.id), "warn", `Queued ${humanKind} job superseded by a newer ${humanKind} request.`, {
+      reason: errorCode,
+      executionTarget: input.executionTarget
     });
   }
 
   return superseded.length;
 }
 
+function interruptSupersededQueuedLocalRenderJobsInternal(db: ReturnType<typeof getDb>): number {
+  return interruptSupersededQueuedMediaJobsInternal(db, {
+    executionTarget: "local",
+    kind: "render"
+  });
+}
+
 function interruptSupersededQueuedLocalPreviewJobsInternal(db: ReturnType<typeof getDb>): number {
-  const rows = db
-    .prepare(
-      `SELECT *
-         FROM stage3_jobs
-        WHERE execution_target = 'local'
-          AND kind = 'preview'
-          AND status = 'queued'
-        ORDER BY created_at DESC, rowid DESC`
-    )
-    .all() as JobRow[];
-  const seen = new Set<string>();
-  const superseded: JobRow[] = [];
+  return interruptSupersededQueuedMediaJobsInternal(db, {
+    executionTarget: "local",
+    kind: "preview"
+  });
+}
 
-  for (const row of rows) {
-    const key = buildQueuedMediaSupersessionKey(row);
-    if (!key) {
-      continue;
-    }
-    if (seen.has(key)) {
-      superseded.push(row);
-      continue;
-    }
-    seen.add(key);
-  }
-
-  if (!superseded.length) {
-    return 0;
-  }
-
-  const stamp = nowIso();
-  const statement = db.prepare(
-    `UPDATE stage3_jobs
-        SET status = 'interrupted',
-            error_code = 'superseded_preview_request',
-            error_message = ?,
-            recoverable = 1,
-            completed_at = ?,
-            updated_at = ?,
-            assigned_worker_id = NULL,
-            lease_expires_at = NULL,
-            heartbeat_at = NULL
-      WHERE id = ?
-        AND execution_target = 'local'
-        AND kind = 'preview'
-        AND status = 'queued'`
+function interruptSupersededQueuedHostJobsInternal(db: ReturnType<typeof getDb>): number {
+  return (
+    interruptSupersededQueuedMediaJobsInternal(db, {
+      executionTarget: "host",
+      kind: "render"
+    }) +
+    interruptSupersededQueuedMediaJobsInternal(db, {
+      executionTarget: "host",
+      kind: "preview"
+    })
   );
-
-  for (const row of superseded) {
-    statement.run("Более новый preview для этого материала заменил ожидающее Stage 3 задание.", stamp, stamp, row.id);
-    appendStage3JobEvent(String(row.id), "warn", "Queued preview job superseded by a newer preview request.", {
-      reason: "superseded_preview_request"
-    });
-  }
-
-  return superseded.length;
 }
 
 export function failQueuedLocalStage3JobsForWorkerUpdateRequired(
@@ -1098,8 +1164,14 @@ export function failOverdueLocalStage3Jobs(): number {
   return runInTransaction((db) => failOverdueLocalJobsInternal(db));
 }
 
+export function sweepHostStage3Jobs(): number {
+  return runInTransaction((db) => failOverdueHostJobsInternal(db) + interruptSupersededQueuedHostJobsInternal(db));
+}
+
 export function claimNextQueuedStage3Job(): Stage3JobRecord | null {
   const job = runInTransaction((db) => {
+    failOverdueHostJobsInternal(db);
+    interruptSupersededQueuedHostJobsInternal(db);
     const row =
       (db
         .prepare(

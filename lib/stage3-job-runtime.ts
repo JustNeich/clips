@@ -26,6 +26,7 @@ import {
   getStage3Job,
   hasQueuedStage3Jobs,
   interruptPendingStage3Jobs,
+  sweepHostStage3Jobs,
   Stage3JobRecord
 } from "./stage3-job-store";
 import { publishStage3VideoArtifact } from "./stage3-job-artifacts";
@@ -33,6 +34,7 @@ import { isHostStage3ExecutionAllowed } from "./stage3-execution";
 import { Stage3RenderRequestBody } from "./stage3-render-service";
 import { isStage3HostedBusyError } from "./stage3-server-control";
 import { clampHostedConcurrencyLimit } from "./hosted-resource-budget";
+import { resolveStage3WorkerJobTimeoutMs } from "./stage3-worker-job-timeout";
 
 const JOB_POLL_INTERVAL_MS = 350;
 
@@ -47,7 +49,11 @@ type Stage3RuntimeGlobal = typeof globalThis & {
   __clipsStage3JobProcessorOverride__?: Stage3JobProcessor | null;
 };
 
-export type Stage3JobProcessor = (job: Stage3JobRecord) => Promise<void>;
+type Stage3JobProcessorOptions = {
+  signal?: AbortSignal | null;
+};
+
+export type Stage3JobProcessor = (job: Stage3JobRecord, options?: Stage3JobProcessorOptions) => Promise<void>;
 
 type RenderExportCompletionState = {
   renderExport: ReturnType<typeof completeRenderExportAndMaybeQueue>["renderExport"];
@@ -172,6 +178,19 @@ function isTerminalStatus(status: Stage3JobStatus): boolean {
   return status === "completed" || status === "failed" || status === "interrupted";
 }
 
+function isJobStillRunning(jobId: string): boolean {
+  return getStage3Job(jobId)?.status === "running";
+}
+
+function buildStage3JobTimeoutErrorCode(kind: Stage3JobKind): string {
+  return `${kind.replaceAll("-", "_")}_timeout`;
+}
+
+function buildHostJobTimeoutMessage(job: Stage3JobRecord, timeoutMs: number): string {
+  const timeoutSec = Math.round(timeoutMs / 1000);
+  return `Хостинг Stage 3 не завершил ${job.kind} за ${timeoutSec} секунд; watchdog освободил очередь.`;
+}
+
 function getStage3HostConcurrencyLimit(): number {
   const raw = Number.parseInt(process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS ?? "", 10);
   if (!Number.isFinite(raw) || raw <= 0) {
@@ -228,7 +247,7 @@ async function normalizeJobFailure(job: Stage3JobRecord, error: unknown): Promis
   };
 }
 
-async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
+async function executeStage3Job(job: Stage3JobRecord, options?: Stage3JobProcessorOptions): Promise<void> {
   const startedAt = Date.now();
   const queueWaitMs = Math.max(0, startedAt - new Date(job.createdAt).getTime());
   const beforeMemory = memorySnapshotMb();
@@ -246,12 +265,27 @@ async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
 
   try {
     const executor = await import("./stage3-job-executor");
-    const executed = await executor.executeStage3HeavyJobPayload(job.kind, job.payloadJson);
+    const executed = await executor.executeStage3HeavyJobPayload(job.kind, job.payloadJson, {
+      signal: options?.signal ?? null
+    });
     try {
+      if (!isJobStillRunning(job.id)) {
+        appendStage3JobEvent(job.id, "warn", "Discarded host job result because the job is no longer running.", {
+          kind: job.kind
+        });
+        return;
+      }
       const published =
         executed.artifact && (job.kind === "preview" || job.kind === "render" || job.kind === "editing-proxy")
           ? await publishStage3VideoArtifact(job.kind, job.id, executed.artifact.filePath)
           : null;
+      if (!isJobStillRunning(job.id)) {
+        appendStage3JobEvent(job.id, "warn", "Discarded published host job artifact because the job is no longer running.", {
+          kind: job.kind,
+          artifact: Boolean(published)
+        });
+        return;
+      }
       const completed = completeStage3Job(job.id, {
         resultJson: executed.resultJson,
         artifact:
@@ -308,6 +342,12 @@ async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
       memoryMb: afterMemory
     });
   } catch (error) {
+    if (!isJobStillRunning(job.id)) {
+      appendStage3JobEvent(job.id, "warn", "Ignored host job failure because the job is no longer running.", {
+        kind: job.kind
+      });
+      return;
+    }
     const execMs = Date.now() - startedAt;
     const failure = await normalizeJobFailure(job, error);
     finishStage3Job(job.id, {
@@ -328,6 +368,56 @@ async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
       code: failure.code,
       memoryMb: memorySnapshotMb()
     });
+  }
+}
+
+async function runClaimedHostJobWithWatchdog(job: Stage3JobRecord): Promise<void> {
+  const processor = getProcessor();
+  const timeoutMs = resolveStage3WorkerJobTimeoutMs(job.kind, process.env, job.payloadJson);
+  const controller = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  const timeoutPromise = new Promise<void>((resolve) => {
+    timeoutId = setTimeout(() => {
+      const message = buildHostJobTimeoutMessage(job, timeoutMs);
+      if (isJobStillRunning(job.id)) {
+        finishStage3Job(job.id, {
+          status: "failed",
+          errorCode: buildStage3JobTimeoutErrorCode(job.kind),
+          errorMessage: message,
+          recoverable: true
+        });
+        appendStage3JobEvent(job.id, "error", "Host job exceeded runtime watchdog; active slot released.", {
+          kind: job.kind,
+          timeoutMs
+        });
+      }
+      controller.abort(new Error(message));
+      resolve();
+    }, timeoutMs);
+    timeoutId.unref?.();
+  });
+
+  const processorPromise = Promise.resolve()
+    .then(() => processor(job, { signal: controller.signal }))
+    .then(() => undefined);
+
+  try {
+    await Promise.race([processorPromise, timeoutPromise]);
+  } catch (error) {
+    if (isJobStillRunning(job.id)) {
+      const failure = await normalizeJobFailure(job, error);
+      finishStage3Job(job.id, {
+        status: failure.status,
+        errorCode: failure.code,
+        errorMessage: failure.message,
+        recoverable: failure.recoverable
+      });
+    }
+  } finally {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -582,7 +672,7 @@ function startClaimedJob(job: Stage3JobRecord): void {
 
   state.activeJobs.add(job.id);
   void Promise.resolve()
-    .then(() => getProcessor()(job))
+    .then(() => runClaimedHostJobWithWatchdog(job))
     .finally(() => {
       const latestState = getStage3RuntimeState();
       latestState.activeJobs.delete(job.id);
@@ -591,6 +681,7 @@ function startClaimedJob(job: Stage3JobRecord): void {
 }
 
 function runSchedulerPass(): void {
+  sweepHostStage3Jobs();
   const state = getStage3RuntimeState();
   const limit = getStage3HostConcurrencyLimit();
   while (state.activeJobs.size < limit) {
@@ -607,6 +698,7 @@ export function scheduleStage3JobProcessing(): void {
     return;
   }
   ensureStage3JobRuntime();
+  sweepHostStage3Jobs();
   const state = getStage3RuntimeState();
   if (state.schedulerPromise) {
     return;
@@ -649,6 +741,7 @@ export function enqueueAndScheduleStage3Job(input: EnqueueJobInput): Stage3JobRe
 
 export function getStage3JobOrThrow(jobId: string): Stage3JobRecord {
   ensureStage3JobRuntime();
+  sweepHostStage3Jobs();
   const job = getStage3Job(jobId);
   if (!job) {
     throw new Error("Stage 3 job not found.");

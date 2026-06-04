@@ -15,6 +15,7 @@ import {
   heartbeatStage3Job
 } from "../lib/stage3-job-store";
 import {
+  enqueueAndScheduleStage3Job,
   scheduleStage3JobProcessing,
   setStage3JobProcessorForTests
 } from "../lib/stage3-job-runtime";
@@ -141,6 +142,152 @@ test("host queue prefers render over newer preview jobs", async () => {
 
     assert.equal(firstClaim?.id, render.id);
     assert.equal(secondClaim?.id, preview.id);
+  });
+});
+
+test("host queue interrupts older queued renders for the same chat", async () => {
+  await withIsolatedAppData(async () => {
+    const db = getDb();
+    const stamp = nowIso();
+    const workspaceId = "w1";
+    const userId = "u1";
+
+    db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+      workspaceId,
+      "Test workspace",
+      "test-workspace",
+      stamp,
+      stamp
+    );
+    db.prepare(
+      "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(userId, "u@example.com", "hash", "User", "active", stamp, stamp);
+    db.prepare(
+      "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(newId(), workspaceId, userId, "owner", stamp, stamp);
+
+    const older = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "host",
+      payloadJson: JSON.stringify({
+        chatId: "chat-1",
+        sourceUrl: "https://youtube.com/watch?v=same-source",
+        renderPlan: { targetDurationSec: 6 }
+      })
+    });
+    const newer = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "host",
+      payloadJson: JSON.stringify({
+        chatId: "chat-1",
+        sourceUrl: "https://youtube.com/watch?v=same-source",
+        renderPlan: { targetDurationSec: 6 }
+      })
+    });
+
+    const claimed = claimNextQueuedStage3Job();
+
+    assert.equal(claimed?.id, newer.id);
+    const interrupted = getStage3Job(older.id);
+    assert.equal(interrupted?.status, "interrupted");
+    assert.equal(interrupted?.errorCode, "superseded_render_request");
+  });
+});
+
+test("host runtime watchdog frees the queue behind a stuck job", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const previousHostExecution = process.env.STAGE3_ALLOW_HOST_EXECUTION;
+    const previousHostLimit = process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS;
+    const previousTimeout = process.env.STAGE3_WORKER_EDITING_PROXY_TIMEOUT_MS;
+    process.env.STAGE3_ALLOW_HOST_EXECUTION = "1";
+    process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS = "1";
+    process.env.STAGE3_WORKER_EDITING_PROXY_TIMEOUT_MS = "25";
+
+    try {
+      const db = getDb();
+      const stamp = nowIso();
+      const workspaceId = "w1";
+      const userId = "u1";
+
+      db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+        workspaceId,
+        "Test workspace",
+        "test-workspace",
+        stamp,
+        stamp
+      );
+      db.prepare(
+        "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      ).run(userId, "u@example.com", "hash", "User", "active", stamp, stamp);
+      db.prepare(
+        "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+      ).run(newId(), workspaceId, userId, "owner", stamp, stamp);
+
+      setStage3JobProcessorForTests(async (job) => {
+        if (job.kind === "editing-proxy") {
+          await new Promise(() => undefined);
+          return;
+        }
+        const artifactPath = path.join(process.env.APP_DATA_DIR!, `${job.id}.mp4`);
+        await writeFile(artifactPath, "video");
+        completeStage3Job(job.id, {
+          resultJson: JSON.stringify({ ok: true }),
+          artifact: {
+            fileName: `${job.id}.mp4`,
+            mimeType: "video/mp4",
+            filePath: artifactPath,
+            sizeBytes: Buffer.byteLength("video")
+          }
+        });
+      });
+
+      const stuck = enqueueAndScheduleStage3Job({
+        workspaceId,
+        userId,
+        kind: "editing-proxy",
+        executionTarget: "host",
+        payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=stuck" })
+      });
+      const next = enqueueAndScheduleStage3Job({
+        workspaceId,
+        userId,
+        kind: "render",
+        executionTarget: "host",
+        payloadJson: JSON.stringify({
+          sourceUrl: "https://youtube.com/watch?v=next",
+          renderPlan: { targetDurationSec: 6 }
+        })
+      });
+
+      await waitForCondition(
+        () => getStage3Job(stuck.id)?.status === "failed" && getStage3Job(next.id)?.status === "completed",
+        2_000
+      );
+
+      assert.equal(getStage3Job(stuck.id)?.errorCode, "editing_proxy_timeout");
+      assert.equal(getStage3Job(next.id)?.status, "completed");
+    } finally {
+      setStage3JobProcessorForTests(null);
+      if (previousHostExecution === undefined) {
+        delete process.env.STAGE3_ALLOW_HOST_EXECUTION;
+      } else {
+        process.env.STAGE3_ALLOW_HOST_EXECUTION = previousHostExecution;
+      }
+      if (previousHostLimit === undefined) {
+        delete process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS;
+      } else {
+        process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS = previousHostLimit;
+      }
+      if (previousTimeout === undefined) {
+        delete process.env.STAGE3_WORKER_EDITING_PROXY_TIMEOUT_MS;
+      } else {
+        process.env.STAGE3_WORKER_EDITING_PROXY_TIMEOUT_MS = previousTimeout;
+      }
+    }
   });
 });
 
