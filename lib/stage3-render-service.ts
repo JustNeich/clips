@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -55,6 +55,7 @@ import {
   buildStage3VariationManifest,
   createStage3SignalFallbackProfile,
   createStage3VariationProfile,
+  isStage3HostedFastRenderProfileEnabled,
   Stage3VariationManifest,
   Stage3VariationProfile
 } from "./stage3-render-variation";
@@ -198,6 +199,33 @@ export type Stage3RenderedVideo = {
   variationManifest: Stage3VariationManifest;
   variationManifestPath: string;
 };
+
+export type Stage3RenderProgressEvent = {
+  stage:
+    | "source_cache"
+    | "auto_focus"
+    | "template_snapshot"
+    | "asset_resolve"
+    | "remotion_bundle"
+    | "prepare_source"
+    | "background_prepare"
+    | "font_assets"
+    | "remotion_render"
+    | "flash_guard"
+    | "finalize";
+  status: "started" | "completed" | "failed";
+  durationMs?: number;
+  payload?: Record<string, unknown>;
+  errorMessage?: string;
+};
+
+export type Stage3RenderOptions = {
+  signal?: AbortSignal;
+  waitTimeoutMs?: number | null;
+  onProgress?: (event: Stage3RenderProgressEvent) => void;
+};
+
+type PreparedStage3RenderSource = Awaited<ReturnType<typeof prepareStage3SourceClip>>;
 
 type AsyncFn = (...args: any[]) => Promise<any>;
 
@@ -358,6 +386,227 @@ function resolveFunction(sources: unknown[], key: string, optional = false): Asy
 
 function isMemoryConstrainedRuntime(): boolean {
   return isStage3HostedRuntime();
+}
+
+function getStage3PreparedRenderCacheDir(): string {
+  const override = process.env.CLIPS_STAGE3_CACHE_ROOT?.trim();
+  const cacheRoot = override ? path.resolve(override) : path.join(os.tmpdir(), "clip-stage3-cache");
+  return path.join(cacheRoot, "prepared-render-sources");
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+async function fileSizeBytes(filePath: string | null | undefined): Promise<number | null> {
+  if (!filePath) {
+    return null;
+  }
+  try {
+    return (await fs.stat(filePath)).size;
+  } catch {
+    return null;
+  }
+}
+
+function emitRenderProgress(options: Stage3RenderOptions | undefined, event: Stage3RenderProgressEvent): void {
+  try {
+    options?.onProgress?.(event);
+  } catch {
+    // Progress reporting must never turn a successful render into a failed render.
+  }
+}
+
+async function measureRenderStage<T>(
+  options: Stage3RenderOptions | undefined,
+  stage: Stage3RenderProgressEvent["stage"],
+  payload: Record<string, unknown> | null,
+  run: () => Promise<T>
+): Promise<T> {
+  emitRenderProgress(options, {
+    stage,
+    status: "started",
+    payload: payload ?? undefined
+  });
+  const startedAt = Date.now();
+  try {
+    const result = await run();
+    emitRenderProgress(options, {
+      stage,
+      status: "completed",
+      durationMs: Date.now() - startedAt,
+      payload: payload ?? undefined
+    });
+    return result;
+  } catch (error) {
+    emitRenderProgress(options, {
+      stage,
+      status: "failed",
+      durationMs: Date.now() - startedAt,
+      payload: payload ?? undefined,
+      errorMessage: error instanceof Error ? error.message : String(error)
+    });
+    throw error;
+  }
+}
+
+async function musicFileSignature(musicFilePath: string | null): Promise<Record<string, unknown> | null> {
+  if (!musicFilePath) {
+    return null;
+  }
+  try {
+    const stat = await fs.stat(musicFilePath);
+    return {
+      path: musicFilePath,
+      sizeBytes: stat.size,
+      mtimeMs: Math.round(stat.mtimeMs)
+    };
+  } catch {
+    return {
+      path: musicFilePath,
+      missing: true
+    };
+  }
+}
+
+async function buildPreparedRenderSourceCacheKey(input: {
+  sourceKey: string;
+  sourceDurationSec: number | null;
+  clipStartSec: number;
+  targetDurationSec: number;
+  renderPlan: Stage3RenderPlan;
+  musicFilePath: string | null;
+}): Promise<string> {
+  const signature = {
+    version: 1,
+    sourceKey: input.sourceKey,
+    sourceDurationSec: input.sourceDurationSec,
+    clipStartSec: input.clipStartSec,
+    targetDurationSec: input.targetDurationSec,
+    renderPlan: input.renderPlan,
+    music: await musicFileSignature(input.musicFilePath)
+  };
+  return createHash("sha256").update(stableJson(signature)).digest("hex");
+}
+
+export const measureStage3RenderStageForTests = measureRenderStage;
+export const buildPreparedRenderSourceCacheKeyForTests = buildPreparedRenderSourceCacheKey;
+
+async function prepareStage3SourceClipWithCache(input: {
+  sourceKey: string;
+  sourcePath: string;
+  tmpDir: string;
+  sourceDurationSec: number | null;
+  clipStartSec: number;
+  clipDurationSec: number;
+  renderPlan: Stage3RenderPlan;
+  musicFilePath: string | null;
+}): Promise<PreparedStage3RenderSource & {
+  cache: {
+    state: "bypass" | "hit" | "miss" | "stored";
+    key: string | null;
+    sizeBytes: number | null;
+  };
+}> {
+  if (!isStage3HostedFastRenderProfileEnabled()) {
+    const prepared = await prepareStage3SourceClip({
+      sourcePath: input.sourcePath,
+      tmpDir: input.tmpDir,
+      sourceDurationSec: input.sourceDurationSec,
+      clipStartSec: input.clipStartSec,
+      clipDurationSec: input.clipDurationSec,
+      renderPlan: input.renderPlan,
+      musicFilePath: input.musicFilePath,
+      profile: "render"
+    });
+    return {
+      ...prepared,
+      cache: {
+        state: "bypass",
+        key: null,
+        sizeBytes: await fileSizeBytes(prepared.preparedPath)
+      }
+    };
+  }
+
+  const cacheKey = await buildPreparedRenderSourceCacheKey({
+    sourceKey: input.sourceKey,
+    sourceDurationSec: input.sourceDurationSec,
+    clipStartSec: input.clipStartSec,
+    targetDurationSec: input.renderPlan.targetDurationSec,
+    renderPlan: input.renderPlan,
+    musicFilePath: input.musicFilePath
+  });
+  const cacheDir = path.join(getStage3PreparedRenderCacheDir(), cacheKey);
+  const cacheSourcePath = path.join(cacheDir, "source.mp4");
+  const cacheMetaPath = path.join(cacheDir, "meta.json");
+  const cachedOutputPath = path.join(input.tmpDir, `source.cached.${cacheKey.slice(0, 12)}.mp4`);
+  try {
+    const rawMeta = await fs.readFile(cacheMetaPath, "utf-8");
+    const meta = JSON.parse(rawMeta) as Pick<PreparedStage3RenderSource, "clipStartSec" | "clipDurationSec" | "optimization">;
+    await fs.copyFile(cacheSourcePath, cachedOutputPath);
+    return {
+      preparedPath: cachedOutputPath,
+      clipStartSec: meta.clipStartSec,
+      clipDurationSec: meta.clipDurationSec,
+      optimization: meta.optimization,
+      cache: {
+        state: "hit",
+        key: cacheKey,
+        sizeBytes: await fileSizeBytes(cachedOutputPath)
+      }
+    };
+  } catch {
+    // Cache miss or partial cache entry; regenerate below and overwrite atomically.
+  }
+
+  const prepared = await prepareStage3SourceClip({
+    sourcePath: input.sourcePath,
+    tmpDir: input.tmpDir,
+    sourceDurationSec: input.sourceDurationSec,
+    clipStartSec: input.clipStartSec,
+    clipDurationSec: input.clipDurationSec,
+    renderPlan: input.renderPlan,
+    musicFilePath: input.musicFilePath,
+    profile: "render"
+  });
+  await fs.mkdir(cacheDir, { recursive: true }).catch(() => undefined);
+  const tempCacheSourcePath = path.join(cacheDir, `source.${randomUUID()}.tmp`);
+  try {
+    await fs.copyFile(prepared.preparedPath, tempCacheSourcePath);
+    await fs.rename(tempCacheSourcePath, cacheSourcePath);
+    await fs.writeFile(
+      cacheMetaPath,
+      JSON.stringify({
+        clipStartSec: prepared.clipStartSec,
+        clipDurationSec: prepared.clipDurationSec,
+        optimization: prepared.optimization,
+        cachedAt: new Date().toISOString()
+      }),
+      "utf-8"
+    );
+  } catch {
+    await fs.rm(tempCacheSourcePath, { force: true }).catch(() => undefined);
+  }
+
+  return {
+    ...prepared,
+    cache: {
+      state: "stored",
+      key: cacheKey,
+      sizeBytes: await fileSizeBytes(prepared.preparedPath)
+    }
+  };
 }
 
 function buildRenderMetadataTitle(rawTitle: string | null | undefined): string | null {
@@ -923,7 +1172,7 @@ function parseRenderError(error: unknown): string {
 
 export async function renderStage3Video(
   body: Stage3RenderRequestBody,
-  options?: { signal?: AbortSignal; waitTimeoutMs?: number | null }
+  options?: Stage3RenderOptions
 ): Promise<Stage3RenderedVideo> {
   const sourceUrl = resolveSourceUrl(body.sourceUrl);
   const configuredTimeout = Number.parseInt(process.env.REMOTION_RENDER_TIMEOUT_MS ?? "", 10);
@@ -941,9 +1190,19 @@ export async function renderStage3Video(
 
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-job-render-"));
   try {
-    const source = await ensureStage3SourceCached(sourceUrl, {
-      signal: options?.signal,
-      waitTimeoutMs
+    const sourceCachePayload: Record<string, unknown> = {};
+    const source = await measureRenderStage(options, "source_cache", sourceCachePayload, async () => {
+      const cached = await ensureStage3SourceCached(sourceUrl, {
+        signal: options?.signal,
+        waitTimeoutMs
+      });
+      Object.assign(sourceCachePayload, {
+        sourceKey: cached.sourceKey,
+        sourceDurationSec: cached.sourceDurationSec,
+        fileName: cached.fileName,
+        sizeBytes: await fileSizeBytes(cached.sourcePath)
+      });
+      return cached;
     });
     const sourceDurationSec = source.sourceDurationSec;
     const clipDurationSec = sanitizeClipDuration(body.clipDurationSec);
@@ -962,97 +1221,117 @@ export async function renderStage3Video(
           ? body.focusY
           : null;
 
-    const auto =
-      requestedClipStart === null || requestedFocus === null
-        ? await runHostedStage3HeavyJob(
-            () => analyzeBestClipAndFocus(source.sourcePath, tmpDir, sourceDurationSec, clipDurationSec),
-            {
-              signal: options?.signal,
-              waitTimeoutMs
-            }
-          )
-        : { clipStartSec: 0, focusY: 0.5 };
+    const autoNeeded = requestedClipStart === null || requestedFocus === null;
+    const auto = autoNeeded
+      ? await measureRenderStage(
+          options,
+          "auto_focus",
+          { requestedClipStart: requestedClipStart !== null, requestedFocus: requestedFocus !== null },
+          () =>
+            runHostedStage3HeavyJob(
+              () => analyzeBestClipAndFocus(source.sourcePath, tmpDir, sourceDurationSec, clipDurationSec),
+              {
+                signal: options?.signal,
+                waitTimeoutMs
+              }
+            )
+        )
+      : { clipStartSec: 0, focusY: 0.5 };
 
     const clipStartSec = clampClipStart(requestedClipStart ?? auto.clipStartSec, sourceDurationSec, clipDurationSec);
     const focusY = sanitizeFocusY(requestedFocus ?? auto.focusY);
-    const templateIdFromInput =
-      typeof (snapshot?.renderPlan as Partial<Stage3RenderPlan> | undefined)?.templateId === "string" &&
-      (snapshot?.renderPlan as Partial<Stage3RenderPlan>).templateId?.trim()
-        ? String((snapshot?.renderPlan as Partial<Stage3RenderPlan>).templateId).trim()
-        : typeof body.renderPlan?.templateId === "string" && body.renderPlan.templateId.trim()
-          ? body.renderPlan.templateId.trim()
-          : body.templateId?.trim() || STAGE3_TEMPLATE_ID;
-    const renderPlan = normalizeRenderPlan(
-      snapshot?.renderPlan ?? body.renderPlan,
-      sourceDurationSec,
-      templateIdFromInput,
-      body.agentPrompt,
-      snapshot?.managedTemplateState,
-      workspaceId
-    );
-    const managedTemplateRuntime = resolveManagedTemplateRuntimeSync(
-      renderPlan.templateId,
-      snapshot?.managedTemplateState,
-      { workspaceId }
-    );
-    const templateSnapshotContent = {
-      topText: snapshot?.topText ?? body.topText ?? "",
-      bottomText: snapshot?.bottomText ?? body.bottomText ?? "",
-      sourceOverlayText: snapshot?.sourceOverlayText ?? body.sourceOverlayText ?? "",
-      channelName: renderPlan.authorName,
-      channelHandle: renderPlan.authorHandle,
-      highlights: snapshot?.captionHighlights ?? { top: [], bottom: [] },
-      topFontScale: renderPlan.topFontScale,
-      bottomFontScale: renderPlan.bottomFontScale,
-      previewScale: 1,
-      mediaAsset: null,
-      backgroundAsset: null,
-      avatarAsset: null
-    };
-    const requestedTextFitOverride = snapshot?.textFit
-      ? {
-          topFontPx: snapshot.textFit.topFontPx,
-          bottomFontPx: snapshot.textFit.bottomFontPx,
-          topLineHeight: snapshot.textFit.topLineHeight,
-          bottomLineHeight: snapshot.textFit.bottomLineHeight,
-          topLines: snapshot.textFit.topLines,
-          bottomLines: snapshot.textFit.bottomLines,
-          topCompacted: snapshot.textFit.topCompacted,
-          bottomCompacted: snapshot.textFit.bottomCompacted
-        }
-      : undefined;
-    const baseTemplateSnapshot = buildTemplateRenderSnapshot({
-      templateId: managedTemplateRuntime.baseTemplateId,
-      templateConfigOverride: managedTemplateRuntime.templateConfig,
-      content: templateSnapshotContent
+    const templateState = await measureRenderStage(options, "template_snapshot", null, async () => {
+      const templateIdFromInput =
+        typeof (snapshot?.renderPlan as Partial<Stage3RenderPlan> | undefined)?.templateId === "string" &&
+        (snapshot?.renderPlan as Partial<Stage3RenderPlan>).templateId?.trim()
+          ? String((snapshot?.renderPlan as Partial<Stage3RenderPlan>).templateId).trim()
+          : typeof body.renderPlan?.templateId === "string" && body.renderPlan.templateId.trim()
+            ? body.renderPlan.templateId.trim()
+            : body.templateId?.trim() || STAGE3_TEMPLATE_ID;
+      const renderPlan = normalizeRenderPlan(
+        snapshot?.renderPlan ?? body.renderPlan,
+        sourceDurationSec,
+        templateIdFromInput,
+        body.agentPrompt,
+        snapshot?.managedTemplateState,
+        workspaceId
+      );
+      const managedTemplateRuntime = resolveManagedTemplateRuntimeSync(
+        renderPlan.templateId,
+        snapshot?.managedTemplateState,
+        { workspaceId }
+      );
+      const templateSnapshotContent = {
+        topText: snapshot?.topText ?? body.topText ?? "",
+        bottomText: snapshot?.bottomText ?? body.bottomText ?? "",
+        sourceOverlayText: snapshot?.sourceOverlayText ?? body.sourceOverlayText ?? "",
+        channelName: renderPlan.authorName,
+        channelHandle: renderPlan.authorHandle,
+        highlights: snapshot?.captionHighlights ?? { top: [], bottom: [] },
+        topFontScale: renderPlan.topFontScale,
+        bottomFontScale: renderPlan.bottomFontScale,
+        previewScale: 1,
+        mediaAsset: null,
+        backgroundAsset: null,
+        avatarAsset: null
+      };
+      const requestedTextFitOverride = snapshot?.textFit
+        ? {
+            topFontPx: snapshot.textFit.topFontPx,
+            bottomFontPx: snapshot.textFit.bottomFontPx,
+            topLineHeight: snapshot.textFit.topLineHeight,
+            bottomLineHeight: snapshot.textFit.bottomLineHeight,
+            topLines: snapshot.textFit.topLines,
+            bottomLines: snapshot.textFit.bottomLines,
+            topCompacted: snapshot.textFit.topCompacted,
+            bottomCompacted: snapshot.textFit.bottomCompacted
+          }
+        : undefined;
+      const baseTemplateSnapshot = buildTemplateRenderSnapshot({
+        templateId: managedTemplateRuntime.baseTemplateId,
+        templateConfigOverride: managedTemplateRuntime.templateConfig,
+        content: templateSnapshotContent
+      });
+      const textFitTemplateSnapshot = requestedTextFitOverride
+        ? buildTemplateRenderSnapshot({
+            templateId: managedTemplateRuntime.baseTemplateId,
+            templateConfigOverride: managedTemplateRuntime.templateConfig,
+            content: templateSnapshotContent,
+            fitOverride: requestedTextFitOverride
+          })
+        : null;
+      assertStage3RenderTemplateSnapshotFresh({
+        snapshot,
+        baseTemplateSnapshot,
+        textFitTemplateSnapshot
+      });
+      return {
+        renderPlan,
+        managedTemplateRuntime,
+        templateSnapshot: textFitTemplateSnapshot ?? baseTemplateSnapshot
+      };
     });
-    // The client sends templateSnapshot from the base preview model and textFit separately.
-    // Drift checks must stay anchored to the base snapshot hash, then measured text fit can be applied for render.
-    const textFitTemplateSnapshot = requestedTextFitOverride
-      ? buildTemplateRenderSnapshot({
-          templateId: managedTemplateRuntime.baseTemplateId,
-          templateConfigOverride: managedTemplateRuntime.templateConfig,
-          content: templateSnapshotContent,
-          fitOverride: requestedTextFitOverride
-        })
-      : null;
-    assertStage3RenderTemplateSnapshotFresh({
-      snapshot,
-      baseTemplateSnapshot,
-      textFitTemplateSnapshot
-    });
-    const templateSnapshot = textFitTemplateSnapshot ?? baseTemplateSnapshot;
+    const { renderPlan, managedTemplateRuntime, templateSnapshot } = templateState;
 
     let musicFilePath: string | null = null;
     if (body.channelId && renderPlan.musicAssetId) {
-      const musicFile = await resolveStage3AssetFile({
-        channelId: body.channelId,
+      const musicPayload: Record<string, unknown> = {
+        asset: "music",
         assetId: renderPlan.musicAssetId,
-        tmpDir
+        mimeType: renderPlan.musicAssetMimeType
+      };
+      musicFilePath = await measureRenderStage(options, "asset_resolve", musicPayload, async () => {
+        const musicFile = await resolveStage3AssetFile({
+          channelId: body.channelId!,
+          assetId: renderPlan.musicAssetId!,
+          tmpDir
+        });
+        Object.assign(musicPayload, {
+          resolved: Boolean(musicFile),
+          sizeBytes: await fileSizeBytes(musicFile?.filePath)
+        });
+        return musicFile?.filePath ?? null;
       });
-      if (musicFile) {
-        musicFilePath = musicFile.filePath;
-      }
     }
 
     const metadataTitle = buildRenderMetadataTitle(body.renderTitle);
@@ -1073,21 +1352,37 @@ export async function renderStage3Video(
     });
 
     await runHostedStage3HeavyJob(async () => {
-      const serveUrl = await getRemotionServeUrl();
+      const serveUrl = await measureRenderStage(options, "remotion_bundle", {
+        reuseBundle: shouldReuseRemotionBundle()
+      }, () => getRemotionServeUrl());
       const assetToken = randomUUID().replace(/-/g, "");
       const remotionAssetDir = path.join(serveUrl, "public", "stage3-assets", assetToken);
       const remotionAssetBase = path.posix.join("stage3-assets", assetToken);
       await fs.mkdir(remotionAssetDir, { recursive: true });
 
-      const prepared = await prepareStage3SourceClip({
-        sourcePath: source.sourcePath,
-        tmpDir,
-        sourceDurationSec,
-        clipStartSec,
-        clipDurationSec: renderPlan.targetDurationSec,
-        renderPlan,
-        musicFilePath,
-        profile: "render"
+      const preparePayload: Record<string, unknown> = {
+        targetDurationSec: renderPlan.targetDurationSec,
+        hostedFastProfile: isStage3HostedFastRenderProfileEnabled()
+      };
+      const prepared = await measureRenderStage(options, "prepare_source", preparePayload, async () => {
+        const result = await prepareStage3SourceClipWithCache({
+          sourceKey: source.sourceKey,
+          sourcePath: source.sourcePath,
+          tmpDir,
+          sourceDurationSec,
+          clipStartSec,
+          clipDurationSec: renderPlan.targetDurationSec,
+          renderPlan,
+          musicFilePath
+        });
+        Object.assign(preparePayload, {
+          cacheState: result.cache.state,
+          cacheKey: result.cache.key,
+          sizeBytes: result.cache.sizeBytes,
+          renderSafeNormalizeSkipped: result.optimization.renderSafeNormalizeSkipped,
+          flashGuardSkipped: result.optimization.flashGuardSkipped
+        });
+        return result;
       });
 
       const sourceVideoFileName = path.posix.join(remotionAssetBase, "source.mp4");
@@ -1108,10 +1403,12 @@ export async function renderStage3Video(
         ) {
           const localFileName = "background.jpg";
           try {
-            await prepareStage3SourceBackgroundStill({
-              inputPath: prepared.preparedPath,
-              outputPath: path.join(remotionAssetDir, localFileName)
-            });
+            await measureRenderStage(options, "background_prepare", { mode: "source-blur" }, () =>
+              prepareStage3SourceBackgroundStill({
+                inputPath: prepared.preparedPath,
+                outputPath: path.join(remotionAssetDir, localFileName)
+              })
+            );
             backgroundAssetFileName = path.posix.join(remotionAssetBase, localFileName);
             backgroundAssetMimeType = "image/jpeg";
           } catch {
@@ -1120,10 +1417,22 @@ export async function renderStage3Video(
         }
 
         if (body.channelId && renderPlan.backgroundAssetId) {
-          const asset = await resolveStage3AssetFile({
-            channelId: body.channelId,
+          const backgroundPayload: Record<string, unknown> = {
+            asset: "background",
             assetId: renderPlan.backgroundAssetId,
-            tmpDir
+            mimeType: renderPlan.backgroundAssetMimeType
+          };
+          const asset = await measureRenderStage(options, "asset_resolve", backgroundPayload, async () => {
+            const resolved = await resolveStage3AssetFile({
+              channelId: body.channelId!,
+              assetId: renderPlan.backgroundAssetId!,
+              tmpDir
+            });
+            Object.assign(backgroundPayload, {
+              resolved: Boolean(resolved),
+              sizeBytes: await fileSizeBytes(resolved?.filePath)
+            });
+            return resolved;
           });
           if (asset) {
             const ext = path.extname(asset.fileName) || ".jpg";
@@ -1135,10 +1444,22 @@ export async function renderStage3Video(
         }
 
         if (body.channelId && renderPlan.avatarAssetId) {
-          const asset = await resolveStage3AssetFile({
-            channelId: body.channelId,
+          const avatarPayload: Record<string, unknown> = {
+            asset: "avatar",
             assetId: renderPlan.avatarAssetId,
-            tmpDir
+            mimeType: renderPlan.avatarAssetMimeType
+          };
+          const asset = await measureRenderStage(options, "asset_resolve", avatarPayload, async () => {
+            const resolved = await resolveStage3AssetFile({
+              channelId: body.channelId!,
+              assetId: renderPlan.avatarAssetId!,
+              tmpDir
+            });
+            Object.assign(avatarPayload, {
+              resolved: Boolean(resolved),
+              sizeBytes: await fileSizeBytes(resolved?.filePath)
+            });
+            return resolved;
           });
           if (asset) {
             const ext = path.extname(asset.fileName) || ".jpg";
@@ -1152,61 +1473,82 @@ export async function renderStage3Video(
           throw new Error("CopScopes render blocked: channel avatar asset is required and must resolve before publication.");
         }
 
-        const renderTemplateConfig = await prepareStage3TemplateFontAssetsForRender({
-          templateConfig: managedTemplateRuntime.templateConfig,
-          workspaceId,
-          remotionAssetDir,
-          remotionAssetBase
-        });
+        const renderTemplateConfig = await measureRenderStage(options, "font_assets", null, () =>
+          prepareStage3TemplateFontAssetsForRender({
+            templateConfig: managedTemplateRuntime.templateConfig,
+            workspaceId,
+            remotionAssetDir,
+            remotionAssetBase
+          })
+        );
 
-        const appliedVariationProfile = await runRemotionRender({
-          serveUrl,
+        const remotionPayload: Record<string, unknown> = {
           templateId: managedTemplateRuntime.baseTemplateId,
-          templateConfigOverride: renderTemplateConfig,
-          outputPath: remotionOutputPath,
-          sourceVideoFileName,
-          topText: templateSnapshot.content.topText,
-          bottomText: templateSnapshot.content.bottomText,
-          sourceOverlayText: templateSnapshot.content.sourceOverlayText ?? "",
-          captionHighlights: templateSnapshot.content.highlights,
-          clipStartSec: prepared.clipStartSec,
-          clipDurationSec: prepared.clipDurationSec,
-          focusX: renderPlan.focusX,
-          focusY,
-          mirrorEnabled: renderPlan.mirrorEnabled,
-          timingMode: renderPlan.timingMode,
-          segments: renderPlan.segments,
-          cameraMotion: renderPlan.cameraMotion,
-          cameraKeyframes: renderPlan.cameraKeyframes,
-          cameraPositionKeyframes: renderPlan.cameraPositionKeyframes,
-          cameraScaleKeyframes: renderPlan.cameraScaleKeyframes,
-          videoZoom: renderPlan.videoZoom,
-          videoScaleY: renderPlan.videoScaleY,
-          videoBrightness: renderPlan.videoBrightness,
-          videoExposure: renderPlan.videoExposure,
-          videoContrast: renderPlan.videoContrast,
-          videoSaturation: renderPlan.videoSaturation,
-          topFontScale: renderPlan.topFontScale,
-          bottomFontScale: renderPlan.bottomFontScale,
-          authorName: renderPlan.authorName,
-          authorHandle: renderPlan.authorHandle,
-          avatarAssetFileName,
-          avatarAssetMimeType,
-          backgroundAssetFileName,
-          backgroundAssetMimeType,
-          sourceBlurBackgroundDisabled,
-          textFit: {
-            topFontPx: templateSnapshot.fit.topFontPx,
-            bottomFontPx: templateSnapshot.fit.bottomFontPx,
-            topLineHeight: templateSnapshot.fit.topLineHeight,
-            bottomLineHeight: templateSnapshot.fit.bottomLineHeight,
-            topLines: templateSnapshot.fit.topLines,
-            bottomLines: templateSnapshot.fit.bottomLines,
-            topCompacted: templateSnapshot.fit.topCompacted,
-            bottomCompacted: templateSnapshot.fit.bottomCompacted
-          },
-          variationProfile,
-          timeoutMs
+          targetDurationSec: renderPlan.targetDurationSec,
+          timeoutMs,
+          variationMode: variationProfile.appliedMode,
+          crf: variationProfile.encode.crf,
+          x264Preset: variationProfile.encode.x264Preset,
+          backgroundMimeType: backgroundAssetMimeType,
+          hostedFastProfile: isStage3HostedFastRenderProfileEnabled()
+        };
+        const appliedVariationProfile = await measureRenderStage(options, "remotion_render", remotionPayload, async () => {
+          const applied = await runRemotionRender({
+            serveUrl,
+            templateId: managedTemplateRuntime.baseTemplateId,
+            templateConfigOverride: renderTemplateConfig,
+            outputPath: remotionOutputPath,
+            sourceVideoFileName,
+            topText: templateSnapshot.content.topText,
+            bottomText: templateSnapshot.content.bottomText,
+            sourceOverlayText: templateSnapshot.content.sourceOverlayText ?? "",
+            captionHighlights: templateSnapshot.content.highlights,
+            clipStartSec: prepared.clipStartSec,
+            clipDurationSec: prepared.clipDurationSec,
+            focusX: renderPlan.focusX,
+            focusY,
+            mirrorEnabled: renderPlan.mirrorEnabled,
+            timingMode: renderPlan.timingMode,
+            segments: renderPlan.segments,
+            cameraMotion: renderPlan.cameraMotion,
+            cameraKeyframes: renderPlan.cameraKeyframes,
+            cameraPositionKeyframes: renderPlan.cameraPositionKeyframes,
+            cameraScaleKeyframes: renderPlan.cameraScaleKeyframes,
+            videoZoom: renderPlan.videoZoom,
+            videoScaleY: renderPlan.videoScaleY,
+            videoBrightness: renderPlan.videoBrightness,
+            videoExposure: renderPlan.videoExposure,
+            videoContrast: renderPlan.videoContrast,
+            videoSaturation: renderPlan.videoSaturation,
+            topFontScale: renderPlan.topFontScale,
+            bottomFontScale: renderPlan.bottomFontScale,
+            authorName: renderPlan.authorName,
+            authorHandle: renderPlan.authorHandle,
+            avatarAssetFileName,
+            avatarAssetMimeType,
+            backgroundAssetFileName,
+            backgroundAssetMimeType,
+            sourceBlurBackgroundDisabled,
+            textFit: {
+              topFontPx: templateSnapshot.fit.topFontPx,
+              bottomFontPx: templateSnapshot.fit.bottomFontPx,
+              topLineHeight: templateSnapshot.fit.topLineHeight,
+              bottomLineHeight: templateSnapshot.fit.bottomLineHeight,
+              topLines: templateSnapshot.fit.topLines,
+              bottomLines: templateSnapshot.fit.bottomLines,
+              topCompacted: templateSnapshot.fit.topCompacted,
+              bottomCompacted: templateSnapshot.fit.bottomCompacted
+            },
+            variationProfile,
+            timeoutMs
+          });
+          Object.assign(remotionPayload, {
+            outputSizeBytes: await fileSizeBytes(remotionOutputPath),
+            appliedVariationMode: applied.appliedMode,
+            appliedX264Preset: applied.encode.x264Preset,
+            appliedCrf: applied.encode.crf
+          });
+          return applied;
         });
 
         appliedVariationManifest = buildStage3VariationManifest({
@@ -1218,21 +1560,41 @@ export async function renderStage3Video(
           outputName: `${outputStem}.mp4`
         });
 
-        const flashGuarded = await repairStage3BlankFlashFrames({
-          inputPath: remotionOutputPath,
-          outputPath: path.join(tmpDir, "render.flash-guard.mp4"),
-          mediaRect: templateSnapshot.layout.media
+        const flashGuardPayload: Record<string, unknown> = {
+          inputSizeBytes: await fileSizeBytes(remotionOutputPath)
+        };
+        const flashGuarded = await measureRenderStage(options, "flash_guard", flashGuardPayload, async () => {
+          const guarded = await repairStage3BlankFlashFrames({
+            inputPath: remotionOutputPath,
+            outputPath: path.join(tmpDir, "render.flash-guard.mp4"),
+            mediaRect: templateSnapshot.layout.media
+          });
+          Object.assign(flashGuardPayload, {
+            outputSizeBytes: await fileSizeBytes(guarded.outputPath)
+          });
+          return guarded;
         });
 
-        await finalizeRenderedOutput({
-          inputPath: flashGuarded.outputPath,
-          audioInputPath: prepared.preparedPath,
-          outputPath,
-          metadataTitle,
-          durationSec: renderPlan.targetDurationSec,
-          variationProfile: appliedVariationProfile,
-          variationManifest: appliedVariationManifest,
-          variationManifestPath
+        const finalizePayload: Record<string, unknown> = {
+          inputSizeBytes: await fileSizeBytes(flashGuarded.outputPath),
+          audioInputSizeBytes: await fileSizeBytes(prepared.preparedPath),
+          x264Preset: appliedVariationProfile.encode.x264Preset,
+          crf: appliedVariationProfile.encode.crf
+        };
+        await measureRenderStage(options, "finalize", finalizePayload, async () => {
+          await finalizeRenderedOutput({
+            inputPath: flashGuarded.outputPath,
+            audioInputPath: prepared.preparedPath,
+            outputPath,
+            metadataTitle,
+            durationSec: renderPlan.targetDurationSec,
+            variationProfile: appliedVariationProfile,
+            variationManifest: appliedVariationManifest,
+            variationManifestPath
+          });
+          Object.assign(finalizePayload, {
+            outputSizeBytes: await fileSizeBytes(outputPath)
+          });
         });
       } finally {
         await fs.rm(remotionAssetDir, { recursive: true, force: true }).catch(() => undefined);

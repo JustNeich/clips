@@ -1171,23 +1171,33 @@ export function sweepHostStage3Jobs(): number {
   return runInTransaction((db) => failOverdueHostJobsInternal(db) + interruptSupersededQueuedHostJobsInternal(db));
 }
 
-export function claimNextQueuedStage3Job(): Stage3JobRecord | null {
+export function claimNextQueuedStage3Job(input: { kinds?: Stage3JobKind[] | null } = {}): Stage3JobRecord | null {
+  const kinds = input.kinds?.length ? input.kinds : null;
   const job = runInTransaction((db) => {
     failOverdueHostJobsInternal(db);
     interruptSupersededQueuedHostJobsInternal(db);
+    const query = kinds
+      ? `SELECT *
+           FROM stage3_jobs
+          WHERE execution_target = 'host'
+            AND status = 'queued'
+            AND kind IN (${kinds.map(() => "?").join(", ")})
+          ORDER BY
+            ${buildHostStage3JobPrioritySql("kind")} ASC,
+            created_at ASC
+          LIMIT 1`
+      : `SELECT *
+           FROM stage3_jobs
+          WHERE execution_target = 'host'
+            AND status = 'queued'
+          ORDER BY
+            ${buildHostStage3JobPrioritySql("kind")} ASC,
+            created_at ASC
+          LIMIT 1`;
     const row =
       (db
-        .prepare(
-            `SELECT *
-               FROM stage3_jobs
-              WHERE execution_target = 'host'
-                AND status = 'queued'
-              ORDER BY
-                ${buildHostStage3JobPrioritySql("kind")} ASC,
-                created_at ASC
-              LIMIT 1`
-        )
-        .get() as JobRow | undefined) ?? null;
+        .prepare(query)
+        .get(...(kinds ?? [])) as JobRow | undefined) ?? null;
     if (!row) {
       return null;
     }
@@ -1327,11 +1337,22 @@ export function touchStage3Job(jobId: string): void {
   db.prepare("UPDATE stage3_jobs SET updated_at = ? WHERE id = ?").run(nowIso(), jobId);
 }
 
-export function hasQueuedStage3Jobs(executionTarget: Stage3ExecutionTarget = "host"): boolean {
+export function hasQueuedStage3Jobs(
+  executionTarget: Stage3ExecutionTarget = "host",
+  input: { kinds?: Stage3JobKind[] | null } = {}
+): boolean {
+  const kinds = input.kinds?.length ? input.kinds : null;
+  const query = kinds
+    ? `SELECT 1 as present
+         FROM stage3_jobs
+        WHERE execution_target = ?
+          AND status = 'queued'
+          AND kind IN (${kinds.map(() => "?").join(", ")})
+        LIMIT 1`
+    : "SELECT 1 as present FROM stage3_jobs WHERE execution_target = ? AND status = 'queued' LIMIT 1";
+  const params = kinds ? [executionTarget, ...kinds] : [executionTarget];
   const db = getDb();
-  const row = db
-    .prepare("SELECT 1 as present FROM stage3_jobs WHERE execution_target = ? AND status = 'queued' LIMIT 1")
-    .get(executionTarget) as { present?: number } | undefined;
+  const row = db.prepare(query).get(...params) as { present?: number } | undefined;
   return row?.present === 1;
 }
 

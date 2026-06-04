@@ -291,6 +291,111 @@ test("host runtime watchdog frees the queue behind a stuck job", { concurrency: 
   });
 });
 
+test("host runtime keeps interactive jobs moving while render lane is busy", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const previousHostExecution = process.env.STAGE3_ALLOW_HOST_EXECUTION;
+    const previousHostLimit = process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS;
+    const previousRenderLimit = process.env.STAGE3_HOST_RENDER_MAX_CONCURRENT_JOBS;
+    const previousInteractiveLimit = process.env.STAGE3_HOST_INTERACTIVE_MAX_CONCURRENT_JOBS;
+    process.env.STAGE3_ALLOW_HOST_EXECUTION = "1";
+    process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS = "1";
+    process.env.STAGE3_HOST_RENDER_MAX_CONCURRENT_JOBS = "1";
+    process.env.STAGE3_HOST_INTERACTIVE_MAX_CONCURRENT_JOBS = "1";
+
+    try {
+      const db = getDb();
+      const stamp = nowIso();
+      const workspaceId = "w1";
+      const userId = "u1";
+
+      db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+        workspaceId,
+        "Test workspace",
+        "test-workspace",
+        stamp,
+        stamp
+      );
+      db.prepare(
+        "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      ).run(userId, "u@example.com", "hash", "User", "active", stamp, stamp);
+      db.prepare(
+        "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+      ).run(newId(), workspaceId, userId, "owner", stamp, stamp);
+
+      let releaseRender: () => void = () => undefined;
+      const renderRelease = new Promise<void>((resolve) => {
+        releaseRender = resolve;
+      });
+      setStage3JobProcessorForTests(async (job) => {
+        if (job.kind === "render") {
+          await renderRelease;
+        }
+        const artifactPath = path.join(process.env.APP_DATA_DIR!, `${job.id}.mp4`);
+        await writeFile(artifactPath, "video");
+        completeStage3Job(job.id, {
+          resultJson: JSON.stringify({ ok: true }),
+          artifact: {
+            fileName: `${job.id}.mp4`,
+            mimeType: "video/mp4",
+            filePath: artifactPath,
+            sizeBytes: Buffer.byteLength("video")
+          }
+        });
+      });
+
+      const render = enqueueAndScheduleStage3Job({
+        workspaceId,
+        userId,
+        kind: "render",
+        executionTarget: "host",
+        payloadJson: JSON.stringify({
+          sourceUrl: "https://youtube.com/watch?v=long-render",
+          renderPlan: { targetDurationSec: 6 }
+        })
+      });
+      const editingProxy = enqueueAndScheduleStage3Job({
+        workspaceId,
+        userId,
+        kind: "editing-proxy",
+        executionTarget: "host",
+        payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=editor-proxy" })
+      });
+
+      await waitForCondition(
+        () => getStage3Job(render.id)?.status === "running" && getStage3Job(editingProxy.id)?.status === "completed",
+        2_000
+      );
+
+      assert.equal(getStage3Job(render.id)?.status, "running");
+      assert.equal(getStage3Job(editingProxy.id)?.status, "completed");
+      releaseRender();
+      await waitForCondition(() => getStage3Job(render.id)?.status === "completed", 2_000);
+    } finally {
+      setStage3JobProcessorForTests(null);
+      if (previousHostExecution === undefined) {
+        delete process.env.STAGE3_ALLOW_HOST_EXECUTION;
+      } else {
+        process.env.STAGE3_ALLOW_HOST_EXECUTION = previousHostExecution;
+      }
+      if (previousHostLimit === undefined) {
+        delete process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS;
+      } else {
+        process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS = previousHostLimit;
+      }
+      if (previousRenderLimit === undefined) {
+        delete process.env.STAGE3_HOST_RENDER_MAX_CONCURRENT_JOBS;
+      } else {
+        process.env.STAGE3_HOST_RENDER_MAX_CONCURRENT_JOBS = previousRenderLimit;
+      }
+      if (previousInteractiveLimit === undefined) {
+        delete process.env.STAGE3_HOST_INTERACTIVE_MAX_CONCURRENT_JOBS;
+      } else {
+        process.env.STAGE3_HOST_INTERACTIVE_MAX_CONCURRENT_JOBS = previousInteractiveLimit;
+      }
+    }
+  });
+});
+
 test("local worker skips superseded queued previews for the same chat", async () => {
   await withIsolatedAppData(async () => {
     const db = getDb();

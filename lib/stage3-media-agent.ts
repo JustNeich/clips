@@ -14,6 +14,7 @@ import { sanitizeFileName } from "./ytdlp";
 import { buildStage3EditorSession } from "./stage3-editor-core";
 import { repairStage3BlankFlashFrames } from "./stage3-video-flash-guard";
 import { buildStage3SourceCropFfmpegFilter } from "./stage3-source-crop";
+import { isStage3HostedFastRenderProfileEnabled } from "./stage3-render-variation";
 
 const execFileAsync = promisify(execFile);
 
@@ -1648,8 +1649,17 @@ export async function prepareStage3SourceClip(params: {
   renderPlan: Stage3RenderPlan;
   musicFilePath?: string | null;
   profile?: Stage3MediaProfile;
-}): Promise<{ preparedPath: string; clipStartSec: number; clipDurationSec: number }> {
+}): Promise<{
+  preparedPath: string;
+  clipStartSec: number;
+  clipDurationSec: number;
+  optimization: {
+    renderSafeNormalizeSkipped: boolean;
+    flashGuardSkipped: boolean;
+  };
+}> {
   const profile = params.profile ?? "render";
+  const hostedFastRender = profile === "render" && isStage3HostedFastRenderProfileEnabled();
   const segments = normalizeSegments({
     renderPlan: params.renderPlan,
     sourceDurationSec: params.sourceDurationSec,
@@ -1685,7 +1695,7 @@ export async function prepareStage3SourceClip(params: {
     profile
   });
   const stabilized =
-    profile === "render"
+    profile === "render" && !hostedFastRender
       ? await (async () => {
           const outputPath = path.join(params.tmpDir, "source.render-safe.mp4");
           await normalizeStage3SourceVideo({
@@ -1695,10 +1705,12 @@ export async function prepareStage3SourceClip(params: {
           return outputPath;
         })()
       : durationGuarded;
-  const flashGuarded = await repairStage3BlankFlashFrames({
-    inputPath: stabilized,
-    outputPath: path.join(params.tmpDir, "source.flash-guard.mp4")
-  });
+  const flashGuarded = hostedFastRender
+    ? { outputPath: stabilized }
+    : await repairStage3BlankFlashFrames({
+        inputPath: stabilized,
+        outputPath: path.join(params.tmpDir, "source.flash-guard.mp4")
+      });
 
   const finalPath = path.join(params.tmpDir, "source.mp4");
   if (flashGuarded.outputPath !== finalPath) {
@@ -1708,6 +1720,10 @@ export async function prepareStage3SourceClip(params: {
   return {
     preparedPath: finalPath,
     clipStartSec: 0,
-    clipDurationSec: params.renderPlan.targetDurationSec
+    clipDurationSec: params.renderPlan.targetDurationSec,
+    optimization: {
+      renderSafeNormalizeSkipped: hostedFastRender,
+      flashGuardSkipped: hostedFastRender
+    }
   };
 }

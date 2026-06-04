@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 export type Stage3VariationSeed = string;
 export type Stage3VariationMode = "off" | "encode" | "hybrid";
-export type Stage3VariationX264Preset = "slow" | "medium";
+export type Stage3VariationX264Preset = "veryfast" | "fast" | "medium" | "slow";
 
 export type Stage3VariationSignalProfile = {
   enabled: boolean;
@@ -17,7 +17,7 @@ export type Stage3VariationSignalProfile = {
 export type Stage3VariationEncodeProfile = {
   codec: "h264";
   pixelFormat: "yuv420p";
-  crf: 17 | 18 | 19;
+  crf: 17 | 18 | 19 | 20 | 21 | 22;
   x264Preset: Stage3VariationX264Preset;
   keyintFrames: number;
   keyintMinFrames: number;
@@ -126,7 +126,23 @@ function defaultSignalProfile(): Stage3VariationSignalProfile {
 }
 
 export function resolveStage3RenderVariationMode(): Stage3VariationMode {
-  return parseMode(process.env.STAGE3_RENDER_VARIATION_MODE?.trim().toLowerCase() ?? undefined);
+  const configured = process.env.STAGE3_RENDER_VARIATION_MODE?.trim().toLowerCase();
+  if (configured) {
+    return parseMode(configured);
+  }
+  return isStage3HostedFastRenderProfileEnabled() ? "encode" : DEFAULT_MODE;
+}
+
+function isStage3HostedRuntimeEnv(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.RENDER === "true" || env.RENDER === "1";
+}
+
+export function isStage3HostedFastRenderProfileEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (!isStage3HostedRuntimeEnv(env)) {
+    return false;
+  }
+  const raw = env.STAGE3_HOSTED_FAST_RENDER_PROFILE?.trim() ?? env.STAGE3_HOSTED_FAST_RENDER?.trim();
+  return raw !== "0" && raw?.toLowerCase() !== "false";
 }
 
 export function generateStage3VariationSeed(requestedSeed?: string | null): Stage3VariationSeed {
@@ -151,9 +167,19 @@ export function createStage3VariationProfile(input?: {
   const requestedMode = input?.requestedMode ?? resolveStage3RenderVariationMode();
   const seed = generateStage3VariationSeed(input?.requestedSeed);
   const keyintFrames = clamp(readSeedInt(seed, "encode:gop", 58, 62), 58, 62);
+  const hostedFast = isStage3HostedFastRenderProfileEnabled();
   const encode: Stage3VariationEncodeProfile =
     requestedMode === "off"
       ? defaultEncodeProfile()
+      : hostedFast
+        ? {
+            codec: "h264",
+            pixelFormat: "yuv420p",
+            crf: readSeedChoice(seed, "encode:crf", [20, 21, 22] as const),
+            x264Preset: readSeedChoice(seed, "encode:preset", ["veryfast", "fast"] as const),
+            keyintFrames,
+            keyintMinFrames: Math.min(keyintFrames, clamp(readSeedInt(seed, "encode:keyint-min", 58, 62), 58, 62))
+          }
       : {
           codec: "h264",
           pixelFormat: "yuv420p",

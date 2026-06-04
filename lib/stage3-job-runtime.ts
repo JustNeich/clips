@@ -32,15 +32,23 @@ import {
 import { publishStage3VideoArtifact } from "./stage3-job-artifacts";
 import { isHostStage3ExecutionAllowed } from "./stage3-execution";
 import { Stage3RenderRequestBody } from "./stage3-render-service";
+import type { Stage3RenderProgressEvent } from "./stage3-render-service";
 import { isStage3HostedBusyError } from "./stage3-server-control";
 import { clampHostedConcurrencyLimit } from "./hosted-resource-budget";
 import { resolveStage3HostJobTimeoutMs } from "./stage3-worker-job-timeout";
 
 const JOB_POLL_INTERVAL_MS = 350;
+const INTERACTIVE_STAGE3_HOST_JOB_KINDS: Stage3JobKind[] = [
+  "editing-proxy",
+  "preview",
+  "source-download",
+  "agent-media-step"
+];
+const RENDER_STAGE3_HOST_JOB_KINDS: Stage3JobKind[] = ["render"];
 
 type Stage3RuntimeState = {
   initialized: boolean;
-  activeJobs: Set<string>;
+  activeJobs: Map<string, Stage3JobKind>;
   schedulerPromise: Promise<void> | null;
 };
 
@@ -130,7 +138,7 @@ function getStage3RuntimeState(): Stage3RuntimeState {
   if (!scope.__clipsStage3JobRuntimeState__) {
     scope.__clipsStage3JobRuntimeState__ = {
       initialized: false,
-      activeJobs: new Set<string>(),
+      activeJobs: new Map<string, Stage3JobKind>(),
       schedulerPromise: null
     };
   }
@@ -191,12 +199,63 @@ function buildHostJobTimeoutMessage(job: Stage3JobRecord, timeoutMs: number): st
   return `Хостинг Stage 3 не завершил ${job.kind} за ${timeoutSec} секунд; watchdog освободил очередь.`;
 }
 
-function getStage3HostConcurrencyLimit(): number {
-  const raw = Number.parseInt(process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS ?? "", 10);
-  if (!Number.isFinite(raw) || raw <= 0) {
+function appendRenderProgressEvent(job: Stage3JobRecord, event: Stage3RenderProgressEvent): void {
+  const level = event.status === "failed" ? "error" : "info";
+  const payload = {
+    stage: event.stage,
+    status: event.status,
+    durationMs: event.durationMs ?? null,
+    errorMessage: event.errorMessage ?? null,
+    ...(event.payload ?? {})
+  };
+  appendStage3JobEvent(job.id, level, `Render stage ${event.stage} ${event.status}.`, payload);
+  logStage3Runtime("render_stage", {
+    jobId: job.id,
+    jobType: job.kind,
+    ...payload
+  });
+}
+
+type Stage3HostJobLane = "interactive" | "render";
+
+function getStage3HostJobLane(kind: Stage3JobKind): Stage3HostJobLane {
+  return kind === "render" ? "render" : "interactive";
+}
+
+function getStage3HostLaneKinds(lane: Stage3HostJobLane): Stage3JobKind[] {
+  return lane === "render" ? RENDER_STAGE3_HOST_JOB_KINDS : INTERACTIVE_STAGE3_HOST_JOB_KINDS;
+}
+
+function getStage3HostLaneConcurrencyLimit(lane: Stage3HostJobLane): number {
+  const raw =
+    lane === "render"
+      ? (process.env.STAGE3_HOST_RENDER_MAX_CONCURRENT_JOBS ?? process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS)
+      : (process.env.STAGE3_HOST_INTERACTIVE_MAX_CONCURRENT_JOBS ??
+        process.env.STAGE3_HOST_FAST_MAX_CONCURRENT_JOBS ??
+        process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS);
+  const parsed = Number.parseInt(raw ?? "", 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
     return 1;
   }
-  return clampHostedConcurrencyLimit(Math.max(1, Math.min(8, Math.floor(raw))));
+  return clampHostedConcurrencyLimit(Math.max(1, Math.min(8, Math.floor(parsed))));
+}
+
+function countActiveHostLaneJobs(state: Stage3RuntimeState, lane: Stage3HostJobLane): number {
+  let count = 0;
+  for (const kind of state.activeJobs.values()) {
+    if (getStage3HostJobLane(kind) === lane) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function hasOpenHostLaneCapacityForQueuedJobs(state: Stage3RuntimeState): boolean {
+  return (["interactive", "render"] as Stage3HostJobLane[]).some(
+    (lane) =>
+      countActiveHostLaneJobs(state, lane) < getStage3HostLaneConcurrencyLimit(lane) &&
+      hasQueuedStage3Jobs("host", { kinds: getStage3HostLaneKinds(lane) })
+  );
 }
 
 async function classifyJobFailure(job: Stage3JobRecord, error: unknown): Promise<{
@@ -266,7 +325,8 @@ async function executeStage3Job(job: Stage3JobRecord, options?: Stage3JobProcess
   try {
     const executor = await import("./stage3-job-executor");
     const executed = await executor.executeStage3HeavyJobPayload(job.kind, job.payloadJson, {
-      signal: options?.signal ?? null
+      signal: options?.signal ?? null,
+      onRenderProgress: job.kind === "render" ? (event) => appendRenderProgressEvent(job, event) : undefined
     });
     try {
       if (!isJobStillRunning(job.id)) {
@@ -406,6 +466,7 @@ async function runClaimedHostJobWithWatchdog(job: Stage3JobRecord): Promise<void
   const processorPromise = Promise.resolve()
     .then(() => processor(job, { signal: controller.signal }))
     .then(() => undefined);
+  void processorPromise.catch(() => undefined);
 
   try {
     await Promise.race([processorPromise, timeoutPromise]);
@@ -675,7 +736,7 @@ function startClaimedJob(job: Stage3JobRecord): void {
     return;
   }
 
-  state.activeJobs.add(job.id);
+  state.activeJobs.set(job.id, job.kind);
   void Promise.resolve()
     .then(() => runClaimedHostJobWithWatchdog(job))
     .finally(() => {
@@ -688,13 +749,15 @@ function startClaimedJob(job: Stage3JobRecord): void {
 function runSchedulerPass(): void {
   sweepHostStage3Jobs();
   const state = getStage3RuntimeState();
-  const limit = getStage3HostConcurrencyLimit();
-  while (state.activeJobs.size < limit) {
-    const claimed = claimNextQueuedStage3Job();
-    if (!claimed) {
-      break;
+  for (const lane of ["interactive", "render"] as Stage3HostJobLane[]) {
+    const limit = getStage3HostLaneConcurrencyLimit(lane);
+    while (countActiveHostLaneJobs(state, lane) < limit) {
+      const claimed = claimNextQueuedStage3Job({ kinds: getStage3HostLaneKinds(lane) });
+      if (!claimed) {
+        break;
+      }
+      startClaimedJob(claimed);
     }
-    startClaimedJob(claimed);
   }
 }
 
@@ -715,7 +778,7 @@ export function scheduleStage3JobProcessing(): void {
     .finally(() => {
       const latestState = getStage3RuntimeState();
       latestState.schedulerPromise = null;
-      if (latestState.activeJobs.size < getStage3HostConcurrencyLimit() && hasQueuedStage3Jobs("host")) {
+      if (hasOpenHostLaneCapacityForQueuedJobs(latestState)) {
         scheduleStage3JobProcessing();
       }
     });

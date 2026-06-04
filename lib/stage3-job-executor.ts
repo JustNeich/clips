@@ -18,13 +18,17 @@ import {
 import {
   renderStage3Video,
   RENDER_WAIT_TIMEOUT_MS,
-  Stage3RenderRequestBody,
   summarizeStage3RenderError
 } from "./stage3-render-service";
+import type { Stage3RenderProgressEvent, Stage3RenderRequestBody } from "./stage3-render-service";
 import { executeStage3AgentMediaStep, type Stage3AgentMediaStepPayload } from "./stage3-agent-media-step";
 import { ensureStage3SourceCached } from "./stage3-server-control";
 import { isStage3WorkerJobTimeoutError } from "./stage3-worker-job-timeout";
 import { isStage3ArtifactStorageError } from "./stage3-job-artifacts";
+import {
+  renderStage3VideoInChildProcess,
+  shouldUseStage3HostRenderChildProcess
+} from "./stage3-host-render-child-client";
 
 export type Stage3ExecutedJobResult = {
   resultJson: string | null;
@@ -40,7 +44,22 @@ export type Stage3ExecutedJobResult = {
 
 type Stage3HeavyJobExecutionOptions = {
   signal?: AbortSignal | null;
+  onRenderProgress?: (event: Stage3RenderProgressEvent) => void;
 };
+
+function buildStage3RenderResultJson(rendered: Awaited<ReturnType<typeof renderStage3Video>>): string {
+  return JSON.stringify({
+    outputName: rendered.outputName,
+    topCompacted: rendered.topCompacted,
+    bottomCompacted: rendered.bottomCompacted,
+    variation: {
+      seed: rendered.variationManifest.seed,
+      requestedMode: rendered.variationManifest.requestedMode,
+      appliedMode: rendered.variationManifest.appliedMode,
+      profileVersion: rendered.variationManifest.profileVersion
+    }
+  });
+}
 
 export function resolveStage3HeavyJobErrorCode(kind: Stage3JobKind): string {
   if (kind === "preview") {
@@ -84,23 +103,27 @@ export async function executeStage3HeavyJobPayload(
   }
 
   if (kind === "render") {
-    const payload = JSON.parse(payloadJson) as Stage3RenderRequestBody;
-    const rendered = await renderStage3Video(payload, {
+    if (shouldUseStage3HostRenderChildProcess()) {
+      const rendered = await renderStage3VideoInChildProcess(payloadJson, {
+        signal: options?.signal ?? undefined,
+        onProgress: options?.onRenderProgress
+      });
+      return {
+        resultJson: rendered.resultJson,
+        artifact: rendered.artifact,
+        cleanup: async () => {
+          await fs.rm(rendered.cleanupDir, { recursive: true, force: true }).catch(() => undefined);
+        }
+      };
+    }
+
+    const rendered = await renderStage3Video(JSON.parse(payloadJson) as Stage3RenderRequestBody, {
       signal: options?.signal ?? undefined,
-      waitTimeoutMs: RENDER_WAIT_TIMEOUT_MS
+      waitTimeoutMs: RENDER_WAIT_TIMEOUT_MS,
+      onProgress: options?.onRenderProgress
     });
     return {
-      resultJson: JSON.stringify({
-        outputName: rendered.outputName,
-        topCompacted: rendered.topCompacted,
-        bottomCompacted: rendered.bottomCompacted,
-        variation: {
-          seed: rendered.variationManifest.seed,
-          requestedMode: rendered.variationManifest.requestedMode,
-          appliedMode: rendered.variationManifest.appliedMode,
-          profileVersion: rendered.variationManifest.profileVersion
-        }
-      }),
+      resultJson: buildStage3RenderResultJson(rendered),
       artifact: {
         filePath: rendered.filePath,
         fileName: rendered.outputName,
