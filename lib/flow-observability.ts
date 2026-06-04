@@ -761,6 +761,7 @@ export function listFlowObservability(input: {
     typeof filters.limit === "number" && Number.isFinite(filters.limit)
       ? Math.max(1, Math.min(200, Math.floor(filters.limit)))
       : 80;
+  const auditLimit = search ? Math.min(25, Math.max(10, limit * 5)) : 100;
   const scanLimit = search || filters.from || filters.to ? 2000 : Math.max(limit * 10, 500);
   params.push(scanLimit);
 
@@ -899,7 +900,7 @@ export function listFlowObservability(input: {
 
   const auditEvents = listFlowAuditEvents({
     workspaceId: input.workspaceId,
-    limit: 100,
+    limit: auditLimit,
     stage: filters.stage && filters.stage !== "new" ? filters.stage : null,
     status: filters.status ?? null,
     search: filters.search ?? null
