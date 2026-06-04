@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { resolveStage3JobPollIntervalMs } from "../lib/stage3-job-polling";
+import {
+  resolveStage3JobPollIntervalMs,
+  resolveStage3JobStatusTransientRetryMs,
+  shouldContinueStage3JobStatusPollingAfterTransient
+} from "../lib/stage3-job-polling";
 
 test("job polling stays responsive for fresh hosted preview work", () => {
   assert.equal(
@@ -52,5 +56,37 @@ test("job polling slows down when the tab is hidden", () => {
       hidden: true
     }),
     5000
+  );
+});
+
+test("render status polling tolerates long transient control-plane failures", () => {
+  assert.equal(
+    shouldContinueStage3JobStatusPollingAfterTransient({
+      kind: "render",
+      elapsedMs: 12 * 60_000
+    }),
+    true
+  );
+  assert.equal(
+    shouldContinueStage3JobStatusPollingAfterTransient({
+      kind: "render",
+      elapsedMs: 46 * 60_000
+    }),
+    false
+  );
+  assert.equal(
+    resolveStage3JobStatusTransientRetryMs({
+      kind: "render",
+      transientFailures: 5
+    }),
+    7000
+  );
+  assert.equal(
+    resolveStage3JobStatusTransientRetryMs({
+      kind: "render",
+      transientFailures: 50,
+      hidden: true
+    }),
+    15000
   );
 });

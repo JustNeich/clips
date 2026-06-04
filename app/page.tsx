@@ -233,7 +233,11 @@ import {
   resolveStage3SnapshotManagedTemplateState,
   toSnapshotManagedTemplateState
 } from "../lib/stage3-snapshot-managed-template";
-import { resolveStage3JobPollIntervalMs } from "../lib/stage3-job-polling";
+import {
+  resolveStage3JobPollIntervalMs,
+  resolveStage3JobStatusTransientRetryMs,
+  shouldContinueStage3JobStatusPollingAfterTransient
+} from "../lib/stage3-job-polling";
 import { resolveStage3WorkerRefreshIntervalMs } from "../lib/stage3-worker-polling";
 import { buildStage3EditorSession } from "../lib/stage3-editor-core";
 const DEFAULT_TEXT_SCALE = 1.25;
@@ -3760,38 +3764,79 @@ export default function HomePage() {
     const run = async (): Promise<void> => {
       let jobId = stage3RenderJobId;
       let transientFailures = 0;
+      let lastTransientRevalidationAtMs = 0;
       const pollStartedAtMs = Date.now();
 
-      while (!isStale()) {
-        const response = await fetchWithTimeout(
-          `/api/stage3/render/jobs/${jobId}`,
-          {
-            signal: controller.signal,
-            cache: "no-store"
-          },
-          15_000
+      const waitForTransientStatusRetry = async (retryAfterValue: string | null): Promise<boolean> => {
+        transientFailures += 1;
+        const elapsedMs = Date.now() - pollStartedAtMs;
+        if (
+          !shouldContinueStage3JobStatusPollingAfterTransient({
+            kind: "render",
+            elapsedMs
+          })
+        ) {
+          return false;
+        }
+
+        setStatusType("ok");
+        setStatus("Статус рендера временно недоступен. Продолжаю проверять...");
+
+        const nowMs = Date.now();
+        if (nowMs - lastTransientRevalidationAtMs >= 15_000) {
+          lastTransientRevalidationAtMs = nowMs;
+          void refreshChats().catch(() => undefined);
+          if (activeChannelId) {
+            void refreshChannelPublications(activeChannelId).catch(() => undefined);
+          }
+        }
+
+        const retryDelayMs = Math.max(
+          parseRetryAfterMs(retryAfterValue, 0),
+          resolveStage3JobStatusTransientRetryMs({
+            kind: "render",
+            transientFailures,
+            hidden: isPageHidden()
+          })
         );
+        await new Promise<void>((resolve) => {
+          const timer = window.setTimeout(() => resolve(), retryDelayMs);
+          controller.signal.addEventListener(
+            "abort",
+            () => {
+              window.clearTimeout(timer);
+              resolve();
+            },
+            { once: true }
+          );
+        });
+        return !isStale();
+      };
+
+      while (!isStale()) {
+        let response: Response;
+        try {
+          response = await fetchWithTimeout(
+            `/api/stage3/render/jobs/${jobId}`,
+            {
+              signal: controller.signal,
+              cache: "no-store"
+            },
+            15_000
+          );
+        } catch (error) {
+          if (isStale()) {
+            return;
+          }
+          if (isAbortError(error) && (await waitForTransientStatusRetry(null))) {
+            continue;
+          }
+          throw error;
+        }
         const shouldRetry = response.status >= 500 || responseLooksLikeHtml(response);
         if (!response.ok || !responseLooksLikeJson(response)) {
           const message = await parseError(response, "Render export failed.");
-          if (shouldRetry && transientFailures < 4) {
-            transientFailures += 1;
-            setStatusType("ok");
-            setStatus("Статус рендера временно недоступен. Повторяю...");
-            await new Promise<void>((resolve) => {
-              const timer = window.setTimeout(
-                () => resolve(),
-                parseRetryAfterMs(response.headers.get("retry-after"), 1000 + transientFailures * 500)
-              );
-              controller.signal.addEventListener(
-                "abort",
-                () => {
-                  window.clearTimeout(timer);
-                  resolve();
-                },
-                { once: true }
-              );
-            });
+          if (shouldRetry && (await waitForTransientStatusRetry(response.headers.get("retry-after")))) {
             continue;
           }
           throw new Error(message);
