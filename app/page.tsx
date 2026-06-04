@@ -5536,10 +5536,6 @@ export default function HomePage() {
               job.errorMessage ?? "Не удалось загрузить предпросмотр.",
               job.executionTarget
             ) ?? "Не удалось загрузить предпросмотр.";
-          if (job.recoverable) {
-            scheduleRetry(message, 4000);
-            return;
-          }
           setStage3PreviewState("error");
           setStage3PreviewNotice(message);
           return;
@@ -5798,10 +5794,6 @@ export default function HomePage() {
                 mode: "accurate-preview"
               }
             ) ?? "Не удалось обновить точный clip-preview.";
-          if (job.recoverable) {
-            scheduleRetry(message, 5000);
-            return;
-          }
           setStage3AccuratePreviewState("error");
           setStage3AccuratePreviewNotice(message);
           return;

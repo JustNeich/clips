@@ -1,6 +1,10 @@
 import { requireAuth, requireChannelVisibility } from "../../../../../lib/auth/guards";
 import { resolveStage3Execution } from "../../../../../lib/stage3-execution";
-import { buildStage3JobEnvelope, buildStage3JobErrorBody } from "../../../../../lib/stage3-job-http";
+import {
+  buildStage3JobEnvelope,
+  buildStage3JobErrorBody,
+  buildTerminalStage3JobErrorBody
+} from "../../../../../lib/stage3-job-http";
 import { enqueueAndScheduleStage3Job } from "../../../../../lib/stage3-job-runtime";
 import {
   buildStage3EditingProxyDedupeKey,
@@ -122,6 +126,10 @@ export async function POST(request: Request): Promise<Response> {
         }
       )
     });
+    const terminalError = buildTerminalStage3JobErrorBody(job, "Не удалось подготовить proxy-видео.");
+    if (terminalError) {
+      return Response.json(terminalError, { status: 409 });
+    }
 
     return Response.json(
       buildStage3JobEnvelope(

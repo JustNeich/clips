@@ -50,6 +50,20 @@ export function buildStage3JobEnvelope(
   };
 }
 
+export function buildTerminalStage3JobErrorBody(
+  job: Stage3JobRecord,
+  fallbackMessage: string
+): Stage3JobErrorBody | null {
+  if (job.status !== "failed" && job.status !== "interrupted") {
+    return null;
+  }
+  return buildStage3JobErrorBody({
+    message: job.errorMessage ?? fallbackMessage,
+    recoverable: job.recoverable,
+    jobId: job.id
+  });
+}
+
 export function buildStage3JobErrorBody(input: {
   message: string;
   recoverable: boolean;
