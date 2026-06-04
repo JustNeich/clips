@@ -16,7 +16,7 @@ const DEFAULT_TIMEOUT_MS_BY_KIND: Record<Stage3WorkerJobKind, number> = {
 const DEFAULT_HOST_TIMEOUT_MS_BY_KIND: Record<Stage3WorkerJobKind, number> = {
   "editing-proxy": 5 * 60_000,
   preview: 150_000,
-  render: 12 * 60_000,
+  render: 30 * 60_000,
   "source-download": 5 * 60_000,
   "agent-media-step": 10 * 60_000
 };
@@ -41,9 +41,9 @@ const LOCAL_STAGE3_RENDER_MIN_TIMEOUT_MS = 3 * 60_000;
 const LOCAL_STAGE3_RENDER_BASE_TIMEOUT_MS = 2 * 60_000;
 const LOCAL_STAGE3_RENDER_PER_OUTPUT_SECOND_MS = 10_000;
 
-const HOST_STAGE3_RENDER_MIN_TIMEOUT_MS = 6 * 60_000;
-const HOST_STAGE3_RENDER_BASE_TIMEOUT_MS = 4 * 60_000;
-const HOST_STAGE3_RENDER_PER_OUTPUT_SECOND_MS = 15_000;
+const HOST_STAGE3_RENDER_MIN_TIMEOUT_MS = 15 * 60_000;
+const HOST_STAGE3_RENDER_BASE_TIMEOUT_MS = 10 * 60_000;
+const HOST_STAGE3_RENDER_PER_OUTPUT_SECOND_MS = 30_000;
 const HOST_STAGE3_RENDER_ENGINE_WATCHDOG_HEADROOM_MS = 30_000;
 
 export class Stage3WorkerJobTimeoutError extends Error {
@@ -102,11 +102,11 @@ function resolveDurationAwareRenderTimeoutMs(
   }
 ): number {
   if (!payloadJson) {
-    return baseTimeoutMs;
+    return policy.enforceMinimumFloor ? Math.max(policy.minTimeoutMs, baseTimeoutMs) : baseTimeoutMs;
   }
   const outputDurationSec = readStage3RenderOutputDurationSec(payloadJson);
   if (outputDurationSec === null) {
-    return baseTimeoutMs;
+    return policy.enforceMinimumFloor ? Math.max(policy.minTimeoutMs, baseTimeoutMs) : baseTimeoutMs;
   }
   const durationAwareTimeoutMs =
     policy.baseTimeoutMs + Math.ceil(outputDurationSec) * policy.perOutputSecondMs;
@@ -138,10 +138,14 @@ export function resolveStage3HostJobTimeoutMs(
   env: Record<string, string | undefined> = process.env,
   payloadJson?: string | null
 ): number {
-  const baseTimeoutMs =
+  const configuredTimeoutMs =
     parsePositiveInteger(env[HOST_ENV_KEY_BY_KIND[kind]]) ??
     parsePositiveInteger(env.STAGE3_HOST_JOB_TIMEOUT_MS) ??
-    DEFAULT_HOST_TIMEOUT_MS_BY_KIND[kind];
+    null;
+  const baseTimeoutMs =
+    kind === "render"
+      ? Math.max(configuredTimeoutMs ?? 0, DEFAULT_HOST_TIMEOUT_MS_BY_KIND.render)
+      : configuredTimeoutMs ?? DEFAULT_HOST_TIMEOUT_MS_BY_KIND[kind];
   return kind === "render"
     ? resolveDurationAwareRenderTimeoutMs(baseTimeoutMs, payloadJson, {
         minTimeoutMs: HOST_STAGE3_RENDER_MIN_TIMEOUT_MS,

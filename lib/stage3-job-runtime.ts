@@ -377,6 +377,11 @@ async function runClaimedHostJobWithWatchdog(job: Stage3JobRecord): Promise<void
   const controller = new AbortController();
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
+  appendStage3JobEvent(job.id, "info", "Host job watchdog armed.", {
+    kind: job.kind,
+    timeoutMs
+  });
+
   const timeoutPromise = new Promise<void>((resolve) => {
     timeoutId = setTimeout(() => {
       const message = buildHostJobTimeoutMessage(job, timeoutMs);
