@@ -33,6 +33,17 @@ type GlobalDbScope = typeof globalThis & {
   __clipsAppDb?: DatabaseSync;
 };
 
+const DEFAULT_DB_BUSY_TIMEOUT_MS = 15_000;
+const MAX_DB_BUSY_TIMEOUT_MS = 60_000;
+
+function resolveDbBusyTimeoutMs(): number {
+  const parsed = Number.parseInt(process.env.APP_DB_BUSY_TIMEOUT_MS ?? "", 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return DEFAULT_DB_BUSY_TIMEOUT_MS;
+  }
+  return Math.min(MAX_DB_BUSY_TIMEOUT_MS, Math.floor(parsed));
+}
+
 function hasTable(db: DatabaseSync, tableName: string): boolean {
   const row = db
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1")
@@ -388,7 +399,9 @@ function getDbPath(): string {
 
 function createDb(): DatabaseSync {
   ensureDataDir();
+  const busyTimeoutMs = resolveDbBusyTimeoutMs();
   const db = new DatabaseSync(getDbPath());
+  db.exec(`PRAGMA busy_timeout = ${busyTimeoutMs}`);
   db.exec(APP_DB_SCHEMA);
   applyDbMigrations(db);
   return db;
