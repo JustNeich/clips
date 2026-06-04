@@ -67,6 +67,18 @@ type EnqueueStage3JobInput = {
   reuseCompleted?: boolean | null;
 };
 
+export type Stage3JobEnqueueOutcome =
+  | "created"
+  | "requeued"
+  | "reused_in_flight"
+  | "reused_completed"
+  | "reused_terminal";
+
+export type Stage3JobEnqueueResult = {
+  job: Stage3JobRecord;
+  outcome: Stage3JobEnqueueOutcome;
+};
+
 type CompleteStage3JobInput = {
   resultJson?: string | null;
   artifact?: {
@@ -417,8 +429,8 @@ export function interruptPendingStage3Jobs(): number {
   });
 }
 
-export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord {
-  const job = runInTransaction((db) => {
+export function enqueueStage3JobWithOutcome(input: EnqueueStage3JobInput): Stage3JobEnqueueResult {
+  const result = runInTransaction((db) => {
     const stamp = nowIso();
     const dedupeKey = input.dedupeKey?.trim() || null;
     const executionTarget = input.executionTarget ?? "local";
@@ -439,18 +451,10 @@ export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord 
           (existing.status === "queued" || existing.status === "running") &&
           existing.executionTarget === executionTarget
         ) {
-          appendStage3JobEvent(existing.id, "info", "Reused in-flight job.", {
-            kind: existing.kind,
-            dedupeKey
-          });
-          return existing;
+          return { job: existing, outcome: "reused_in_flight" as const };
         }
         if (input.reuseCompleted !== false && existing.status === "completed" && existing.artifactFilePath) {
-          appendStage3JobEvent(existing.id, "info", "Reused completed job.", {
-            kind: existing.kind,
-            dedupeKey
-          });
-          return existing;
+          return { job: existing, outcome: "reused_completed" as const };
         }
 
         const resetAttempts = shouldResetTerminalRetryAttempts(existing, input);
@@ -458,13 +462,7 @@ export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord 
         const terminalRetry =
           existing.status === "failed" || existing.status === "interrupted";
         if (terminalRetry && !resetAttempts && previousAttempts >= attemptLimit) {
-          appendStage3JobEvent(existing.id, "warn", "Skipped automatic retry after max attempts.", {
-            kind: existing.kind,
-            dedupeKey,
-            attempts: previousAttempts,
-            attemptLimit
-          });
-          return existing;
+          return { job: existing, outcome: "reused_terminal" as const };
         }
 
         clearStage3JobArtifacts(existing.id);
@@ -506,7 +504,10 @@ export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord 
           executionTarget,
           resetAttempts
         });
-        return mapJobRow(readJobRow(existing.id)) as Stage3JobRecord;
+        return {
+          job: mapJobRow(readJobRow(existing.id)) as Stage3JobRecord,
+          outcome: "requeued" as const
+        };
       }
     }
 
@@ -533,12 +534,21 @@ export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord 
       dedupeKey,
       executionTarget
     });
-    return mapJobRow(readJobRow(jobId)) as Stage3JobRecord;
+    return {
+      job: mapJobRow(readJobRow(jobId)) as Stage3JobRecord,
+      outcome: "created" as const
+    };
   });
-  auditStage3Job("stage3_job.queued", job, "queued", {
-    dedupeKey: job.dedupeKey
-  });
-  return job;
+  if (result.outcome === "created" || result.outcome === "requeued") {
+    auditStage3Job("stage3_job.queued", result.job, "queued", {
+      dedupeKey: result.job.dedupeKey
+    });
+  }
+  return result;
+}
+
+export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord {
+  return enqueueStage3JobWithOutcome(input).job;
 }
 
 function requeueExpiredLocalJobsInternal(db: ReturnType<typeof getDb>): void {

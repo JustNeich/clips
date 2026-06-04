@@ -712,7 +712,53 @@ test("automatic failed job retry preserves attempts and stops after limit", asyn
     const events = db
       .prepare("SELECT message FROM stage3_job_events WHERE job_id = ? ORDER BY created_at ASC")
       .all(first.id) as Array<{ message: string }>;
-    assert.ok(events.some((event) => event.message === "Skipped automatic retry after max attempts."));
+    assert.equal(events.some((event) => event.message === "Skipped automatic retry after max attempts."), false);
+  });
+});
+
+test("dedupe reuse of active local jobs does not append enqueue audit noise", async () => {
+  await withIsolatedAppData(async () => {
+    const workspaceId = "w1";
+    const userId = "u1";
+    seedWorkspace(workspaceId, userId);
+
+    const first = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "preview",
+      executionTarget: "local",
+      dedupeKey: "preview:w1:u1:stable",
+      payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=abc123" })
+    });
+    const db = getDb();
+    const eventsBefore = db
+      .prepare("SELECT COUNT(*) AS count FROM stage3_job_events WHERE job_id = ?")
+      .get(first.id) as { count: number };
+    const auditBefore = db
+      .prepare("SELECT COUNT(*) AS count FROM audit_log WHERE entity_type = 'stage3_job' AND entity_id = ?")
+      .get(first.id) as { count: number };
+
+    for (let index = 0; index < 5; index += 1) {
+      const reused = enqueueStage3Job({
+        workspaceId,
+        userId,
+        kind: "preview",
+        executionTarget: "local",
+        dedupeKey: "preview:w1:u1:stable",
+        payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=abc123" })
+      });
+      assert.equal(reused.id, first.id);
+      assert.equal(reused.status, "queued");
+    }
+
+    const eventsAfter = db
+      .prepare("SELECT COUNT(*) AS count FROM stage3_job_events WHERE job_id = ?")
+      .get(first.id) as { count: number };
+    const auditAfter = db
+      .prepare("SELECT COUNT(*) AS count FROM audit_log WHERE entity_type = 'stage3_job' AND entity_id = ?")
+      .get(first.id) as { count: number };
+    assert.equal(eventsAfter.count, eventsBefore.count);
+    assert.equal(auditAfter.count, auditBefore.count);
   });
 });
 

@@ -21,7 +21,7 @@ import {
   appendStage3JobEvent,
   claimNextQueuedStage3Job,
   completeStage3Job,
-  enqueueStage3Job,
+  enqueueStage3JobWithOutcome,
   finishStage3Job,
   getStage3Job,
   hasQueuedStage3Jobs,
@@ -628,17 +628,20 @@ export function enqueueAndScheduleStage3Job(input: EnqueueJobInput): Stage3JobRe
   if (input.executionTarget === "host") {
     ensureStage3JobRuntime();
   }
-  const job = enqueueStage3Job(input);
-  logStage3Runtime("job_enqueue", {
-    jobId: job.id,
-    jobType: job.kind,
-    status: job.status,
-    executionTarget: job.executionTarget,
-    dedupeKey: job.dedupeKey,
-    payloadBytes: Buffer.byteLength(job.payloadJson, "utf8"),
-    memoryMb: memorySnapshotMb()
-  });
-  if (job.executionTarget === "host") {
+  const { job, outcome } = enqueueStage3JobWithOutcome(input);
+  if (outcome === "created" || outcome === "requeued") {
+    logStage3Runtime("job_enqueue", {
+      jobId: job.id,
+      jobType: job.kind,
+      status: job.status,
+      executionTarget: job.executionTarget,
+      dedupeKey: job.dedupeKey,
+      enqueueOutcome: outcome,
+      payloadBytes: Buffer.byteLength(job.payloadJson, "utf8"),
+      memoryMb: memorySnapshotMb()
+    });
+  }
+  if ((outcome === "created" || outcome === "requeued") && job.executionTarget === "host") {
     scheduleStage3JobProcessing();
   }
   return job;
