@@ -118,9 +118,6 @@ export const DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS = 45 * 60_000;
 const LOCAL_STAGE3_WORKER_RESTART_RECOVERY_GRACE_MS = 20_000;
 const LOCAL_STAGE3_SERVER_WATCHDOG_GRACE_MS = 30_000;
 const LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS = 90_000;
-const LOCAL_STAGE3_RENDER_MIN_TIMEOUT_MS = 3 * 60_000;
-const LOCAL_STAGE3_RENDER_BASE_TIMEOUT_MS = 2 * 60_000;
-const LOCAL_STAGE3_RENDER_PER_OUTPUT_SECOND_MS = 10_000;
 
 function normalizeJobKind(value: string): Stage3JobKind {
   if (
@@ -150,46 +147,8 @@ function buildStage3JobTimeoutErrorCode(kind: Stage3JobKind): string {
   return `${kind.replaceAll("-", "_")}_timeout`;
 }
 
-function readPositiveFiniteNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
-}
-
-function readObject(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
-
-function readRenderOutputDurationSec(payloadJson: string): number | null {
-  try {
-    const payload = readObject(JSON.parse(payloadJson));
-    if (!payload) {
-      return null;
-    }
-    const renderPlan = readObject(payload.renderPlan);
-    const snapshot = readObject(payload.snapshot);
-    const snapshotRenderPlan = readObject(snapshot?.renderPlan);
-    return (
-      readPositiveFiniteNumber(renderPlan?.targetDurationSec) ??
-      readPositiveFiniteNumber(snapshotRenderPlan?.targetDurationSec) ??
-      readPositiveFiniteNumber(payload.clipDurationSec) ??
-      readPositiveFiniteNumber(snapshot?.clipDurationSec)
-    );
-  } catch {
-    return null;
-  }
-}
-
 function resolveStage3LocalJobTimeoutMs(kind: Stage3JobKind, payloadJson: string): number {
-  const defaultTimeoutMs = resolveStage3WorkerJobTimeoutMs(kind);
-  if (kind !== "render") {
-    return defaultTimeoutMs;
-  }
-  const outputDurationSec = readRenderOutputDurationSec(payloadJson);
-  if (outputDurationSec === null) {
-    return defaultTimeoutMs;
-  }
-  const durationAwareTimeoutMs =
-    LOCAL_STAGE3_RENDER_BASE_TIMEOUT_MS + Math.ceil(outputDurationSec) * LOCAL_STAGE3_RENDER_PER_OUTPUT_SECOND_MS;
-  return Math.min(defaultTimeoutMs, Math.max(LOCAL_STAGE3_RENDER_MIN_TIMEOUT_MS, durationAwareTimeoutMs));
+  return resolveStage3WorkerJobTimeoutMs(kind, process.env, payloadJson);
 }
 
 function resolveStage3ServerWatchdogTimeoutMs(kind: Stage3JobKind, payloadJson: string): number {
@@ -707,6 +666,20 @@ function failOverdueLocalJobsInternal(db: ReturnType<typeof getDb>): number {
       lastHeartbeatAt: row.heartbeat_at ?? null,
       leaseUntil: row.lease_expires_at ?? null
     });
+    const updated = mapJobRow(readJobRow(String(row.id)));
+    if (updated) {
+      auditStage3Job("stage3_job.failed", updated, "failed", {
+        errorCode: buildStage3JobTimeoutErrorCode(kind),
+        recoverable: true,
+        reason: "server_watchdog",
+        timeoutMs,
+        jobTimeoutMs,
+        workerId: row.assigned_worker_id ?? null,
+        startedAt: row.started_at ?? null,
+        lastHeartbeatAt: row.heartbeat_at ?? null,
+        leaseUntil: row.lease_expires_at ?? null
+      });
+    }
     failed += 1;
   }
 

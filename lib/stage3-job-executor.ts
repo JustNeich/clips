@@ -38,6 +38,10 @@ export type Stage3ExecutedJobResult = {
   cleanup: (() => Promise<void>) | null;
 };
 
+type Stage3HeavyJobExecutionOptions = {
+  signal?: AbortSignal | null;
+};
+
 export function resolveStage3HeavyJobErrorCode(kind: Stage3JobKind): string {
   if (kind === "preview") {
     return "preview_failed";
@@ -56,11 +60,13 @@ export function resolveStage3HeavyJobErrorCode(kind: Stage3JobKind): string {
 
 export async function executeStage3HeavyJobPayload(
   kind: Stage3JobKind,
-  payloadJson: string
+  payloadJson: string,
+  options?: Stage3HeavyJobExecutionOptions
 ): Promise<Stage3ExecutedJobResult> {
   if (kind === "preview") {
     const payload = JSON.parse(payloadJson) as Stage3PreviewRequestBody;
     const prepared = await prepareStage3Preview(payload, {
+      signal: options?.signal ?? undefined,
       waitTimeoutMs: PREVIEW_WAIT_TIMEOUT_MS
     });
     return {
@@ -80,6 +86,7 @@ export async function executeStage3HeavyJobPayload(
   if (kind === "render") {
     const payload = JSON.parse(payloadJson) as Stage3RenderRequestBody;
     const rendered = await renderStage3Video(payload, {
+      signal: options?.signal ?? undefined,
       waitTimeoutMs: RENDER_WAIT_TIMEOUT_MS
     });
     return {
@@ -108,6 +115,7 @@ export async function executeStage3HeavyJobPayload(
   if (kind === "editing-proxy") {
     const payload = JSON.parse(payloadJson) as Stage3EditingProxyRequestBody;
     const prepared = await prepareStage3EditingProxy(payload, {
+      signal: options?.signal ?? undefined,
       waitTimeoutMs: EDITING_PROXY_WAIT_TIMEOUT_MS
     });
     return {
@@ -131,7 +139,9 @@ export async function executeStage3HeavyJobPayload(
     if (!sourceUrl) {
       throw new Error("Stage 3 source-download job is missing sourceUrl.");
     }
-    const cached = await ensureStage3SourceCached(sourceUrl);
+    const cached = await ensureStage3SourceCached(sourceUrl, {
+      signal: options?.signal ?? undefined
+    });
     return {
       resultJson: JSON.stringify({
         sourceKey: cached.sourceKey,
@@ -145,7 +155,9 @@ export async function executeStage3HeavyJobPayload(
 
   if (kind === "agent-media-step") {
     const payload = JSON.parse(payloadJson) as Stage3AgentMediaStepPayload;
-    const result = await executeStage3AgentMediaStep(payload);
+    const result = await executeStage3AgentMediaStep(payload, {
+      signal: options?.signal ?? undefined
+    });
     return {
       resultJson: JSON.stringify(result),
       artifact: null,

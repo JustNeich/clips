@@ -62,6 +62,18 @@ type ClaimedJobResponse = Stage3JobEnvelope & {
   payloadJson: string;
 };
 
+class Stage3WorkerJobLeaseLostError extends Error {
+  readonly jobId: string;
+  readonly status: number;
+
+  constructor(jobId: string, status: number) {
+    super(`Stage 3 local executor lost lease for job ${jobId} (heartbeat status ${status}).`);
+    this.name = "Stage3WorkerJobLeaseLostError";
+    this.jobId = jobId;
+    this.status = status;
+  }
+}
+
 type WorkerRuntimeManifest = {
   version?: string;
   runtimeVersion?: string;
@@ -833,17 +845,53 @@ async function failRemoteJob(
   }).catch(() => undefined);
 }
 
-async function runClaimedJobWithTimeout<T>(
+export async function runClaimedJobWithTimeout<T>(
   job: Stage3JobEnvelope["job"],
-  task: Promise<T>
+  payloadJson: string,
+  task: (signal: AbortSignal) => Promise<T>,
+  externalSignal?: AbortSignal | null
 ): Promise<T> {
-  const timeoutMs = resolveStage3WorkerJobTimeoutMs(job.kind);
+  const timeoutMs = resolveStage3WorkerJobTimeoutMs(job.kind, process.env, payloadJson);
+  const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | null = null;
+  let abortHandler: (() => void) | null = null;
+
+  const abortWith = (reason: unknown) => {
+    if (!controller.signal.aborted) {
+      controller.abort(reason);
+    }
+  };
+
   try {
+    if (externalSignal?.aborted) {
+      abortWith(externalSignal.reason ?? new DOMException("The operation was aborted.", "AbortError"));
+    } else if (externalSignal) {
+      abortHandler = () => {
+        abortWith(externalSignal.reason ?? new DOMException("The operation was aborted.", "AbortError"));
+      };
+      externalSignal.addEventListener("abort", abortHandler, { once: true });
+    }
+
+    const abortPromise = new Promise<T>((_resolve, reject) => {
+      if (controller.signal.aborted) {
+        reject(controller.signal.reason ?? new DOMException("The operation was aborted.", "AbortError"));
+        return;
+      }
+      controller.signal.addEventListener(
+        "abort",
+        () => {
+          reject(controller.signal.reason ?? new DOMException("The operation was aborted.", "AbortError"));
+        },
+        { once: true }
+      );
+    });
+
     return await Promise.race([
-      task,
+      task(controller.signal),
+      abortPromise,
       new Promise<T>((_resolve, reject) => {
         timeout = setTimeout(() => {
+          abortWith(new Stage3WorkerJobTimeoutError(job.kind, timeoutMs));
           reject(new Stage3WorkerJobTimeoutError(job.kind, timeoutMs));
         }, timeoutMs);
         timeout.unref?.();
@@ -852,6 +900,9 @@ async function runClaimedJobWithTimeout<T>(
   } finally {
     if (timeout) {
       clearTimeout(timeout);
+    }
+    if (externalSignal && abortHandler) {
+      externalSignal.removeEventListener("abort", abortHandler);
     }
   }
 }
@@ -1008,26 +1059,35 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
       }
 
       const job = claimBody.job;
+      const payloadJson = claimBody.payloadJson;
       console.log(`Claimed job ${job.id} (${job.kind})`);
+      const jobController = new AbortController();
 
       const leaseTimer = setInterval(() => {
-        void fetch(`${config.serverOrigin}/api/stage3/worker/jobs/${job.id}/heartbeat`, {
-          method: "POST",
-          headers: {
-            ...authHeaders(config),
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            appVersion,
-            capabilities
-          })
-        }).catch(() => undefined);
+        void (async () => {
+          const response = await fetch(`${config.serverOrigin}/api/stage3/worker/jobs/${job.id}/heartbeat`, {
+            method: "POST",
+            headers: {
+              ...authHeaders(config),
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              appVersion,
+              capabilities
+            })
+          }).catch(() => null);
+          if (response && (response.status === 404 || response.status === 409)) {
+            jobController.abort(new Stage3WorkerJobLeaseLostError(job.id, response.status));
+          }
+        })();
       }, 10_000);
 
       try {
         const executed = await runClaimedJobWithTimeout(
           job,
-          executeStage3HeavyJobPayload(job.kind, claimBody.payloadJson)
+          payloadJson,
+          (signal) => executeStage3HeavyJobPayload(job.kind, payloadJson, { signal }),
+          jobController.signal
         );
         try {
           await completeRemoteJob(config, job, {
@@ -1046,6 +1106,10 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
         console.error(`Job ${job.id} failed: ${classified.message}`);
         if (isStage3WorkerJobTimeoutError(error)) {
           console.error("Stage 3 worker is exiting after a timed-out job. Restart the executor from Step 3 before continuing.");
+          stop = true;
+          exitAfterTimedOutJob();
+        } else if (error instanceof Stage3WorkerJobLeaseLostError) {
+          console.error("Stage 3 worker is exiting after the server revoked the current job lease.");
           stop = true;
           exitAfterTimedOutJob();
         }

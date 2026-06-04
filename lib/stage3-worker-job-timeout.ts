@@ -21,6 +21,10 @@ const ENV_KEY_BY_KIND: Record<Stage3WorkerJobKind, string> = {
   "agent-media-step": "STAGE3_WORKER_AGENT_MEDIA_STEP_TIMEOUT_MS"
 };
 
+const LOCAL_STAGE3_RENDER_MIN_TIMEOUT_MS = 3 * 60_000;
+const LOCAL_STAGE3_RENDER_BASE_TIMEOUT_MS = 2 * 60_000;
+const LOCAL_STAGE3_RENDER_PER_OUTPUT_SECOND_MS = 10_000;
+
 export class Stage3WorkerJobTimeoutError extends Error {
   readonly kind: Stage3WorkerJobKind;
   readonly timeoutMs: number;
@@ -38,15 +42,57 @@ function parsePositiveInteger(value: string | null | undefined): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function readPositiveFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function readObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+export function readStage3RenderOutputDurationSec(payloadJson: string): number | null {
+  try {
+    const payload = readObject(JSON.parse(payloadJson));
+    if (!payload) {
+      return null;
+    }
+    const renderPlan = readObject(payload.renderPlan);
+    const snapshot = readObject(payload.snapshot);
+    const snapshotRenderPlan = readObject(snapshot?.renderPlan);
+    return (
+      readPositiveFiniteNumber(renderPlan?.targetDurationSec) ??
+      readPositiveFiniteNumber(snapshotRenderPlan?.targetDurationSec) ??
+      readPositiveFiniteNumber(payload.clipDurationSec) ??
+      readPositiveFiniteNumber(snapshot?.clipDurationSec)
+    );
+  } catch {
+    return null;
+  }
+}
+
+function resolveDurationAwareRenderTimeoutMs(baseTimeoutMs: number, payloadJson?: string | null): number {
+  if (!payloadJson) {
+    return baseTimeoutMs;
+  }
+  const outputDurationSec = readStage3RenderOutputDurationSec(payloadJson);
+  if (outputDurationSec === null) {
+    return baseTimeoutMs;
+  }
+  const durationAwareTimeoutMs =
+    LOCAL_STAGE3_RENDER_BASE_TIMEOUT_MS + Math.ceil(outputDurationSec) * LOCAL_STAGE3_RENDER_PER_OUTPUT_SECOND_MS;
+  return Math.min(baseTimeoutMs, Math.max(LOCAL_STAGE3_RENDER_MIN_TIMEOUT_MS, durationAwareTimeoutMs));
+}
+
 export function resolveStage3WorkerJobTimeoutMs(
   kind: Stage3WorkerJobKind,
-  env: Record<string, string | undefined> = process.env
+  env: Record<string, string | undefined> = process.env,
+  payloadJson?: string | null
 ): number {
-  return (
+  const baseTimeoutMs =
     parsePositiveInteger(env[ENV_KEY_BY_KIND[kind]]) ??
     parsePositiveInteger(env.STAGE3_WORKER_JOB_TIMEOUT_MS) ??
-    DEFAULT_TIMEOUT_MS_BY_KIND[kind]
-  );
+    DEFAULT_TIMEOUT_MS_BY_KIND[kind];
+  return kind === "render" ? resolveDurationAwareRenderTimeoutMs(baseTimeoutMs, payloadJson) : baseTimeoutMs;
 }
 
 export function isStage3WorkerJobTimeoutError(error: unknown): error is Stage3WorkerJobTimeoutError {

@@ -100,9 +100,15 @@ async function extractMotionMetrics(previewPath: string, tmpDir: string): Promis
 }
 
 export async function executeStage3AgentMediaStep(
-  payload: Stage3AgentMediaStepPayload
+  payload: Stage3AgentMediaStepPayload,
+  options?: { signal?: AbortSignal | null }
 ): Promise<Stage3AgentMediaStepResult> {
-  const cached = await ensureStage3SourceCached(payload.sourceUrl);
+  const cached = await ensureStage3SourceCached(payload.sourceUrl, {
+    signal: options?.signal ?? undefined
+  });
+  if (options?.signal?.aborted) {
+    throw options.signal.reason ?? new DOMException("The operation was aborted.", "AbortError");
+  }
   const sourceDurationSec = cached.sourceDurationSec ?? payload.sourceDurationSec ?? null;
 
   if (payload.operation === "analyze-best-clip-focus") {

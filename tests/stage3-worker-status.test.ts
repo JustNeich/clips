@@ -325,6 +325,22 @@ test("server watchdog fails short stuck local renders before the default render 
     assert.match(refreshedJob?.errorMessage ?? "", /render за 180 секунд/);
     assert.equal(refreshedJob?.assignedWorkerId, null);
     assert.equal(refreshedJob?.leaseUntil, null);
+
+    const audit = db
+      .prepare(
+        `SELECT action, status, severity, payload_json
+           FROM audit_log
+          WHERE entity_id = ?
+            AND action = 'stage3_job.failed'
+          ORDER BY created_at DESC
+          LIMIT 1`
+      )
+      .get(job.id) as { action: string; status: string; severity: string; payload_json: string } | undefined;
+    assert.equal(audit?.status, "failed");
+    assert.equal(audit?.severity, "error");
+    const payload = JSON.parse(audit?.payload_json ?? "{}") as { reason?: string; errorCode?: string };
+    assert.equal(payload.reason, "server_watchdog");
+    assert.equal(payload.errorCode, "render_timeout");
   });
 });
 
