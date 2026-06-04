@@ -623,12 +623,111 @@ function computeStage3RuntimeMetrics(
   return metrics;
 }
 
+function addChatIdsFromRows(rows: Array<{ chat_id?: string | null }>, chatIds: Set<string>, limit: number): void {
+  for (const row of rows) {
+    if (chatIds.size >= limit) {
+      return;
+    }
+    const chatId = row.chat_id?.trim();
+    if (chatId) {
+      chatIds.add(chatId);
+    }
+  }
+}
+
+function findSearchMatchedChatIds(workspaceId: string, search: string, limit: number): string[] {
+  const db = getDb();
+  const like = `%${search}%`;
+  const chatIds = new Set<string>();
+  const queryLimit = Math.max(limit * 2, 50);
+
+  addChatIdsFromRows(
+    db
+      .prepare(
+        `SELECT chat_id
+           FROM source_jobs
+          WHERE workspace_id = ?
+            AND (job_id LIKE ? OR source_url LIKE ? OR error_message LIKE ? OR result_json LIKE ?)
+          ORDER BY updated_at DESC
+          LIMIT ?`
+      )
+      .all(workspaceId, like, like, like, like, queryLimit) as Array<{ chat_id?: string | null }>,
+    chatIds,
+    limit
+  );
+  addChatIdsFromRows(
+    db
+      .prepare(
+        `SELECT chat_id
+           FROM stage2_runs
+          WHERE workspace_id = ?
+            AND (run_id LIKE ? OR error_message LIKE ? OR result_json LIKE ?)
+          ORDER BY updated_at DESC
+          LIMIT ?`
+      )
+      .all(workspaceId, like, like, like, queryLimit) as Array<{ chat_id?: string | null }>,
+    chatIds,
+    limit
+  );
+
+  const stage3Rows = db
+    .prepare(
+      `SELECT
+          payload_json,
+          CASE
+            WHEN payload_json IS NOT NULL AND json_valid(payload_json)
+              THEN json_extract(payload_json, '$.chatId')
+            ELSE NULL
+          END AS payload_chat_id
+         FROM stage3_jobs
+        WHERE workspace_id = ?
+          AND (
+            id LIKE ?
+            OR dedupe_key LIKE ?
+            OR error_code LIKE ?
+            OR error_message LIKE ?
+            OR payload_json LIKE ?
+            OR result_json LIKE ?
+          )
+        ORDER BY updated_at DESC
+        LIMIT ?`
+    )
+    .all(workspaceId, like, like, like, like, like, like, queryLimit) as Stage3JobLite[];
+  for (const row of stage3Rows) {
+    if (chatIds.size >= limit) {
+      break;
+    }
+    const chatId = resolveStage3ChatId(row);
+    if (chatId) {
+      chatIds.add(chatId);
+    }
+  }
+
+  addChatIdsFromRows(
+    db
+      .prepare(
+        `SELECT chat_id
+           FROM channel_publications
+          WHERE workspace_id = ?
+            AND (id LIKE ? OR title LIKE ? OR youtube_video_url LIKE ? OR last_error LIKE ?)
+          ORDER BY updated_at DESC
+          LIMIT ?`
+      )
+      .all(workspaceId, like, like, like, like, queryLimit) as Array<{ chat_id?: string | null }>,
+    chatIds,
+    limit
+  );
+
+  return [...chatIds].slice(0, limit);
+}
+
 export function listFlowObservability(input: {
   workspaceId: string;
   filters?: FlowObservabilityFilters;
 }): FlowObservabilityList {
   const sweptLocalJobs = sweepExpiredLocalStage3Jobs();
   const filters = input.filters ?? {};
+  const db = getDb();
   const params: unknown[] = [input.workspaceId];
   const where = ["c.workspace_id = ?"];
   if (filters.channelId) {
@@ -647,60 +746,16 @@ export function listFlowObservability(input: {
   const search = filters.search?.trim();
   if (search) {
     const like = `%${search}%`;
+    const matchedChatIds = findSearchMatchedChatIds(input.workspaceId, search, 200);
+    const matchedChatPlaceholders = matchedChatIds.map(() => "?").join(", ");
     where.push(
       `(c.id LIKE ?
         OR c.url LIKE ?
         OR c.title LIKE ?
         OR ch.name LIKE ?
-        OR ch.username LIKE ?
-        OR EXISTS (
-          SELECT 1 FROM source_jobs sj
-           WHERE sj.workspace_id = c.workspace_id
-             AND sj.chat_id = c.id
-             AND (sj.job_id LIKE ? OR sj.source_url LIKE ? OR sj.error_message LIKE ? OR sj.result_json LIKE ?)
-        )
-        OR EXISTS (
-          SELECT 1 FROM stage2_runs s2
-           WHERE s2.workspace_id = c.workspace_id
-             AND s2.chat_id = c.id
-             AND (s2.run_id LIKE ? OR s2.error_message LIKE ? OR s2.result_json LIKE ?)
-        )
-        OR EXISTS (
-          SELECT 1 FROM stage3_jobs s3
-           WHERE s3.workspace_id = c.workspace_id
-             AND s3.payload_json LIKE '%' || c.id || '%'
-             AND (s3.id LIKE ? OR s3.error_code LIKE ? OR s3.error_message LIKE ? OR s3.payload_json LIKE ? OR s3.result_json LIKE ?)
-        )
-        OR EXISTS (
-          SELECT 1 FROM channel_publications cp
-           WHERE cp.workspace_id = c.workspace_id
-             AND cp.chat_id = c.id
-             AND (cp.id LIKE ? OR cp.title LIKE ? OR cp.youtube_video_url LIKE ? OR cp.last_error LIKE ?)
-        ))`
+        OR ch.username LIKE ?${matchedChatIds.length > 0 ? ` OR c.id IN (${matchedChatPlaceholders})` : ""})`
     );
-    params.push(
-      like,
-      like,
-      like,
-      like,
-      like,
-      like,
-      like,
-      like,
-      like,
-      like,
-      like,
-      like,
-      like,
-      like,
-      like,
-      like,
-      like,
-      like,
-      like,
-      like,
-      like
-    );
+    params.push(like, like, like, like, like, ...matchedChatIds);
   }
   const limit =
     typeof filters.limit === "number" && Number.isFinite(filters.limit)
@@ -709,7 +764,6 @@ export function listFlowObservability(input: {
   const scanLimit = search || filters.from || filters.to ? 2000 : Math.max(limit * 10, 500);
   params.push(scanLimit);
 
-  const db = getDb();
   const chats = db
     .prepare(
       `SELECT
