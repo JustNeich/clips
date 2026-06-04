@@ -118,6 +118,9 @@ export const DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS = 45 * 60_000;
 const LOCAL_STAGE3_WORKER_RESTART_RECOVERY_GRACE_MS = 20_000;
 const LOCAL_STAGE3_SERVER_WATCHDOG_GRACE_MS = 30_000;
 const LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS = 90_000;
+const LOCAL_STAGE3_RENDER_MIN_TIMEOUT_MS = 3 * 60_000;
+const LOCAL_STAGE3_RENDER_BASE_TIMEOUT_MS = 2 * 60_000;
+const LOCAL_STAGE3_RENDER_PER_OUTPUT_SECOND_MS = 10_000;
 
 function normalizeJobKind(value: string): Stage3JobKind {
   if (
@@ -147,8 +150,50 @@ function buildStage3JobTimeoutErrorCode(kind: Stage3JobKind): string {
   return `${kind.replaceAll("-", "_")}_timeout`;
 }
 
-function resolveStage3ServerWatchdogTimeoutMs(kind: Stage3JobKind): number {
-  return resolveStage3WorkerJobTimeoutMs(kind) + LOCAL_STAGE3_SERVER_WATCHDOG_GRACE_MS;
+function readPositiveFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function readObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function readRenderOutputDurationSec(payloadJson: string): number | null {
+  try {
+    const payload = readObject(JSON.parse(payloadJson));
+    if (!payload) {
+      return null;
+    }
+    const renderPlan = readObject(payload.renderPlan);
+    const snapshot = readObject(payload.snapshot);
+    const snapshotRenderPlan = readObject(snapshot?.renderPlan);
+    return (
+      readPositiveFiniteNumber(renderPlan?.targetDurationSec) ??
+      readPositiveFiniteNumber(snapshotRenderPlan?.targetDurationSec) ??
+      readPositiveFiniteNumber(payload.clipDurationSec) ??
+      readPositiveFiniteNumber(snapshot?.clipDurationSec)
+    );
+  } catch {
+    return null;
+  }
+}
+
+function resolveStage3LocalJobTimeoutMs(kind: Stage3JobKind, payloadJson: string): number {
+  const defaultTimeoutMs = resolveStage3WorkerJobTimeoutMs(kind);
+  if (kind !== "render") {
+    return defaultTimeoutMs;
+  }
+  const outputDurationSec = readRenderOutputDurationSec(payloadJson);
+  if (outputDurationSec === null) {
+    return defaultTimeoutMs;
+  }
+  const durationAwareTimeoutMs =
+    LOCAL_STAGE3_RENDER_BASE_TIMEOUT_MS + Math.ceil(outputDurationSec) * LOCAL_STAGE3_RENDER_PER_OUTPUT_SECOND_MS;
+  return Math.min(defaultTimeoutMs, Math.max(LOCAL_STAGE3_RENDER_MIN_TIMEOUT_MS, durationAwareTimeoutMs));
+}
+
+function resolveStage3ServerWatchdogTimeoutMs(kind: Stage3JobKind, payloadJson: string): number {
+  return resolveStage3LocalJobTimeoutMs(kind, payloadJson) + LOCAL_STAGE3_SERVER_WATCHDOG_GRACE_MS;
 }
 
 function getStage3JobRunningStartedAtMs(row: Pick<JobRow, "started_at" | "updated_at" | "created_at">): number | null {
@@ -622,12 +667,13 @@ function failOverdueLocalJobsInternal(db: ReturnType<typeof getDb>): number {
     if (startedAtMs === null) {
       continue;
     }
-    const timeoutMs = resolveStage3ServerWatchdogTimeoutMs(kind);
+    const jobTimeoutMs = resolveStage3LocalJobTimeoutMs(kind, row.payload_json);
+    const timeoutMs = jobTimeoutMs + LOCAL_STAGE3_SERVER_WATCHDOG_GRACE_MS;
     if (nowMs - startedAtMs < timeoutMs) {
       continue;
     }
 
-    const timeoutSec = Math.round(resolveStage3WorkerJobTimeoutMs(kind) / 1000);
+    const timeoutSec = Math.round(jobTimeoutMs / 1000);
     const result = db.prepare(
       `UPDATE stage3_jobs
           SET status = 'failed',
@@ -655,6 +701,7 @@ function failOverdueLocalJobsInternal(db: ReturnType<typeof getDb>): number {
     appendStage3JobEvent(String(row.id), "error", "Local worker job exceeded server watchdog; job failed.", {
       kind,
       timeoutMs,
+      jobTimeoutMs,
       workerId: row.assigned_worker_id ?? null,
       startedAt: row.started_at ?? null,
       lastHeartbeatAt: row.heartbeat_at ?? null,
@@ -1074,6 +1121,10 @@ export function sweepExpiredLocalStage3Jobs(): number {
   });
 }
 
+export function failOverdueLocalStage3Jobs(): number {
+  return runInTransaction((db) => failOverdueLocalJobsInternal(db));
+}
+
 export function claimNextQueuedStage3Job(): Stage3JobRecord | null {
   const job = runInTransaction((db) => {
     const row =
@@ -1200,6 +1251,7 @@ export function heartbeatStage3Job(
   workerId: string,
   leaseDurationMs = DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS
 ): Stage3JobRecord {
+  failOverdueLocalStage3Jobs();
   const stamp = nowIso();
   const leaseUntil = new Date(Date.now() + leaseDurationMs).toISOString();
   const db = getDb();

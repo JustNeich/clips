@@ -268,6 +268,134 @@ test("server watchdog fails heartbeat-fresh local jobs after the kind timeout", 
   });
 });
 
+test("server watchdog fails short stuck local renders before the default render timeout", async () => {
+  await withIsolatedAppData(async () => {
+    const workspaceId = "w1";
+    const userId = "u1";
+    seedWorkspace(workspaceId, userId);
+
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "worker",
+      platform: "darwin-arm64"
+    });
+
+    const job = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        sourceUrl: "https://youtube.com/watch?v=abc123",
+        chatId: "chat-1",
+        clipDurationSec: 6,
+        renderPlan: { targetDurationSec: 6 }
+      })
+    });
+    assert.equal(
+      claimNextQueuedStage3JobForWorker({
+        workerId: exchanged.worker.id,
+        workspaceId,
+        userId,
+        supportedKinds: ["render"]
+      })?.id,
+      job.id
+    );
+
+    const db = getDb();
+    const staleStartedAt = new Date(Date.now() - 4 * 60_000).toISOString();
+    const freshHeartbeatAt = new Date().toISOString();
+    const futureLeaseAt = new Date(Date.now() + 30 * 60_000).toISOString();
+    db.prepare(
+      `UPDATE stage3_jobs
+          SET started_at = ?,
+              heartbeat_at = ?,
+              lease_expires_at = ?,
+              updated_at = ?
+        WHERE id = ?`
+    ).run(staleStartedAt, freshHeartbeatAt, futureLeaseAt, freshHeartbeatAt, job.id);
+
+    const changed = sweepExpiredLocalStage3Jobs();
+    assert.equal(changed, 1);
+
+    const refreshedJob = getStage3Job(job.id);
+    assert.equal(refreshedJob?.status, "failed");
+    assert.equal(refreshedJob?.errorCode, "render_timeout");
+    assert.match(refreshedJob?.errorMessage ?? "", /render за 180 секунд/);
+    assert.equal(refreshedJob?.assignedWorkerId, null);
+    assert.equal(refreshedJob?.leaseUntil, null);
+  });
+});
+
+test("local render heartbeat fails overdue duration-aware jobs instead of extending lease", async () => {
+  await withIsolatedAppData(async () => {
+    const workspaceId = "w1";
+    const userId = "u1";
+    seedWorkspace(workspaceId, userId);
+
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "worker",
+      platform: "darwin-arm64"
+    });
+
+    const job = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        sourceUrl: "https://youtube.com/watch?v=abc123",
+        chatId: "chat-1",
+        clipDurationSec: 6,
+        renderPlan: { targetDurationSec: 6 }
+      })
+    });
+    assert.equal(
+      claimNextQueuedStage3JobForWorker({
+        workerId: exchanged.worker.id,
+        workspaceId,
+        userId,
+        supportedKinds: ["render"]
+      })?.id,
+      job.id
+    );
+
+    const db = getDb();
+    const staleStartedAt = new Date(Date.now() - 4 * 60_000).toISOString();
+    const freshHeartbeatAt = new Date().toISOString();
+    const futureLeaseAt = new Date(Date.now() + 30 * 60_000).toISOString();
+    db.prepare(
+      `UPDATE stage3_jobs
+          SET started_at = ?,
+              heartbeat_at = ?,
+              lease_expires_at = ?,
+              updated_at = ?
+        WHERE id = ?`
+    ).run(staleStartedAt, freshHeartbeatAt, futureLeaseAt, freshHeartbeatAt, job.id);
+
+    const response = await heartbeatWorkerStage3Job(
+      new Request(`http://localhost/api/stage3/worker/jobs/${job.id}/heartbeat`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${exchanged.sessionToken}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({ appVersion: "1.0.0+runtime.test" })
+      }),
+      { params: Promise.resolve({ id: job.id }) }
+    );
+
+    assert.equal(response.status, 409);
+    const refreshedJob = getStage3Job(job.id);
+    assert.equal(refreshedJob?.status, "failed");
+    assert.equal(refreshedJob?.errorCode, "render_timeout");
+    assert.equal(refreshedJob?.assignedWorkerId, null);
+  });
+});
+
 test("server watchdog frees render queue behind an overdue editing proxy", async () => {
   await withIsolatedAppData(async () => {
     const workspaceId = "w1";
