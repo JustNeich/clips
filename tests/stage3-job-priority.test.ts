@@ -202,10 +202,10 @@ test("host runtime watchdog frees the queue behind a stuck job", { concurrency: 
   await withIsolatedAppData(async () => {
     const previousHostExecution = process.env.STAGE3_ALLOW_HOST_EXECUTION;
     const previousHostLimit = process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS;
-    const previousTimeout = process.env.STAGE3_WORKER_EDITING_PROXY_TIMEOUT_MS;
+    const previousTimeout = process.env.STAGE3_HOST_EDITING_PROXY_TIMEOUT_MS;
     process.env.STAGE3_ALLOW_HOST_EXECUTION = "1";
     process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS = "1";
-    process.env.STAGE3_WORKER_EDITING_PROXY_TIMEOUT_MS = "25";
+    process.env.STAGE3_HOST_EDITING_PROXY_TIMEOUT_MS = "25";
 
     try {
       const db = getDb();
@@ -283,9 +283,9 @@ test("host runtime watchdog frees the queue behind a stuck job", { concurrency: 
         process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS = previousHostLimit;
       }
       if (previousTimeout === undefined) {
-        delete process.env.STAGE3_WORKER_EDITING_PROXY_TIMEOUT_MS;
+        delete process.env.STAGE3_HOST_EDITING_PROXY_TIMEOUT_MS;
       } else {
-        process.env.STAGE3_WORKER_EDITING_PROXY_TIMEOUT_MS = previousTimeout;
+        process.env.STAGE3_HOST_EDITING_PROXY_TIMEOUT_MS = previousTimeout;
       }
     }
   });

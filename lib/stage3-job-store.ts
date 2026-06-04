@@ -9,7 +9,10 @@ import {
 import { getDb, newId, nowIso, runInTransaction } from "./db/client";
 import { tryAppendFlowAuditEvent } from "./audit-log-store";
 import { STAGE3_WORKER_ONLINE_WINDOW_MS } from "./stage3-worker-availability";
-import { resolveStage3WorkerJobTimeoutMs } from "./stage3-worker-job-timeout";
+import {
+  resolveStage3HostJobTimeoutMs as resolveStage3HostPolicyTimeoutMs,
+  resolveStage3WorkerJobTimeoutMs
+} from "./stage3-worker-job-timeout";
 
 type JobRow = {
   id: string;
@@ -157,7 +160,7 @@ function resolveStage3ServerWatchdogTimeoutMs(kind: Stage3JobKind, payloadJson: 
 }
 
 function resolveStage3HostJobTimeoutMs(kind: Stage3JobKind, payloadJson: string): number {
-  return resolveStage3WorkerJobTimeoutMs(kind, process.env, payloadJson);
+  return resolveStage3HostPolicyTimeoutMs(kind, process.env, payloadJson);
 }
 
 function resolveStage3HostServerWatchdogTimeoutMs(kind: Stage3JobKind, payloadJson: string): number {

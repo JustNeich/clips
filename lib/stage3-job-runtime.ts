@@ -34,7 +34,7 @@ import { isHostStage3ExecutionAllowed } from "./stage3-execution";
 import { Stage3RenderRequestBody } from "./stage3-render-service";
 import { isStage3HostedBusyError } from "./stage3-server-control";
 import { clampHostedConcurrencyLimit } from "./hosted-resource-budget";
-import { resolveStage3WorkerJobTimeoutMs } from "./stage3-worker-job-timeout";
+import { resolveStage3HostJobTimeoutMs } from "./stage3-worker-job-timeout";
 
 const JOB_POLL_INTERVAL_MS = 350;
 
@@ -373,7 +373,7 @@ async function executeStage3Job(job: Stage3JobRecord, options?: Stage3JobProcess
 
 async function runClaimedHostJobWithWatchdog(job: Stage3JobRecord): Promise<void> {
   const processor = getProcessor();
-  const timeoutMs = resolveStage3WorkerJobTimeoutMs(job.kind, process.env, job.payloadJson);
+  const timeoutMs = resolveStage3HostJobTimeoutMs(job.kind, process.env, job.payloadJson);
   const controller = new AbortController();
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 

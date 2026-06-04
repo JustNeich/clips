@@ -78,6 +78,7 @@ import {
   normalizeStage3DurationMode,
   resolveStage3OutputDurationSec
 } from "./stage3-duration";
+import { resolveStage3HostedRenderEngineTimeoutMs } from "./stage3-worker-job-timeout";
 
 export const REMOTION_RENDER_TIMEOUT_MS = 9 * 60_000;
 export const RENDER_WAIT_TIMEOUT_MS = 60_000;
@@ -926,10 +927,13 @@ export async function renderStage3Video(
 ): Promise<Stage3RenderedVideo> {
   const sourceUrl = resolveSourceUrl(body.sourceUrl);
   const configuredTimeout = Number.parseInt(process.env.REMOTION_RENDER_TIMEOUT_MS ?? "", 10);
-  const timeoutMs =
+  const configuredRenderTimeoutMs =
     Number.isFinite(configuredTimeout) && configuredTimeout > 0
       ? configuredTimeout
       : REMOTION_RENDER_TIMEOUT_MS;
+  const timeoutMs = isStage3HostedRuntime()
+    ? resolveStage3HostedRenderEngineTimeoutMs(process.env, JSON.stringify(body), REMOTION_RENDER_TIMEOUT_MS)
+    : configuredRenderTimeoutMs;
   const waitTimeoutMs =
     typeof options?.waitTimeoutMs === "number" && Number.isFinite(options.waitTimeoutMs) && options.waitTimeoutMs > 0
       ? options.waitTimeoutMs

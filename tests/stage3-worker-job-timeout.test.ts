@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   Stage3WorkerJobTimeoutError,
   isStage3WorkerJobTimeoutError,
+  resolveStage3HostJobTimeoutMs,
+  resolveStage3HostedRenderEngineTimeoutMs,
   resolveStage3WorkerJobTimeoutMs
 } from "../lib/stage3-worker-job-timeout";
 import { classifyStage3HeavyJobError } from "../lib/stage3-job-executor";
@@ -55,6 +57,70 @@ test("worker render timeout is duration-aware for short output payloads", () => 
       })
     ),
     10 * 60_000
+  );
+});
+
+test("host render timeout has a longer floor than local worker renders", () => {
+  const shortRenderPayload = JSON.stringify({
+    renderPlan: {
+      targetDurationSec: 6
+    }
+  });
+  const longRenderPayload = JSON.stringify({
+    renderPlan: {
+      targetDurationSec: 120
+    }
+  });
+
+  assert.equal(resolveStage3HostJobTimeoutMs("render", {}, shortRenderPayload), 6 * 60_000);
+  assert.equal(resolveStage3HostJobTimeoutMs("render", {}, longRenderPayload), 12 * 60_000);
+});
+
+test("host render timeout ignores dangerously small render caps", () => {
+  assert.equal(
+    resolveStage3HostJobTimeoutMs(
+      "render",
+      {
+        STAGE3_HOST_RENDER_TIMEOUT_MS: "420000"
+      },
+      JSON.stringify({
+        renderPlan: {
+          targetDurationSec: 30
+        }
+      })
+    ),
+    420_000
+  );
+  assert.equal(
+    resolveStage3HostJobTimeoutMs(
+      "render",
+      {
+        STAGE3_HOST_RENDER_TIMEOUT_MS: "20000"
+      },
+      JSON.stringify({
+        renderPlan: {
+          targetDurationSec: 6
+        }
+      })
+    ),
+    6 * 60_000
+  );
+});
+
+test("hosted Remotion engine timeout is lifted above the host watchdog floor", () => {
+  assert.equal(
+    resolveStage3HostedRenderEngineTimeoutMs(
+      {
+        REMOTION_RENDER_TIMEOUT_MS: "180000"
+      },
+      JSON.stringify({
+        renderPlan: {
+          targetDurationSec: 6
+        }
+      }),
+      9 * 60_000
+    ),
+    330_000
   );
 });
 
