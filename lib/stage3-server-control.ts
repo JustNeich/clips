@@ -8,6 +8,7 @@ import {
   normalizeStage3SourceVideo,
   probeVideoDurationSeconds
 } from "./stage3-media-agent";
+import { isStage3HostedFastRenderProfileEnabled } from "./stage3-render-variation";
 import { findDownloadedMediaAudioIssue } from "./source-acquisition";
 import { clampHostedConcurrencyLimit } from "./hosted-resource-budget";
 import { queueThrottledBackgroundTask } from "./throttled-background-task";
@@ -19,11 +20,13 @@ export type Stage3CachedSource = {
   sourceDurationSec: number | null;
   sourceKey: string;
   fileName: string;
+  cacheMode: "stage3-normalized" | "source-media-direct";
 };
 
 export type Stage3HostedJobOptions = {
   signal?: AbortSignal | null;
   waitTimeoutMs?: number | null;
+  allowSourceMediaDirect?: boolean;
 };
 
 const STAGE3_SOURCE_CACHE_NORMALIZATION_VERSION = 2;
@@ -62,6 +65,14 @@ function getStage3CacheRoot(): string {
 
 function getStage3SourceCacheDir(): string {
   return path.join(getStage3CacheRoot(), "sources");
+}
+
+function getStage3DirectSourceCachePath(sourceCacheDir: string, sourceKey: string): string {
+  return path.join(sourceCacheDir, `${sourceKey}.direct.mp4`);
+}
+
+function getStage3DirectSourceMetaPath(sourceCacheDir: string, sourceKey: string): string {
+  return path.join(sourceCacheDir, `${sourceKey}.direct.json`);
 }
 
 function getStage3SourceCacheMaxEntries(): number {
@@ -180,6 +191,20 @@ async function normalizeCachedSourceIntoPlace(params: {
   }
 }
 
+function isPathInsideDir(filePath: string, dirPath: string): boolean {
+  const relative = path.relative(path.resolve(dirPath), path.resolve(filePath));
+  return relative === "" || (Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+async function publishDirectSourceFromTemp(params: {
+  inputPath: string;
+  directSourcePath: string;
+}): Promise<void> {
+  const publishPath = `${params.directSourcePath}.part-${hashKey(`${Date.now()}-${Math.random()}`)}`;
+  await fs.copyFile(params.inputPath, publishPath);
+  await fs.rename(publishPath, params.directSourcePath);
+}
+
 async function pruneDirectory(dirPath: string, maxEntries: number): Promise<void> {
   const entries = await fs.readdir(dirPath).catch(() => []);
   if (entries.length <= maxEntries * 2) {
@@ -222,6 +247,10 @@ function scheduleStage3SourceCachePrune(): void {
     getStage3SourceCachePruneIntervalMs(),
     () => pruneStage3SourceCache(getStage3SourceCacheMaxEntries())
   );
+}
+
+export function shouldUseSourceMediaDirectForHostedFastRender(options?: Stage3HostedJobOptions): boolean {
+  return options?.allowSourceMediaDirect === true && isStage3HostedFastRenderProfileEnabled();
 }
 
 export function isStage3HostedRuntime(): boolean {
@@ -365,6 +394,30 @@ export async function ensureStage3SourceCached(
   const sourceCacheDir = getStage3SourceCacheDir();
   const sourcePath = path.join(sourceCacheDir, `${sourceKey}.mp4`);
   const metaPath = path.join(sourceCacheDir, `${sourceKey}.json`);
+  const directSourcePath = getStage3DirectSourceCachePath(sourceCacheDir, sourceKey);
+  const directMetaPath = getStage3DirectSourceMetaPath(sourceCacheDir, sourceKey);
+  const useDirectSource = shouldUseSourceMediaDirectForHostedFastRender(options);
+
+  if (useDirectSource && (await pathExists(directSourcePath))) {
+    const rawMeta = await fs.readFile(directMetaPath, "utf-8").catch(() => "");
+    const meta = readMetaFileName(rawMeta, sourceKey);
+    const sourceDurationSec = meta.sourceDurationSec ?? (await probeVideoDurationSeconds(directSourcePath));
+    if (!rawMeta || meta.sourceDurationSec === null) {
+      await writeSourceMeta({
+        metaPath: directMetaPath,
+        fileName: meta.fileName,
+        sourceDurationSec,
+        normalizationVersion: 0
+      });
+    }
+    return {
+      sourcePath: directSourcePath,
+      sourceDurationSec,
+      sourceKey,
+      fileName: meta.fileName,
+      cacheMode: "source-media-direct"
+    };
+  }
 
   if (await pathExists(sourcePath)) {
     const rawMeta = await fs.readFile(metaPath, "utf-8").catch(() => "");
@@ -380,7 +433,8 @@ export async function ensureStage3SourceCached(
       await fs.rm(sourcePath, { force: true }).catch(() => undefined);
       await fs.rm(metaPath, { force: true }).catch(() => undefined);
     } else {
-      if (meta.normalizationVersion < STAGE3_SOURCE_CACHE_NORMALIZATION_VERSION) {
+      const normalizedCacheIsCurrent = meta.normalizationVersion >= STAGE3_SOURCE_CACHE_NORMALIZATION_VERSION;
+      if (!normalizedCacheIsCurrent && !useDirectSource) {
         await normalizeCachedSourceIntoPlace({
           inputPath: sourcePath,
           sourcePath,
@@ -392,7 +446,7 @@ export async function ensureStage3SourceCached(
           fileName: meta.fileName,
           sourceDurationSec
         });
-      } else if (!rawMeta || meta.sourceDurationSec === null) {
+      } else if ((normalizedCacheIsCurrent || !useDirectSource) && (!rawMeta || meta.sourceDurationSec === null)) {
         await writeSourceMeta({
           metaPath,
           fileName: meta.fileName,
@@ -400,12 +454,15 @@ export async function ensureStage3SourceCached(
         });
       }
 
-      return {
-        sourcePath,
-        sourceDurationSec,
-        sourceKey,
-        fileName: meta.fileName
-      };
+      if (normalizedCacheIsCurrent || !useDirectSource) {
+        return {
+          sourcePath,
+          sourceDurationSec,
+          sourceKey,
+          fileName: meta.fileName,
+          cacheMode: "stage3-normalized"
+        };
+      }
     }
   }
 
@@ -414,11 +471,43 @@ export async function ensureStage3SourceCached(
     return running;
   }
 
-  const task = (async () => {
+  const task: Promise<Stage3CachedSource> = (async () => {
     await fs.mkdir(sourceCacheDir, { recursive: true });
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-source-cache-"));
     try {
       const downloaded = await runHostedStage3HeavyJob(() => downloadSourceVideo(sourceUrl, tmpDir), options);
+      if (useDirectSource) {
+        const downloadedPath = downloaded.filePath;
+        const sourceDurationSec = await probeVideoDurationSeconds(downloadedPath);
+        if (isPathInsideDir(downloadedPath, tmpDir)) {
+          await publishDirectSourceFromTemp({
+            inputPath: downloadedPath,
+            directSourcePath
+          });
+          const directDurationSec = sourceDurationSec ?? (await probeVideoDurationSeconds(directSourcePath));
+          await writeSourceMeta({
+            metaPath: directMetaPath,
+            fileName: downloaded.fileName,
+            sourceDurationSec: directDurationSec,
+            normalizationVersion: 0
+          });
+          scheduleStage3SourceCachePrune();
+          return {
+            sourcePath: directSourcePath,
+            sourceDurationSec: directDurationSec,
+            sourceKey,
+            fileName: downloaded.fileName,
+            cacheMode: "source-media-direct" as const
+          };
+        }
+        return {
+          sourcePath: downloadedPath,
+          sourceDurationSec,
+          sourceKey,
+          fileName: downloaded.fileName,
+          cacheMode: "source-media-direct" as const
+        };
+      }
       await normalizeCachedSourceIntoPlace({
         inputPath: downloaded.filePath,
         sourcePath,
@@ -436,7 +525,8 @@ export async function ensureStage3SourceCached(
         sourcePath,
         sourceDurationSec,
         sourceKey,
-        fileName: downloaded.fileName
+        fileName: downloaded.fileName,
+        cacheMode: "stage3-normalized"
       };
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });

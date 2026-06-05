@@ -176,7 +176,7 @@ export function createStage3VariationProfile(input?: {
             codec: "h264",
             pixelFormat: "yuv420p",
             crf: readSeedChoice(seed, "encode:crf", [20, 21, 22] as const),
-            x264Preset: readSeedChoice(seed, "encode:preset", ["veryfast", "fast"] as const),
+            x264Preset: "veryfast",
             keyintFrames,
             keyintMinFrames: Math.min(keyintFrames, clamp(readSeedInt(seed, "encode:keyint-min", 58, 62), 58, 62))
           }

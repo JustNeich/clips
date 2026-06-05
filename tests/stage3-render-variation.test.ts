@@ -46,7 +46,7 @@ test("hosted fast render profile defaults render variation to encode-only fast x
       assert.equal(profile.requestedMode, "encode");
       assert.equal(profile.signal.enabled, false);
       assert.ok([20, 21, 22].includes(profile.encode.crf));
-      assert.ok(["veryfast", "fast"].includes(profile.encode.x264Preset));
+      assert.equal(profile.encode.x264Preset, "veryfast");
     }
   );
 });

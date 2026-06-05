@@ -115,7 +115,10 @@ export function resolveStage3SourcePreparationScaleFilter(profile: Stage3MediaPr
 }
 
 export function resolveStage3SegmentExtractionMode(profile: Stage3MediaProfile): Stage3SegmentExtractionMode {
-  return profile === "render" ? "accurate" : "fast";
+  if (profile !== "render") {
+    return "fast";
+  }
+  return isStage3HostedFastRenderProfileEnabled() ? "fast" : "accurate";
 }
 
 function getEditingProxyProfile(): EditingProxyProfile {

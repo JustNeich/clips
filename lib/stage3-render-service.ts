@@ -228,6 +228,7 @@ export type Stage3RenderOptions = {
 type PreparedStage3RenderSource = Awaited<ReturnType<typeof prepareStage3SourceClip>>;
 
 type AsyncFn = (...args: any[]) => Promise<any>;
+type Stage3FinalizeVideoMode = "reencode" | "copy";
 
 type RemotionModule = {
   bundle: AsyncFn;
@@ -646,6 +647,7 @@ async function finalizeRenderedOutput(params: {
   variationProfile: Stage3VariationProfile;
   variationManifest: Stage3VariationManifest;
   variationManifestPath: string;
+  videoMode?: Stage3FinalizeVideoMode;
 }): Promise<void> {
   const args = buildFinalizeRenderedOutputArgs(params);
   await execFileAsync("ffmpeg", args, {
@@ -663,8 +665,10 @@ export function buildFinalizeRenderedOutputArgs(params: {
   metadataTitle: string | null;
   durationSec?: number | null;
   variationProfile: Stage3VariationProfile;
+  videoMode?: Stage3FinalizeVideoMode;
 }): string[] {
   const audioInputPath = params.audioInputPath?.trim() || null;
+  const videoMode: Stage3FinalizeVideoMode = params.videoMode === "copy" ? "copy" : "reencode";
   const durationSec =
     typeof params.durationSec === "number" && Number.isFinite(params.durationSec) && params.durationSec > 0
       ? params.durationSec
@@ -690,34 +694,41 @@ export function buildFinalizeRenderedOutputArgs(params: {
     "-map_metadata:s:a",
     "-1",
     "-map_chapters",
-    "-1",
-    "-vf",
-    "format=yuv420p",
-    "-c:v",
-    "libx264",
-    "-preset",
-    params.variationProfile.encode.x264Preset,
-    "-crf",
-    String(params.variationProfile.encode.crf),
-    "-pix_fmt",
-    params.variationProfile.encode.pixelFormat,
-    "-g",
-    String(params.variationProfile.encode.keyintFrames),
-    "-keyint_min",
-    String(params.variationProfile.encode.keyintMinFrames),
-    "-sc_threshold",
-    "0",
-    "-color_range",
-    "tv",
-    "-colorspace",
-    "bt709",
-    "-color_primaries",
-    "bt709",
-    "-color_trc",
-    "bt709",
-    "-c:a",
-    "copy"
+    "-1"
   );
+
+  if (videoMode === "copy") {
+    args.push("-c:v", "copy");
+  } else {
+    args.push(
+      "-vf",
+      "format=yuv420p",
+      "-c:v",
+      "libx264",
+      "-preset",
+      params.variationProfile.encode.x264Preset,
+      "-crf",
+      String(params.variationProfile.encode.crf),
+      "-pix_fmt",
+      params.variationProfile.encode.pixelFormat,
+      "-g",
+      String(params.variationProfile.encode.keyintFrames),
+      "-keyint_min",
+      String(params.variationProfile.encode.keyintMinFrames),
+      "-sc_threshold",
+      "0",
+      "-color_range",
+      "tv",
+      "-colorspace",
+      "bt709",
+      "-color_primaries",
+      "bt709",
+      "-color_trc",
+      "bt709"
+    );
+  }
+
+  args.push("-c:a", "copy");
 
   if (durationSec !== null) {
     args.push("-t", durationSec.toFixed(3));
@@ -790,6 +801,56 @@ async function prepareStage3SourceBackgroundStill(params: {
   outputPath: string;
 }): Promise<void> {
   await execFileAsync("ffmpeg", buildStage3SourceBackgroundStillFfmpegArgs(params), {
+    timeout: 60_000,
+    maxBuffer: 1024 * 1024 * 8
+  });
+}
+
+export function shouldUseHostedFastVideoBackgroundStill(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (!isStage3HostedFastRenderProfileEnabled(env)) {
+    return false;
+  }
+  const raw = env.STAGE3_HOSTED_FAST_VIDEO_BACKGROUND_STILL?.trim().toLowerCase();
+  return raw !== "0" && raw !== "false";
+}
+
+export function buildStage3CustomVideoBackgroundStillFfmpegArgs(params: {
+  inputPath: string;
+  outputPath: string;
+  width?: number;
+  height?: number;
+}): string[] {
+  const width =
+    typeof params.width === "number" && Number.isFinite(params.width)
+      ? Math.max(2, Math.round(params.width))
+      : 1080;
+  const height =
+    typeof params.height === "number" && Number.isFinite(params.height)
+      ? Math.max(2, Math.round(params.height))
+      : 1920;
+  return [
+    "-y",
+    "-ss",
+    "0",
+    "-i",
+    params.inputPath,
+    "-frames:v",
+    "1",
+    "-vf",
+    `scale=${width}:${height}:force_original_aspect_ratio=increase:flags=bilinear,crop=${width}:${height},format=yuv420p`,
+    "-q:v",
+    "3",
+    params.outputPath
+  ];
+}
+
+async function prepareStage3CustomVideoBackgroundStill(params: {
+  inputPath: string;
+  outputPath: string;
+  width?: number;
+  height?: number;
+}): Promise<void> {
+  await execFileAsync("ffmpeg", buildStage3CustomVideoBackgroundStillFfmpegArgs(params), {
     timeout: 60_000,
     maxBuffer: 1024 * 1024 * 8
   });
@@ -1194,13 +1255,15 @@ export async function renderStage3Video(
     const source = await measureRenderStage(options, "source_cache", sourceCachePayload, async () => {
       const cached = await ensureStage3SourceCached(sourceUrl, {
         signal: options?.signal,
-        waitTimeoutMs
+        waitTimeoutMs,
+        allowSourceMediaDirect: isStage3HostedFastRenderProfileEnabled()
       });
       Object.assign(sourceCachePayload, {
         sourceKey: cached.sourceKey,
         sourceDurationSec: cached.sourceDurationSec,
         fileName: cached.fileName,
-        sizeBytes: await fileSizeBytes(cached.sourcePath)
+        sizeBytes: await fileSizeBytes(cached.sourcePath),
+        cacheMode: cached.cacheMode
       });
       return cached;
     });
@@ -1436,10 +1499,41 @@ export async function renderStage3Video(
           });
           if (asset) {
             const ext = path.extname(asset.fileName) || ".jpg";
-            const localFileName = `background${ext.toLowerCase()}`;
-            backgroundAssetFileName = path.posix.join(remotionAssetBase, localFileName);
-            await fs.copyFile(asset.filePath, path.join(remotionAssetDir, localFileName));
-            backgroundAssetMimeType = asset.mimeType;
+            const assetMimeType = asset.mimeType?.toLowerCase() ?? "";
+            if (assetMimeType.startsWith("video/") && shouldUseHostedFastVideoBackgroundStill()) {
+              const localFileName = "background.fast-still.jpg";
+              const stillPayload: Record<string, unknown> = {
+                mode: "custom-video-still",
+                inputSizeBytes: await fileSizeBytes(asset.filePath),
+                width: templateSnapshot.layout.frame.width,
+                height: templateSnapshot.layout.frame.height
+              };
+              try {
+                await measureRenderStage(options, "background_prepare", stillPayload, async () => {
+                  await prepareStage3CustomVideoBackgroundStill({
+                    inputPath: asset.filePath,
+                    outputPath: path.join(remotionAssetDir, localFileName),
+                    width: templateSnapshot.layout.frame.width,
+                    height: templateSnapshot.layout.frame.height
+                  });
+                  Object.assign(stillPayload, {
+                    outputSizeBytes: await fileSizeBytes(path.join(remotionAssetDir, localFileName))
+                  });
+                });
+                backgroundAssetFileName = path.posix.join(remotionAssetBase, localFileName);
+                backgroundAssetMimeType = "image/jpeg";
+              } catch {
+                const fallbackFileName = `background${ext.toLowerCase()}`;
+                backgroundAssetFileName = path.posix.join(remotionAssetBase, fallbackFileName);
+                await fs.copyFile(asset.filePath, path.join(remotionAssetDir, fallbackFileName));
+                backgroundAssetMimeType = asset.mimeType;
+              }
+            } else {
+              const localFileName = `background${ext.toLowerCase()}`;
+              backgroundAssetFileName = path.posix.join(remotionAssetBase, localFileName);
+              await fs.copyFile(asset.filePath, path.join(remotionAssetDir, localFileName));
+              backgroundAssetMimeType = asset.mimeType;
+            }
           }
         }
 
@@ -1579,7 +1673,8 @@ export async function renderStage3Video(
           inputSizeBytes: await fileSizeBytes(flashGuarded.outputPath),
           audioInputSizeBytes: await fileSizeBytes(prepared.preparedPath),
           x264Preset: appliedVariationProfile.encode.x264Preset,
-          crf: appliedVariationProfile.encode.crf
+          crf: appliedVariationProfile.encode.crf,
+          videoMode: isStage3HostedFastRenderProfileEnabled() ? "copy" : "reencode"
         };
         await measureRenderStage(options, "finalize", finalizePayload, async () => {
           await finalizeRenderedOutput({
@@ -1590,7 +1685,8 @@ export async function renderStage3Video(
             durationSec: renderPlan.targetDurationSec,
             variationProfile: appliedVariationProfile,
             variationManifest: appliedVariationManifest,
-            variationManifestPath
+            variationManifestPath,
+            videoMode: isStage3HostedFastRenderProfileEnabled() ? "copy" : "reencode"
           });
           Object.assign(finalizePayload, {
             outputSizeBytes: await fileSizeBytes(outputPath)

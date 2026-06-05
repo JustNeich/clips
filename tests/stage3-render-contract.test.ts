@@ -20,7 +20,9 @@ import {
 import {
   buildFinalizeRenderedOutputArgs,
   normalizeRenderPlan as normalizeServerRenderPlan,
-  buildStage3SourceBackgroundStillFfmpegArgs
+  buildStage3CustomVideoBackgroundStillFfmpegArgs,
+  buildStage3SourceBackgroundStillFfmpegArgs,
+  shouldUseHostedFastVideoBackgroundStill
 } from "../lib/stage3-render-service";
 import { buildStage3EditorSession } from "../lib/stage3-editor-core";
 import { STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
@@ -113,6 +115,30 @@ function createVariationProfile(mode: Stage3VariationProfile["appliedMode"]): St
   };
 }
 
+function withEnv<T>(patch: Record<string, string | undefined>, run: () => T): T {
+  const previous = new Map<string, string | undefined>();
+  for (const key of Object.keys(patch)) {
+    previous.set(key, process.env[key]);
+    const value = patch[key];
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+  try {
+    return run();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
 test("stage3 source normalization args force stable CFR and limited-range color contract", () => {
   const args = buildNormalizeStage3SourceFfmpegArgs({
     sourcePath: "/tmp/in.mp4",
@@ -185,6 +211,56 @@ test("render background still args avoid a second remotion source-video decode",
   assert.match(filter, /crop=1080:1920/);
   assert.match(filter, /gblur=sigma=18/);
   assert.equal(args.at(-1), "/tmp/background.jpg");
+});
+
+test("hosted fast custom video background still args extract one render-sized frame", () => {
+  const args = buildStage3CustomVideoBackgroundStillFfmpegArgs({
+    inputPath: "/tmp/background.mp4",
+    outputPath: "/tmp/background.jpg",
+    width: 1080,
+    height: 1920
+  });
+
+  assert.deepEqual(args.slice(0, 5), ["-y", "-ss", "0", "-i", "/tmp/background.mp4"]);
+  assert.ok(args.includes("-frames:v"));
+  const filter = args[args.indexOf("-vf") + 1] ?? "";
+  assert.match(filter, /scale=1080:1920:force_original_aspect_ratio=increase/);
+  assert.match(filter, /crop=1080:1920/);
+  assert.match(filter, /format=yuv420p/);
+  assert.equal(args.at(-1), "/tmp/background.jpg");
+});
+
+test("hosted fast custom video background still is enabled only for Render fast profile", () => {
+  withEnv(
+    {
+      RENDER: "true",
+      STAGE3_HOSTED_FAST_RENDER_PROFILE: undefined,
+      STAGE3_HOSTED_FAST_VIDEO_BACKGROUND_STILL: undefined
+    },
+    () => {
+      assert.equal(shouldUseHostedFastVideoBackgroundStill(), true);
+    }
+  );
+  withEnv(
+    {
+      RENDER: "true",
+      STAGE3_HOSTED_FAST_RENDER_PROFILE: undefined,
+      STAGE3_HOSTED_FAST_VIDEO_BACKGROUND_STILL: "0"
+    },
+    () => {
+      assert.equal(shouldUseHostedFastVideoBackgroundStill(), false);
+    }
+  );
+  withEnv(
+    {
+      RENDER: undefined,
+      STAGE3_HOSTED_FAST_RENDER_PROFILE: undefined,
+      STAGE3_HOSTED_FAST_VIDEO_BACKGROUND_STILL: undefined
+    },
+    () => {
+      assert.equal(shouldUseHostedFastVideoBackgroundStill(), false);
+    }
+  );
 });
 
 test("render source duration guard pads short prepared clips with the final frame", () => {
@@ -335,6 +411,34 @@ test("render segment extraction uses decode-accurate timestamps to reduce bounda
   assert.ok(args.includes("-c:a"));
 });
 
+test("hosted fast render segment extraction uses fast seek to avoid decoding the whole source", () => {
+  withEnv(
+    {
+      RENDER: "true",
+      STAGE3_HOSTED_FAST_RENDER_PROFILE: undefined
+    },
+    () => {
+      assert.equal(resolveStage3SegmentExtractionMode("render"), "fast");
+      const args = buildStage3ExtractSegmentFfmpegArgs({
+        sourcePath: "/tmp/in.mp4",
+        outputPath: "/tmp/out.mp4",
+        segment: {
+          startSec: 41.2,
+          endSec: 47.2,
+          speed: 1
+        },
+        profile: "render",
+        sourceHasAudio: true
+      });
+
+      assert.deepEqual(args.slice(0, 6), ["-y", "-ss", "41.200", "-t", "6.000", "-i"]);
+      assert.equal(args[6], "/tmp/in.mp4");
+      assert.equal(args.includes("-fflags"), false);
+      assert.equal(args.includes("-avoid_negative_ts"), false);
+    }
+  );
+});
+
 test("server render plan preserves whole-window selection for local worker renders", () => {
   const renderPlan = normalizeServerRenderPlan(
     {
@@ -466,6 +570,27 @@ test("final render args can clamp muxed output to the render target duration", (
   assert.ok(args.includes("-t"));
   assert.equal(args[args.indexOf("-t") + 1], "6.000");
   assert.equal(args.includes("-shortest"), false);
+});
+
+test("hosted fast final render args stream-copy video instead of re-encoding it", () => {
+  const args = buildFinalizeRenderedOutputArgs({
+    inputPath: "/tmp/visual.mp4",
+    audioInputPath: "/tmp/prepared-source.mp4",
+    outputPath: "/tmp/final.mp4",
+    metadataTitle: "Stable Render",
+    durationSec: 6,
+    variationProfile: createVariationProfile("encode"),
+    videoMode: "copy"
+  });
+
+  assert.ok(args.includes("-c:v"));
+  assert.equal(args[args.indexOf("-c:v") + 1], "copy");
+  assert.equal(args.includes("-vf"), false);
+  assert.equal(args.includes("libx264"), false);
+  assert.ok(args.includes("-c:a"));
+  assert.equal(args[args.indexOf("-c:a") + 1], "copy");
+  assert.ok(args.includes("+faststart"));
+  assert.ok(args.includes("-map_metadata"));
 });
 
 test("final render mux preserves prepared source audio when remotion output has only video", async () => {
