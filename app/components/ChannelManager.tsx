@@ -2613,6 +2613,13 @@ export function ChannelManager({
                           >
                             Сделать по умолчанию
                           </button>
+                          <a
+                            className="btn btn-ghost"
+                            href={`${asset.url}?download=1`}
+                            download={asset.originalName || asset.fileName}
+                          >
+                            Скачать
+                          </a>
                           <button
                             type="button"
                             className="btn btn-ghost"

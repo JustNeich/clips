@@ -18,6 +18,17 @@ export const runtime = "nodejs";
 
 type Context = { params: Promise<{ id: string; assetId: string }> };
 
+function sanitizeAttachmentFileName(raw: string): string {
+  const value = raw.replace(/[\r\n"]/g, "").replace(/[\\/]/g, "_").trim();
+  return value || "channel-asset";
+}
+
+function buildAttachmentDisposition(fileNameRaw: string): string {
+  const fileName = sanitizeAttachmentFileName(fileNameRaw);
+  const asciiFallback = fileName.replace(/[^\x20-\x7E]/g, "_");
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+}
+
 export async function GET(request: Request, context: Context): Promise<Response> {
   const { id, assetId } = await context.params;
   try {
@@ -32,15 +43,20 @@ export async function GET(request: Request, context: Context): Promise<Response>
     if (!file) {
       return Response.json({ error: "Asset file unavailable." }, { status: 404 });
     }
+    const isDownload = new URL(request.url).searchParams.get("download") === "1";
+    const headers: Record<string, string> = {
+      "Content-Type": asset.mimeType,
+      "Cache-Control": isDownload ? "private, max-age=0" : "public, max-age=86400, immutable"
+    };
+    if (isDownload) {
+      headers["Content-Disposition"] = buildAttachmentDisposition(asset.originalName || asset.fileName);
+    }
 
     return createNodeFileResponse({
       request,
       filePath: file.filePath,
       signal: request.signal,
-      headers: {
-        "Content-Type": asset.mimeType,
-        "Cache-Control": "public, max-age=86400, immutable"
-      }
+      headers
     });
   } catch (error) {
     if (error instanceof Response) {

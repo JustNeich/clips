@@ -88,6 +88,7 @@
 | Tab `Рендер` | yes | yes | yes | limited render defaults | browser-verified/code-verified |
 | Tab `Publishing` | yes | yes | yes | hidden | browser-verified/code-verified |
 | Tab `Ассеты` | yes | yes | yes | background/music upload + defaults only | browser-verified/code-verified |
+| Download music assets | yes | yes | yes | yes, for granted channels | code-verified |
 | Tab `Доступ` | yes | yes | no | no | browser-verified |
 | Block `Caption provider` in `Общие настройки` | yes | no | no | no | browser + code |
 

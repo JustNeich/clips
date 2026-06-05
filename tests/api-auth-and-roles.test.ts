@@ -10,6 +10,7 @@ import { GET as getChatTrace } from "../app/api/chat-trace/[id]/route";
 import { GET as listChannelsRoute } from "../app/api/channels/route";
 import { PATCH as patchChannelRoute } from "../app/api/channels/[id]/route";
 import { POST as uploadChannelAssetRoute } from "../app/api/channels/[id]/assets/route";
+import { GET as readChannelAssetRoute } from "../app/api/channels/[id]/assets/[assetId]/route";
 import {
   GET as listManagedTemplatesRoute,
   POST as createManagedTemplateRoute
@@ -559,6 +560,29 @@ test("redactor_limited can update channel render defaults and publication time w
     assert.equal(musicBody.asset?.mimeType, "audio/mpeg");
     const musicAssetId = musicBody.asset?.id;
     assert.ok(musicAssetId);
+
+    const musicDownloadResponse = await readChannelAssetRoute(
+      new Request(`http://localhost/api/channels/${channel.id}/assets/${musicAssetId}?download=1`, {
+        headers: { cookie }
+      }),
+      { params: Promise.resolve({ id: channel.id, assetId: musicAssetId }) }
+    );
+    assert.equal(musicDownloadResponse.status, 200);
+    assert.equal(musicDownloadResponse.headers.get("content-type"), "audio/mpeg");
+    assert.match(
+      musicDownloadResponse.headers.get("content-disposition") ?? "",
+      /attachment; filename="limited-music\.mp3"; filename\*=UTF-8''limited-music\.mp3/
+    );
+    assert.deepEqual(Array.from(new Uint8Array(await musicDownloadResponse.arrayBuffer())), [1, 2, 3, 4]);
+
+    const musicInlineResponse = await readChannelAssetRoute(
+      new Request(`http://localhost/api/channels/${channel.id}/assets/${musicAssetId}`, {
+        headers: { cookie }
+      }),
+      { params: Promise.resolve({ id: channel.id, assetId: musicAssetId }) }
+    );
+    assert.equal(musicInlineResponse.status, 200);
+    assert.equal(musicInlineResponse.headers.get("content-disposition"), null);
 
     const renderDefaultsResponse = await patchChannelRoute(
       new Request(`http://localhost/api/channels/${channel.id}`, {

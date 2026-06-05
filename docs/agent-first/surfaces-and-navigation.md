@@ -706,6 +706,7 @@
 - `purpose`: channel-scoped assets for avatar, background, music and render defaults.
 - `controls`:
   - upload by asset kind
+  - download music asset
   - delete asset
   - select asset for defaults
 - `redactor_limited`: upload/select allowed only for background/music; avatar and delete remain setup-only.
