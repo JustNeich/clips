@@ -121,6 +121,13 @@ export const DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS = 45 * 60_000;
 const LOCAL_STAGE3_WORKER_RESTART_RECOVERY_GRACE_MS = 20_000;
 const LOCAL_STAGE3_SERVER_WATCHDOG_GRACE_MS = 30_000;
 const LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS = 90_000;
+const LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS_BY_KIND: Record<Stage3JobKind, number> = {
+  "editing-proxy": 15_000,
+  preview: LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS,
+  render: LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS,
+  "source-download": LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS,
+  "agent-media-step": LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS
+};
 const HOST_STAGE3_SERVER_WATCHDOG_GRACE_MS = 30_000;
 
 function normalizeJobKind(value: string): Stage3JobKind {
@@ -165,6 +172,10 @@ function resolveStage3HostJobTimeoutMs(kind: Stage3JobKind, payloadJson: string)
 
 function resolveStage3HostServerWatchdogTimeoutMs(kind: Stage3JobKind, payloadJson: string): number {
   return resolveStage3HostJobTimeoutMs(kind, payloadJson) + HOST_STAGE3_SERVER_WATCHDOG_GRACE_MS;
+}
+
+function resolveStage3QueuedWorkerUnavailableGraceMs(kind: Stage3JobKind): number {
+  return LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS_BY_KIND[kind];
 }
 
 function getStage3JobRunningStartedAtMs(row: Pick<JobRow, "started_at" | "updated_at" | "created_at">): number | null {
@@ -701,7 +712,8 @@ function failOverdueLocalJobsInternal(db: ReturnType<typeof getDb>): number {
 function failQueuedLocalJobsWithoutOnlineWorkerInternal(db: ReturnType<typeof getDb>): number {
   const nowMs = Date.now();
   const stamp = new Date(nowMs).toISOString();
-  const queuedCutoff = new Date(nowMs - LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS).toISOString();
+  const minQueuedGraceMs = Math.min(...Object.values(LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS_BY_KIND));
+  const queuedCutoff = new Date(nowMs - minQueuedGraceMs).toISOString();
   const workerOnlineCutoff = new Date(nowMs - STAGE3_WORKER_ONLINE_WINDOW_MS).toISOString();
   const rows = db
     .prepare(
@@ -753,7 +765,12 @@ function failQueuedLocalJobsWithoutOnlineWorkerInternal(db: ReturnType<typeof ge
   let failed = 0;
   for (const row of rows) {
     const kind = normalizeJobKind(String(row.kind));
-    const waitedSec = Math.round(LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS / 1000);
+    const queuedGraceMs = resolveStage3QueuedWorkerUnavailableGraceMs(kind);
+    const queuedSinceMs = Date.parse(row.updated_at);
+    if (!Number.isFinite(queuedSinceMs) || nowMs - queuedSinceMs < queuedGraceMs) {
+      continue;
+    }
+    const waitedSec = Math.round(queuedGraceMs / 1000);
     const result = statement.run(
       `Локальный executor Stage 3 недоступен: ${kind} ждал executor больше ${waitedSec} секунд. ` +
         "Перезапустите Clips Worker/bootstrap и повторите действие.",
@@ -767,7 +784,7 @@ function failQueuedLocalJobsWithoutOnlineWorkerInternal(db: ReturnType<typeof ge
     appendStage3JobEvent(String(row.id), "error", "Queued local job exceeded worker availability grace; job failed.", {
       kind,
       queuedSince: row.updated_at,
-      queuedGraceMs: LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS,
+      queuedGraceMs,
       workerOnlineWindowMs: STAGE3_WORKER_ONLINE_WINDOW_MS
     });
     const updated = mapJobRow(readJobRow(String(row.id)));

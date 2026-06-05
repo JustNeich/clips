@@ -12,7 +12,8 @@ import {
   completeStage3Job,
   enqueueStage3Job,
   getStage3Job,
-  heartbeatStage3Job
+  heartbeatStage3Job,
+  sweepExpiredLocalStage3Jobs
 } from "../lib/stage3-job-store";
 import {
   enqueueAndScheduleStage3Job,
@@ -698,6 +699,63 @@ test("local worker restart reclaims its own stale active job before lease expiry
       .prepare("SELECT message FROM stage3_job_events WHERE job_id = ? ORDER BY created_at ASC")
       .all(job.id) as Array<{ message: string }>;
     assert.ok(events.some((event) => event.message === "Local worker restarted; job returned to queue."));
+  });
+});
+
+test("queued local editing proxy fails faster than heavy jobs when worker is unavailable", async () => {
+  await withIsolatedAppData(async () => {
+    const db = getDb();
+    const stamp = nowIso();
+    const workspaceId = "w1";
+    const userId = "u1";
+
+    db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+      workspaceId,
+      "Test workspace",
+      "test-workspace",
+      stamp,
+      stamp
+    );
+    db.prepare(
+      "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(userId, "u@example.com", "hash", "User", "active", stamp, stamp);
+    db.prepare(
+      "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(newId(), workspaceId, userId, "owner", stamp, stamp);
+
+    const editingProxy = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "editing-proxy",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        chatId: "chat-editor",
+        sourceUrl: "https://youtube.com/watch?v=editor"
+      })
+    });
+    const render = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        chatId: "chat-render",
+        sourceUrl: "https://youtube.com/watch?v=render",
+        renderPlan: { targetDurationSec: 6 }
+      })
+    });
+    const queuedAt = new Date(Date.now() - 20_000).toISOString();
+    db.prepare("UPDATE stage3_jobs SET updated_at = ? WHERE id IN (?, ?)").run(queuedAt, editingProxy.id, render.id);
+
+    const swept = sweepExpiredLocalStage3Jobs();
+
+    assert.equal(swept, 1);
+    const failedEditingProxy = getStage3Job(editingProxy.id);
+    assert.equal(failedEditingProxy?.status, "failed");
+    assert.equal(failedEditingProxy?.errorCode, "worker_unavailable");
+    assert.match(failedEditingProxy?.errorMessage ?? "", /editing-proxy ждал executor больше 15 секунд/);
+    assert.equal(failedEditingProxy?.recoverable, true);
+    assert.equal(getStage3Job(render.id)?.status, "queued");
   });
 });
 
