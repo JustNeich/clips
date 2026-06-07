@@ -37,19 +37,49 @@ function isSameOriginBrowserMutation(request: NextRequest): boolean {
     return true;
   }
 
-  const expectedOrigin = request.nextUrl.origin;
+  // Compare HOSTS (not full origins). Behind Render's TLS-terminating proxy
+  // request.nextUrl.origin resolves to the internal http origin, so comparing the
+  // browser's https Origin against it 403'd every legitimate mutation. Match the
+  // Origin/Referer host against any host the server actually saw — the forwarded
+  // host (public), the Host header, or nextUrl.host — which is proxy-proof and
+  // ignores the http/https difference the proxy introduces, while still blocking
+  // genuine cross-origin (different host) requests.
+  const candidateHosts = new Set<string>();
+  for (const raw of [
+    request.headers.get("x-forwarded-host"),
+    request.headers.get("host"),
+    request.nextUrl.host
+  ]) {
+    if (!raw) {
+      continue;
+    }
+    for (const part of raw.split(",")) {
+      const host = part.trim().toLowerCase();
+      if (host) {
+        candidateHosts.add(host);
+      }
+    }
+  }
+
+  const hostMatches = (value: string | null): boolean => {
+    if (!value) {
+      return false;
+    }
+    try {
+      return candidateHosts.has(new URL(value).host.toLowerCase());
+    } catch {
+      return false;
+    }
+  };
+
   const origin = request.headers.get("origin");
   if (origin) {
-    return origin === expectedOrigin;
+    return hostMatches(origin);
   }
 
   const referer = request.headers.get("referer");
   if (referer) {
-    try {
-      return new URL(referer).origin === expectedOrigin;
-    } catch {
-      return false;
-    }
+    return hostMatches(referer);
   }
 
   return true;
