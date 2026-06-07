@@ -25,7 +25,7 @@
 | Create channel | yes | yes | yes | no | `team-store.ts` |
 | Manage any channel access | yes | yes | no | no | `team-store.ts`, `acl.ts` |
 | View internal design routes | yes | yes | yes | no | browser + code pages |
-| Inspect prompts, traces, debug artifacts, template internals | yes | yes | yes | no | `sensitive-access.ts`, API tests |
+| Inspect prompts, traces, debug artifacts, template internals | yes | yes | no | no | `sensitive-access.ts`, API tests |
 
 ## Channel-level permissions
 
@@ -50,10 +50,10 @@
 | `/` | allow | allow | allow | allow | Главный shell |
 | `/team` | allow | allow | forbidden | forbidden | Browser-verified |
 | `/admin/flows` | allow | forbidden | forbidden | forbidden | Owner observability |
-| `/design/template-lab` | allow | allow | allow | not found | Internal tooling |
-| `/design/template-road` | allow | allow | allow | not found | Internal tooling |
-| `/design/science-card` | allow | allow | allow | not found | Preview route |
-| `/design/badger-card` | allow | allow | allow | not found | Preview route |
+| `/design/template-lab` | allow | allow | not found | not found | Internal tooling |
+| `/design/template-road` | allow | allow | not found | not found | Internal tooling |
+| `/design/science-card` | allow | allow | not found | not found | Preview route |
+| `/design/badger-card` | allow | allow | not found | not found | Preview route |
 
 ## UI visibility matrix
 
@@ -128,8 +128,8 @@
 | Copy options | yes | yes | yes | yes |
 | Submit channel feedback | yes | yes | yes if channel visible | yes if channel granted and flow open |
 | Delete feedback event | yes | yes | conditional by UI callback | generally no channel admin tools |
-| View Stage 2 diagnostics / debug details | yes | yes | yes | no |
-| Open raw Stage 2 debug artifact | yes | yes | yes | no |
+| View Stage 2 diagnostics / debug details | yes | yes | no | no |
+| Open raw Stage 2 debug artifact | yes | yes | no | no |
 
 Примечание: feedback write path зависит не от workspace role, а от доступности канала и того, подключён ли callback на удаление/сохранение в конкретной surface state.
 
@@ -141,9 +141,9 @@
 | Edit timing/fragments | yes | yes | yes | yes |
 | Upload background/music assets into draft | yes | yes | yes | yes |
 | Export / render | yes | yes | yes | yes |
-| Export JSON payload | yes | yes | yes | no |
-| Pair local executor | yes | yes | yes | no |
-| Open template customization tooling | yes | yes | yes if can edit setup | no |
+| Export JSON payload | yes | yes | no | no |
+| Pair local executor | yes | yes | no | no |
+| Open template customization tooling | yes | yes | no | no |
 | Open version drawer | yes | yes | yes | yes |
 
 ## Publishing
@@ -154,8 +154,8 @@
 | Shift slot/day | yes | yes | yes | yes if publication visible |
 | Pause/resume/retry/delete publication | yes | yes | yes | yes if publication visible |
 | Configure channel slot defaults | yes | yes | yes if can edit setup | no |
-| Connect/disconnect YouTube for channel | yes | yes | yes if can edit setup | no |
-| Choose YouTube destination channel | yes | yes | yes if can edit setup | no |
+| Connect/disconnect YouTube for channel | yes | yes | no | no |
+| Choose YouTube destination channel | yes | yes | no | no |
 
 ## Owner-only surfaces and controls
 
@@ -197,9 +197,11 @@ Browser-verified:
 Code-verified:
 
 - может удалять только собственные каналы;
-- может редактировать setup только тех каналов, которые ему видимы по ACL;
-- может менять channel-level Stage 2 prompt/examples, если канал доступен для setup;
+- может редактировать только не-sensitive setup тех каналов, которые ему видимы по ACL;
+- не может читать или менять channel-level Stage 2 prompt/examples/hard constraints и другие внутренние Stage 2 настройки;
 - не может управлять grants других пользователей.
+
+Sensitive artifact access теперь owner/manager-only. Обычный `redactor` остаётся production editor по видимым каналам, но не получает prompt config, trace export, raw debug artifacts, template internals, worker pairing tokens или внутренние Stage 2 настройки.
 
 ## Redactor Limited behavior
 

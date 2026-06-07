@@ -7,7 +7,7 @@ import {
   Stage2Response,
   Stage3Version
 } from "../app/components/types";
-import { normalizeStage2ProgressSnapshot } from "./stage2-pipeline";
+import { normalizeStage2ProgressSnapshot } from "./stage2-progress-client";
 import { sanitizeStage3DraftRenderPlanOverride } from "./stage3-draft-render-plan";
 import { normalizeStage2TitleOptionsValue } from "./stage2-title-options";
 import { buildLegacyTimelineEntries, findLatestStage3AgentSessionRef } from "./stage3-legacy-bridge";

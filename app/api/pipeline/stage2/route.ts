@@ -25,7 +25,7 @@ import { getActiveSourceJobForChat } from "../../../../lib/source-job-runtime";
 import type { Stage2Response } from "../../../components/types";
 import { isSupportedUrl, normalizeSupportedUrl, SUPPORTED_SOURCE_ERROR_MESSAGE } from "../../../../lib/ytdlp";
 import type { Stage2DebugMode } from "../../../../lib/viral-shorts-worker/types";
-import { sanitizeStage2ResponseForRole } from "../../../../lib/sensitive-access";
+import { canInspectSensitiveArtifacts, sanitizeStage2ResponseForRole } from "../../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
@@ -40,13 +40,17 @@ function normalizeDebugMode(value: unknown): Stage2DebugMode {
   return value === "raw" ? "raw" : "summary";
 }
 
-function serializeStage2RunSummary(run: Stage2RunRecord) {
+function serializeStage2RunSummary(
+  run: Stage2RunRecord,
+  role?: Awaited<ReturnType<typeof requireAuth>>["membership"]["role"]
+) {
+  const canInspectSensitive = role ? canInspectSensitiveArtifacts(role) : true;
   return {
     runId: run.runId,
     chatId: run.chatId,
     channelId: run.channelId,
     sourceUrl: run.sourceUrl,
-    userInstruction: run.userInstruction,
+    userInstruction: canInspectSensitive ? run.userInstruction : null,
     mode: run.mode,
     baseRunId: run.baseRunId,
     status: run.status,
@@ -62,7 +66,7 @@ function serializeStage2RunSummary(run: Stage2RunRecord) {
 
 function serializeStage2RunDetail(run: Stage2RunRecord, role?: Awaited<ReturnType<typeof requireAuth>>["membership"]["role"]) {
   return {
-    ...serializeStage2RunSummary(run),
+    ...serializeStage2RunSummary(run, role),
     result: role
       ? sanitizeStage2ResponseForRole((run.resultData ?? null) as Stage2Response | null, role)
       : ((run.resultData ?? null) as Stage2Response | null)
@@ -128,7 +132,9 @@ export async function GET(request: Request): Promise<Response> {
       return Response.json({ error: "Chat not found." }, { status: 404 });
     }
     await requireChannelVisibility(auth, chat.channelId);
-    const runs = listStage2RunsForChat(chat.id, auth.workspace.id).map(serializeStage2RunSummary);
+    const runs = listStage2RunsForChat(chat.id, auth.workspace.id).map((run) =>
+      serializeStage2RunSummary(run, auth.membership.role)
+    );
     return Response.json({ runs }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) {

@@ -296,7 +296,7 @@ test("preview segment extraction keeps the fast seek path for editor responsiven
   assert.ok(args.includes("-an"));
 });
 
-test("final render args re-encode video into a stable limited-range contract", () => {
+test("final render args remux without re-encoding (stream copy + bt709 VUI)", () => {
   const args = buildFinalizeRenderedOutputArgs({
     inputPath: "/tmp/raw.mp4",
     outputPath: "/tmp/final.mp4",
@@ -306,15 +306,29 @@ test("final render args re-encode video into a stable limited-range contract", (
 
   assert.deepEqual(args.slice(0, 6), ["-y", "-i", "/tmp/raw.mp4", "-map", "0:v:0", "-map"]);
   assert.ok(args.includes("0:a?"));
-  assert.ok(args.includes("format=yuv420p"));
-  assert.ok(args.includes("libx264"));
-  assert.ok(args.includes("tv"));
-  assert.ok(args.includes("bt709"));
-  assert.ok(args.includes("-bitexact"));
+  // No transcode: video + audio are stream-copied, no libx264 / pixel filter.
+  assert.equal(args.includes("libx264"), false);
+  assert.equal(args.includes("format=yuv420p"), false);
   assert.equal(
-    args.some((value, index) => value === "-c" && args[index + 1] === "copy"),
-    false
+    args.some((value, index) => value === "-c:v" && args[index + 1] === "copy"),
+    true
   );
+  assert.equal(
+    args.some((value, index) => value === "-c:a" && args[index + 1] === "copy"),
+    true
+  );
+  // Identifying metadata stripped; faststart + bitexact retained.
+  assert.ok(args.includes("-map_metadata"));
+  assert.ok(args.includes("+faststart"));
+  assert.ok(args.includes("-bitexact"));
+  // bt709 limited-range colour VUI + SEI fingerprint strip via bitstream filters.
+  const bsf = args[args.indexOf("-bsf:v") + 1] ?? "";
+  assert.match(bsf, /h264_metadata/);
+  assert.match(bsf, /colour_primaries=1/);
+  assert.match(bsf, /matrix_coefficients=1/);
+  assert.match(bsf, /video_full_range_flag=0/);
+  assert.match(bsf, /filter_units=remove_types=6/);
+  assert.ok(args.includes("title=Stable Render"));
 });
 
 test("final render args do not write variation metadata into the mp4 container", () => {
@@ -346,7 +360,7 @@ test("stage3 render variation defaults to ultra-subtle hybrid mode when no overr
     assert.ok(profile.signal.opacity >= 0.0025);
     assert.ok(profile.signal.opacity <= 0.0055);
     assert.ok([17, 18, 19].includes(profile.encode.crf));
-    assert.ok(["slow", "medium"].includes(profile.encode.x264Preset));
+    assert.ok(["medium", "fast"].includes(profile.encode.x264Preset));
   } finally {
     if (previous === undefined) {
       delete process.env.STAGE3_RENDER_VARIATION_MODE;

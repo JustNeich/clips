@@ -1,4 +1,5 @@
 import { exchangeStage3WorkerPairingToken } from "../../../../../../lib/stage3-worker-store";
+import { enforceRateLimit } from "../../../../../../lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,13 @@ export async function POST(request: Request): Promise<Response> {
     if (!pairingToken) {
       return Response.json({ error: "Передайте pairingToken." }, { status: 400 });
     }
+    enforceRateLimit({
+      request,
+      scope: "stage3-worker-exchange",
+      key: pairingToken,
+      limit: 12,
+      windowMs: 10 * 60_000
+    });
     const exchanged = exchangeStage3WorkerPairingToken({
       pairingToken,
       label: body?.label?.trim() || "Local Worker",
@@ -36,6 +44,9 @@ export async function POST(request: Request): Promise<Response> {
       { status: 200 }
     );
   } catch (error) {
+    if (error instanceof Response) {
+      return error;
+    }
     const message = error instanceof Error ? error.message : "Не удалось завершить pairing Stage 3 worker.";
     return Response.json(
       { error: message },

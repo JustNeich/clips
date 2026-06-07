@@ -1,8 +1,12 @@
 import { execFile } from "node:child_process";
+import https from "node:https";
+import type { IncomingHttpHeaders } from "node:http";
 import { createWriteStream, promises as fs } from "node:fs";
+import { isIP } from "node:net";
+import { lookup as dnsLookup } from "node:dns/promises";
 import os from "node:os";
 import path from "node:path";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import type { SourceProviderErrorSummary, SourceProviderId } from "../app/components/types";
@@ -29,6 +33,8 @@ const DEFAULT_VISOLIX_TIMEOUT_MS = 120_000;
 const DEFAULT_VISOLIX_POLL_INTERVAL_MS = 1_200;
 const DEFAULT_VISOLIX_YOUTUBE_FORMAT = "720";
 const DEFAULT_SOURCE_DOWNLOAD_RETRY_DELAY_MS = 5_000;
+const MAX_REMOTE_SOURCE_DOWNLOAD_BYTES = 1024 * 1024 * 1024;
+const MAX_SAFE_REMOTE_REDIRECTS = 3;
 
 type VisolixInitResponse = {
   success?: unknown;
@@ -135,6 +141,10 @@ export class SourceDownloadError extends Error {
 
 let testVisolixDownloader: SourceDownloadOverride | null = null;
 let testYtDlpDownloader: SourceDownloadOverride | null = null;
+let testSafeLookup:
+  | ((hostname: string) => Promise<Array<{ address: string; family?: number }>>)
+  | null = null;
+let testSafeFetch: ((url: string, init: RequestInit) => Promise<Response>) | null = null;
 
 export function setSourceAcquisitionDownloadersForTests(
   input:
@@ -146,6 +156,18 @@ export function setSourceAcquisitionDownloadersForTests(
 ): void {
   testVisolixDownloader = input?.visolix ?? null;
   testYtDlpDownloader = input?.ytDlp ?? null;
+}
+
+export function setSourceAcquisitionNetworkForTests(
+  input:
+    | {
+        lookup?: ((hostname: string) => Promise<Array<{ address: string; family?: number }>>) | null;
+        fetch?: ((url: string, init: RequestInit) => Promise<Response>) | null;
+      }
+    | null
+): void {
+  testSafeLookup = input?.lookup ?? null;
+  testSafeFetch = input?.fetch ?? null;
 }
 
 export type SourceMetadataResult = {
@@ -383,6 +405,216 @@ function getVisolixYoutubeFormat(): string {
   return asTrimmedString(process.env.VISOLIX_YOUTUBE_FORMAT) ?? DEFAULT_VISOLIX_YOUTUBE_FORMAT;
 }
 
+function isPrivateIpv4(ip: string): boolean {
+  const parts = ip.split(".").map((part) => Number.parseInt(part, 10));
+  if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part))) {
+    return true;
+  }
+  const [a, b] = parts;
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    a === 0
+  );
+}
+
+function isPrivateIpv6(ip: string): boolean {
+  const normalized = ip.toLowerCase();
+  return (
+    normalized === "::1" ||
+    normalized === "::" ||
+    normalized.startsWith("fc") ||
+    normalized.startsWith("fd") ||
+    normalized.startsWith("fe80") ||
+    normalized.startsWith("::ffff:10.") ||
+    normalized.startsWith("::ffff:127.") ||
+    normalized.startsWith("::ffff:169.254.") ||
+    normalized.startsWith("::ffff:172.") ||
+    normalized.startsWith("::ffff:192.168.")
+  );
+}
+
+function isPrivateAddress(address: string): boolean {
+  const family = isIP(address);
+  if (family === 4) {
+    return isPrivateIpv4(address);
+  }
+  if (family === 6) {
+    return isPrivateIpv6(address);
+  }
+  return true;
+}
+
+type SafeRemoteUrl = {
+  url: string;
+  hostname: string;
+  addresses: string[];
+};
+
+async function resolveSafeRemoteUrl(rawUrl: string, label: string): Promise<SafeRemoteUrl> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error(`${label} вернул некорректный URL.`);
+  }
+
+  if (parsed.protocol !== "https:") {
+    throw new Error(`${label} URL должен использовать HTTPS.`);
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error(`${label} URL не должен содержать credentials.`);
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) {
+    throw new Error(`${label} URL указывает на localhost.`);
+  }
+
+  if (isIP(hostname)) {
+    if (isPrivateAddress(hostname)) {
+      throw new Error(`${label} URL указывает на внутренний адрес.`);
+    }
+    return {
+      url: parsed.toString(),
+      hostname,
+      addresses: [hostname]
+    };
+  }
+
+  const addresses = await (testSafeLookup
+    ? testSafeLookup(hostname)
+    : dnsLookup(hostname, { all: true })).catch(() => []);
+  if (addresses.length === 0 || addresses.some((entry) => isPrivateAddress(entry.address))) {
+    throw new Error(`${label} URL не прошёл проверку публичного адреса.`);
+  }
+
+  return {
+    url: parsed.toString(),
+    hostname,
+    addresses: addresses.map((entry) => entry.address)
+  };
+}
+
+function headersToRecord(headersInit: HeadersInit | undefined): Record<string, string> {
+  const headers = new Headers(headersInit);
+  const output: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    output[key] = value;
+  });
+  return output;
+}
+
+function hasSensitiveRedirectHeaders(init: RequestInit): boolean {
+  const headers = new Headers(init.headers);
+  return ["authorization", "proxy-authorization", "cookie", "x-api-key"].some((name) => headers.has(name));
+}
+
+function responseHeadersFromIncoming(headers: IncomingHttpHeaders): Headers {
+  const output = new Headers();
+  for (const [key, value] of Object.entries(headers)) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        output.append(key, item);
+      }
+    } else if (typeof value === "string") {
+      output.set(key, value);
+    }
+  }
+  return output;
+}
+
+async function fetchPinnedHttpsUrl(safe: SafeRemoteUrl, init: RequestInit): Promise<Response> {
+  if (testSafeFetch) {
+    return testSafeFetch(safe.url, init);
+  }
+  const parsed = new URL(safe.url);
+  const pinnedAddress = safe.addresses[0];
+  if (!pinnedAddress) {
+    throw new Error("Remote URL did not resolve to a public address.");
+  }
+  return await new Promise<Response>((resolve, reject) => {
+    const request = https.request(
+      parsed,
+      {
+        method: init.method ?? "GET",
+        headers: headersToRecord(init.headers),
+        lookup: (_hostname, _options, callback) => {
+          callback(null, pinnedAddress, isIP(pinnedAddress));
+        }
+      },
+      (incoming) => {
+        resolve(
+          new Response(Readable.toWeb(incoming) as unknown as BodyInit, {
+            status: incoming.statusCode ?? 500,
+            statusText: incoming.statusMessage,
+            headers: responseHeadersFromIncoming(incoming.headers)
+          })
+        );
+      }
+    );
+    const abortHandler = () => {
+      request.destroy(new Error("Request aborted."));
+    };
+    init.signal?.addEventListener("abort", abortHandler, { once: true });
+    request.on("error", reject);
+    request.on("close", () => {
+      init.signal?.removeEventListener("abort", abortHandler);
+    });
+    const body = init.body;
+    if (typeof body === "string" || Buffer.isBuffer(body) || body instanceof Uint8Array) {
+      request.write(body);
+    } else if (body) {
+      request.destroy(new Error("Unsupported request body for safe remote fetch."));
+      return;
+    }
+    request.end();
+  });
+}
+
+async function fetchSafeRemoteUrl(
+  rawUrl: string,
+  init: RequestInit,
+  label: string,
+  redirectsLeft = MAX_SAFE_REMOTE_REDIRECTS
+): Promise<Response> {
+  const safe = await resolveSafeRemoteUrl(rawUrl, label);
+  const response = await fetchPinnedHttpsUrl(safe, {
+    ...init,
+    redirect: "manual"
+  });
+  if (response.status >= 300 && response.status < 400) {
+    const location = response.headers.get("location");
+    if (!location || redirectsLeft <= 0) {
+      throw new Error(`${label} вернул небезопасный redirect.`);
+    }
+    const nextUrl = new URL(location, safe.url).toString();
+    if (new URL(nextUrl).origin !== new URL(safe.url).origin && hasSensitiveRedirectHeaders(init)) {
+      throw new Error(`${label} вернул cross-origin redirect для запроса с sensitive headers.`);
+    }
+    return fetchSafeRemoteUrl(nextUrl, init, label, redirectsLeft - 1);
+  }
+  return response;
+}
+
+function createByteLimitTransform(maxBytes: number, label: string): Transform {
+  let totalBytes = 0;
+  return new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      totalBytes += chunk.byteLength;
+      if (totalBytes > maxBytes) {
+        callback(new Error(`${label} вернул слишком большой файл.`));
+        return;
+      }
+      callback(null, chunk);
+    }
+  });
+}
+
 function isYouTubeUrl(rawUrl: string): boolean {
   return Boolean(extractYouTubeVideoIdFromUrl(rawUrl));
 }
@@ -558,12 +790,12 @@ async function visolixDownloadInit(rawUrl: string): Promise<VisolixInitResponse>
         headers.set("X-FORMAT", getVisolixYoutubeFormat());
       }
 
-      const response = await fetch(`${getVisolixBaseUrl()}/api/download`, {
+      const response = await fetchSafeRemoteUrl(`${getVisolixBaseUrl()}/api/download`, {
         method: "GET",
         headers,
         cache: "no-store",
         signal: controller.signal
-      });
+      }, "Visolix API");
       const body = await readJsonOrText(response);
 
       if (!response.ok) {
@@ -621,7 +853,7 @@ async function pollVisolixDownload(progressUrl: string): Promise<string> {
   let lastMessage: string | null = null;
 
   while (Date.now() < timeoutAt) {
-    const response = await fetch(progressUrl, { cache: "no-store" });
+    const response = await fetchSafeRemoteUrl(progressUrl, { cache: "no-store" }, "Visolix progress");
     const body = (await readJsonOrText(response)) as Record<string, unknown> | null;
 
     if (!response.ok) {
@@ -666,15 +898,23 @@ async function downloadRemoteFile(
   destinationPath: string,
   providerLabel: string
 ): Promise<number> {
-  const response = await fetch(downloadUrl, { cache: "no-store" });
+  const response = await fetchSafeRemoteUrl(downloadUrl, { cache: "no-store" }, providerLabel);
   if (!response.ok) {
     throw new Error(`Не удалось скачать файл из ${providerLabel} (HTTP ${response.status}).`);
   }
   if (!response.body) {
     throw new Error(`${providerLabel} не вернул тело файла.`);
   }
+  const contentLength = Number.parseInt(response.headers.get("content-length") ?? "", 10);
+  if (Number.isFinite(contentLength) && contentLength > MAX_REMOTE_SOURCE_DOWNLOAD_BYTES) {
+    throw new Error(`${providerLabel} вернул слишком большой файл.`);
+  }
 
-  await pipeline(Readable.fromWeb(response.body as never), createWriteStream(destinationPath));
+  await pipeline(
+    Readable.fromWeb(response.body as never),
+    createByteLimitTransform(MAX_REMOTE_SOURCE_DOWNLOAD_BYTES, providerLabel),
+    createWriteStream(destinationPath)
+  );
   const stat = await fs.stat(destinationPath);
   return stat.size;
 }

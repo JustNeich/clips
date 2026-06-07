@@ -652,6 +652,7 @@ export async function storeUploadedSourceMedia(input: {
   title?: string | null;
   sourceStream: ReadableStream<Uint8Array>;
   maxBytes?: number;
+  requireMp4Signature?: boolean;
 }): Promise<CachedSourceMedia> {
   const sourceUrl = normalizeSupportedUrl(input.sourceUrl);
   const sourceKey = getSourceMediaCacheKey(sourceUrl);
@@ -659,6 +660,8 @@ export async function storeUploadedSourceMedia(input: {
   const tmpPath = path.join(getSourceMediaCacheDir(), `${sourceKey}.uploading`);
   const maxBytes = Number.isFinite(input.maxBytes) ? Number(input.maxBytes) : null;
   let sizeBytes = 0;
+  let header = Buffer.alloc(0);
+  let headerChecked = false;
 
   await fs.mkdir(getSourceMediaCacheDir(), { recursive: true });
 
@@ -670,7 +673,24 @@ export async function storeUploadedSourceMedia(input: {
         callback(new Error("Файл слишком большой."));
         return;
       }
+      if (input.requireMp4Signature && !headerChecked) {
+        header = Buffer.concat([header, buffer.subarray(0, Math.max(0, 16 - header.length))]);
+        if (header.length >= 8) {
+          headerChecked = true;
+          if (header.toString("ascii", 4, 8) !== "ftyp") {
+            callback(new Error("Загружать можно только готовый mp4 файл."));
+            return;
+          }
+        }
+      }
       callback(null, buffer);
+    },
+    flush(callback) {
+      if (input.requireMp4Signature && !headerChecked) {
+        callback(new Error("Загружать можно только готовый mp4 файл."));
+        return;
+      }
+      callback();
     }
   });
 

@@ -1,4 +1,4 @@
-import { requireAuth, requireChannelVisibility } from "../../../../lib/auth/guards";
+import { requireAuth, requireChannelOperate } from "../../../../lib/auth/guards";
 import { resolveStage3Execution } from "../../../../lib/stage3-execution";
 import { buildStage3JobEnvelope, buildStage3JobErrorBody } from "../../../../lib/stage3-job-http";
 import { enqueueAndScheduleStage3Job } from "../../../../lib/stage3-job-runtime";
@@ -27,9 +27,11 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const auth = await requireAuth(request);
-    if (body?.channelId?.trim()) {
-      await requireChannelVisibility(auth, body.channelId.trim());
+    const channelId = body?.channelId?.trim() ?? "";
+    if (!channelId) {
+      return Response.json({ error: "Передайте channelId в теле запроса." }, { status: 400 });
     }
+    await requireChannelOperate(auth, channelId);
     const sourceUrl = normalizeSupportedUrl(body?.sourceUrl?.trim() ?? "");
     if (!sourceUrl) {
       auditStage3RequestFailure({
@@ -63,6 +65,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const normalizedBody = {
       ...(body ?? {}),
+      channelId,
       sourceUrl,
       workspaceId: auth.workspace.id
     } satisfies Stage3PreviewRequestBody;

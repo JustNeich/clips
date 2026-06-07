@@ -8,7 +8,10 @@ import { resolveChannelPermissions } from "../../../lib/acl";
 import { getRestrictedChannelEditError } from "../../../lib/channel-edit-permissions";
 import { readManagedTemplate } from "../../../lib/managed-template-store";
 import { getChannelPublishIntegration, getChannelPublishSettings } from "../../../lib/publication-store";
-import { Stage2PromptConfig } from "../../../lib/stage2-pipeline";
+import {
+  DEFAULT_STAGE2_PROMPT_CONFIG,
+  Stage2PromptConfig
+} from "../../../lib/stage2-pipeline";
 import {
   Stage2ExamplesConfig,
   Stage2HardConstraints,
@@ -22,13 +25,15 @@ import {
   getWorkspaceStage2ExamplesCorpusJson,
   getWorkspaceStage2HardConstraints
 } from "../../../lib/team-store";
+import { listStage2SystemExamplesPresetPayloads } from "../../../lib/stage2-system-presets";
 import { resolveStage3Execution } from "../../../lib/stage3-execution";
 import { resolveWorkspaceCodexModelConfig } from "../../../lib/workspace-codex-models";
 import { getWorkspaceAnthropicStatus } from "../../../lib/workspace-anthropic";
 import { getWorkspaceOpenRouterStatus } from "../../../lib/workspace-openrouter";
 import {
   canInspectSensitiveArtifacts,
-  sanitizeChannelForRole
+  sanitizeChannelForRole,
+  sanitizePublishIntegrationForRole
 } from "../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
@@ -98,7 +103,10 @@ export async function GET(request: Request): Promise<Response> {
         return {
           ...visibleChannel,
           publishSettings: getChannelPublishSettings(channel.id),
-          publishIntegration: getChannelPublishIntegration(channel.id),
+          publishIntegration: sanitizePublishIntegrationForRole(
+            getChannelPublishIntegration(channel.id),
+            auth.membership.role
+          ),
           currentUserCanOperate: permissions.canOperate,
           currentUserCanEditSetup: permissions.canEditSetup,
           currentUserCanManageAccess: permissions.canManageAccess,
@@ -114,10 +122,14 @@ export async function GET(request: Request): Promise<Response> {
         workspaceStage2ExamplesCorpusJson: canInspectSensitive
           ? getWorkspaceStage2ExamplesCorpusJson(auth.workspace.id)
           : undefined,
+        workspaceStage2SystemExamplesPresets: canInspectSensitive
+          ? listStage2SystemExamplesPresetPayloads()
+          : undefined,
         workspaceStage2HardConstraints: canInspectSensitive
           ? getWorkspaceStage2HardConstraints(auth.workspace.id)
           : undefined,
         workspaceStage2PromptConfig: canInspectSensitive ? auth.workspace.stage2PromptConfig : undefined,
+        factoryStage2PromptConfig: canInspectSensitive ? DEFAULT_STAGE2_PROMPT_CONFIG : undefined,
         workspaceCodexModelConfig: canInspectSensitive ? getWorkspaceCodexModelConfig(auth.workspace.id) : undefined,
         workspaceStage2CaptionProviderConfig: canInspectSensitive
           ? getWorkspaceStage2CaptionProviderConfig(auth.workspace.id)

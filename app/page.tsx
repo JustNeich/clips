@@ -63,10 +63,9 @@ import {
   WorkspaceAnthropicIntegrationRecord,
   WorkspaceOpenRouterIntegrationRecord
 } from "./components/types";
-import type {
-  Stage2ProgressSnapshot,
-  Stage2PromptConfig
-} from "../lib/stage2-pipeline";
+import type { Stage2ProgressSnapshot } from "../lib/stage2-progress-client";
+import type { Stage2PromptConfig } from "../lib/stage2-prompt-client";
+import type { Stage2SystemExamplesPresetPayload } from "../lib/stage2-system-presets-client";
 import {
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
   normalizeStage2HardConstraints,
@@ -484,10 +483,15 @@ export default function HomePage() {
   const [autoRunStage2AfterSource, setAutoRunStage2AfterSource] = useState(true);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [workspaceStage2ExamplesCorpusJson, setWorkspaceStage2ExamplesCorpusJson] = useState("[]");
+  const [workspaceStage2SystemExamplesPresets, setWorkspaceStage2SystemExamplesPresets] =
+    useState<Stage2SystemExamplesPresetPayload[]>([]);
   const [workspaceStage2HardConstraints, setWorkspaceStage2HardConstraints] = useState<Stage2HardConstraints>(
     DEFAULT_STAGE2_HARD_CONSTRAINTS
   );
   const [workspaceStage2PromptConfig, setWorkspaceStage2PromptConfig] = useState<Stage2PromptConfig>(
+    SAFE_EMPTY_STAGE2_PROMPT_CONFIG
+  );
+  const [factoryStage2PromptConfig, setFactoryStage2PromptConfig] = useState<Stage2PromptConfig>(
     SAFE_EMPTY_STAGE2_PROMPT_CONFIG
   );
   const [workspaceStage2CaptionProviderConfig, setWorkspaceStage2CaptionProviderConfig] =
@@ -671,7 +675,7 @@ export default function HomePage() {
   const codexLoggedIn = Boolean(codexAuth?.loggedIn);
   const codexRunning = codexAuth?.deviceAuth.status === "running";
   const currentRole = authState?.membership.role ?? null;
-  const canInspectSensitiveArtifacts = currentRole !== null && currentRole !== "redactor_limited";
+  const canInspectSensitiveArtifacts = currentRole === "owner" || currentRole === "manager";
   const canManageCodex = Boolean(authState?.effectivePermissions.canManageCodex);
   const canCreateChannel = Boolean(authState?.effectivePermissions.canCreateChannel);
   const fetchSourceAvailable = runtimeCapabilities?.features.fetchSource ?? true;
@@ -1401,8 +1405,10 @@ export default function HomePage() {
     const body = (await response.json()) as {
       channels: Channel[];
       workspaceStage2ExamplesCorpusJson?: string;
+      workspaceStage2SystemExamplesPresets?: Stage2SystemExamplesPresetPayload[];
       workspaceStage2HardConstraints?: Stage2HardConstraints;
       workspaceStage2PromptConfig?: Stage2PromptConfig;
+      factoryStage2PromptConfig?: Stage2PromptConfig;
       workspaceStage2CaptionProviderConfig?: Stage2CaptionProviderConfig;
       workspaceStage3ExecutionTarget?: Stage3ExecutionTarget;
       workspaceResolvedStage3ExecutionTarget?: Stage3ExecutionTarget;
@@ -1417,10 +1423,12 @@ export default function HomePage() {
       body.workspaceCodexModelConfig
     );
     setWorkspaceStage2ExamplesCorpusJson(body.workspaceStage2ExamplesCorpusJson ?? "[]");
+    setWorkspaceStage2SystemExamplesPresets(body.workspaceStage2SystemExamplesPresets ?? []);
     setWorkspaceStage2HardConstraints(
       normalizeStage2HardConstraints(body.workspaceStage2HardConstraints)
     );
     setWorkspaceStage2PromptConfig(normalizeStage2PromptConfigForShell(body.workspaceStage2PromptConfig));
+    setFactoryStage2PromptConfig(normalizeStage2PromptConfigForShell(body.factoryStage2PromptConfig));
     setWorkspaceStage2CaptionProviderConfig(
       normalizeStage2CaptionProviderConfig(body.workspaceStage2CaptionProviderConfig)
     );
@@ -6295,7 +6303,7 @@ export default function HomePage() {
         body: JSON.stringify({
           name: input.name,
           username: input.username,
-          stage2HardConstraints: input.stage2HardConstraints
+          ...(canInspectSensitiveArtifacts ? { stage2HardConstraints: input.stage2HardConstraints } : {})
         })
       });
       if (!response.ok) {
@@ -7331,6 +7339,7 @@ export default function HomePage() {
         <Step1PasteLink
           draftUrl={draftUrl}
           activeUrl={activeChat?.url ?? null}
+          activeChannelId={activeChannelId}
           sourceJob={selectedSourceJobDetail ?? (selectedSourceJobSummary ? { ...selectedSourceJobSummary, result: null } : null)}
           sourceJobElapsedMs={sourceJobElapsedMs}
           commentsFallbackActive={stage1FetchState.ready && !stage1FetchState.commentsAvailable}
@@ -7492,7 +7501,7 @@ export default function HomePage() {
           publishAfterRenderDisabledReason={stage3PublishAfterRenderDisabledReason}
           renderState={stage3RenderState}
           canExportJson={canInspectSensitiveArtifacts}
-          canOpenTemplateCustomization={Boolean(activeChannel?.currentUserCanEditSetup)}
+          canOpenTemplateCustomization={Boolean(activeChannel?.currentUserCanEditSetup && canInspectSensitiveArtifacts)}
           isOptimizing={busyAction === "stage3-optimize"}
           isUploadingBackground={busyAction === "background-upload"}
           isUploadingMusic={busyAction === "music-upload"}
@@ -7850,8 +7859,10 @@ export default function HomePage() {
           initialTab={channelManagerInitialTab}
           channels={channels}
           workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
+          workspaceStage2SystemExamplesPresets={workspaceStage2SystemExamplesPresets}
           workspaceStage2HardConstraints={workspaceStage2HardConstraints}
           workspaceStage2PromptConfig={workspaceStage2PromptConfig}
+          factoryStage2PromptConfig={factoryStage2PromptConfig}
           workspaceStage2CaptionProviderConfig={workspaceStage2CaptionProviderConfig}
           workspaceAnthropicIntegration={workspaceAnthropicIntegration}
           workspaceOpenRouterIntegration={workspaceOpenRouterIntegration}

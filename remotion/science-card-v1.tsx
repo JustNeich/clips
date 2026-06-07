@@ -427,22 +427,47 @@ export function ScienceCardV1({
     mirrorEnabled: segmentTransform.mirrorEnabled,
     extraScale: 1.08
   });
-  const renderSnapshot = buildScienceCardRenderSnapshot({
-    templateId: resolvedTemplateId,
-    templateConfigOverride: templateConfig,
-    topText,
-    bottomText,
-    sourceOverlayText,
-    captionHighlights,
-    topFontScale,
-    bottomFontScale,
-    authorName,
-    authorHandle,
-    sourceVideoFileName,
-    backgroundAssetFileName,
-    avatarAssetFileName,
-    textFit
-  });
+  // The snapshot runs the full text-fit solver + JSON serialization and depends
+  // ONLY on frame-invariant props (templateConfig is a stable prop/registry ref,
+  // see above). Without memoization it re-ran on every one of the 180-720+ frames
+  // Remotion renders (because the component re-executes per useCurrentFrame()),
+  // multiplying the solver cost by the frame count on the critical path. Memoize
+  // so it computes once per render.
+  const renderSnapshot = React.useMemo(
+    () =>
+      buildScienceCardRenderSnapshot({
+        templateId: resolvedTemplateId,
+        templateConfigOverride: templateConfig,
+        topText,
+        bottomText,
+        sourceOverlayText,
+        captionHighlights,
+        topFontScale,
+        bottomFontScale,
+        authorName,
+        authorHandle,
+        sourceVideoFileName,
+        backgroundAssetFileName,
+        avatarAssetFileName,
+        textFit
+      }),
+    [
+      resolvedTemplateId,
+      templateConfig,
+      topText,
+      bottomText,
+      sourceOverlayText,
+      captionHighlights,
+      topFontScale,
+      bottomFontScale,
+      authorName,
+      authorHandle,
+      sourceVideoFileName,
+      backgroundAssetFileName,
+      avatarAssetFileName,
+      textFit
+    ]
+  );
   const backgroundMode = resolveStage3BackgroundMode(resolvedTemplateId, {
     hasCustomBackground: hasCustomBackground,
     hasSourceVideo: sourceBlurBackgroundDisabled ? false : Boolean(sourceUrl)

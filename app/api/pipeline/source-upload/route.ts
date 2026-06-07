@@ -48,11 +48,24 @@ function sanitizeUploadedFileName(fileName: string): string {
 
 function isAcceptedUploadedVideoMime(mimeType: string | null | undefined): boolean {
   const normalized = mimeType?.trim().toLowerCase();
-  return (
-    !normalized ||
-    normalized === "application/octet-stream" ||
-    normalized.includes("mp4")
-  );
+  return normalized === "video/mp4" || normalized === "application/mp4";
+}
+
+function looksLikeMp4(bytes: Uint8Array): boolean {
+  if (bytes.byteLength < 12) {
+    return false;
+  }
+  const signature = new TextDecoder("ascii").decode(bytes.slice(4, 8));
+  return signature === "ftyp";
+}
+
+function parseContentLength(request: Request): number | null {
+  const raw = request.headers.get("content-length")?.trim();
+  if (!raw) {
+    return null;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function buildCompositeUploadFileName(fileNames: string[]): string {
@@ -181,7 +194,8 @@ export async function POST(request: Request): Promise<Response> {
       const invalidFile = parsed.files.find(
         (file) =>
           !file.name.toLowerCase().endsWith(".mp4") ||
-          !isAcceptedUploadedVideoMime(file.mimeType)
+          !isAcceptedUploadedVideoMime(file.mimeType) ||
+          !looksLikeMp4(file.bytes)
       );
       if (invalidFile) {
         return Response.json({ error: "Загружать можно только готовые mp4 файлы." }, { status: 400 });
@@ -248,6 +262,13 @@ export async function POST(request: Request): Promise<Response> {
     if (!request.body) {
       return Response.json({ error: "Тело запроса пустое." }, { status: 400 });
     }
+    const contentLength = parseContentLength(request);
+    if (contentLength !== null && contentLength > MAX_UPLOADED_SOURCE_BYTES) {
+      return Response.json(
+        { error: `Файл слишком большой. Максимум ${Math.round(MAX_UPLOADED_SOURCE_BYTES / (1024 * 1024))} MB.` },
+        { status: 413 }
+      );
+    }
 
     const fileName = sanitizeUploadedFileName(decodeHeaderFileName(fileNameHeader));
     if (!fileName.toLowerCase().endsWith(".mp4")) {
@@ -267,7 +288,8 @@ export async function POST(request: Request): Promise<Response> {
       fileName,
       title: path.parse(fileName).name,
       sourceStream: request.body,
-      maxBytes: MAX_UPLOADED_SOURCE_BYTES
+      maxBytes: MAX_UPLOADED_SOURCE_BYTES,
+      requireMp4Signature: true
     });
 
     return enqueueUploadedSourceJob({
@@ -295,6 +317,9 @@ export async function POST(request: Request): Promise<Response> {
     }
     if (message === "Файл пустой.") {
       return Response.json({ error: "Загруженный файл пустой." }, { status: 400 });
+    }
+    if (message === "Загружать можно только готовый mp4 файл.") {
+      return Response.json({ error: message }, { status: 400 });
     }
     return Response.json({ error: message }, { status: 500 });
   }

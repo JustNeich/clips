@@ -95,6 +95,12 @@ export type Stage3WorkerAuthContext = {
   tokenId: string;
 };
 
+export type Stage3WorkerPairingAuthContext = {
+  workspaceId: string;
+  userId: string;
+  tokenId: string;
+};
+
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -451,6 +457,46 @@ export function authenticateStage3WorkerSessionToken(token: string): Stage3Worke
     workspaceId: worker.workspaceId,
     userId: worker.userId,
     tokenId: String(row.token_id)
+  };
+}
+
+export function authenticateStage3WorkerPairingToken(token: string): Stage3WorkerPairingAuthContext | null {
+  const normalizedToken = token.trim();
+  if (!normalizedToken) {
+    return null;
+  }
+
+  const db = getDb();
+  const row =
+    (db
+      .prepare(
+        `SELECT id, workspace_id, user_id, expires_at, revoked_at
+           FROM stage3_worker_tokens
+          WHERE token_hash = ?
+            AND token_kind = 'pairing'
+          LIMIT 1`
+      )
+      .get(hashToken(normalizedToken)) as
+      | {
+          id: string;
+          workspace_id: string;
+          user_id: string;
+          expires_at: string;
+          revoked_at: string | null;
+        }
+      | undefined) ?? null;
+
+  if (!row || row.revoked_at) {
+    return null;
+  }
+  if (new Date(String(row.expires_at)).getTime() <= Date.now()) {
+    return null;
+  }
+
+  return {
+    workspaceId: String(row.workspace_id),
+    userId: String(row.user_id),
+    tokenId: String(row.id)
   };
 }
 

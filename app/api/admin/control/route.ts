@@ -1,0 +1,807 @@
+import { randomUUID } from "node:crypto";
+import { requireOwnerOrMcpMachineScope, requireSharedCodexAvailable } from "../../../../lib/auth/guards";
+import { appendFlowAuditEvent } from "../../../../lib/audit-log-store";
+import {
+  createChannel,
+  createOrGetChatBySource,
+  deleteChannelById,
+  getChannelById,
+  updateChannelById,
+  type Channel
+} from "../../../../lib/chat-history";
+import {
+  deleteChannelPublicationWithRemoteSync,
+  restoreCanceledChannelPublicationToQueue,
+  updateChannelPublicationFromEditor
+} from "../../../../lib/channel-publication-service";
+import { scheduleChannelPublicationProcessing } from "../../../../lib/channel-publication-runtime";
+import { isChannelPublishIntegrationReady } from "../../../../lib/channel-publish-state";
+import { getDb } from "../../../../lib/db/client";
+import {
+  toPublicationMutationErrorPayload
+} from "../../../../lib/publication-mutation-errors";
+import {
+  getChannelPublicationById,
+  getChannelPublishIntegration,
+  getChannelPublishSettings,
+  listChannelPublications
+} from "../../../../lib/publication-store";
+import { requireRuntimeTool } from "../../../../lib/runtime-capabilities";
+import { listManagedTemplateSummaries } from "../../../../lib/managed-template-store";
+import { ensureCodexLoggedIn } from "../../../../lib/codex-runner";
+import { buildStage2RunChannelSnapshot } from "../../../../lib/stage2-run-channel-snapshot";
+import { buildStage2RunRequestSnapshot } from "../../../../lib/stage2-run-request";
+import {
+  enqueueAndScheduleStage2Run,
+  scheduleStage2RunProcessing
+} from "../../../../lib/stage2-run-runtime";
+import {
+  findActiveStage2RunForChat,
+  type Stage2RunMode
+} from "../../../../lib/stage2-progress-store";
+import { getActiveSourceJobForChat } from "../../../../lib/source-job-runtime";
+import {
+  buildStage3WorkerCommands,
+  buildStage3WorkerDesktopDeepLink,
+  resolveStage3WorkerPublicOrigin
+} from "../../../../lib/stage3-worker-commands";
+import {
+  issueStage3WorkerPairingToken,
+  listStage3Workers
+} from "../../../../lib/stage3-worker-store";
+import {
+  getWorkspaceAnthropicIntegration,
+  getWorkspaceCodexIntegration,
+  getWorkspaceCodexModelConfig,
+  getWorkspaceOpenRouterIntegration,
+  getWorkspaceStage2CaptionProviderConfig,
+  getWorkspaceStage3ExecutionTarget,
+  listChannelAccess,
+  listWorkspaceMembers,
+  revokeChannelAccess,
+  setChannelAccess
+} from "../../../../lib/team-store";
+import {
+  isSupportedUrl,
+  normalizeSupportedUrl,
+  SUPPORTED_SOURCE_ERROR_MESSAGE
+} from "../../../../lib/ytdlp";
+import { runCopscopesDailyPool } from "../../../../lib/copscopes-daily-runner";
+import { getFlowObservabilityDetail, listFlowObservability } from "../../../../lib/flow-observability";
+import type { McpMachineCredentialScope } from "../../../../lib/mcp-machine-credential-store";
+
+export const runtime = "nodejs";
+
+type ControlBody = {
+  tool?: string;
+  input?: Record<string, unknown>;
+};
+
+type OwnerControlAuth = Awaited<ReturnType<typeof requireOwnerOrMcpMachineScope>>;
+
+const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
+  clips_owner_status: "integration:readiness",
+  clips_owner_get_integrations_readiness: "integration:readiness",
+  clips_owner_list_channels: "flow:read",
+  clips_owner_get_channel: "flow:read",
+  clips_owner_create_channel: "entity:write",
+  clips_owner_update_channel: "entity:write",
+  clips_owner_delete_channel: "entity:write",
+  clips_owner_list_templates: "flow:read",
+  clips_owner_list_members: "flow:read",
+  clips_owner_list_channel_access: "flow:read",
+  clips_owner_set_channel_access: "entity:write",
+  clips_owner_revoke_channel_access: "entity:write",
+  clips_owner_list_publications: "flow:read",
+  clips_owner_get_flow: "flow:read",
+  clips_owner_update_publication: "publication:write",
+  clips_owner_schedule_publication: "publication:write",
+  clips_owner_cancel_publication: "publication:delete",
+  clips_owner_list_stage3_workers: "worker:admin",
+  clips_owner_pair_stage3_worker: "worker:admin",
+  clips_owner_run_video_pipeline: "pipeline:run",
+  clips_owner_run_copscopes_daily_pool: "pipeline:run"
+};
+
+function resolveString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function resolveBoolean(value: unknown): boolean {
+  return value === true;
+}
+
+function resolveNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function resolveStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean);
+}
+
+function summarizeChannel(channel: Channel): Record<string, unknown> {
+  const integration = getChannelPublishIntegration(channel.id);
+  const settings = getChannelPublishSettings(channel.id);
+  return {
+    id: channel.id,
+    name: channel.name,
+    username: channel.username,
+    archivedAt: channel.archivedAt ?? null,
+    templateId: channel.templateId,
+    defaultClipDurationSec: channel.defaultClipDurationSec,
+    publishing: {
+      ready: isChannelPublishIntegrationReady(integration),
+      settings,
+      integration: integration
+        ? {
+            provider: integration.provider,
+            status: integration.status,
+            selectedYoutubeChannelId: integration.selectedYoutubeChannelId,
+            selectedYoutubeChannelTitle: integration.selectedYoutubeChannelTitle,
+            selectedYoutubeChannelCustomUrl: integration.selectedYoutubeChannelCustomUrl,
+            selectedGoogleAccountEmail: integration.selectedGoogleAccountEmail,
+            youtubeOAuthClientKey: integration.youtubeOAuthClientKey,
+            youtubeOAuthClientLabel: integration.youtubeOAuthClientLabel,
+            youtubeOAuthProjectNumber: integration.youtubeOAuthProjectNumber,
+            lastVerifiedAt: integration.lastVerifiedAt,
+            lastError: integration.lastError
+          }
+        : null
+    }
+  };
+}
+
+async function resolveChannel(workspaceId: string, input: Record<string, unknown>): Promise<Channel | null> {
+  const channelId = resolveString(input.channelId);
+  if (channelId) {
+    const channel = await getChannelById(channelId);
+    return channel && channel.workspaceId === workspaceId ? channel : null;
+  }
+  const username = (resolveString(input.channelUsername) ?? resolveString(input.username))?.replace(/^@+/, "").toLowerCase();
+  if (!username) {
+    return null;
+  }
+  const row = getDb()
+    .prepare(
+      `SELECT id
+         FROM channels
+        WHERE workspace_id = ?
+          AND archived_at IS NULL
+          AND lower(username) = ?
+        ORDER BY updated_at DESC
+        LIMIT 1`
+    )
+    .get(workspaceId, username) as { id?: string } | undefined;
+  if (!row?.id) {
+    return null;
+  }
+  return getChannelById(String(row.id));
+}
+
+async function requireChannel(workspaceId: string, input: Record<string, unknown>): Promise<Channel> {
+  const channel = await resolveChannel(workspaceId, input);
+  if (!channel) {
+    throw new Response(JSON.stringify({ error: "Channel not found." }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+  return channel;
+}
+
+function requireDestructiveIntent(input: Record<string, unknown>, entityId: string, actionLabel: string): string {
+  const intent = resolveString(input.intent);
+  if (!intent || intent.length < 12 || !intent.includes(entityId)) {
+    throw new Response(
+      JSON.stringify({
+        error: `${actionLabel} requires an explicit intent string that includes the exact entity id ${entityId}.`
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+  return intent;
+}
+
+function auditControl(input: {
+  auth: OwnerControlAuth;
+  action: string;
+  entityType?: string;
+  entityId?: string | null;
+  channelId?: string | null;
+  chatId?: string | null;
+  status: string;
+  payload?: Record<string, unknown>;
+  severity?: "info" | "warn" | "error";
+}): void {
+  appendFlowAuditEvent({
+    workspaceId: input.auth.workspace.id,
+    userId: input.auth.user.id,
+    action: input.action,
+    entityType: input.entityType ?? "mcp_owner_control",
+    entityId: input.entityId ?? input.channelId ?? "owner-control",
+    channelId: input.channelId ?? null,
+    chatId: input.chatId ?? null,
+    stage: "mcp",
+    status: input.status,
+    severity: input.severity ?? "info",
+    payload: {
+      actor: input.auth.actor,
+      ...input.payload
+    }
+  });
+}
+
+async function listChannels(workspaceId: string, includeArchived: boolean): Promise<Channel[]> {
+  const rows = getDb()
+    .prepare(
+      `SELECT id
+         FROM channels
+        WHERE workspace_id = ?
+          ${includeArchived ? "" : "AND archived_at IS NULL"}
+        ORDER BY updated_at DESC`
+    )
+    .all(workspaceId) as Array<{ id: string }>;
+  const channels = await Promise.all(rows.map((row) => getChannelById(row.id)));
+  return channels.filter((channel): channel is Channel => Boolean(channel));
+}
+
+function summarizeIntegrations(workspaceId: string): Record<string, unknown> {
+  const codex = getWorkspaceCodexIntegration(workspaceId);
+  const anthropic = getWorkspaceAnthropicIntegration(workspaceId);
+  const openrouter = getWorkspaceOpenRouterIntegration(workspaceId);
+  return {
+    stage2CaptionProvider: getWorkspaceStage2CaptionProviderConfig(workspaceId),
+    stage3ExecutionTarget: getWorkspaceStage3ExecutionTarget(workspaceId),
+    codex: codex
+      ? {
+          status: codex.status,
+          ready: codex.status === "connected" && Boolean(codex.codexHomePath),
+          codexHomePath: codex.codexHomePath,
+          connectedAt: codex.connectedAt,
+          updatedAt: codex.updatedAt,
+          loginStatusText: codex.loginStatusText,
+          deviceAuthStatus: codex.deviceAuthStatus,
+          modelConfig: getWorkspaceCodexModelConfig(workspaceId)
+        }
+      : { status: "disconnected", ready: false },
+    anthropic: anthropic
+      ? {
+          status: anthropic.status,
+          ready: anthropic.status === "connected",
+          apiKeyHint: anthropic.apiKeyHint,
+          connectedAt: anthropic.connectedAt,
+          updatedAt: anthropic.updatedAt,
+          lastError: anthropic.lastError
+        }
+      : { status: "disconnected", ready: false },
+    openrouter: openrouter
+      ? {
+          status: openrouter.status,
+          ready: openrouter.status === "connected",
+          apiKeyHint: openrouter.apiKeyHint,
+          connectedAt: openrouter.connectedAt,
+          updatedAt: openrouter.updatedAt,
+          lastError: openrouter.lastError
+        }
+      : { status: "disconnected", ready: false }
+  };
+}
+
+function listWorkspacePublicationCounts(workspaceId: string): Record<string, number> {
+  const rows = getDb()
+    .prepare(
+      `SELECT status, COUNT(*) AS count
+         FROM channel_publications
+        WHERE workspace_id = ?
+        GROUP BY status`
+    )
+    .all(workspaceId) as Array<{ status: string; count: number }>;
+  return Object.fromEntries(rows.map((row) => [String(row.status), Number(row.count)]));
+}
+
+async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: string, input: Record<string, unknown>) {
+  if (tool === "clips_owner_status") {
+    const channels = await listChannels(auth.workspace.id, false);
+    return {
+      workspace: auth.workspace,
+      actor: auth.actor,
+      integrations: summarizeIntegrations(auth.workspace.id),
+      counts: {
+        channels: channels.length,
+        publications: listWorkspacePublicationCounts(auth.workspace.id)
+      },
+      workers: listStage3Workers({ workspaceId: auth.workspace.id }),
+      recentFlows: listFlowObservability({ workspaceId: auth.workspace.id, filters: { limit: 10 } }).flows
+    };
+  }
+
+  if (tool === "clips_owner_get_integrations_readiness") {
+    return summarizeIntegrations(auth.workspace.id);
+  }
+
+  if (tool === "clips_owner_list_channels") {
+    const channels = await listChannels(auth.workspace.id, resolveBoolean(input.includeArchived));
+    return { channels: channels.map(summarizeChannel) };
+  }
+
+  if (tool === "clips_owner_get_channel") {
+    const channel = await requireChannel(auth.workspace.id, input);
+    return { channel: summarizeChannel(channel) };
+  }
+
+  if (tool === "clips_owner_create_channel") {
+    const channel = await createChannel({
+      workspaceId: auth.workspace.id,
+      creatorUserId: auth.user.id,
+      name: resolveString(input.name),
+      username: resolveString(input.username),
+      systemPrompt: resolveString(input.systemPrompt),
+      descriptionPrompt: resolveString(input.descriptionPrompt),
+      templateId: resolveString(input.templateId),
+      defaultClipDurationSec: resolveNumber(input.defaultClipDurationSec)
+    });
+    auditControl({
+      auth,
+      action: "owner_control.channel.created",
+      entityType: "channel",
+      entityId: channel.id,
+      channelId: channel.id,
+      status: "created",
+      payload: { username: channel.username }
+    });
+    return { channel: summarizeChannel(channel) };
+  }
+
+  if (tool === "clips_owner_update_channel") {
+    const channel = await requireChannel(auth.workspace.id, input);
+    const updated = await updateChannelById(channel.id, {
+      name: resolveString(input.name),
+      username: resolveString(input.username),
+      systemPrompt: resolveString(input.systemPrompt),
+      descriptionPrompt: resolveString(input.descriptionPrompt),
+      examplesJson: resolveString(input.examplesJson),
+      templateId: resolveString(input.templateId),
+      defaultClipDurationSec: resolveNumber(input.defaultClipDurationSec)
+    });
+    auditControl({
+      auth,
+      action: "owner_control.channel.updated",
+      entityType: "channel",
+      entityId: updated.id,
+      channelId: updated.id,
+      status: "succeeded",
+      payload: { username: updated.username }
+    });
+    return { channel: summarizeChannel(updated) };
+  }
+
+  if (tool === "clips_owner_delete_channel") {
+    const channel = await requireChannel(auth.workspace.id, input);
+    const intent = requireDestructiveIntent(input, channel.id, "Delete channel");
+    const deleted = await deleteChannelById(channel.id);
+    auditControl({
+      auth,
+      action: "owner_control.channel.deleted",
+      entityType: "channel",
+      entityId: channel.id,
+      channelId: channel.id,
+      status: deleted.deleted ? "deleted" : "not_found",
+      payload: {
+        intent,
+        removedAssets: deleted.removedAssets.length,
+        removedChats: deleted.removedChats.length
+      }
+    });
+    return {
+      deleted: deleted.deleted,
+      removedAssets: deleted.removedAssets.length,
+      removedChats: deleted.removedChats.length
+    };
+  }
+
+  if (tool === "clips_owner_list_templates") {
+    return { templates: await listManagedTemplateSummaries(auth.workspace.id) };
+  }
+
+  if (tool === "clips_owner_list_members") {
+    return { members: listWorkspaceMembers(auth.workspace.id) };
+  }
+
+  if (tool === "clips_owner_list_channel_access") {
+    const channel = await requireChannel(auth.workspace.id, input);
+    return { channel: summarizeChannel(channel), access: listChannelAccess(channel.id) };
+  }
+
+  if (tool === "clips_owner_set_channel_access") {
+    const channel = await requireChannel(auth.workspace.id, input);
+    const userId = resolveString(input.userId);
+    if (!userId) {
+      throw new Response(JSON.stringify({ error: "userId is required." }), { status: 400 });
+    }
+    const access = setChannelAccess({
+      channelId: channel.id,
+      userId,
+      grantedByUserId: auth.user.id
+    });
+    auditControl({
+      auth,
+      action: "owner_control.channel_access.set",
+      entityType: "channel_access",
+      entityId: `${channel.id}:${userId}`,
+      channelId: channel.id,
+      status: "succeeded",
+      payload: { userId, accessRole: access.accessRole }
+    });
+    return { channel: summarizeChannel(channel), access };
+  }
+
+  if (tool === "clips_owner_revoke_channel_access") {
+    const channel = await requireChannel(auth.workspace.id, input);
+    const userId = resolveString(input.userId);
+    if (!userId) {
+      throw new Response(JSON.stringify({ error: "userId is required." }), { status: 400 });
+    }
+    const intent = requireDestructiveIntent(input, `${channel.id}:${userId}`, "Revoke channel access");
+    revokeChannelAccess(channel.id, userId);
+    auditControl({
+      auth,
+      action: "owner_control.channel_access.revoked",
+      entityType: "channel_access",
+      entityId: `${channel.id}:${userId}`,
+      channelId: channel.id,
+      status: "revoked",
+      payload: { userId, intent }
+    });
+    return { channel: summarizeChannel(channel), revokedUserId: userId };
+  }
+
+  if (tool === "clips_owner_list_publications") {
+    const channel = await resolveChannel(auth.workspace.id, input);
+    const status = resolveString(input.status);
+    const limit = Math.max(1, Math.min(200, resolveNumber(input.limit) ?? 50));
+    const channels = channel ? [channel] : await listChannels(auth.workspace.id, false);
+    const publications = channels
+      .flatMap((item) => listChannelPublications(item.id))
+      .filter((publication) => !status || publication.status === status)
+      .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+      .slice(0, limit);
+    return {
+      channel: channel ? summarizeChannel(channel) : null,
+      publications
+    };
+  }
+
+  if (tool === "clips_owner_get_flow") {
+    const chatId = resolveString(input.chatId);
+    if (!chatId) {
+      throw new Response(JSON.stringify({ error: "chatId is required." }), { status: 400 });
+    }
+    return getFlowObservabilityDetail({
+      workspace: auth.workspace,
+      userId: auth.user.id,
+      chatId,
+      selectedRunId: resolveString(input.selectedRunId)
+    });
+  }
+
+  if (tool === "clips_owner_update_publication" || tool === "clips_owner_schedule_publication") {
+    const publicationId = resolveString(input.publicationId);
+    if (!publicationId) {
+      throw new Response(JSON.stringify({ error: "publicationId is required." }), { status: 400 });
+    }
+    const publication = getChannelPublicationById(publicationId);
+    if (!publication || publication.workspaceId !== auth.workspace.id) {
+      throw new Response(JSON.stringify({ error: "Publication not found." }), { status: 404 });
+    }
+    const restored = publication.status === "canceled" && tool === "clips_owner_schedule_publication"
+      ? restoreCanceledChannelPublicationToQueue(publication.id, {
+          remoteDeleteConfirmed: true,
+          reason: "clips_owner_schedule_publication"
+        })
+      : publication;
+    const scheduledAtLocal = resolveString(input.scheduledAtLocal);
+    const slotDate = resolveString(input.slotDate);
+    const slotIndex = resolveNumber(input.slotIndex);
+    const patch = {
+      title: resolveString(input.title),
+      description: resolveString(input.description),
+      tags: resolveStringArray(input.tags),
+      notifySubscribers: typeof input.notifySubscribers === "boolean" ? resolveBoolean(input.notifySubscribers) : undefined,
+      ...(scheduledAtLocal
+        ? {
+            scheduleMode: "custom" as const,
+            scheduledAtLocal
+          }
+        : slotDate && typeof slotIndex === "number"
+          ? {
+              scheduleMode: "slot" as const,
+              slotDate,
+              slotIndex
+            }
+          : {})
+    };
+    const updated = await updateChannelPublicationFromEditor({
+      publicationId: restored.id,
+      patch
+    });
+    scheduleChannelPublicationProcessing();
+    auditControl({
+      auth,
+      action: "owner_control.publication.updated",
+      entityType: "publication",
+      entityId: updated.id,
+      channelId: updated.channelId,
+      chatId: updated.chatId,
+      status: "succeeded",
+      payload: {
+        tool,
+        restoredFromCanceled: publication.status === "canceled" && restored.id === publication.id,
+        scheduledAt: updated.scheduledAt,
+        scheduleMode: updated.scheduleMode
+      }
+    });
+    return { publication: updated };
+  }
+
+  if (tool === "clips_owner_cancel_publication") {
+    const publicationId = resolveString(input.publicationId);
+    if (!publicationId) {
+      throw new Response(JSON.stringify({ error: "publicationId is required." }), { status: 400 });
+    }
+    const publication = getChannelPublicationById(publicationId);
+    if (!publication || publication.workspaceId !== auth.workspace.id) {
+      throw new Response(JSON.stringify({ error: "Publication not found." }), { status: 404 });
+    }
+    const intent = requireDestructiveIntent(input, publication.id, "Cancel/delete publication");
+    const allowPublished = resolveBoolean(input.allowPublished);
+    if (allowPublished && !intent.toLowerCase().includes("published")) {
+      throw new Response(
+        JSON.stringify({ error: "Deleting a published YouTube video requires intent to include the word published." }),
+        { status: 400 }
+      );
+    }
+    const canceled = await deleteChannelPublicationWithRemoteSync(publication.id, {
+      userId: auth.user.id,
+      allowPublished
+    });
+    auditControl({
+      auth,
+      action: "owner_control.publication.canceled",
+      entityType: "publication",
+      entityId: canceled.id,
+      channelId: canceled.channelId,
+      chatId: canceled.chatId,
+      status: "succeeded",
+      payload: {
+        allowPublished,
+        intent,
+        youtubeVideoUrl: canceled.youtubeVideoUrl
+      }
+    });
+    return { publication: canceled };
+  }
+
+  if (tool === "clips_owner_list_stage3_workers") {
+    return { workers: listStage3Workers({ workspaceId: auth.workspace.id, userId: resolveString(input.userId) }) };
+  }
+
+  if (tool === "clips_owner_pair_stage3_worker") {
+    const issued = issueStage3WorkerPairingToken({
+      workspaceId: auth.workspace.id,
+      userId: auth.user.id
+    });
+    const origin = resolveStage3WorkerPublicOrigin(request);
+    const label = resolveString(input.label) ?? `${auth.user.displayName} ${auth.workspace.name}`.trim();
+    auditControl({
+      auth,
+      action: "owner_control.stage3_worker_pairing.created",
+      entityType: "stage3_worker_pairing",
+      entityId: issued.expiresAt,
+      status: "created",
+      payload: {
+        expiresAt: issued.expiresAt,
+        label
+      }
+    });
+    return {
+      pairingToken: issued.token,
+      expiresAt: issued.expiresAt,
+      serverOrigin: origin,
+      suggestedLabel: label,
+      desktopDeepLink: buildStage3WorkerDesktopDeepLink({
+        origin,
+        pairingToken: issued.token,
+        label
+      }),
+      commands: buildStage3WorkerCommands({
+        origin,
+        pairingToken: issued.token
+      })
+    };
+  }
+
+  if (tool === "clips_owner_run_copscopes_daily_pool") {
+    return runOwnerDailyPool(auth, input);
+  }
+
+  if (tool === "clips_owner_run_video_pipeline") {
+    const sourceUrl = resolveString(input.sourceUrl);
+    if (!sourceUrl) {
+      return runOwnerDailyPool(auth, input);
+    }
+    const channel = await requireChannel(auth.workspace.id, input);
+    const normalizedUrl = normalizeSupportedUrl(sourceUrl);
+    if (!isSupportedUrl(normalizedUrl)) {
+      throw new Response(JSON.stringify({ error: SUPPORTED_SOURCE_ERROR_MESSAGE }), { status: 400 });
+    }
+    const dryRun = resolveBoolean(input.dryRun);
+    if (dryRun) {
+      return {
+        dryRun: true,
+        channel: summarizeChannel(channel),
+        sourceUrl: normalizedUrl,
+        planned: ["create_or_get_chat", "enqueue_stage2_run"],
+        note: "Stage 3 render/publication requires a selected Stage 2 option unless using a channel-specific daily pool runner."
+      };
+    }
+    await Promise.all([requireRuntimeTool("ffmpeg"), requireRuntimeTool("ffprobe"), requireRuntimeTool("codex")]);
+    const integration = requireSharedCodexAvailable(auth.workspace.id);
+    await ensureCodexLoggedIn(integration.codexHomePath as string);
+    const chat = await createOrGetChatBySource({
+      rawUrl: normalizedUrl,
+      channelIdRaw: channel.id,
+      title: resolveString(input.title),
+      eventText: resolveString(input.eventText)
+    });
+    const activeSourceJob = getActiveSourceJobForChat(chat.id, auth.workspace.id);
+    if (activeSourceJob) {
+      throw new Response(JSON.stringify({ error: "source_job_already_active", job: activeSourceJob }), { status: 409 });
+    }
+    const activeStage2Run = findActiveStage2RunForChat(chat.id, auth.workspace.id);
+    if (activeStage2Run) {
+      throw new Response(JSON.stringify({ error: "stage2_run_already_active", run: activeStage2Run }), { status: 409 });
+    }
+    const mode: Stage2RunMode = resolveString(input.mode) === "auto" ? "auto" : "manual";
+    const run = enqueueAndScheduleStage2Run({
+      workspaceId: auth.workspace.id,
+      creatorUserId: auth.user.id,
+      chatId: chat.id,
+      request: buildStage2RunRequestSnapshot({
+        sourceUrl: normalizedUrl,
+        userInstruction: resolveString(input.userInstruction) ?? null,
+        mode,
+        baseRunId: null,
+        debugMode: "summary",
+        channel: buildStage2RunChannelSnapshot(channel, { workspaceId: auth.workspace.id })
+      })
+    });
+    scheduleStage2RunProcessing();
+    auditControl({
+      auth,
+      action: "owner_control.video_pipeline.stage2_queued",
+      entityType: "stage2_run",
+      entityId: run.runId,
+      channelId: channel.id,
+      chatId: chat.id,
+      status: "queued",
+      payload: {
+        sourceUrl: normalizedUrl,
+        mode
+      }
+    });
+    return {
+      channel: summarizeChannel(channel),
+      chat,
+      run,
+      nextStep: "Wait for Stage 2 completion, select/confirm an option, then enqueue Stage 3 render with publishAfterRender=true."
+    };
+  }
+
+  throw new Response(JSON.stringify({ error: `Unknown owner control tool: ${tool}` }), { status: 400 });
+}
+
+async function runOwnerDailyPool(auth: OwnerControlAuth, input: Record<string, unknown>) {
+  const channel = await requireChannel(auth.workspace.id, input);
+  const runAsync = resolveBoolean(input.async) || resolveBoolean(input.background);
+  const dryRun = resolveBoolean(input.dryRun);
+  const categorySlug = resolveString(input.categorySlug);
+  const limit = resolveNumber(input.limit);
+  const attemptBudget = resolveNumber(input.attemptBudget);
+  if (runAsync && !dryRun) {
+    const runId = randomUUID().replace(/-/g, "");
+    auditControl({
+      auth,
+      action: "owner_control.daily_pool.accepted",
+      entityType: "copscopes_daily_run",
+      entityId: runId,
+      channelId: channel.id,
+      status: "queued",
+      payload: {
+        categorySlug: categorySlug ?? null,
+        limit: limit ?? null,
+        attemptBudget: attemptBudget ?? null
+      }
+    });
+    void runCopscopesDailyPool({
+      workspaceId: auth.workspace.id,
+      channelId: channel.id,
+      userId: auth.user.id,
+      runId,
+      categorySlug,
+      limit,
+      attemptBudget,
+      dryRun: false
+    }).catch((error) => {
+      appendFlowAuditEvent({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        action: "owner_control.daily_pool.failed",
+        entityType: "copscopes_daily_run",
+        entityId: runId,
+        channelId: channel.id,
+        stage: "mcp",
+        status: "failed",
+        severity: "error",
+        payload: { error: error instanceof Error ? error.message : String(error) }
+      });
+    });
+    return { accepted: true, async: true, runId, channel: summarizeChannel(channel) };
+  }
+  const result = await runCopscopesDailyPool({
+    workspaceId: auth.workspace.id,
+    channelId: channel.id,
+    userId: auth.user.id,
+    categorySlug,
+    limit,
+    attemptBudget,
+    dryRun
+  });
+  auditControl({
+    auth,
+    action: "owner_control.daily_pool.succeeded",
+    entityType: "copscopes_daily_run",
+    entityId: result.runId,
+    channelId: channel.id,
+    status: "succeeded",
+    payload: {
+      dryRun,
+      queuedCount: result.queuedCount,
+      reviewedCount: result.reviewedCount,
+      failedCount: result.failedCount
+    }
+  });
+  return { channel: summarizeChannel(channel), ...result };
+}
+
+export async function POST(request: Request): Promise<Response> {
+  try {
+    const body = (await request.json().catch(() => null)) as ControlBody | null;
+    const tool = body?.tool?.trim();
+    const input = body?.input && typeof body.input === "object" ? body.input : {};
+    if (!tool) {
+      return Response.json({ error: "tool is required." }, { status: 400 });
+    }
+    const requiredScope = TOOL_SCOPES[tool];
+    if (!requiredScope) {
+      return Response.json({ error: `Unknown owner control tool: ${tool}` }, { status: 400 });
+    }
+    const auth = await requireOwnerOrMcpMachineScope(request, requiredScope);
+    const result = await handleOwnerTool(auth, request, tool, input);
+    return Response.json(result, { status: tool === "clips_owner_run_video_pipeline" ? 202 : 200 });
+  } catch (error) {
+    if (error instanceof Response) {
+      return error;
+    }
+    const publicationError = toPublicationMutationErrorPayload(error, "Owner control action failed.");
+    if (publicationError.body.code !== "UNKNOWN") {
+      return Response.json(publicationError.body, { status: publicationError.status });
+    }
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Owner control action failed." },
+      { status: 500 }
+    );
+  }
+}

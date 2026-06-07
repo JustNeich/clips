@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 export type Stage3VariationSeed = string;
 export type Stage3VariationMode = "off" | "encode" | "hybrid";
-export type Stage3VariationX264Preset = "slow" | "medium";
+export type Stage3VariationX264Preset = "medium" | "fast";
 
 export type Stage3VariationSignalProfile = {
   enabled: boolean;
@@ -158,7 +158,10 @@ export function createStage3VariationProfile(input?: {
           codec: "h264",
           pixelFormat: "yuv420p",
           crf: readSeedChoice(seed, "encode:crf", [17, 18, 19] as const),
-          x264Preset: readSeedChoice(seed, "encode:preset", ["slow", "medium"] as const),
+          // 'slow' removed: it was chosen ~50% of the time and runs 2-4x slower
+          // than 'medium' on software x264 for marginal gain at short-clip
+          // bitrates, widening the render-time distribution toward the timeout.
+          x264Preset: readSeedChoice(seed, "encode:preset", ["medium", "fast"] as const),
           keyintFrames,
           keyintMinFrames: Math.min(keyintFrames, clamp(readSeedInt(seed, "encode:keyint-min", 58, 62), 58, 62))
         };

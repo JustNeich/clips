@@ -398,6 +398,24 @@ CREATE TABLE IF NOT EXISTS mcp_access_tokens (
   FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS mcp_machine_credentials (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  owner_user_id TEXT NOT NULL,
+  machine_id TEXT NOT NULL,
+  secret_hash TEXT NOT NULL UNIQUE,
+  secret_hint TEXT NOT NULL,
+  scopes_json TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  rotates_at TEXT,
+  revoked_at TEXT,
+  last_used_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS copscopes_source_categories (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,

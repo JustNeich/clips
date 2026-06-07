@@ -6,6 +6,7 @@ const PUBLIC_PATHS = new Set([
   "/setup/bootstrap-owner",
   "/accept-invite"
 ]);
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 function isApiPublic(pathname: string): boolean {
   return (
@@ -26,8 +27,32 @@ function canUseBearerForApi(pathname: string, request: NextRequest): boolean {
     hasBearer &&
     (pathname.startsWith("/api/admin/flows") ||
       pathname === "/api/admin/audit-events" ||
+      pathname === "/api/admin/control" ||
       pathname === "/api/admin/control/copscopes")
   );
+}
+
+function isSameOriginBrowserMutation(request: NextRequest): boolean {
+  if (!UNSAFE_METHODS.has(request.method.toUpperCase())) {
+    return true;
+  }
+
+  const expectedOrigin = request.nextUrl.origin;
+  const origin = request.headers.get("origin");
+  if (origin) {
+    return origin === expectedOrigin;
+  }
+
+  const referer = request.headers.get("referer");
+  if (referer) {
+    try {
+      return new URL(referer).origin === expectedOrigin;
+    } catch {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 export function middleware(request: NextRequest): NextResponse {
@@ -39,6 +64,9 @@ export function middleware(request: NextRequest): NextResponse {
     pathname.startsWith("/stage3-worker/") ||
     pathname.startsWith("/api/")
   ) {
+    if (pathname.startsWith("/api/") && !isSameOriginBrowserMutation(request)) {
+      return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
+    }
     if (
       pathname.startsWith("/api/") &&
       !isApiPublic(pathname) &&

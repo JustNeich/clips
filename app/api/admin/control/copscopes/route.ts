@@ -620,7 +620,10 @@ export async function POST(request: Request): Promise<Response> {
         }
       });
       const restored = publication.status === "canceled"
-        ? restoreCanceledChannelPublicationToQueue(publication.id)
+        ? restoreCanceledChannelPublicationToQueue(publication.id, {
+            remoteDeleteConfirmed: true,
+            reason: "copscopes_owner_control_schedule"
+          })
         : publication;
       let scheduled;
       try {

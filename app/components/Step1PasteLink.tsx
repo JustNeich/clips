@@ -8,6 +8,7 @@ import { getUploadedSourceDisplayName, isUploadedSourceUrl } from "../../lib/upl
 type Step1PasteLinkProps = {
   draftUrl: string;
   activeUrl: string | null;
+  activeChannelId?: string | null;
   sourceJob: SourceJobDetail | null;
   sourceJobElapsedMs: number;
   commentsFallbackActive?: boolean;
@@ -50,7 +51,7 @@ type SourcePreview =
       label: string;
     };
 
-function resolveSourcePreview(rawUrl: string | null): SourcePreview | null {
+function resolveSourcePreview(rawUrl: string | null, channelId?: string | null): SourcePreview | null {
   const trimmed = rawUrl?.trim() ?? "";
   if (!trimmed) {
     return null;
@@ -58,7 +59,9 @@ function resolveSourcePreview(rawUrl: string | null): SourcePreview | null {
 
   try {
     if (isUploadedSourceUrl(trimmed)) {
-      const previewUrl = `/api/source-media?sourceUrl=${encodeURIComponent(trimmed)}`;
+      const previewUrl =
+        `/api/source-media?sourceUrl=${encodeURIComponent(trimmed)}` +
+        (channelId ? `&channelId=${encodeURIComponent(channelId)}` : "");
       return {
         kind: "video",
         href: previewUrl,
@@ -125,6 +128,7 @@ function resolveProviderErrorSummary(sourceJob: SourceJobDetail | null): SourceP
 export function Step1PasteLink({
   draftUrl,
   activeUrl,
+  activeChannelId,
   sourceJob,
   sourceJobElapsedMs,
   commentsFallbackActive,
@@ -145,7 +149,7 @@ export function Step1PasteLink({
   onAutoRunStage2Change,
   onDownloadSource
 }: Step1PasteLinkProps) {
-  const sourcePreview = resolveSourcePreview(activeUrl);
+  const sourcePreview = resolveSourcePreview(activeUrl, activeChannelId);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedUploadFileNames, setSelectedUploadFileNames] = useState<string[] | null>(null);
   const isAttachedSourceJob =

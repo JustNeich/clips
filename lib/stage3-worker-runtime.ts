@@ -17,6 +17,7 @@ import { ensureEsbuildRuntimeAvailable } from "./stage3-esbuild-runtime";
 import { ensureRspackRuntimeAvailable } from "./stage3-rspack-runtime";
 import { runStage3WorkerNpm } from "./stage3-worker-npm";
 import { completeRemoteStage3Artifact } from "./stage3-worker-completion";
+import { STAGE3_WORKER_RUNTIME_API_PREFIX } from "./stage3-worker-runtime-files";
 import {
   Stage3WorkerJobTimeoutError,
   isStage3WorkerJobTimeoutError,
@@ -229,6 +230,11 @@ async function ensureWorkerDirs(): Promise<void> {
   await fs.mkdir(p.root, { recursive: true });
   await fs.mkdir(p.cacheRoot, { recursive: true });
   await fs.mkdir(p.toolsRoot, { recursive: true });
+  if (process.platform !== "win32") {
+    await fs.chmod(p.root, 0o700).catch(() => undefined);
+    await fs.chmod(p.cacheRoot, 0o700).catch(() => undefined);
+    await fs.chmod(p.toolsRoot, 0o700).catch(() => undefined);
+  }
 }
 
 function normalizeRuntimeVersion(value: string | null | undefined): string | null {
@@ -283,8 +289,21 @@ async function readLocalRuntimeManifest(): Promise<WorkerRuntimeManifest | null>
   }
 }
 
-async function downloadBinaryFile(url: string, destination: string): Promise<void> {
-  const response = await fetch(url, { cache: "no-store" });
+function workerRuntimeFileUrl(origin: string, relativePath: string): string {
+  const encodedPath = relativePath
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return `${origin}${STAGE3_WORKER_RUNTIME_API_PREFIX}/${encodedPath}`;
+}
+
+async function downloadBinaryFile(
+  url: string,
+  destination: string,
+  headers?: HeadersInit
+): Promise<void> {
+  const response = await fetch(url, { cache: "no-store", headers });
   if (!response.ok) {
     throw new Error(`Failed to download ${url}: ${response.status}`);
   }
@@ -342,14 +361,18 @@ async function workerRuntimeDependenciesMissing(workerRoot: string): Promise<boo
 
 export async function syncStage3WorkerRuntime(
   serverOrigin: string,
-  options: { env?: NodeJS.ProcessEnv; npmCommand?: string } = {}
+  options: { env?: NodeJS.ProcessEnv; npmCommand?: string; authHeaders?: HeadersInit } = {}
 ): Promise<{ updated: boolean; runtimeVersion: string | null }> {
   const origin = serverOrigin.replace(/\/+$/, "");
-  const remoteManifestResponse = await fetch(`${origin}/stage3-worker/manifest.json`, { cache: "no-store" });
+  const remoteManifestResponse = await fetch(workerRuntimeFileUrl(origin, "manifest.json"), {
+    cache: "no-store",
+    headers: options.authHeaders
+  });
   if (!remoteManifestResponse.ok) {
-    throw new Error(
-      `Failed to read worker manifest from server (${remoteManifestResponse.status}).`
+    console.warn(
+      `[stage3-worker] Worker manifest unavailable on server (${remoteManifestResponse.status}); skipping runtime sync and using local bundled runtime.`
     );
+    return { updated: false, runtimeVersion: BUNDLED_WORKER_RUNTIME_VERSION };
   }
   const remoteManifest = (await remoteManifestResponse.json()) as WorkerRuntimeManifest;
   const remoteRuntimeVersion =
@@ -425,16 +448,17 @@ export async function syncStage3WorkerRuntime(
   await fs.mkdir(publicDir, { recursive: true });
   await fs.mkdir(binDir, { recursive: true });
 
-  await downloadBinaryFile(`${origin}/stage3-worker/${bundleFile}`, bundlePath);
-  await downloadBinaryFile(`${origin}/stage3-worker/package.json`, packagePath);
-  await downloadBinaryFile(`${origin}/stage3-worker/manifest.json`, manifestPath);
+  await downloadBinaryFile(workerRuntimeFileUrl(origin, bundleFile), bundlePath, options.authHeaders);
+  await downloadBinaryFile(workerRuntimeFileUrl(origin, "package.json"), packagePath, options.authHeaders);
+  await downloadBinaryFile(workerRuntimeFileUrl(origin, "manifest.json"), manifestPath, options.authHeaders);
 
   let runtimeSourcesHydrated = false;
   if (runtimeSourcesArchiveFile) {
     try {
       await downloadBinaryFile(
-        `${origin}/stage3-worker/${runtimeSourcesArchiveFile}`,
-        runtimeSourcesArchivePath
+        workerRuntimeFileUrl(origin, runtimeSourcesArchiveFile),
+        runtimeSourcesArchivePath,
+        options.authHeaders
       );
       await replaceExtractedWorkerRuntimeSources({
         archivePath: runtimeSourcesArchivePath,
@@ -451,26 +475,30 @@ export async function syncStage3WorkerRuntime(
   if (!runtimeSourcesHydrated) {
     for (const fileName of remotionFiles) {
       await downloadBinaryFile(
-        `${origin}/stage3-worker/remotion/${fileName}`,
-        path.join(remotionDir, fileName)
+        workerRuntimeFileUrl(origin, `remotion/${fileName}`),
+        path.join(remotionDir, fileName),
+        options.authHeaders
       );
     }
     for (const fileName of libFiles) {
       await downloadBinaryFile(
-        `${origin}/stage3-worker/lib/${fileName}`,
-        path.join(libDir, fileName)
+        workerRuntimeFileUrl(origin, `lib/${fileName}`),
+        path.join(libDir, fileName),
+        options.authHeaders
       );
     }
     for (const fileName of designFiles) {
       await downloadBinaryFile(
-        `${origin}/stage3-worker/design/${fileName}`,
-        path.join(designDir, fileName)
+        workerRuntimeFileUrl(origin, `design/${fileName}`),
+        path.join(designDir, fileName),
+        options.authHeaders
       );
     }
     for (const fileName of publicFiles) {
       await downloadBinaryFile(
-        `${origin}/stage3-worker/public/${fileName}`,
-        path.join(publicDir, fileName)
+        workerRuntimeFileUrl(origin, `public/${fileName}`),
+        path.join(publicDir, fileName),
+        options.authHeaders
       );
     }
   }
@@ -479,8 +507,9 @@ export async function syncStage3WorkerRuntime(
   if (runtimeDependenciesArchiveFile && runtimeDependenciesArchiveCompatible) {
     try {
       await downloadBinaryFile(
-        `${origin}/stage3-worker/${runtimeDependenciesArchiveFile}`,
-        runtimeDependenciesArchivePath
+        workerRuntimeFileUrl(origin, runtimeDependenciesArchiveFile),
+        runtimeDependenciesArchivePath,
+        options.authHeaders
       );
       await replaceExtractedWorkerRuntimeDependencies({
         archivePath: runtimeDependenciesArchivePath,
@@ -527,7 +556,10 @@ export async function readStage3WorkerConfig(): Promise<WorkerConfig | null> {
 
 export async function writeStage3WorkerConfig(config: WorkerConfig): Promise<void> {
   await ensureWorkerDirs();
-  await fs.writeFile(paths().configPath, JSON.stringify(config, null, 2));
+  await fs.writeFile(paths().configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
+  if (process.platform !== "win32") {
+    await fs.chmod(paths().configPath, 0o600).catch(() => undefined);
+  }
 }
 
 function getArg(flag: string): string | null {
@@ -835,32 +867,28 @@ async function failRemoteJob(
 
 async function runClaimedJobWithTimeout<T>(
   job: Stage3JobEnvelope["job"],
-  task: Promise<T>
+  run: (signal: AbortSignal) => Promise<T>
 ): Promise<T> {
   const timeoutMs = resolveStage3WorkerJobTimeoutMs(job.kind);
+  const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      // Abort the in-flight render/ffmpeg/Remotion work so it does not keep
+      // running as an orphan after we report the timeout. The worker process
+      // itself must stay alive so it can claim the next job.
+      controller.abort();
+      reject(new Stage3WorkerJobTimeoutError(job.kind, timeoutMs));
+    }, timeoutMs);
+    timeout.unref?.();
+  });
   try {
-    return await Promise.race([
-      task,
-      new Promise<T>((_resolve, reject) => {
-        timeout = setTimeout(() => {
-          reject(new Stage3WorkerJobTimeoutError(job.kind, timeoutMs));
-        }, timeoutMs);
-        timeout.unref?.();
-      })
-    ]);
+    return await Promise.race([run(controller.signal), timeoutPromise]);
   } finally {
     if (timeout) {
       clearTimeout(timeout);
     }
   }
-}
-
-function exitAfterTimedOutJob(): void {
-  const timer = setTimeout(() => {
-    process.exit(1);
-  }, 500);
-  timer.unref?.();
 }
 
 export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {}): Promise<void> {
@@ -875,7 +903,9 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
   await ensureWorkerDirs();
   let syncResult: { updated: boolean; runtimeVersion: string | null } | null = null;
   try {
-    syncResult = await syncStage3WorkerRuntime(config.serverOrigin);
+    syncResult = await syncStage3WorkerRuntime(config.serverOrigin, {
+      authHeaders: authHeaders(config)
+    });
     if (syncResult.updated) {
       console.log(
         `Updated local Stage 3 worker runtime to ${syncResult.runtimeVersion ?? "latest"}.`
@@ -1008,6 +1038,11 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
       }
 
       const job = claimBody.job;
+      // Capture the (already narrowed-to-string by the claim guard above)
+      // payload into a local const: TS drops property narrowing inside the
+      // runClaimedJobWithTimeout callback closure, so claimBody.payloadJson would
+      // widen back to string | undefined there.
+      const payloadJson = claimBody.payloadJson;
       console.log(`Claimed job ${job.id} (${job.kind})`);
 
       const leaseTimer = setInterval(() => {
@@ -1024,10 +1059,12 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
         }).catch(() => undefined);
       }, 10_000);
 
+      const previousCurrentJobId = process.env.STAGE3_WORKER_CURRENT_JOB_ID;
       try {
+        process.env.STAGE3_WORKER_CURRENT_JOB_ID = job.id;
         const executed = await runClaimedJobWithTimeout(
           job,
-          executeStage3HeavyJobPayload(job.kind, claimBody.payloadJson)
+          (signal) => executeStage3HeavyJobPayload(job.kind, payloadJson, { signal })
         );
         try {
           await completeRemoteJob(config, job, {
@@ -1045,11 +1082,16 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
         await failRemoteJob(config, job, classified);
         console.error(`Job ${job.id} failed: ${classified.message}`);
         if (isStage3WorkerJobTimeoutError(error)) {
-          console.error("Stage 3 worker is exiting after a timed-out job. Restart the executor from Step 3 before continuing.");
-          stop = true;
-          exitAfterTimedOutJob();
+          // The job was aborted on timeout; keep the worker loop alive so it can
+          // claim the next job instead of killing the whole executor process.
+          console.error(`Stage 3 worker aborted job ${job.id} after timeout; continuing with the next job.`);
         }
       } finally {
+        if (previousCurrentJobId === undefined) {
+          delete process.env.STAGE3_WORKER_CURRENT_JOB_ID;
+        } else {
+          process.env.STAGE3_WORKER_CURRENT_JOB_ID = previousCurrentJobId;
+        }
         clearInterval(leaseTimer);
       }
     } catch (error) {

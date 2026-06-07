@@ -77,14 +77,19 @@ hosted preview/render и вспомогательные subprocess-задачи 
 - отдавать bootstrap scripts:
   - `/stage3-worker/bootstrap.sh`
   - `/stage3-worker/bootstrap.ps1`
-- отдавать bundled worker:
-  - `/stage3-worker/clips-stage3-worker.cjs`
-  - `/stage3-worker/package.json`
+- отдавать bundled worker runtime только через private API:
+  - `/api/stage3/worker/runtime/clips-stage3-worker.cjs`
+  - `/api/stage3/worker/runtime/package.json`
+  - `/api/stage3/worker/runtime/manifest.json`
+  - `/api/stage3/worker/runtime/runtime-deps.tar.gz`
+  - `/api/stage3/worker/runtime/runtime-sources.tar.gz`
 - отдавать managed tool manifest:
   - `/stage3-worker/tool-manifest.json`
 - разрешать публичный доступ к bootstrap assets
 - принимать worker auth / heartbeat / claim / complete / fail
 - фильтровать `/api/stage3/workers` по текущему пользователю, а не показывать общий workspace pool
+
+Важно по безопасности: public `/stage3-worker` больше не является зеркалом runtime. В public остаются только bootstrap scripts и `tool-manifest.json`. Сам worker bundle, Remotion sources, design specs, package metadata и runtime archives лежат в private runtime dir (`.stage3-worker-runtime` по умолчанию) и скачиваются через `/api/stage3/worker/runtime/*` только с валидным worker session token или короткоживущим pairing token.
 
 ### 3. Собрать и раздать Clips Worker
 

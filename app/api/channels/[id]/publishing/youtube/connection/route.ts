@@ -4,6 +4,7 @@ import {
   requireChannelSetupEdit,
   requireChannelVisibility
 } from "../../../../../../../lib/auth/guards";
+import { requireSensitiveArtifactAccess } from "../../../../../../../lib/sensitive-access";
 import {
   deleteChannelPublishIntegration,
   getChannelPublishIntegration,
@@ -25,10 +26,11 @@ function findSelectedChannel(
   return availableChannels.find((item) => item.id === selectedYoutubeChannelId) ?? null;
 }
 
-export async function GET(_request: Request, context: Context): Promise<Response> {
+export async function GET(request: Request, context: Context): Promise<Response> {
   const { id } = await context.params;
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
+    requireSensitiveArtifactAccess(auth);
     await requireChannelVisibility(auth, id);
     return Response.json(
       {
@@ -56,7 +58,8 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
   }
 
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
+    requireSensitiveArtifactAccess(auth);
     await requireChannelSetupEdit(auth, id);
     const integration = getChannelPublishIntegration(id);
     if (!integration) {
@@ -84,10 +87,11 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
   }
 }
 
-export async function DELETE(_request: Request, context: Context): Promise<Response> {
+export async function DELETE(request: Request, context: Context): Promise<Response> {
   const { id } = await context.params;
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
+    requireSensitiveArtifactAccess(auth);
     await requireChannelSetupEdit(auth, id);
     deleteChannelPublishIntegration(id);
     return Response.json({ ok: true }, { status: 200 });
@@ -101,4 +105,3 @@ export async function DELETE(_request: Request, context: Context): Promise<Respo
     );
   }
 }
-

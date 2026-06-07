@@ -1,5 +1,5 @@
 import { promises as fs } from "node:fs";
-import path from "node:path";
+import { getStage3WorkerRuntimeManifestPath } from "./stage3-worker-runtime-files";
 
 type Stage3WorkerPublicManifest = {
   version?: string;
@@ -71,7 +71,7 @@ function isNumericRuntimeBuild(value: string | null): boolean {
 }
 
 async function readManifestFromDisk(): Promise<Stage3WorkerPublicManifest | null> {
-  const filePath = path.join(process.cwd(), "public", "stage3-worker", "manifest.json");
+  const filePath = getStage3WorkerRuntimeManifestPath();
   try {
     const raw = await fs.readFile(filePath, "utf-8");
     return JSON.parse(raw) as Stage3WorkerPublicManifest;

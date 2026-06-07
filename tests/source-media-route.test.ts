@@ -9,6 +9,7 @@ import { APP_SESSION_COOKIE } from "../lib/auth/cookies";
 import { ensureSourceMediaCached } from "../lib/source-media-cache";
 import { setSourceAcquisitionDownloadersForTests } from "../lib/source-acquisition";
 import { bootstrapOwner } from "../lib/team-store";
+import { createOrGetChatBySource } from "../lib/chat-history";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
   const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-media-route-test-"));
@@ -70,6 +71,10 @@ test("source media cache-only HEAD serves cached non-uploaded video without down
     });
 
     await ensureSourceMediaCached(sourceUrl);
+    await createOrGetChatBySource({
+      rawUrl: sourceUrl,
+      title: "Cached source"
+    });
     setSourceAcquisitionDownloadersForTests({
       ytDlp: async () => {
         throw new Error("cache-only source media route must not download");
@@ -105,6 +110,11 @@ test("source media cache-only GET misses without triggering a source download", 
         downloadCalls += 1;
         throw new Error("cache-only source media route must not download");
       }
+    });
+
+    await createOrGetChatBySource({
+      rawUrl: sourceUrl,
+      title: "Missing cached source"
     });
 
     const response = await getSourceMedia(

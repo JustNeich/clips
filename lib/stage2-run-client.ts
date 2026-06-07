@@ -1,4 +1,4 @@
-import type { Stage2ProgressSnapshot } from "./stage2-pipeline";
+import type { Stage2ProgressSnapshot } from "./stage2-progress-client";
 import type { Stage2RunSummary } from "../app/components/types";
 
 export type ScopedRequestVersions = Record<string, number>;

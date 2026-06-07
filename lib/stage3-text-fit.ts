@@ -25,6 +25,9 @@ type Stage3TextFitSnapshotShape = {
 
 type Stage3TemplateTextFitPolicy = {
   revision: string;
+  fitMode: "target_fill" | "max_safe";
+  topFitMode?: "target_fill" | "max_safe";
+  bottomFitMode?: "target_fill" | "max_safe";
   topFillTargetMin: number;
   topFillTargetMax: number;
   topLineHeightFloor: number;
@@ -37,6 +40,7 @@ type Stage3TemplateTextFitPolicy = {
 
 const DEFAULT_TEXT_FIT_POLICY: Stage3TemplateTextFitPolicy = {
   revision: "fit-policy-v1",
+  fitMode: "target_fill",
   topFillTargetMin: 0.88,
   topFillTargetMax: 0.94,
   topLineHeightFloor: 0.9,
@@ -49,6 +53,7 @@ const DEFAULT_TEXT_FIT_POLICY: Stage3TemplateTextFitPolicy = {
 
 const SCIENCE_CARD_V1_TEXT_FIT_POLICY: Stage3TemplateTextFitPolicy = {
   revision: "science-card-v1-fit-v2",
+  fitMode: "target_fill",
   topFillTargetMin: 0.94,
   topFillTargetMax: 0.99,
   topLineHeightFloor: 0.99,
@@ -56,6 +61,34 @@ const SCIENCE_CARD_V1_TEXT_FIT_POLICY: Stage3TemplateTextFitPolicy = {
   bottomFillTargetMin: 0.8,
   bottomFillTargetMax: 0.9,
   bottomLineHeightFloor: 0.96,
+  bottomLineHeightCeil: 1.12
+};
+
+const GHOSTFACE_WORKSHOP_TEXT_FIT_POLICY: Stage3TemplateTextFitPolicy = {
+  revision: "ghostface-workshop-max-safe-fit-v1",
+  fitMode: "max_safe",
+  topFillTargetMin: 0.97,
+  topFillTargetMax: 1,
+  topLineHeightFloor: 0.9,
+  topLineHeightCeil: 1.08,
+  bottomFillTargetMin: 0.97,
+  bottomFillTargetMax: 1,
+  bottomLineHeightFloor: 0.88,
+  bottomLineHeightCeil: 1.08
+};
+
+const GHOSTFACE_COUNTRY_TEXT_FIT_POLICY: Stage3TemplateTextFitPolicy = {
+  revision: "ghostface-country-top-max-bottom-default-fit-v1",
+  fitMode: "target_fill",
+  topFitMode: "max_safe",
+  bottomFitMode: "target_fill",
+  topFillTargetMin: 0.97,
+  topFillTargetMax: 1,
+  topLineHeightFloor: 0.9,
+  topLineHeightCeil: 1.08,
+  bottomFillTargetMin: 0.84,
+  bottomFillTargetMax: 0.9,
+  bottomLineHeightFloor: 0.92,
   bottomLineHeightCeil: 1.12
 };
 
@@ -102,6 +135,12 @@ export function ceilStage3TextFontPx(value: number): number {
 }
 
 export function getStage3TemplateTextFitPolicy(templateId: string): Stage3TemplateTextFitPolicy {
+  if (templateId === "ghostface-country-v1") {
+    return GHOSTFACE_COUNTRY_TEXT_FIT_POLICY;
+  }
+  if (templateId === "ghostface-workshop-v1") {
+    return GHOSTFACE_WORKSHOP_TEXT_FIT_POLICY;
+  }
   if (templateId === "science-card-v1") {
     return SCIENCE_CARD_V1_TEXT_FIT_POLICY;
   }

@@ -6,12 +6,12 @@ import { getDb, newId, nowIso, runInTransaction } from "./db/client";
 import { hashPassword, verifyPassword } from "./auth/password";
 import {
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
-  getBundledStage2ExamplesSeedJson,
   parseStage2ExamplesJson,
   parseStage2HardConstraintsJson,
   stringifyStage2HardConstraints,
   type Stage2HardConstraints
 } from "./stage2-channel-config";
+import { getBundledStage2ExamplesSeedJson } from "./stage2-examples-seed";
 import {
   DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG,
   normalizeStage2CaptionProviderConfig,

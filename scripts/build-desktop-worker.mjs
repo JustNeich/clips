@@ -7,7 +7,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 const outputDir = path.join(repoRoot, "output", "desktop-worker");
-const workerManifestPath = path.join(repoRoot, "public", "stage3-worker", "manifest.json");
+const workerRuntimeDir = process.env.STAGE3_WORKER_RUNTIME_DIR
+  ? path.resolve(repoRoot, process.env.STAGE3_WORKER_RUNTIME_DIR)
+  : path.join(repoRoot, ".stage3-worker-runtime");
+const workerManifestPath = path.join(workerRuntimeDir, "manifest.json");
 
 async function readWorkerRuntimeVersion() {
   let manifest;
@@ -15,7 +18,7 @@ async function readWorkerRuntimeVersion() {
     manifest = JSON.parse(await fs.readFile(workerManifestPath, "utf-8"));
   } catch (error) {
     throw new Error(
-      "Desktop worker build requires public/stage3-worker/manifest.json. " +
+      "Desktop worker build requires the private Stage 3 worker runtime manifest. " +
         `Run npm run build:stage3-worker first. ${error instanceof Error ? error.message : String(error)}`
     );
   }
@@ -28,7 +31,7 @@ async function readWorkerRuntimeVersion() {
         : "";
   if (!runtimeVersion) {
     throw new Error(
-      "Desktop worker build requires a non-empty runtimeVersion in public/stage3-worker/manifest.json. " +
+      "Desktop worker build requires a non-empty runtimeVersion in the private Stage 3 worker runtime manifest. " +
         "Run npm run build:stage3-worker first."
     );
   }

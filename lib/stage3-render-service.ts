@@ -410,6 +410,15 @@ export function buildFinalizeRenderedOutputArgs(params: {
   metadataTitle: string | null;
   variationProfile: Stage3VariationProfile;
 }): string[] {
+  // The Remotion stitcher already produced the final libx264 yuv420p bitstream
+  // with the variation profile's crf/preset/GOP (see runRemotionRender renderArgs
+  // + the stitcher ffmpegOverride). Finalize must therefore NOT re-encode: a
+  // second full software libx264 pass cost 1-4 min per render for zero pixel
+  // change (and re-compressed an already-compressed master). We only REMUX —
+  // strip identifying container metadata, drop the encoder SEI fingerprint, stamp
+  // the bt709 colour VUI, and add faststart — all via stream copy + bitstream
+  // filters (no transcode). variationProfile is retained for signature stability.
+  void params.variationProfile;
   const args = [
     "-y",
     "-i",
@@ -426,32 +435,15 @@ export function buildFinalizeRenderedOutputArgs(params: {
     "-1",
     "-map_chapters",
     "-1",
-    "-vf",
-    "format=yuv420p",
     "-c:v",
-    "libx264",
-    "-preset",
-    params.variationProfile.encode.x264Preset,
-    "-crf",
-    String(params.variationProfile.encode.crf),
-    "-pix_fmt",
-    params.variationProfile.encode.pixelFormat,
-    "-g",
-    String(params.variationProfile.encode.keyintFrames),
-    "-keyint_min",
-    String(params.variationProfile.encode.keyintMinFrames),
-    "-sc_threshold",
-    "0",
-    "-color_range",
-    "tv",
-    "-colorspace",
-    "bt709",
-    "-color_primaries",
-    "bt709",
-    "-color_trc",
-    "bt709",
+    "copy",
     "-c:a",
-    "copy"
+    "copy",
+    // filter_units=remove_types=6 drops all SEI NALs (incl. the x264 version
+    // user-data that would re-introduce an encoder fingerprint on a stream copy);
+    // h264_metadata stamps the limited-range bt709 VUI without re-encoding.
+    "-bsf:v",
+    "filter_units=remove_types=6,h264_metadata=video_full_range_flag=0:colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1:colour_description_present_flag=1"
   ];
 
   args.push(
@@ -678,6 +670,9 @@ async function runRemotionRender(params: {
     }
   };
 
+  const isAbortError = (error: unknown): boolean =>
+    error instanceof Error && (error.name === "AbortError" || error.message.toLowerCase().includes("aborted"));
+
   const renderOnce = async (props: typeof inputProps) => {
     try {
       await renderMedia({
@@ -686,10 +681,14 @@ async function runRemotionRender(params: {
       });
       return;
     } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
       const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-      const shouldRetryWithLegacyProps =
-        message.includes("inputprops") ||
-        (message.includes("props") && (message.includes("missing") || message.includes("unexpected")));
+      // Narrowed to the exact Remotion legacy-props signature. The previous broad
+      // match on any message containing "props" could trigger a full second
+      // render for unrelated failures.
+      const shouldRetryWithLegacyProps = message.includes("inputprops");
       if (!shouldRetryWithLegacyProps) {
         throw error;
       }
@@ -705,7 +704,15 @@ async function runRemotionRender(params: {
     await renderOnce(inputProps);
     return params.variationProfile;
   } catch (error) {
-    if (!params.variationProfile.signal.enabled || params.variationProfile.appliedMode !== "hybrid") {
+    // Only fall back to the encode-only (signal-disabled) profile for the case the
+    // fallback exists for — a failure while the feTurbulence/signal overlay is on
+    // in hybrid mode — and NEVER after an abort/timeout, where a second full
+    // re-render would just blow the time budget again (the live timeout symptom).
+    if (
+      isAbortError(error) ||
+      !params.variationProfile.signal.enabled ||
+      params.variationProfile.appliedMode !== "hybrid"
+    ) {
       throw error;
     }
     const fallbackProfile = createStage3SignalFallbackProfile(params.variationProfile);

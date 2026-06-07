@@ -54,6 +54,9 @@ export async function maybeDownloadStage3WorkerSource(params: {
     },
     body: JSON.stringify({
       url: params.sourceUrl,
+      ...(process.env.STAGE3_WORKER_CURRENT_JOB_ID?.trim()
+        ? { jobId: process.env.STAGE3_WORKER_CURRENT_JOB_ID.trim() }
+        : {}),
       ...(params.cacheOnly ? { cacheOnly: true } : {})
     })
   });

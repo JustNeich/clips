@@ -1,6 +1,6 @@
 import type { ChatEvent, ChatThread, Channel } from "./chat-history";
 import type { AppRole, AuthContext, WorkspaceRecord } from "./team-store";
-import type { Stage2Response } from "../app/components/types";
+import type { ChannelPublishIntegration, Stage2Response } from "../app/components/types";
 
 type Stage2ResponseWithDebugArtifact = Stage2Response & {
   rawDebugArtifact?: unknown;
@@ -11,7 +11,7 @@ type SerializableChat = ChatThread & {
 };
 
 export function canInspectSensitiveArtifacts(role: AppRole | null | undefined): boolean {
-  return Boolean(role && role !== "redactor_limited");
+  return role === "owner" || role === "manager";
 }
 
 export function requireSensitiveArtifactAccess(auth: AuthContext): void {
@@ -59,6 +59,27 @@ export function sanitizeChannelForRole<T extends Channel>(channel: T, role: AppR
     stage2StyleProfile: undefined,
     stage2SourceOverlayConfig: undefined
   } as T;
+}
+
+export function sanitizePublishIntegrationForRole(
+  integration: ChannelPublishIntegration | null,
+  role: AppRole
+): ChannelPublishIntegration | null {
+  if (!integration || canInspectSensitiveArtifacts(role)) {
+    return integration;
+  }
+
+  return {
+    ...integration,
+    youtubeOAuthClientKey: "",
+    youtubeOAuthProjectNumber: null,
+    youtubeOAuthDailyUploadBudget: null,
+    selectedYoutubeChannelId: null,
+    selectedGoogleAccountEmail: null,
+    availableChannels: [],
+    scopes: [],
+    lastError: null
+  };
 }
 
 export function sanitizeStage2ResponseForRole(

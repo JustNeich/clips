@@ -1,4 +1,5 @@
 import { requireAuth, requireChannelSetupEdit, requireChannelVisibility } from "../../../../../../../lib/auth/guards";
+import { requireSensitiveArtifactAccess } from "../../../../../../../lib/sensitive-access";
 import { createChannelYoutubeOAuthState } from "../../../../../../../lib/publication-store";
 import {
   assertYouTubePublishingConnectReady,
@@ -14,10 +15,11 @@ type ConnectBody = {
   oauthClientKey?: string;
 };
 
-export async function GET(_request: Request, context: Context): Promise<Response> {
+export async function GET(request: Request, context: Context): Promise<Response> {
   const { id } = await context.params;
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
+    requireSensitiveArtifactAccess(auth);
     await requireChannelVisibility(auth, id);
     return Response.json(
       {
@@ -42,7 +44,8 @@ export async function POST(request: Request, context: Context): Promise<Response
   const body = (await request.json().catch(() => null)) as ConnectBody | null;
   try {
     const oauthClientKey = body?.oauthClientKey?.trim() || getDefaultYouTubeOAuthClientKey();
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
+    requireSensitiveArtifactAccess(auth);
     await requireChannelSetupEdit(auth, id);
     assertYouTubePublishingConnectReady(oauthClientKey);
     const state = createChannelYoutubeOAuthState({

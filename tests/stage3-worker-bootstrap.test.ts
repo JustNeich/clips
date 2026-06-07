@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { GET as getWorkerRuntimeFile } from "../app/api/stage3/worker/runtime/[...path]/route";
 import {
   buildStage3WorkerCommands,
   buildStage3WorkerDesktopDeepLink
 } from "../lib/stage3-worker-commands";
+import { issueStage3WorkerPairingToken } from "../lib/stage3-worker-store";
+import { getDb, newId, nowIso } from "../lib/db/client";
 
 function decodePowershellEncodedCommand(command: string): string {
   const match = command.match(/-EncodedCommand\s+([A-Za-z0-9+/=]+)/);
@@ -53,11 +58,15 @@ test("desktop worker pairing deep link carries server, token and label", () => {
   assert.equal(parsed.searchParams.get("label"), "Katya Worker");
 });
 
-test("desktop worker build embeds the Stage 3 runtime version from the public manifest", () => {
+function privateWorkerRuntimeManifestPath(): string {
+  return path.join(process.cwd(), ".stage3-worker-runtime", "manifest.json");
+}
+
+test("desktop worker build embeds the Stage 3 runtime version from the private runtime manifest", () => {
   const scriptPath = path.join(process.cwd(), "scripts", "build-desktop-worker.mjs");
   const script = readFileSync(scriptPath, "utf8");
 
-  assert.match(script, /public.*stage3-worker.*manifest\.json/s);
+  assert.match(script, /\.stage3-worker-runtime/s);
   assert.match(script, /runtimeVersion/);
   assert.match(script, /__CLIPS_STAGE3_WORKER_RUNTIME_VERSION__:\s*JSON\.stringify\(runtimeVersion\)/);
   assert.doesNotMatch(script, /__CLIPS_STAGE3_WORKER_RUNTIME_VERSION__:\s*JSON\.stringify\(null\)/);
@@ -76,7 +85,7 @@ test("desktop worker runtime sync can hydrate local runtime dependencies without
 test("windows bootstrap script uses basic parsing and writes bootstrap logs", () => {
   const scriptPath = path.join(process.cwd(), "public", "stage3-worker", "bootstrap.ps1");
   const script = readFileSync(scriptPath, "utf8");
-  const manifestPath = path.join(process.cwd(), "public", "stage3-worker", "manifest.json");
+  const manifestPath = privateWorkerRuntimeManifestPath();
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
     runtimeDependenciesArchiveFile?: string;
     runtimeDependenciesPlatform?: string;
@@ -88,8 +97,8 @@ test("windows bootstrap script uses basic parsing and writes bootstrap logs", ()
   assert.match(script, /function Expand-ClipsStage3RuntimeArchive/);
   assert.match(script, /Bootstrap log:/);
   assert.match(script, /Share this log with support:/);
-  assert.match(script, /Invoke-WebRequest \$Uri -UseBasicParsing -ErrorAction Stop -OutFile \$OutFile/);
-  assert.match(script, /Invoke-ClipsStage3Download -Uri "\$serverOrigin\/stage3-worker\/clips-stage3-worker\.cjs" -OutFile \$bundlePath -Label "worker bundle"/);
+  assert.match(script, /Invoke-WebRequest \$Uri -UseBasicParsing -ErrorAction Stop -Headers \$headers -OutFile \$OutFile/);
+  assert.match(script, /Invoke-ClipsStage3Download -Uri "\$runtimeBase\/clips-stage3-worker\.cjs" -OutFile \$bundlePath -Label "worker bundle"/);
   assert.equal(manifest.runtimeDependenciesArchiveFile, "runtime-deps.tar.gz");
   assert.equal(manifest.runtimeDependenciesPlatform, `${process.platform}-${process.arch}`);
   assert.equal(manifest.runtimeSourcesArchiveFile, "runtime-sources.tar.gz");
@@ -106,7 +115,7 @@ test("windows bootstrap script uses basic parsing and writes bootstrap logs", ()
 });
 
 test("worker manifest ships only runtime-required template specs", () => {
-  const manifestPath = path.join(process.cwd(), "public", "stage3-worker", "manifest.json");
+  const manifestPath = privateWorkerRuntimeManifestPath();
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
     designFiles?: string[];
     publicFiles?: string[];
@@ -140,7 +149,7 @@ test("worker manifest ships only runtime-required template specs", () => {
 test("bootstrap fallback file lists stay aligned with worker runtime manifest", () => {
   const shellScriptPath = path.join(process.cwd(), "public", "stage3-worker", "bootstrap.sh");
   const powershellScriptPath = path.join(process.cwd(), "public", "stage3-worker", "bootstrap.ps1");
-  const manifestPath = path.join(process.cwd(), "public", "stage3-worker", "manifest.json");
+  const manifestPath = privateWorkerRuntimeManifestPath();
   const shellScript = readFileSync(shellScriptPath, "utf8");
   const powershellScript = readFileSync(powershellScriptPath, "utf8");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
@@ -176,5 +185,70 @@ test("bootstrap fallback file lists stay aligned with worker runtime manifest", 
     for (const script of scripts) {
       assert.doesNotMatch(script, new RegExp(escapeRegExp(file)));
     }
+  }
+});
+
+test("private worker runtime API requires header token and manifest allowlist", async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), "clips-worker-runtime-api-"));
+  const previousRuntimeDir = process.env.STAGE3_WORKER_RUNTIME_DIR;
+  process.env.STAGE3_WORKER_RUNTIME_DIR = runtimeDir;
+  try {
+    await mkdir(path.join(runtimeDir, "lib"), { recursive: true });
+    await writeFile(
+      path.join(runtimeDir, "manifest.json"),
+      JSON.stringify({
+        bundleFile: "clips-stage3-worker.cjs",
+        libFiles: ["allowed.ts"]
+      })
+    );
+    await writeFile(path.join(runtimeDir, "clips-stage3-worker.cjs"), "bundle");
+    await writeFile(path.join(runtimeDir, "package.json"), "{}");
+    await writeFile(path.join(runtimeDir, "lib", "allowed.ts"), "allowed");
+    await writeFile(path.join(runtimeDir, "lib", "secret.ts"), "secret");
+    const stamp = nowIso();
+    const suffix = newId();
+    const workspaceId = `runtime_ws_${suffix}`;
+    const userId = `runtime_user_${suffix}`;
+    getDb()
+      .prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+      .run(workspaceId, "Runtime Workspace", `runtime-workspace-${suffix}`, stamp, stamp);
+    getDb()
+      .prepare(
+        "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      )
+      .run(userId, `runtime-${suffix}@example.com`, "hash", "Runtime User", "active", stamp, stamp);
+    getDb()
+      .prepare("INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(newId(), workspaceId, userId, "owner", stamp, stamp);
+    const pairing = issueStage3WorkerPairingToken({
+      workspaceId,
+      userId
+    });
+
+    const queryTokenResponse = await getWorkerRuntimeFile(
+      new Request(`http://localhost/api/stage3/worker/runtime/manifest.json?pairingToken=${pairing.token}`),
+      { params: Promise.resolve({ path: ["manifest.json"] }) }
+    );
+    assert.equal(queryTokenResponse.status, 401);
+
+    const headers = { "X-Stage3-Worker-Pairing-Token": pairing.token };
+    const allowedResponse = await getWorkerRuntimeFile(
+      new Request("http://localhost/api/stage3/worker/runtime/lib/allowed.ts", { headers }),
+      { params: Promise.resolve({ path: ["lib", "allowed.ts"] }) }
+    );
+    assert.equal(allowedResponse.status, 200);
+
+    const secretResponse = await getWorkerRuntimeFile(
+      new Request("http://localhost/api/stage3/worker/runtime/lib/secret.ts", { headers }),
+      { params: Promise.resolve({ path: ["lib", "secret.ts"] }) }
+    );
+    assert.equal(secretResponse.status, 404);
+  } finally {
+    if (previousRuntimeDir === undefined) {
+      delete process.env.STAGE3_WORKER_RUNTIME_DIR;
+    } else {
+      process.env.STAGE3_WORKER_RUNTIME_DIR = previousRuntimeDir;
+    }
+    await rm(runtimeDir, { recursive: true, force: true });
   }
 });

@@ -10,6 +10,8 @@ import { GET as getChatTrace } from "../app/api/chat-trace/[id]/route";
 import { GET as getChatRoute } from "../app/api/chats/[id]/route";
 import { GET as listChannelsRoute } from "../app/api/channels/route";
 import { GET as getChannelRoute, PATCH as patchChannelRoute } from "../app/api/channels/[id]/route";
+import { GET as getYoutubeConnectOptions } from "../app/api/channels/[id]/publishing/youtube/connect/route";
+import { GET as getYoutubeConnection } from "../app/api/channels/[id]/publishing/youtube/connection/route";
 import { GET as getStage2DebugArtifact } from "../app/api/pipeline/stage2/debug/route";
 import { GET as getStage2RunRoute } from "../app/api/pipeline/stage2/route";
 import { GET as getWorkspaceRoute } from "../app/api/workspace/route";
@@ -27,6 +29,7 @@ import { POST as downloadSource } from "../app/api/download/route";
 import { GET as getRuntimeCapabilities } from "../app/api/runtime/capabilities/route";
 import { GET as readStage3Background } from "../app/api/stage3/background/[id]/route";
 import { POST as uploadStage3Background } from "../app/api/stage3/background/route";
+import { POST as createStage3WorkerPairing } from "../app/api/stage3/workers/pairing/route";
 import { POST as fetchVideoMeta } from "../app/api/video/meta/route";
 import { DELETE as deleteWorkspaceMemberRoute } from "../app/api/workspace/members/[memberId]/route";
 import { APP_SESSION_COOKIE } from "../lib/auth/cookies";
@@ -36,6 +39,7 @@ import {
   getWorkspaceDefaultTemplateId
 } from "../lib/managed-template-store";
 import { STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
+import { saveChannelPublishIntegration } from "../lib/publication-store";
 import { setChannelAccess } from "../lib/team-store";
 import {
   acceptInviteRegistration,
@@ -296,7 +300,7 @@ test("redactor_limited cannot read prompts, traces, debug artifacts, or template
       chatId: chat.id,
       request: {
         sourceUrl: chat.url,
-        userInstruction: null,
+        userInstruction: "secret instruction",
         mode: "manual",
         channel: {
           id: channel.id,
@@ -367,8 +371,9 @@ test("redactor_limited cannot read prompts, traces, debug artifacts, or template
         headers: { cookie }
       })
     );
-    const runBody = (await runResponse.json()) as { run: { result: Record<string, unknown> } };
+    const runBody = (await runResponse.json()) as { run: { userInstruction: string | null; result: Record<string, unknown> } };
     assert.equal(runResponse.status, 200);
+    assert.equal(runBody.run.userInstruction, null);
     assert.equal(runBody.run.result.diagnostics, undefined);
     assert.equal(runBody.run.result.debugRef, null);
     assert.equal((runBody.run.result.output as Record<string, unknown>).pipeline, undefined);
@@ -387,6 +392,15 @@ test("redactor_limited cannot read prompts, traces, debug artifacts, or template
       })
     );
     assert.equal(debugResponse.status, 403);
+
+    const runListResponse = await getStage2RunRoute(
+      new Request(`http://localhost/api/pipeline/stage2?chatId=${chat.id}`, {
+        headers: { cookie }
+      })
+    );
+    const runListBody = (await runListResponse.json()) as { runs: Array<{ userInstruction: string | null }> };
+    assert.equal(runListResponse.status, 200);
+    assert.equal(runListBody.runs[0]?.userInstruction, null);
 
     const templateLibraryResponse = await listManagedTemplatesRoute(
       new Request("http://localhost/api/design/templates", {
@@ -442,6 +456,111 @@ test("team policy requires invite-issued editor accounts", async () => {
     });
 
     assert.equal(invitedEditor.membership.role, "redactor");
+  });
+});
+
+test("redactor accounts cannot create worker pairing tokens or read template internals", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Strict Editor Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const invite = await createInvite({
+      workspaceId: owner.workspace.id,
+      email: "editor@example.com",
+      role: "redactor",
+      createdByUserId: owner.user.id
+    });
+    const editor = await acceptInviteRegistration({
+      token: invite.token,
+      password: "Password123!",
+      displayName: "Editor"
+    });
+    const template = await createManagedTemplate(
+      {
+        name: "Prompt Bearing Template",
+        baseTemplateId: "science-card-v1"
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        creatorDisplayName: owner.user.displayName
+      }
+    );
+    const chatHistory = await import("../lib/chat-history");
+    const editorChannel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: editor.user.id,
+      name: "Editor Channel",
+      username: "editor_channel"
+    });
+    saveChannelPublishIntegration({
+      workspaceId: owner.workspace.id,
+      channelId: editorChannel.id,
+      userId: owner.user.id,
+      status: "connected",
+      credential: null,
+      googleAccountEmail: "owner-google@example.com",
+      selectedYoutubeChannelId: "yt-secret-channel",
+      selectedYoutubeChannelTitle: "Secret YouTube",
+      selectedYoutubeChannelCustomUrl: "@secret",
+      availableChannels: [{ id: "yt-secret-channel", title: "Secret YouTube", customUrl: "@secret" }],
+      scopes: ["youtube.upload"]
+    });
+    const cookie = `${APP_SESSION_COOKIE}=${editor.sessionToken}`;
+
+    try {
+      const pairingResponse = await createStage3WorkerPairing(
+        new Request("http://localhost/api/stage3/workers/pairing", {
+          method: "POST",
+          headers: { cookie }
+        })
+      );
+      assert.equal(pairingResponse.status, 403);
+
+      const templateResponse = await getManagedTemplate(
+        new Request(`http://localhost/api/design/templates/${template.id}`, {
+          headers: { cookie }
+        }),
+        { params: Promise.resolve({ templateId: template.id }) }
+      );
+      assert.equal(templateResponse.status, 403);
+
+      const sensitivePatchResponse = await patchChannelRoute(
+        new Request(`http://localhost/api/channels/${editorChannel.id}`, {
+          method: "PATCH",
+          headers: {
+            cookie,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            stage2PromptConfig: { useWorkspaceDefault: false }
+          })
+        }),
+        { params: Promise.resolve({ id: editorChannel.id }) }
+      );
+      assert.equal(sensitivePatchResponse.status, 403);
+
+      const youtubeConnectionResponse = await getYoutubeConnection(
+        new Request(`http://localhost/api/channels/${editorChannel.id}/publishing/youtube/connection`, {
+          headers: { cookie }
+        }),
+        { params: Promise.resolve({ id: editorChannel.id }) }
+      );
+      assert.equal(youtubeConnectionResponse.status, 403);
+
+      const youtubeConnectOptionsResponse = await getYoutubeConnectOptions(
+        new Request(`http://localhost/api/channels/${editorChannel.id}/publishing/youtube/connect`, {
+          headers: { cookie }
+        }),
+        { params: Promise.resolve({ id: editorChannel.id }) }
+      );
+      assert.equal(youtubeConnectOptionsResponse.status, 403);
+    } finally {
+      await deleteManagedTemplate(template.id);
+    }
   });
 });
 
@@ -568,7 +687,7 @@ test("channels API only returns channels visible to the current redactor", async
   });
 });
 
-test("redactor can load a managed template when it is assigned to a visible channel", async () => {
+test("manager can load a managed template when it is assigned to a visible channel", async () => {
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({
       workspaceName: "Template Runtime Workspace",
@@ -578,11 +697,11 @@ test("redactor can load a managed template when it is assigned to a visible chan
     });
     const invite = await createInvite({
       workspaceId: owner.workspace.id,
-      email: "editor@example.com",
-      role: "redactor",
+      email: "manager@example.com",
+      role: "manager",
       createdByUserId: owner.user.id
     });
-    const editor = await acceptInviteRegistration({
+    const manager = await acceptInviteRegistration({
       token: invite.token,
       password: "Password123!",
       displayName: "Editor"
@@ -616,13 +735,13 @@ test("redactor can load a managed template when it is assigned to a visible chan
       });
       setChannelAccess({
         channelId: channel.id,
-        userId: editor.user.id,
+        userId: manager.user.id,
         grantedByUserId: owner.user.id
       });
 
       const response = await getManagedTemplate(
         new Request(`http://localhost/api/design/templates/${template.id}`, {
-          headers: { cookie: `${APP_SESSION_COOKIE}=${editor.sessionToken}` }
+          headers: { cookie: `${APP_SESSION_COOKIE}=${manager.sessionToken}` }
         }),
         { params: Promise.resolve({ templateId: template.id }) }
       );
@@ -641,7 +760,7 @@ test("redactor can load a managed template when it is assigned to a visible chan
   });
 });
 
-test("redactor can open any template in the same workspace library", async () => {
+test("manager can open any template in the same workspace library", async () => {
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({
       workspaceName: "Template Scope Workspace",
@@ -651,11 +770,11 @@ test("redactor can open any template in the same workspace library", async () =>
     });
     const invite = await createInvite({
       workspaceId: owner.workspace.id,
-      email: "editor@example.com",
-      role: "redactor",
+      email: "manager@example.com",
+      role: "manager",
       createdByUserId: owner.user.id
     });
-    const editor = await acceptInviteRegistration({
+    const manager = await acceptInviteRegistration({
       token: invite.token,
       password: "Password123!",
       displayName: "Editor"
@@ -675,7 +794,7 @@ test("redactor can open any template in the same workspace library", async () =>
     try {
       const response = await getManagedTemplate(
         new Request(`http://localhost/api/design/templates/${template.id}`, {
-          headers: { cookie: `${APP_SESSION_COOKIE}=${editor.sessionToken}` }
+          headers: { cookie: `${APP_SESSION_COOKIE}=${manager.sessionToken}` }
         }),
         { params: Promise.resolve({ templateId: template.id }) }
       );
@@ -690,7 +809,7 @@ test("redactor can open any template in the same workspace library", async () =>
   });
 });
 
-test("managed template list returns the whole workspace library to redactors", async () => {
+test("managed template list returns the whole workspace library to managers", async () => {
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({
       workspaceName: "Template List Workspace",
@@ -700,11 +819,11 @@ test("managed template list returns the whole workspace library to redactors", a
     });
     const invite = await createInvite({
       workspaceId: owner.workspace.id,
-      email: "editor@example.com",
-      role: "redactor",
+      email: "manager@example.com",
+      role: "manager",
       createdByUserId: owner.user.id
     });
-    const editor = await acceptInviteRegistration({
+    const manager = await acceptInviteRegistration({
       token: invite.token,
       password: "Password123!",
       displayName: "Editor"
@@ -743,13 +862,13 @@ test("managed template list returns the whole workspace library to redactors", a
       });
       setChannelAccess({
         channelId: channel.id,
-        userId: editor.user.id,
+        userId: manager.user.id,
         grantedByUserId: owner.user.id
       });
 
       const response = await listManagedTemplatesRoute(
         new Request("http://localhost/api/design/templates", {
-          headers: { cookie: `${APP_SESSION_COOKIE}=${editor.sessionToken}` }
+          headers: { cookie: `${APP_SESSION_COOKIE}=${manager.sessionToken}` }
         })
       );
       const body = (await response.json()) as {
@@ -821,7 +940,7 @@ test("managed template backup import route creates a new workspace template", as
   });
 });
 
-test("redactor can update a managed template when it is assigned to an editable channel", async () => {
+test("manager can update a managed template when it is assigned to an editable channel", async () => {
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({
       workspaceName: "Template Edit Workspace",
@@ -831,11 +950,11 @@ test("redactor can update a managed template when it is assigned to an editable 
     });
     const invite = await createInvite({
       workspaceId: owner.workspace.id,
-      email: "editor@example.com",
-      role: "redactor",
+      email: "manager@example.com",
+      role: "manager",
       createdByUserId: owner.user.id
     });
-    const editor = await acceptInviteRegistration({
+    const manager = await acceptInviteRegistration({
       token: invite.token,
       password: "Password123!",
       displayName: "Editor"
@@ -863,7 +982,7 @@ test("redactor can update a managed template when it is assigned to an editable 
       });
       setChannelAccess({
         channelId: channel.id,
-        userId: editor.user.id,
+        userId: manager.user.id,
         grantedByUserId: owner.user.id
       });
 
@@ -871,7 +990,7 @@ test("redactor can update a managed template when it is assigned to an editable 
         new Request(`http://localhost/api/design/templates/${template.id}`, {
           method: "PUT",
           headers: {
-            cookie: `${APP_SESSION_COOKIE}=${editor.sessionToken}`,
+            cookie: `${APP_SESSION_COOKIE}=${manager.sessionToken}`,
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
@@ -980,7 +1099,7 @@ test("channels self-heal to the default template when a custom managed template 
   });
 });
 
-test("channel setup allows assigning any template from the same workspace library", async () => {
+test("manager channel setup allows assigning any template from the same workspace library", async () => {
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({
       workspaceName: "Channel Template Scope Workspace",
@@ -990,14 +1109,14 @@ test("channel setup allows assigning any template from the same workspace librar
     });
     const invite = await createInvite({
       workspaceId: owner.workspace.id,
-      email: "editor@example.com",
-      role: "redactor",
+      email: "manager@example.com",
+      role: "manager",
       createdByUserId: owner.user.id
     });
     const editor = await acceptInviteRegistration({
       token: invite.token,
       password: "Password123!",
-      displayName: "Editor"
+      displayName: "Manager"
     });
     const chatHistory = await import("../lib/chat-history");
     const privateTemplate = await createManagedTemplate(

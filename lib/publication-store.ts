@@ -1528,7 +1528,10 @@ export function retryChannelPublication(publicationId: string): ChannelPublicati
   return publication;
 }
 
-export function restoreCanceledChannelPublication(publicationId: string): ChannelPublication {
+export function restoreCanceledChannelPublication(
+  publicationId: string,
+  options?: { remoteDeleteConfirmed?: boolean; reason?: string }
+): ChannelPublication {
   const current = getPublicationForMutation(publicationId);
   assertPublicationNotUploading(current, "Восстановление публикации");
   if (current.status !== "canceled") {
@@ -1539,7 +1542,7 @@ export function restoreCanceledChannelPublication(publicationId: string): Channe
     }
     return current;
   }
-  if (isRemoteBoundPublication(current) && !current.remoteDeletedAt) {
+  if (isRemoteBoundPublication(current) && !current.remoteDeletedAt && !options?.remoteDeleteConfirmed) {
     throw new PublicationMutationError(
       "Нельзя восстановить публикацию, уже привязанную к YouTube, без подтверждённого удаления в YouTube.",
       {
@@ -1570,7 +1573,12 @@ export function restoreCanceledChannelPublication(publicationId: string): Channe
   ).run(nowIso(), publicationId);
   appendChannelPublicationEvent(publicationId, "info", "Публикация восстановлена в очередь после ревью.");
   const publication = getChannelPublicationById(publicationId)!;
-  auditChannelPublication("publication.restored", publication, "queued");
+  auditChannelPublication("publication.restored", publication, "queued", {
+    payload: {
+      reason: options?.reason ?? "review",
+      remoteDeleteConfirmed: Boolean(options?.remoteDeleteConfirmed)
+    }
+  });
   return publication;
 }
 

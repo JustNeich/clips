@@ -40,6 +40,7 @@ function hostLooksUnusable(host: string | null): boolean {
   }
   const normalized = host.trim().toLowerCase();
   return (
+    /[\s/@\\]/.test(normalized) ||
     normalized === "0.0.0.0" ||
     normalized.startsWith("0.0.0.0:") ||
     normalized === "[::]" ||
@@ -68,6 +69,10 @@ export function resolveStage3WorkerPublicOrigin(request: Request): string {
     return envOrigin;
   }
 
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("PUBLIC_APP_ORIGIN or APP_ORIGIN is required to issue worker pairing commands in production.");
+  }
+
   const forwardedHost = firstHeaderValue(request.headers.get("x-forwarded-host"));
   const host = firstHeaderValue(request.headers.get("host"));
   const requestOrigin = normalizeOrigin(request.url);
@@ -76,6 +81,7 @@ export function resolveStage3WorkerPublicOrigin(request: Request): string {
     firstHeaderValue(request.headers.get("x-forwarded-proto")) ||
     firstHeaderValue(request.headers.get("x-forwarded-protocol")) ||
     requestProtocol;
+  const safeForwardedProto = forwardedProto === "http" || forwardedProto === "https" ? forwardedProto : requestProtocol;
 
   const publicHost = !hostLooksUnusable(forwardedHost)
     ? forwardedHost
@@ -84,7 +90,7 @@ export function resolveStage3WorkerPublicOrigin(request: Request): string {
       : null;
 
   if (publicHost) {
-    return `${forwardedProto}://${publicHost}`.replace(/\/+$/, "");
+    return `${safeForwardedProto}://${publicHost}`.replace(/\/+$/, "");
   }
 
   if (requestOrigin && !hostLooksUnusable(new URL(requestOrigin).host)) {

@@ -15,6 +15,23 @@ export function RenderVariationOverlay({
 
   const filterId = `stage3-variation-noise-${profile.seed.slice(0, 8)}`;
 
+  // Pre-bake the static fractal-noise SVG into a single data-URL <img>. The seed
+  // is fixed, so the noise is byte-identical on every frame; rendering it as an
+  // <img> makes the browser rasterize the feTurbulence filter ONCE during decode
+  // and reuse the cached bitmap for all 180-720+ captured frames, instead of
+  // re-rasterizing a live inline SVG filter region on every painted frame (one of
+  // the most expensive per-frame ops, especially under software GL). Visually
+  // equivalent to the previous inline SVG.
+  const noiseSvg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920" preserveAspectRatio="none">` +
+    `<defs><filter id="${filterId}">` +
+    `<feTurbulence type="fractalNoise" baseFrequency="${profile.signal.baseFrequencyX} ${profile.signal.baseFrequencyY}" numOctaves="${profile.signal.numOctaves}" seed="${profile.signal.seed}" stitchTiles="stitch"/>` +
+    `<feColorMatrix type="saturate" values="0"/>` +
+    `</filter></defs>` +
+    `<rect x="0" y="0" width="1080" height="1920" filter="url(#${filterId})"/>` +
+    `</svg>`;
+  const noiseDataUrl = `data:image/svg+xml;utf8,${encodeURIComponent(noiseSvg)}`;
+
   return (
     <AbsoluteFill
       style={{
@@ -23,27 +40,13 @@ export function RenderVariationOverlay({
         mixBlendMode: profile.signal.blendMode
       }}
     >
-      <svg
-        width="100%"
-        height="100%"
-        viewBox="0 0 1080 1920"
-        preserveAspectRatio="none"
-        style={{ width: "100%", height: "100%" }}
-      >
-        <defs>
-          <filter id={filterId}>
-            <feTurbulence
-              type="fractalNoise"
-              baseFrequency={`${profile.signal.baseFrequencyX} ${profile.signal.baseFrequencyY}`}
-              numOctaves={profile.signal.numOctaves}
-              seed={profile.signal.seed}
-              stitchTiles="stitch"
-            />
-            <feColorMatrix type="saturate" values="0" />
-          </filter>
-        </defs>
-        <rect x="0" y="0" width="1080" height="1920" filter={`url(#${filterId})`} />
-      </svg>
+      <img
+        src={noiseDataUrl}
+        width={1080}
+        height={1920}
+        style={{ width: "100%", height: "100%", display: "block" }}
+        alt=""
+      />
     </AbsoluteFill>
   );
 }

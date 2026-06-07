@@ -55,11 +55,17 @@ export function resolveStage3HeavyJobErrorCode(kind: Stage3JobKind): string {
 
 export async function executeStage3HeavyJobPayload(
   kind: Stage3JobKind,
-  payloadJson: string
+  payloadJson: string,
+  options?: { signal?: AbortSignal }
 ): Promise<Stage3ExecutedJobResult> {
+  // The worker's job-timeout watchdog aborts this signal so the in-flight render/
+  // ffmpeg/source work is cancelled instead of orphaned. Forward it into every
+  // heavy step that supports cancellation.
+  const signal = options?.signal;
   if (kind === "preview") {
     const payload = JSON.parse(payloadJson) as Stage3PreviewRequestBody;
     const prepared = await prepareStage3Preview(payload, {
+      signal,
       waitTimeoutMs: PREVIEW_WAIT_TIMEOUT_MS
     });
     return {
@@ -79,6 +85,7 @@ export async function executeStage3HeavyJobPayload(
   if (kind === "render") {
     const payload = JSON.parse(payloadJson) as Stage3RenderRequestBody;
     const rendered = await renderStage3Video(payload, {
+      signal,
       waitTimeoutMs: RENDER_WAIT_TIMEOUT_MS
     });
     return {
@@ -107,6 +114,7 @@ export async function executeStage3HeavyJobPayload(
   if (kind === "editing-proxy") {
     const payload = JSON.parse(payloadJson) as Stage3EditingProxyRequestBody;
     const prepared = await prepareStage3EditingProxy(payload, {
+      signal,
       waitTimeoutMs: EDITING_PROXY_WAIT_TIMEOUT_MS
     });
     return {
@@ -130,7 +138,7 @@ export async function executeStage3HeavyJobPayload(
     if (!sourceUrl) {
       throw new Error("Stage 3 source-download job is missing sourceUrl.");
     }
-    const cached = await ensureStage3SourceCached(sourceUrl);
+    const cached = await ensureStage3SourceCached(sourceUrl, { signal });
     return {
       resultJson: JSON.stringify({
         sourceKey: cached.sourceKey,

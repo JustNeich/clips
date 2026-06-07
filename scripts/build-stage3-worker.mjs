@@ -11,15 +11,19 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 const workerEntry = path.join(repoRoot, "apps", "stage3-worker", "index.ts");
 const publicDir = path.join(repoRoot, "public", "stage3-worker");
-const bundlePath = path.join(publicDir, "clips-stage3-worker.cjs");
-const manifestPath = path.join(publicDir, "manifest.json");
-const workerPackagePath = path.join(publicDir, "package.json");
-const runtimeDependenciesArchivePath = path.join(publicDir, "runtime-deps.tar.gz");
-const runtimeSourcesArchivePath = path.join(publicDir, "runtime-sources.tar.gz");
-const remotionPublicDir = path.join(publicDir, "remotion");
-const libPublicDir = path.join(publicDir, "lib");
-const designPublicDir = path.join(publicDir, "design");
-const workerPublicAssetsDir = path.join(publicDir, "public");
+const runtimeDir = path.resolve(
+  repoRoot,
+  process.env.STAGE3_WORKER_RUNTIME_DIR?.trim() || ".stage3-worker-runtime"
+);
+const bundlePath = path.join(runtimeDir, "clips-stage3-worker.cjs");
+const manifestPath = path.join(runtimeDir, "manifest.json");
+const workerPackagePath = path.join(runtimeDir, "package.json");
+const runtimeDependenciesArchivePath = path.join(runtimeDir, "runtime-deps.tar.gz");
+const runtimeSourcesArchivePath = path.join(runtimeDir, "runtime-sources.tar.gz");
+const remotionRuntimeDir = path.join(runtimeDir, "remotion");
+const libRuntimeDir = path.join(runtimeDir, "lib");
+const designRuntimeDir = path.join(runtimeDir, "design");
+const workerRuntimeAssetsDir = path.join(runtimeDir, "public");
 const packageJsonPath = path.join(repoRoot, "package.json");
 const remotionSourceDir = path.join(repoRoot, "remotion");
 const libSourceDir = path.join(repoRoot, "lib");
@@ -97,7 +101,7 @@ async function copyWorkerTemplateSpecs() {
   const copiedFiles = [];
   for (const relativeFilePath of WORKER_TEMPLATE_SPEC_FILES) {
     const sourcePath = path.join(designSourceDir, relativeFilePath);
-    const targetPath = path.join(designPublicDir, relativeFilePath);
+    const targetPath = path.join(designRuntimeDir, relativeFilePath);
     await fs.access(sourcePath);
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
     await fs.copyFile(sourcePath, targetPath);
@@ -110,7 +114,7 @@ async function copyWorkerPublicAssets() {
   const copiedFiles = [];
   for (const relativeFilePath of WORKER_PUBLIC_RUNTIME_FILES) {
     const sourcePath = path.join(publicSourceDir, relativeFilePath);
-    const targetPath = path.join(workerPublicAssetsDir, relativeFilePath);
+    const targetPath = path.join(workerRuntimeAssetsDir, relativeFilePath);
     await fs.access(sourcePath);
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
     await fs.copyFile(sourcePath, targetPath);
@@ -248,36 +252,36 @@ async function buildWorkerRuntimeArchive(workerPackageJson) {
 async function buildWorkerSourcesArchive() {
   await fs.rm(runtimeSourcesArchivePath, { force: true }).catch(() => undefined);
   runCommand("tar", ["-czf", runtimeSourcesArchivePath, "remotion", "lib", "design", "public"], {
-    cwd: publicDir
+    cwd: runtimeDir
   });
 }
 
 async function syncWorkerRuntimeSources() {
-  await fs.rm(remotionPublicDir, { recursive: true, force: true }).catch(() => undefined);
-  await fs.rm(libPublicDir, { recursive: true, force: true }).catch(() => undefined);
-  await fs.rm(designPublicDir, { recursive: true, force: true }).catch(() => undefined);
-  await fs.rm(workerPublicAssetsDir, { recursive: true, force: true }).catch(() => undefined);
-  await fs.mkdir(remotionPublicDir, { recursive: true });
-  await fs.mkdir(libPublicDir, { recursive: true });
-  await fs.mkdir(designPublicDir, { recursive: true });
-  await fs.mkdir(workerPublicAssetsDir, { recursive: true });
+  await fs.rm(remotionRuntimeDir, { recursive: true, force: true }).catch(() => undefined);
+  await fs.rm(libRuntimeDir, { recursive: true, force: true }).catch(() => undefined);
+  await fs.rm(designRuntimeDir, { recursive: true, force: true }).catch(() => undefined);
+  await fs.rm(workerRuntimeAssetsDir, { recursive: true, force: true }).catch(() => undefined);
+  await fs.mkdir(remotionRuntimeDir, { recursive: true });
+  await fs.mkdir(libRuntimeDir, { recursive: true });
+  await fs.mkdir(designRuntimeDir, { recursive: true });
+  await fs.mkdir(workerRuntimeAssetsDir, { recursive: true });
 
-  await fs.cp(remotionSourceDir, remotionPublicDir, { recursive: true });
+  await fs.cp(remotionSourceDir, remotionRuntimeDir, { recursive: true });
   const designFiles = await copyWorkerTemplateSpecs();
   const publicFiles = await copyWorkerPublicAssets();
   for (const fileName of WORKER_LIB_RUNTIME_FILES) {
     const sourcePath = path.join(libSourceDir, fileName);
-    const destinationPath = path.join(libPublicDir, fileName);
+    const destinationPath = path.join(libRuntimeDir, fileName);
     await fs.copyFile(sourcePath, destinationPath);
   }
 
-  const copiedFiles = await fs.readdir(libPublicDir);
+  const copiedFiles = await fs.readdir(libRuntimeDir);
   const expected = new Set(WORKER_LIB_RUNTIME_FILES);
   const unexpected = copiedFiles.filter((fileName) => !expected.has(fileName));
   if (unexpected.length > 0) {
     throw new Error(
-      `Worker runtime contains unexpected lib files: ${unexpected.join(", ")}. ` +
-        "Do not maintain manual template source mirrors in public/stage3-worker/lib."
+        `Worker runtime contains unexpected lib files: ${unexpected.join(", ")}. ` +
+        "Do not maintain manual template source mirrors in the worker runtime lib directory."
     );
   }
 
@@ -285,6 +289,25 @@ async function syncWorkerRuntimeSources() {
     designFiles,
     publicFiles
   };
+}
+
+async function removeLegacyPublicRuntimeOutputs() {
+  const legacyRuntimePaths = [
+    "clips-stage3-worker.cjs",
+    "manifest.json",
+    "package.json",
+    "runtime-deps.tar.gz",
+    "runtime-sources.tar.gz",
+    "remotion",
+    "lib",
+    "design",
+    "public"
+  ];
+  await Promise.all(
+    legacyRuntimePaths.map((relativePath) =>
+      fs.rm(path.join(publicDir, relativePath), { recursive: true, force: true }).catch(() => undefined)
+    )
+  );
 }
 
 async function main() {
@@ -295,6 +318,8 @@ async function main() {
       : "0.0.0";
   const remotionFiles = await listWorkerRemotionRuntimeFiles();
   await fs.mkdir(publicDir, { recursive: true });
+  await fs.mkdir(runtimeDir, { recursive: true });
+  await removeLegacyPublicRuntimeOutputs();
   const runtimeSources = await syncWorkerRuntimeSources();
   const workerPackageJson = {
     name: "clips-stage3-worker",

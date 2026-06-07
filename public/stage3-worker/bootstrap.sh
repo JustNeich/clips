@@ -44,6 +44,7 @@ LOCAL_RUNTIME_DEPENDENCIES_PLATFORM="$(node -p "process.platform + '-' + process
 log "Detected runtime dependency platform: ${LOCAL_RUNTIME_DEPENDENCIES_PLATFORM}"
 
 INSTALL_ROOT="${HOME}/Library/Application Support/Clips Stage3 Worker"
+RUNTIME_BASE="${SERVER%/}/api/stage3/worker/runtime"
 BIN_DIR="${INSTALL_ROOT}/bin"
 REMOTION_DIR="${INSTALL_ROOT}/remotion"
 LIB_DIR="${INSTALL_ROOT}/lib"
@@ -61,12 +62,23 @@ mkdir -p "$REMOTION_DIR"
 mkdir -p "$LIB_DIR"
 mkdir -p "$DESIGN_DIR"
 mkdir -p "$PUBLIC_DIR"
+download_runtime() {
+  local relative_path="$1"
+  local destination="$2"
+  curl -fsSL -H "X-Stage3-Worker-Pairing-Token: ${TOKEN}" "${RUNTIME_BASE}/${relative_path}" -o "$destination"
+}
+
+is_safe_runtime_file() {
+  local file="$1"
+  [[ -n "$file" && "$file" != /* && "$file" != *"\\"* && "$file" != *".."* ]]
+}
+
 log "Downloading worker bundle"
-curl -fsSL "${SERVER%/}/stage3-worker/clips-stage3-worker.cjs" -o "$BUNDLE_PATH"
+download_runtime "clips-stage3-worker.cjs" "$BUNDLE_PATH"
 log "Downloading worker package.json"
-curl -fsSL "${SERVER%/}/stage3-worker/package.json" -o "$PACKAGE_PATH"
+download_runtime "package.json" "$PACKAGE_PATH"
 log "Downloading worker manifest"
-curl -fsSL "${SERVER%/}/stage3-worker/manifest.json" -o "$MANIFEST_PATH"
+download_runtime "manifest.json" "$MANIFEST_PATH"
 
 RUNTIME_SOURCES_ARCHIVE_FILE="$(
   node -e '
@@ -82,9 +94,13 @@ process.stdout.write(archiveFile);
 
 runtime_sources_ready="false"
 if [[ -n "$RUNTIME_SOURCES_ARCHIVE_FILE" ]]; then
+  if ! is_safe_runtime_file "$RUNTIME_SOURCES_ARCHIVE_FILE"; then
+    echo "Worker manifest contains an unsafe runtime sources archive path." >&2
+    exit 1
+  fi
   if command -v tar >/dev/null 2>&1; then
     log "Downloading bundled runtime sources"
-    if curl -fsSL "${SERVER%/}/stage3-worker/${RUNTIME_SOURCES_ARCHIVE_FILE}" -o "$RUNTIME_SOURCES_ARCHIVE_PATH"; then
+    if download_runtime "${RUNTIME_SOURCES_ARCHIVE_FILE}" "$RUNTIME_SOURCES_ARCHIVE_PATH"; then
       rm -rf "$REMOTION_DIR" "$LIB_DIR" "$DESIGN_DIR" "$PUBLIC_DIR"
       mkdir -p "$REMOTION_DIR" "$LIB_DIR" "$DESIGN_DIR" "$PUBLIC_DIR"
       log "Unpacking bundled runtime sources"
@@ -106,8 +122,12 @@ fi
 if [[ "$runtime_sources_ready" != "true" ]]; then
   while IFS= read -r FILE; do
     [[ -n "$FILE" ]] || continue
+    if ! is_safe_runtime_file "$FILE"; then
+      echo "Worker manifest contains an unsafe remotion file path." >&2
+      exit 1
+    fi
     mkdir -p "$(dirname "${REMOTION_DIR}/${FILE}")"
-    curl -fsSL "${SERVER%/}/stage3-worker/remotion/${FILE}" -o "${REMOTION_DIR}/${FILE}"
+    download_runtime "remotion/${FILE}" "${REMOTION_DIR}/${FILE}"
   done < <(
   node -e '
 const fs = require("node:fs");
@@ -120,13 +140,18 @@ for (const file of files) {
   )
   while IFS= read -r FILE; do
     [[ -n "$FILE" ]] || continue
+    if ! is_safe_runtime_file "$FILE"; then
+      echo "Worker manifest contains an unsafe lib file path." >&2
+      exit 1
+    fi
     mkdir -p "$(dirname "${LIB_DIR}/${FILE}")"
-    curl -fsSL "${SERVER%/}/stage3-worker/lib/${FILE}" -o "${LIB_DIR}/${FILE}"
+    download_runtime "lib/${FILE}" "${LIB_DIR}/${FILE}"
   done < <(
   node -e '
 const fs = require("node:fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
   const files = Array.isArray(manifest.libFiles) ? manifest.libFiles : [
+  "stage3-duration.ts",
   "stage3-template.ts",
   "stage3-template-semantics.ts",
   "stage3-template-fonts.ts",
@@ -146,6 +171,7 @@ const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
   "stage3-template-registry.ts",
   "stage3-background-mode.ts",
   "stage3-video-adjustments.ts",
+  "stage3-video-scale.ts",
   "stage3-video-placement.ts",
   "stage3-worker-job-timeout.ts"
 ];
@@ -156,8 +182,12 @@ for (const file of files) {
   )
   while IFS= read -r FILE; do
     [[ -n "$FILE" ]] || continue
+    if ! is_safe_runtime_file "$FILE"; then
+      echo "Worker manifest contains an unsafe design file path." >&2
+      exit 1
+    fi
     mkdir -p "$(dirname "${DESIGN_DIR}/${FILE}")"
-    curl -fsSL "${SERVER%/}/stage3-worker/design/${FILE}" -o "${DESIGN_DIR}/${FILE}"
+    download_runtime "design/${FILE}" "${DESIGN_DIR}/${FILE}"
   done < <(
   node -e '
 const fs = require("node:fs");
@@ -174,8 +204,12 @@ for (const file of files) {
   )
   while IFS= read -r FILE; do
     [[ -n "$FILE" ]] || continue
+    if ! is_safe_runtime_file "$FILE"; then
+      echo "Worker manifest contains an unsafe public file path." >&2
+      exit 1
+    fi
     mkdir -p "$(dirname "${PUBLIC_DIR}/${FILE}")"
-    curl -fsSL "${SERVER%/}/stage3-worker/public/${FILE}" -o "${PUBLIC_DIR}/${FILE}"
+    download_runtime "public/${FILE}" "${PUBLIC_DIR}/${FILE}"
   done < <(
   node -e '
 const fs = require("node:fs");
@@ -224,6 +258,10 @@ process.stdout.write(archivePlatform);
 runtime_ready="false"
 runtime_archive_compatible="false"
 if [[ -n "$RUNTIME_ARCHIVE_FILE" && -n "$RUNTIME_ARCHIVE_PLATFORM" && "$RUNTIME_ARCHIVE_PLATFORM" == "$LOCAL_RUNTIME_DEPENDENCIES_PLATFORM" ]]; then
+  if ! is_safe_runtime_file "$RUNTIME_ARCHIVE_FILE"; then
+    echo "Worker manifest contains an unsafe runtime dependency archive path." >&2
+    exit 1
+  fi
   runtime_archive_compatible="true"
 fi
 if [[ -n "$RUNTIME_ARCHIVE_FILE" && "$runtime_archive_compatible" != "true" ]]; then
@@ -234,7 +272,7 @@ fi
 if [[ "$runtime_archive_compatible" == "true" ]]; then
   if command -v tar >/dev/null 2>&1; then
     log "Downloading bundled runtime dependencies"
-    if curl -fsSL "${SERVER%/}/stage3-worker/${RUNTIME_ARCHIVE_FILE}" -o "$RUNTIME_ARCHIVE_PATH"; then
+    if download_runtime "${RUNTIME_ARCHIVE_FILE}" "$RUNTIME_ARCHIVE_PATH"; then
       rm -rf "${INSTALL_ROOT}/node_modules"
       log "Unpacking bundled runtime dependencies"
       if tar -xzf "$RUNTIME_ARCHIVE_PATH" -C "$INSTALL_ROOT"; then
