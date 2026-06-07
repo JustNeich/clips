@@ -588,3 +588,52 @@ test("downloadSourceVideo falls back to host cache for uploaded mp4 sources with
     await fs.rm(appDataDir, { recursive: true, force: true });
   }
 });
+
+test("downloadSourceVideo does not try local acquisition for uploaded mp4 worker sources", { concurrency: false }, async () => {
+  const previousServerOrigin = process.env.STAGE3_WORKER_SERVER_ORIGIN;
+  const previousSessionToken = process.env.STAGE3_WORKER_SESSION_TOKEN;
+  const previousCurrentJobId = process.env.STAGE3_WORKER_CURRENT_JOB_ID;
+  const originalFetch = globalThis.fetch;
+  const fileName = "uploaded.mp4";
+  const url = buildUploadedSourceUrl(`upload-missing-${Date.now()}`, fileName);
+  const requestBodies: unknown[] = [];
+
+  process.env.STAGE3_WORKER_SERVER_ORIGIN = "https://clips.example.com";
+  process.env.STAGE3_WORKER_SESSION_TOKEN = "worker-session-token";
+  process.env.STAGE3_WORKER_CURRENT_JOB_ID = "stage3-upload-job";
+
+  globalThis.fetch = (async (_input, init) => {
+    requestBodies.push(JSON.parse(String(init?.body ?? "{}")));
+    return Response.json({ error: "Source media ещё не готов в cache." }, { status: 404 });
+  }) as typeof fetch;
+
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-worker-upload-source-missing-"));
+
+  try {
+    await assert.rejects(() => downloadSourceVideo(url, tmpDir), {
+      message: /production source cache/
+    });
+    assert.deepEqual(requestBodies, [
+      { url, jobId: "stage3-upload-job", cacheOnly: true },
+      { url, jobId: "stage3-upload-job" }
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousServerOrigin === undefined) {
+      delete process.env.STAGE3_WORKER_SERVER_ORIGIN;
+    } else {
+      process.env.STAGE3_WORKER_SERVER_ORIGIN = previousServerOrigin;
+    }
+    if (previousSessionToken === undefined) {
+      delete process.env.STAGE3_WORKER_SESSION_TOKEN;
+    } else {
+      process.env.STAGE3_WORKER_SESSION_TOKEN = previousSessionToken;
+    }
+    if (previousCurrentJobId === undefined) {
+      delete process.env.STAGE3_WORKER_CURRENT_JOB_ID;
+    } else {
+      process.env.STAGE3_WORKER_CURRENT_JOB_ID = previousCurrentJobId;
+    }
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});

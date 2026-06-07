@@ -14,6 +14,7 @@ test("Stage 2 Codex exec uses isolated writable cwd for schema and output files"
     outputMessagePath: "/tmp/stage2/output.json",
     cwd: "/srv/app",
     executionCwd: "/tmp/stage2",
+    codexHome: "/var/data/codex-sessions/session-1",
     model: "gpt-5.4-mini",
     reasoningEffort: "x-high"
   });
@@ -28,6 +29,10 @@ test("Stage 2 Codex exec uses isolated writable cwd for schema and output files"
     "/tmp/stage2",
     "--ephemeral"
   ]);
+  assert.deepEqual(
+    built.args.slice(built.args.indexOf("--add-dir"), built.args.indexOf("--add-dir") + 2),
+    ["--add-dir", "/var/data/codex-sessions/session-1"]
+  );
   assert.deepEqual(built.args.slice(-3), ["--image", "/tmp/frame.png", "-"]);
   assert.ok(built.args.includes("gpt-5.4-mini"));
   assert.ok(built.args.includes("model_reasoning_effort=\"xhigh\""));
@@ -50,6 +55,7 @@ test("Codex exec keeps read-only sandbox when no isolated execution cwd is provi
     "--cd",
     "/srv/app"
   ]);
+  assert.equal(built.args.includes("--add-dir"), false);
 });
 
 test("Stage 2 copies Codex image inputs into the isolated execution cwd", async () => {

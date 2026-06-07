@@ -15,6 +15,7 @@ import { buildStage3EditorSession } from "./stage3-editor-core";
 import { repairStage3BlankFlashFrames } from "./stage3-video-flash-guard";
 import { buildStage3SourceCropFfmpegFilter } from "./stage3-source-crop";
 import { isStage3HostedFastRenderProfileEnabled } from "./stage3-render-variation";
+import { isUploadedSourceUrl } from "./uploaded-source";
 
 const execFileAsync = promisify(execFile);
 
@@ -382,6 +383,27 @@ export async function downloadSourceVideo(
     }
   } catch {
     // Cache-only host lookup is an optimization; local acquisition remains the primary fallback.
+  }
+
+  if (isUploadedSourceUrl(rawUrl)) {
+    try {
+      const hosted = await maybeDownloadStage3WorkerSource({
+        sourceUrl: rawUrl,
+        tmpDir
+      });
+      if (hosted) {
+        return {
+          filePath: hosted.filePath,
+          fileName: sanitizeFileName(hosted.fileName)
+        };
+      }
+    } catch (hostedError) {
+      const hostedMessage =
+        hostedError instanceof Error ? hostedError.message : "host source fallback failed";
+      throw new Error(`Не удалось получить загруженный mp4 через production host: ${hostedMessage}`);
+    }
+
+    throw new Error("Загруженный mp4 не найден в production source cache для локального Stage 3 worker.");
   }
 
   try {
@@ -1395,6 +1417,14 @@ async function guardPreparedClipDuration(params: {
   return output;
 }
 
+export function resolveStage3AudioTrackOutputPath(inputPath: string, tmpDir: string): string {
+  const preferred = path.join(tmpDir, "clip-audio.mp4");
+  if (path.resolve(inputPath) !== path.resolve(preferred)) {
+    return preferred;
+  }
+  return path.join(tmpDir, "clip-audio-track.mp4");
+}
+
 async function ensureAudioTrack(inputPath: string, tmpDir: string, durationSec?: number): Promise<string> {
   const hasAudio = await probeHasAudio(inputPath);
   if (hasAudio) {
@@ -1402,7 +1432,7 @@ async function ensureAudioTrack(inputPath: string, tmpDir: string, durationSec?:
   }
   const inferredDuration =
     durationSec ?? (await probeVideoDurationSeconds(inputPath)) ?? DEFAULT_STAGE3_CLIP_DURATION_SEC;
-  const output = path.join(tmpDir, "clip-audio.mp4");
+  const output = resolveStage3AudioTrackOutputPath(inputPath, tmpDir);
   await execFileAsync(
     "ffmpeg",
     [

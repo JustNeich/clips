@@ -77,11 +77,13 @@ export function buildCodexExecArgs(input: {
   outputMessagePath: string;
   cwd: string;
   executionCwd?: string | null;
+  codexHome?: string | null;
   model?: string | null;
   reasoningEffort?: string | null;
 }): { args: string[]; cwd: string } {
+  const hasIsolatedExecutionCwd = Boolean(input.executionCwd?.trim());
   const executionCwd = input.executionCwd?.trim() || input.cwd;
-  const sandboxMode = input.executionCwd?.trim() ? "workspace-write" : "read-only";
+  const sandboxMode = hasIsolatedExecutionCwd ? "workspace-write" : "read-only";
   const args = [
     "exec",
     "--skip-git-repo-check",
@@ -95,6 +97,11 @@ export function buildCodexExecArgs(input: {
     "--output-last-message",
     input.outputMessagePath
   ];
+
+  const codexHome = input.codexHome?.trim();
+  if (hasIsolatedExecutionCwd && codexHome) {
+    args.push("--add-dir", codexHome);
+  }
 
   if (input.model && input.model.trim()) {
     args.push("--model", input.model.trim());

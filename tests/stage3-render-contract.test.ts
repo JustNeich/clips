@@ -12,6 +12,7 @@ import {
   buildStage3SourceAudioGainFfmpegArgs,
   buildNormalizeStage3SourceFfmpegArgs,
   prepareStage3SourceClip,
+  resolveStage3AudioTrackOutputPath,
   resolveStage3SegmentExtractionMode,
   resolveStage3SourcePreparationScaleFilter,
   STAGE3_RENDER_SAFE_SOURCE_SCALE_FILTER,
@@ -316,6 +317,19 @@ test("render source preparation pads truncated source audio to the target durati
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });
   }
+});
+
+test("Stage 3 audio track helper avoids in-place ffmpeg output paths", () => {
+  const tmpDir = path.join(os.tmpdir(), "stage3-audio-track-collision");
+
+  assert.equal(
+    resolveStage3AudioTrackOutputPath(path.join(tmpDir, "clip-fit.mp4"), tmpDir),
+    path.join(tmpDir, "clip-audio.mp4")
+  );
+  assert.equal(
+    resolveStage3AudioTrackOutputPath(path.join(tmpDir, "clip-audio.mp4"), tmpDir),
+    path.join(tmpDir, "clip-audio-track.mp4")
+  );
 });
 
 test("stage3 video placement anchors zoom transform to Position X and Y", () => {
