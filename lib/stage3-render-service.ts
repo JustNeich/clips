@@ -144,13 +144,22 @@ export async function prepareStage3TemplateFontAssetsForRender(params: {
   return nextConfig ?? params.templateConfig;
 }
 
-function shouldReuseRemotionBundle(): boolean {
+export function shouldReuseRemotionBundle(): boolean {
   const override = process.env.STAGE3_REUSE_REMOTION_BUNDLE?.trim();
   if (override === "1") {
     return true;
   }
   if (override === "0") {
     return false;
+  }
+  // Reuse the memoized bundle when running inside the long-lived Stage 3 worker
+  // (STAGE3_WORKER_INSTALL_ROOT is set in startStage3WorkerLoop). Without this the
+  // worker never sets NODE_ENV=production, so getRemotionServeUrl() re-bundled
+  // Remotion from scratch on EVERY render — a large fixed per-render cost that, on
+  // slower/repaired toolchains, blew the local render watchdog. The worker handles
+  // one job at a time, so a single reused bundle dir is safe.
+  if (process.env.STAGE3_WORKER_INSTALL_ROOT?.trim()) {
+    return true;
   }
   return process.env.NODE_ENV === "production";
 }
@@ -339,6 +348,35 @@ async function getRemotionServeUrl(): Promise<string> {
     });
   }
   return remotionServeUrlPromise;
+}
+
+/**
+ * Build (and memoize) the Remotion bundle ahead of any render job. Called once at
+ * worker startup so the FIRST render does not pay the cold-bundle cost inside the
+ * job watchdog. Non-fatal: on failure the next render falls back to building the
+ * bundle inline. Only meaningful when shouldReuseRemotionBundle() is true (worker
+ * runtime / production), otherwise the bundle is not memoized and this is a no-op
+ * cost with no benefit, so we skip it.
+ */
+export async function warmStage3RemotionBundle(
+  log?: (message: string) => void
+): Promise<boolean> {
+  if (!shouldReuseRemotionBundle()) {
+    return false;
+  }
+  try {
+    await ensureRemotionRuntime();
+    await getRemotionServeUrl();
+    log?.("Warmed Stage 3 Remotion bundle before claiming jobs.");
+    return true;
+  } catch (error) {
+    log?.(
+      `Could not pre-warm Stage 3 Remotion bundle (will build on first render): ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return false;
+  }
 }
 
 async function getRemotionBrowser(): Promise<Stage3PreparedBrowser> {

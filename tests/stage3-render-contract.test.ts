@@ -22,6 +22,7 @@ import {
   normalizeRenderPlan as normalizeServerRenderPlan,
   buildStage3CustomVideoBackgroundStillFfmpegArgs,
   buildStage3SourceBackgroundStillFfmpegArgs,
+  shouldReuseRemotionBundle,
   shouldUseHostedFastVideoBackgroundStill
 } from "../lib/stage3-render-service";
 import { buildStage3EditorSession } from "../lib/stage3-editor-core";
@@ -751,4 +752,30 @@ test("stage3 render variation can still run encode-only without visual signal", 
   assert.equal(profile.appliedMode, "encode");
   assert.equal(profile.signal.enabled, false);
   assert.equal(profile.signal.opacity, 0);
+});
+
+test("remotion bundle is reused inside the worker runtime so it is not rebuilt per render", () => {
+  const prevWorker = process.env.STAGE3_WORKER_INSTALL_ROOT;
+  const prevOverride = process.env.STAGE3_REUSE_REMOTION_BUNDLE;
+  try {
+    delete process.env.STAGE3_REUSE_REMOTION_BUNDLE;
+    // Inside the worker runtime (STAGE3_WORKER_INSTALL_ROOT set) the bundle is
+    // reused even though the worker never sets NODE_ENV=production.
+    process.env.STAGE3_WORKER_INSTALL_ROOT = "/tmp/clips-stage3-worker";
+    assert.equal(shouldReuseRemotionBundle(), true);
+
+    // Outside the worker (and not production, as in the test env) it is not reused.
+    delete process.env.STAGE3_WORKER_INSTALL_ROOT;
+    assert.equal(shouldReuseRemotionBundle(), false);
+
+    // Explicit opt-out wins even inside the worker.
+    process.env.STAGE3_WORKER_INSTALL_ROOT = "/tmp/clips-stage3-worker";
+    process.env.STAGE3_REUSE_REMOTION_BUNDLE = "0";
+    assert.equal(shouldReuseRemotionBundle(), false);
+  } finally {
+    if (prevWorker === undefined) delete process.env.STAGE3_WORKER_INSTALL_ROOT;
+    else process.env.STAGE3_WORKER_INSTALL_ROOT = prevWorker;
+    if (prevOverride === undefined) delete process.env.STAGE3_REUSE_REMOTION_BUNDLE;
+    else process.env.STAGE3_REUSE_REMOTION_BUNDLE = prevOverride;
+  }
 });

@@ -44,7 +44,7 @@ test("worker render timeout is duration-aware for short output payloads", () => 
         }
       })
     ),
-    3 * 60_000
+    5 * 60_000
   );
   assert.equal(
     resolveStage3WorkerJobTimeoutMs(

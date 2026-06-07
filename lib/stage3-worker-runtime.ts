@@ -1013,6 +1013,18 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
 
   const { classifyStage3HeavyJobError, executeStage3HeavyJobPayload } = await import("./stage3-job-executor");
 
+  // Pre-warm the Remotion bundle once, before claiming any job, so the first
+  // render does not pay the cold-bundle cost inside the render watchdog. The
+  // worker reuses this memoized bundle for every subsequent render. Non-fatal.
+  try {
+    const { warmStage3RemotionBundle } = await import("./stage3-render-service");
+    await warmStage3RemotionBundle((message) => console.log(message));
+  } catch (error) {
+    console.warn(
+      `Stage 3 Remotion bundle pre-warm skipped: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
   const appVersion = await readAppVersion();
   let stop = false;
   if (installSignalHandlers) {
