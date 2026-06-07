@@ -15,6 +15,7 @@ type RunCodexExecInput = {
   outputSchemaPath: string;
   outputMessagePath: string;
   cwd: string;
+  executionCwd?: string | null;
   codexHome: string;
   timeoutMs?: number;
   model?: string | null;
@@ -68,6 +69,48 @@ export function normalizeCodexReasoningEffort(value: string | null | undefined):
     return "xhigh";
   }
   return normalized;
+}
+
+export function buildCodexExecArgs(input: {
+  imagePaths: string[];
+  outputSchemaPath: string;
+  outputMessagePath: string;
+  cwd: string;
+  executionCwd?: string | null;
+  model?: string | null;
+  reasoningEffort?: string | null;
+}): { args: string[]; cwd: string } {
+  const executionCwd = input.executionCwd?.trim() || input.cwd;
+  const sandboxMode = input.executionCwd?.trim() ? "workspace-write" : "read-only";
+  const args = [
+    "exec",
+    "--skip-git-repo-check",
+    "--sandbox",
+    sandboxMode,
+    "--cd",
+    executionCwd,
+    "--ephemeral",
+    "--output-schema",
+    input.outputSchemaPath,
+    "--output-last-message",
+    input.outputMessagePath
+  ];
+
+  if (input.model && input.model.trim()) {
+    args.push("--model", input.model.trim());
+  }
+  const normalizedReasoningEffort = normalizeCodexReasoningEffort(input.reasoningEffort);
+  if (normalizedReasoningEffort) {
+    args.push("-c", `model_reasoning_effort="${normalizedReasoningEffort}"`);
+  }
+
+  for (const imagePath of input.imagePaths) {
+    args.push("--image", imagePath);
+  }
+
+  // Read prompt from stdin to avoid command length limits.
+  args.push("-");
+  return { args, cwd: executionCwd };
 }
 
 export async function getCodexLoginStatus(
@@ -127,41 +170,13 @@ export async function ensureCodexLoggedIn(codexHome: string): Promise<void> {
 }
 
 export async function runCodexExec(input: RunCodexExecInput): Promise<RunCodexExecResult> {
-  const args = [
-    "exec",
-    "--skip-git-repo-check",
-    "--sandbox",
-    "read-only",
-    "--cd",
-    input.cwd,
-    "--ephemeral",
-    "--output-schema",
-    input.outputSchemaPath,
-    "--output-last-message",
-    input.outputMessagePath
-  ];
-
-  if (input.model && input.model.trim()) {
-    args.push("--model", input.model.trim());
-  }
-  const normalizedReasoningEffort = normalizeCodexReasoningEffort(input.reasoningEffort);
-  if (normalizedReasoningEffort) {
-    args.push("-c", `model_reasoning_effort="${normalizedReasoningEffort}"`);
-  }
-
-  for (const imagePath of input.imagePaths) {
-    args.push("--image", imagePath);
-  }
-
-  // Read prompt from stdin to avoid command length limits.
-  args.push("-");
-
+  const { args, cwd } = buildCodexExecArgs(input);
   const timeoutMs = input.timeoutMs ?? 8 * 60_000;
   const codexBin = await resolveCodexExecutable();
 
   return new Promise((resolve, reject) => {
     const child = spawn(codexBin, args, {
-      cwd: input.cwd,
+      cwd,
       env: {
         ...process.env,
         CODEX_HOME: input.codexHome

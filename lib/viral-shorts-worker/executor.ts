@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { runCodexExec } from "../codex-runner";
 import { runAnthropicStructuredOutput } from "../anthropic-client";
 import { runOpenRouterStructuredOutput } from "../openrouter-client";
@@ -45,6 +45,26 @@ export type JsonStageExecutorStageId =
   | Stage2RegenerateStageId
   | "styleDiscovery";
 
+export async function copyCodexExecImagesToDirectory(
+  imagePaths: string[],
+  tmpDir: string
+): Promise<string[]> {
+  const copiedPaths: string[] = [];
+  for (let index = 0; index < imagePaths.length; index += 1) {
+    const imagePath = imagePaths[index];
+    if (!imagePath) {
+      continue;
+    }
+    const extension = path.extname(imagePath) || ".jpg";
+    const targetPath = path.join(tmpDir, `image-${index + 1}${extension}`);
+    if (path.resolve(imagePath) !== path.resolve(targetPath)) {
+      await copyFile(imagePath, targetPath);
+    }
+    copiedPaths.push(targetPath);
+  }
+  return copiedPaths;
+}
+
 export class CodexJsonStageExecutor implements JsonStageExecutor {
   constructor(
     private readonly params: {
@@ -75,12 +95,14 @@ export class CodexJsonStageExecutor implements JsonStageExecutor {
 
     try {
       await writeFile(schemaPath, JSON.stringify(transport.schema, null, 2), "utf-8");
+      const imagePaths = await copyCodexExecImagesToDirectory(input.imagePaths ?? [], tmpDir);
       await runCodexExec({
         prompt: transport.prompt,
-        imagePaths: input.imagePaths ?? [],
+        imagePaths,
         outputSchemaPath: schemaPath,
         outputMessagePath: outputPath,
         cwd: this.params.cwd,
+        executionCwd: tmpDir,
         codexHome: this.params.codexHome,
         timeoutMs: input.timeoutMs ?? this.params.defaultTimeoutMs,
         model: input.model ?? this.params.defaultModel ?? null,

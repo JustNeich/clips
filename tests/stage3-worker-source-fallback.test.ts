@@ -12,6 +12,7 @@ import { ensureSourceMediaCached, storeUploadedSourceMedia } from "../lib/source
 import { downloadSourceVideo } from "../lib/stage3-media-agent";
 import { ensureStage3SourceCached } from "../lib/stage3-server-control";
 import { setSourceAcquisitionDownloadersForTests } from "../lib/source-acquisition";
+import { withStage3WorkerCurrentJobId } from "../lib/stage3-worker-runtime";
 import { exchangeStage3WorkerPairingToken, issueStage3WorkerPairingToken } from "../lib/stage3-worker-store";
 import { buildUploadedSourceUrl } from "../lib/uploaded-source";
 import { normalizeSupportedUrl } from "../lib/supported-url";
@@ -276,6 +277,62 @@ test("downloadSourceVideo keeps local acquisition when host cache is cold", { co
     }
     await fs.rm(tmpDir, { recursive: true, force: true });
     await fs.rm(appDataDir, { recursive: true, force: true });
+  }
+});
+
+test("claimed worker job context forwards jobId to host source requests", { concurrency: false }, async () => {
+  const previousServerOrigin = process.env.STAGE3_WORKER_SERVER_ORIGIN;
+  const previousSessionToken = process.env.STAGE3_WORKER_SESSION_TOKEN;
+  const previousCurrentJobId = process.env.STAGE3_WORKER_CURRENT_JOB_ID;
+  const originalFetch = globalThis.fetch;
+  const url = "https://www.instagram.com/reel/current-job-source/";
+  let requestBody: unknown = null;
+
+  process.env.STAGE3_WORKER_SERVER_ORIGIN = "https://clips.example.com";
+  process.env.STAGE3_WORKER_SESSION_TOKEN = "worker-session-token";
+  delete process.env.STAGE3_WORKER_CURRENT_JOB_ID;
+
+  globalThis.fetch = (async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body ?? "{}"));
+    return Response.json({ error: "Source media ещё не готов в cache." }, { status: 404 });
+  }) as typeof fetch;
+
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-worker-current-job-source-"));
+  try {
+    const { maybeDownloadStage3WorkerSource } = await import("../lib/stage3-worker-source-client");
+    const result = await withStage3WorkerCurrentJobId("stage3-job-current", () =>
+      maybeDownloadStage3WorkerSource({
+        sourceUrl: url,
+        tmpDir,
+        cacheOnly: true
+      })
+    );
+
+    assert.equal(result, null);
+    assert.deepEqual(requestBody, {
+      url,
+      jobId: "stage3-job-current",
+      cacheOnly: true
+    });
+    assert.equal(process.env.STAGE3_WORKER_CURRENT_JOB_ID, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousServerOrigin === undefined) {
+      delete process.env.STAGE3_WORKER_SERVER_ORIGIN;
+    } else {
+      process.env.STAGE3_WORKER_SERVER_ORIGIN = previousServerOrigin;
+    }
+    if (previousSessionToken === undefined) {
+      delete process.env.STAGE3_WORKER_SESSION_TOKEN;
+    } else {
+      process.env.STAGE3_WORKER_SESSION_TOKEN = previousSessionToken;
+    }
+    if (previousCurrentJobId === undefined) {
+      delete process.env.STAGE3_WORKER_CURRENT_JOB_ID;
+    } else {
+      process.env.STAGE3_WORKER_CURRENT_JOB_ID = previousCurrentJobId;
+    }
+    await fs.rm(tmpDir, { recursive: true, force: true });
   }
 });
 

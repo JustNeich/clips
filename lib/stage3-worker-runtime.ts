@@ -943,6 +943,23 @@ export async function runClaimedJobWithTimeout<T>(
   }
 }
 
+export async function withStage3WorkerCurrentJobId<T>(
+  jobId: string,
+  run: () => Promise<T>
+): Promise<T> {
+  const previousJobId = process.env.STAGE3_WORKER_CURRENT_JOB_ID;
+  process.env.STAGE3_WORKER_CURRENT_JOB_ID = jobId;
+  try {
+    return await run();
+  } finally {
+    if (previousJobId === undefined) {
+      delete process.env.STAGE3_WORKER_CURRENT_JOB_ID;
+    } else {
+      process.env.STAGE3_WORKER_CURRENT_JOB_ID = previousJobId;
+    }
+  }
+}
+
 function exitAfterTimedOutJob(): void {
   const timer = setTimeout(() => {
     process.exit(1);
@@ -1133,11 +1150,14 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
       }, 10_000);
 
       try {
-        const executed = await runClaimedJobWithTimeout(
-          job,
-          payloadJson,
-          (signal) => executeStage3HeavyJobPayload(job.kind, payloadJson, { signal }),
-          jobController.signal
+        const executed = await withStage3WorkerCurrentJobId(
+          job.id,
+          () => runClaimedJobWithTimeout(
+            job,
+            payloadJson,
+            (signal) => executeStage3HeavyJobPayload(job.kind, payloadJson, { signal }),
+            jobController.signal
+          )
         );
         try {
           await completeRemoteJob(config, job, {
