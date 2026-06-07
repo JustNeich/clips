@@ -94,6 +94,7 @@ type Stage3WorkerRuntimeSyncOptions = {
   sessionToken?: string | null;
   pairingToken?: string | null;
 };
+type Stage3WorkerRuntimeAuthMode = "session" | "pairing" | "auto";
 
 const execFileAsync = promisify(execFile);
 const BUNDLED_WORKER_RUNTIME_VERSION = normalizeRuntimeVersion(
@@ -306,19 +307,33 @@ function buildWorkerRuntimeApiFileUrl(origin: string, relativePath: string): str
   return `${origin}/api/stage3/worker/runtime/${relativePath.replace(/^\/+/, "")}`;
 }
 
-function buildWorkerRuntimeFetchInit(options: Stage3WorkerRuntimeSyncOptions): RequestInit {
+function buildWorkerRuntimeFetchInit(
+  options: Stage3WorkerRuntimeSyncOptions,
+  mode: Stage3WorkerRuntimeAuthMode = "auto"
+): RequestInit {
   const headers: Record<string, string> = {};
   const sessionToken = options.sessionToken?.trim();
   const pairingToken = options.pairingToken?.trim();
-  if (sessionToken) {
+  if (sessionToken && mode !== "pairing") {
     headers.Authorization = `Bearer ${sessionToken}`;
-  } else if (pairingToken) {
+  } else if (pairingToken && mode !== "session") {
     headers["X-Stage3-Worker-Pairing-Token"] = pairingToken;
   }
   return {
     cache: "no-store",
     headers
   };
+}
+
+function shouldRetryWorkerRuntimeWithPairingToken(input: {
+  response: Response;
+  options: Stage3WorkerRuntimeSyncOptions;
+}): boolean {
+  return (
+    (input.response.status === 401 || input.response.status === 403) &&
+    Boolean(input.options.sessionToken?.trim()) &&
+    Boolean(input.options.pairingToken?.trim())
+  );
 }
 
 async function downloadBinaryFile(url: string, destination: string, init?: RequestInit): Promise<void> {
@@ -383,11 +398,17 @@ export async function syncStage3WorkerRuntime(
   options: Stage3WorkerRuntimeSyncOptions = {}
 ): Promise<{ updated: boolean; runtimeVersion: string | null }> {
   const origin = serverOrigin.replace(/\/+$/, "");
-  const runtimeFetchInit = buildWorkerRuntimeFetchInit(options);
-  const remoteManifestResponse = await fetch(
-    buildWorkerRuntimeApiFileUrl(origin, "manifest.json"),
-    runtimeFetchInit
-  );
+  const manifestUrl = buildWorkerRuntimeApiFileUrl(origin, "manifest.json");
+  let runtimeFetchInit = buildWorkerRuntimeFetchInit(options);
+  let remoteManifestResponse = await fetch(manifestUrl, runtimeFetchInit);
+  if (shouldRetryWorkerRuntimeWithPairingToken({ response: remoteManifestResponse, options })) {
+    const pairingRuntimeFetchInit = buildWorkerRuntimeFetchInit(options, "pairing");
+    const pairingManifestResponse = await fetch(manifestUrl, pairingRuntimeFetchInit);
+    if (pairingManifestResponse.ok) {
+      remoteManifestResponse = pairingManifestResponse;
+      runtimeFetchInit = pairingRuntimeFetchInit;
+    }
+  }
   if (!remoteManifestResponse.ok) {
     throw new Error(
       `Failed to read worker manifest from server (${remoteManifestResponse.status}).`

@@ -22,6 +22,9 @@ type DesktopWorkerState = {
   error: string | null;
   logs: string[];
 };
+type StartWorkerOptions = {
+  pairingToken?: string | null;
+};
 
 const PROTOCOL = "clips-stage3-worker";
 const MAX_LOG_LINES = 200;
@@ -202,7 +205,7 @@ async function stopWorkerProcess(): Promise<void> {
   });
 }
 
-async function startWorkerIfConfigured(force = false): Promise<void> {
+async function startWorkerIfConfigured(force = false, options: StartWorkerOptions = {}): Promise<void> {
   if (workerPromise || workerProcess) {
     if (!force) {
       return;
@@ -234,6 +237,7 @@ async function startWorkerIfConfigured(force = false): Promise<void> {
     });
     const syncResult = await syncStage3WorkerRuntime(config.serverOrigin, {
       sessionToken: config.sessionToken,
+      pairingToken: options.pairingToken,
       env: launch.env
     });
     if (syncResult.updated) {
@@ -317,7 +321,7 @@ async function handlePairDeepLink(rawUrl: string): Promise<void> {
     const config = await pairStage3Worker({ server, token, label });
     await appendLog("info", `Paired ${config.label} with ${config.serverOrigin}`);
     await refreshConfigState();
-    await startWorkerIfConfigured(true);
+    await startWorkerIfConfigured(true, { pairingToken: token });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     setState({ workerStatus: "error", error: message });

@@ -181,3 +181,105 @@ test("runtime sync reads the private runtime manifest API with worker session au
     await fs.rm(tempHome, { recursive: true, force: true });
   }
 });
+
+test("runtime sync retries the private runtime manifest with fresh pairing auth when session auth is rejected", { concurrency: false }, async () => {
+  const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-worker-runtime-home-"));
+  const previousHome = process.env.HOME;
+  const previousUserProfile = process.env.USERPROFILE;
+  const previousLocalAppData = process.env.LOCALAPPDATA;
+  const originalFetch = globalThis.fetch;
+  const manifest = {
+    version: "1.0.0",
+    runtimeVersion: "1.0.0+runtime.pairing-retry-test",
+    bundleFile: "clips-stage3-worker.cjs",
+    remotionFiles: ["index.tsx"],
+    libFiles: ["stage3-template.ts"],
+    designFiles: ["templates/science-card-v1/figma-spec.json"],
+    publicFiles: ["asset.svg"]
+  };
+
+  process.env.HOME = tempHome;
+  process.env.USERPROFILE = tempHome;
+  process.env.LOCALAPPDATA = path.join(tempHome, "AppData", "Local");
+  const workerHome = getStage3WorkerHomeDir();
+
+  try {
+    await fs.mkdir(path.join(workerHome, "bin"), { recursive: true });
+    await fs.mkdir(path.join(workerHome, "remotion"), { recursive: true });
+    await fs.mkdir(path.join(workerHome, "lib"), { recursive: true });
+    await fs.mkdir(path.join(workerHome, "design", "templates", "science-card-v1"), { recursive: true });
+    await fs.mkdir(path.join(workerHome, "public"), { recursive: true });
+    for (const packageName of [
+      ["@remotion", "renderer"],
+      ["@remotion", "bundler"],
+      ["esbuild"],
+      ["remotion"],
+      ["react"],
+      ["react-dom"]
+    ]) {
+      await fs.mkdir(path.join(workerHome, "node_modules", ...packageName), { recursive: true });
+      await fs.writeFile(path.join(workerHome, "node_modules", ...packageName, "package.json"), "{}");
+    }
+    await fs.writeFile(path.join(workerHome, "manifest.json"), JSON.stringify(manifest));
+    await fs.writeFile(path.join(workerHome, "package.json"), "{}");
+    await fs.writeFile(path.join(workerHome, "bin", "clips-stage3-worker.cjs"), "bundle");
+    await fs.writeFile(path.join(workerHome, "remotion", "index.tsx"), "remotion");
+    await fs.writeFile(path.join(workerHome, "lib", "stage3-template.ts"), "lib");
+    await fs.writeFile(
+      path.join(workerHome, "design", "templates", "science-card-v1", "figma-spec.json"),
+      "{}"
+    );
+    await fs.writeFile(path.join(workerHome, "public", "asset.svg"), "<svg />");
+
+    const calls: Array<{ url: string; headers: Record<string, string> }> = [];
+    globalThis.fetch = (async (input, init) => {
+      const headers = (init?.headers as Record<string, string>) ?? {};
+      calls.push({ url: String(input), headers });
+      if (headers.Authorization === "Bearer stale-session-token") {
+        return new Response(JSON.stringify({ error: "Worker token недействителен." }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+      assert.equal(headers["X-Stage3-Worker-Pairing-Token"], "fresh-pairing-token");
+      return new Response(JSON.stringify(manifest), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }) as typeof fetch;
+
+    const result = await syncStage3WorkerRuntime("https://clips.example.com/", {
+      sessionToken: "stale-session-token",
+      pairingToken: "fresh-pairing-token"
+    });
+
+    assert.deepEqual(result, {
+      updated: false,
+      runtimeVersion: "1.0.0+runtime.pairing-retry-test"
+    });
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0]?.url, "https://clips.example.com/api/stage3/worker/runtime/manifest.json");
+    assert.equal(calls[0]?.headers.Authorization, "Bearer stale-session-token");
+    assert.equal(calls[1]?.url, "https://clips.example.com/api/stage3/worker/runtime/manifest.json");
+    assert.equal(calls[1]?.headers.Authorization, undefined);
+    assert.equal(calls[1]?.headers["X-Stage3-Worker-Pairing-Token"], "fresh-pairing-token");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    if (previousUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = previousUserProfile;
+    }
+    if (previousLocalAppData === undefined) {
+      delete process.env.LOCALAPPDATA;
+    } else {
+      process.env.LOCALAPPDATA = previousLocalAppData;
+    }
+    await fs.rm(tempHome, { recursive: true, force: true });
+  }
+});
