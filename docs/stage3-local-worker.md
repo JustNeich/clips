@@ -259,7 +259,7 @@ UI worker list теперь при каждом poll автоматически 
 - `preview`: 150 секунд;
 - `source-download`: 5 минут;
 - `agent-media-step`: 10 минут;
-- `render`: duration-aware timeout. Короткие renders получают короткий watchdog window, а длинные ролики плавно доходят до 10-минутного cap.
+- `render`: duration-aware timeout. Короткие renders получают 10-минутный watchdog floor, а длинные ролики плавно доходят до 15-минутного cap.
 
 Host дополнительно зеркалит эти лимиты серверным watchdog-ом с небольшой grace-паузой. Если worker продолжает слать heartbeat, но job уже старше своего kind-timeout, host сам переводит её в recoverable `*_timeout`, сбрасывает `assigned_worker_id` / lease и освобождает очередь. Job heartbeat перед продлением lease проверяет тот же overdue watchdog, поэтому heartbeat не может бесконечно поддерживать `Busy` для stuck render. Это защищает render от состояния, где зависший `editing-proxy` или короткий stuck render держит executor в `Busy` до длинного lease window без видимой ошибки.
 Job-specific heartbeat для уже очищенной/failed job не должен продлевать общий worker `last_seen_at`: иначе зависший executor мог бы выглядеть `Online`, хотя его loop уже не claim-ит новые jobs.

@@ -14,7 +14,7 @@ import { runClaimedJobWithTimeout } from "../lib/stage3-worker-runtime";
 test("worker job timeout defaults keep preview responsive without killing normal renders", () => {
   assert.equal(resolveStage3WorkerJobTimeoutMs("editing-proxy", {}), 5 * 60_000);
   assert.equal(resolveStage3WorkerJobTimeoutMs("preview", {}), 150_000);
-  assert.equal(resolveStage3WorkerJobTimeoutMs("render", {}), 10 * 60_000);
+  assert.equal(resolveStage3WorkerJobTimeoutMs("render", {}), 15 * 60_000);
 });
 
 test("worker job timeout supports global and kind-specific overrides", () => {
@@ -33,7 +33,7 @@ test("worker job timeout supports global and kind-specific overrides", () => {
   );
 });
 
-test("worker render timeout is duration-aware for short output payloads", () => {
+test("worker render timeout gives short local renders production-safe headroom", () => {
   assert.equal(
     resolveStage3WorkerJobTimeoutMs(
       "render",
@@ -44,7 +44,19 @@ test("worker render timeout is duration-aware for short output payloads", () => 
         }
       })
     ),
-    5 * 60_000
+    10 * 60_000
+  );
+  assert.equal(
+    resolveStage3WorkerJobTimeoutMs(
+      "render",
+      {},
+      JSON.stringify({
+        renderPlan: {
+          targetDurationSec: 20
+        }
+      })
+    ),
+    10 * 60_000
   );
   assert.equal(
     resolveStage3WorkerJobTimeoutMs(
@@ -56,7 +68,7 @@ test("worker render timeout is duration-aware for short output payloads", () => 
         }
       })
     ),
-    10 * 60_000
+    15 * 60_000
   );
 });
 

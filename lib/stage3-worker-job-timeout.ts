@@ -8,7 +8,7 @@ export type Stage3WorkerJobKind =
 const DEFAULT_TIMEOUT_MS_BY_KIND: Record<Stage3WorkerJobKind, number> = {
   "editing-proxy": 5 * 60_000,
   preview: 150_000,
-  render: 10 * 60_000,
+  render: 15 * 60_000,
   "source-download": 5 * 60_000,
   "agent-media-step": 10 * 60_000
 };
@@ -37,13 +37,11 @@ const HOST_ENV_KEY_BY_KIND: Record<Stage3WorkerJobKind, string> = {
   "agent-media-step": "STAGE3_HOST_AGENT_MEDIA_STEP_TIMEOUT_MS"
 };
 
-// Floor/base raised: the old 180s floor killed legitimate local renders on real
-// devices (e.g. MacBook Air M4) whose first render still paid the cold Remotion
-// bundle cost. With bundle warm+reuse renders are fast, but this gives headroom so
-// a legit render is never mis-killed. The 30-min server-side watchdog still bounds
-// genuinely-stuck jobs.
-const LOCAL_STAGE3_RENDER_MIN_TIMEOUT_MS = 5 * 60_000;
-const LOCAL_STAGE3_RENDER_BASE_TIMEOUT_MS = 3 * 60_000;
+// Real local renders on editor laptops can still exceed 5 minutes even after the
+// Remotion bundle is warm. Keep stuck jobs bounded, but do not kill a legitimate
+// short render at the 300s mark.
+const LOCAL_STAGE3_RENDER_MIN_TIMEOUT_MS = 10 * 60_000;
+const LOCAL_STAGE3_RENDER_BASE_TIMEOUT_MS = 5 * 60_000;
 const LOCAL_STAGE3_RENDER_PER_OUTPUT_SECOND_MS = 10_000;
 
 const HOST_STAGE3_RENDER_MIN_TIMEOUT_MS = 15 * 60_000;

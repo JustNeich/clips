@@ -304,7 +304,7 @@ test("server watchdog fails short stuck local renders after the duration-aware r
     );
 
     const db = getDb();
-    const staleStartedAt = new Date(Date.now() - 6 * 60_000).toISOString();
+    const staleStartedAt = new Date(Date.now() - 11 * 60_000).toISOString();
     const freshHeartbeatAt = new Date().toISOString();
     const futureLeaseAt = new Date(Date.now() + 30 * 60_000).toISOString();
     db.prepare(
@@ -322,7 +322,7 @@ test("server watchdog fails short stuck local renders after the duration-aware r
     const refreshedJob = getStage3Job(job.id);
     assert.equal(refreshedJob?.status, "failed");
     assert.equal(refreshedJob?.errorCode, "render_timeout");
-    assert.match(refreshedJob?.errorMessage ?? "", /render за 300 секунд/);
+    assert.match(refreshedJob?.errorMessage ?? "", /render за 600 секунд/);
     assert.equal(refreshedJob?.assignedWorkerId, null);
     assert.equal(refreshedJob?.leaseUntil, null);
 
@@ -380,7 +380,7 @@ test("local render heartbeat fails jobs past the duration-aware timeout instead 
     );
 
     const db = getDb();
-    const staleStartedAt = new Date(Date.now() - 6 * 60_000).toISOString();
+    const staleStartedAt = new Date(Date.now() - 11 * 60_000).toISOString();
     const freshHeartbeatAt = new Date().toISOString();
     const futureLeaseAt = new Date(Date.now() + 30 * 60_000).toISOString();
     db.prepare(
