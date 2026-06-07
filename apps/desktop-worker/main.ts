@@ -233,6 +233,7 @@ async function startWorkerIfConfigured(force = false): Promise<void> {
       installRoot: getStage3WorkerPaths().root
     });
     const syncResult = await syncStage3WorkerRuntime(config.serverOrigin, {
+      sessionToken: config.sessionToken,
       env: launch.env
     });
     if (syncResult.updated) {

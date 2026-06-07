@@ -88,6 +88,13 @@ type WorkerRuntimeManifest = {
   publicFiles?: string[];
 };
 
+type Stage3WorkerRuntimeSyncOptions = {
+  env?: NodeJS.ProcessEnv;
+  npmCommand?: string;
+  sessionToken?: string | null;
+  pairingToken?: string | null;
+};
+
 const execFileAsync = promisify(execFile);
 const BUNDLED_WORKER_RUNTIME_VERSION = normalizeRuntimeVersion(
   typeof __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__ === "string"
@@ -295,8 +302,27 @@ async function readLocalRuntimeManifest(): Promise<WorkerRuntimeManifest | null>
   }
 }
 
-async function downloadBinaryFile(url: string, destination: string): Promise<void> {
-  const response = await fetch(url, { cache: "no-store" });
+function buildWorkerRuntimeApiFileUrl(origin: string, relativePath: string): string {
+  return `${origin}/api/stage3/worker/runtime/${relativePath.replace(/^\/+/, "")}`;
+}
+
+function buildWorkerRuntimeFetchInit(options: Stage3WorkerRuntimeSyncOptions): RequestInit {
+  const headers: Record<string, string> = {};
+  const sessionToken = options.sessionToken?.trim();
+  const pairingToken = options.pairingToken?.trim();
+  if (sessionToken) {
+    headers.Authorization = `Bearer ${sessionToken}`;
+  } else if (pairingToken) {
+    headers["X-Stage3-Worker-Pairing-Token"] = pairingToken;
+  }
+  return {
+    cache: "no-store",
+    headers
+  };
+}
+
+async function downloadBinaryFile(url: string, destination: string, init?: RequestInit): Promise<void> {
+  const response = await fetch(url, init ?? { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`Failed to download ${url}: ${response.status}`);
   }
@@ -354,10 +380,14 @@ async function workerRuntimeDependenciesMissing(workerRoot: string): Promise<boo
 
 export async function syncStage3WorkerRuntime(
   serverOrigin: string,
-  options: { env?: NodeJS.ProcessEnv; npmCommand?: string } = {}
+  options: Stage3WorkerRuntimeSyncOptions = {}
 ): Promise<{ updated: boolean; runtimeVersion: string | null }> {
   const origin = serverOrigin.replace(/\/+$/, "");
-  const remoteManifestResponse = await fetch(`${origin}/stage3-worker/manifest.json`, { cache: "no-store" });
+  const runtimeFetchInit = buildWorkerRuntimeFetchInit(options);
+  const remoteManifestResponse = await fetch(
+    buildWorkerRuntimeApiFileUrl(origin, "manifest.json"),
+    runtimeFetchInit
+  );
   if (!remoteManifestResponse.ok) {
     throw new Error(
       `Failed to read worker manifest from server (${remoteManifestResponse.status}).`
@@ -437,16 +467,17 @@ export async function syncStage3WorkerRuntime(
   await fs.mkdir(publicDir, { recursive: true });
   await fs.mkdir(binDir, { recursive: true });
 
-  await downloadBinaryFile(`${origin}/stage3-worker/${bundleFile}`, bundlePath);
-  await downloadBinaryFile(`${origin}/stage3-worker/package.json`, packagePath);
-  await downloadBinaryFile(`${origin}/stage3-worker/manifest.json`, manifestPath);
+  await downloadBinaryFile(buildWorkerRuntimeApiFileUrl(origin, bundleFile), bundlePath, runtimeFetchInit);
+  await downloadBinaryFile(buildWorkerRuntimeApiFileUrl(origin, "package.json"), packagePath, runtimeFetchInit);
+  await downloadBinaryFile(buildWorkerRuntimeApiFileUrl(origin, "manifest.json"), manifestPath, runtimeFetchInit);
 
   let runtimeSourcesHydrated = false;
   if (runtimeSourcesArchiveFile) {
     try {
       await downloadBinaryFile(
-        `${origin}/stage3-worker/${runtimeSourcesArchiveFile}`,
-        runtimeSourcesArchivePath
+        buildWorkerRuntimeApiFileUrl(origin, runtimeSourcesArchiveFile),
+        runtimeSourcesArchivePath,
+        runtimeFetchInit
       );
       await replaceExtractedWorkerRuntimeSources({
         archivePath: runtimeSourcesArchivePath,
@@ -463,26 +494,30 @@ export async function syncStage3WorkerRuntime(
   if (!runtimeSourcesHydrated) {
     for (const fileName of remotionFiles) {
       await downloadBinaryFile(
-        `${origin}/stage3-worker/remotion/${fileName}`,
-        path.join(remotionDir, fileName)
+        buildWorkerRuntimeApiFileUrl(origin, `remotion/${fileName}`),
+        path.join(remotionDir, fileName),
+        runtimeFetchInit
       );
     }
     for (const fileName of libFiles) {
       await downloadBinaryFile(
-        `${origin}/stage3-worker/lib/${fileName}`,
-        path.join(libDir, fileName)
+        buildWorkerRuntimeApiFileUrl(origin, `lib/${fileName}`),
+        path.join(libDir, fileName),
+        runtimeFetchInit
       );
     }
     for (const fileName of designFiles) {
       await downloadBinaryFile(
-        `${origin}/stage3-worker/design/${fileName}`,
-        path.join(designDir, fileName)
+        buildWorkerRuntimeApiFileUrl(origin, `design/${fileName}`),
+        path.join(designDir, fileName),
+        runtimeFetchInit
       );
     }
     for (const fileName of publicFiles) {
       await downloadBinaryFile(
-        `${origin}/stage3-worker/public/${fileName}`,
-        path.join(publicDir, fileName)
+        buildWorkerRuntimeApiFileUrl(origin, `public/${fileName}`),
+        path.join(publicDir, fileName),
+        runtimeFetchInit
       );
     }
   }
@@ -491,8 +526,9 @@ export async function syncStage3WorkerRuntime(
   if (runtimeDependenciesArchiveFile && runtimeDependenciesArchiveCompatible) {
     try {
       await downloadBinaryFile(
-        `${origin}/stage3-worker/${runtimeDependenciesArchiveFile}`,
-        runtimeDependenciesArchivePath
+        buildWorkerRuntimeApiFileUrl(origin, runtimeDependenciesArchiveFile),
+        runtimeDependenciesArchivePath,
+        runtimeFetchInit
       );
       await replaceExtractedWorkerRuntimeDependencies({
         archivePath: runtimeDependenciesArchivePath,
@@ -926,7 +962,9 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
   await ensureWorkerDirs();
   let syncResult: { updated: boolean; runtimeVersion: string | null } | null = null;
   try {
-    syncResult = await syncStage3WorkerRuntime(config.serverOrigin);
+    syncResult = await syncStage3WorkerRuntime(config.serverOrigin, {
+      sessionToken: config.sessionToken
+    });
     if (syncResult.updated) {
       console.log(
         `Updated local Stage 3 worker runtime to ${syncResult.runtimeVersion ?? "latest"}.`
