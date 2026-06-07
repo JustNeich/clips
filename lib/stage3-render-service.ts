@@ -242,6 +242,7 @@ type Stage3FinalizeVideoMode = "reencode" | "copy";
 type RemotionModule = {
   bundle: AsyncFn;
   getCompositions: AsyncFn;
+  makeCancelSignal: (() => { cancelSignal: (callback: () => void) => void; cancel: () => void }) | null;
   renderMedia: AsyncFn;
   selectComposition: AsyncFn | null;
 };
@@ -262,6 +263,11 @@ async function ensureRemotionRuntime(): Promise<RemotionModule> {
 
         const bundle = resolveFunction([rendererModule, rendererDefault, bundlerDefault], "bundle");
         const getCompositions = resolveFunction([rendererModule, rendererDefault], "getCompositions");
+        const makeCancelSignal = resolveFunction(
+          [rendererModule, rendererDefault],
+          "makeCancelSignal",
+          true
+        ) as unknown as RemotionModule["makeCancelSignal"];
         const renderMedia = resolveFunction([rendererModule, rendererDefault], "renderMedia");
         const selectComposition = resolveFunction(
           [rendererModule, rendererDefault],
@@ -269,7 +275,7 @@ async function ensureRemotionRuntime(): Promise<RemotionModule> {
           true
         );
 
-        return { bundle, getCompositions, renderMedia, selectComposition };
+        return { bundle, getCompositions, makeCancelSignal, renderMedia, selectComposition };
       })
       .catch((error) => {
         remotionRuntimePromise = null;
@@ -464,6 +470,21 @@ function emitRenderProgress(options: Stage3RenderOptions | undefined, event: Sta
   } catch {
     // Progress reporting must never turn a successful render into a failed render.
   }
+}
+
+function isStage3WorkerRuntime(): boolean {
+  return Boolean(process.env.STAGE3_WORKER_INSTALL_ROOT?.trim());
+}
+
+function readFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function formatPercent(value: number | null): string {
+  if (value === null) {
+    return "unknown";
+  }
+  return `${Math.max(0, Math.min(100, value * 100)).toFixed(1)}%`;
 }
 
 async function measureRenderStage<T>(
@@ -951,8 +972,9 @@ async function runRemotionRender(params: {
   };
   variationProfile: Stage3VariationProfile;
   timeoutMs: number;
+  signal?: AbortSignal;
 }): Promise<Stage3VariationProfile> {
-  const { getCompositions, renderMedia, selectComposition } = await ensureRemotionRuntime();
+  const { getCompositions, makeCancelSignal, renderMedia, selectComposition } = await ensureRemotionRuntime();
   const serveUrl = params.serveUrl;
   const preparedBrowser = await getRemotionBrowser();
   const browserExecutable = preparedBrowser.browserExecutable;
@@ -1014,6 +1036,46 @@ async function runRemotionRender(params: {
     throw new Error(`Composition ${params.templateId} не найден в remotion-сборке.`);
   }
 
+  const cancelController = params.signal && makeCancelSignal ? makeCancelSignal() : null;
+  let abortHandler: (() => void) | null = null;
+  if (params.signal && cancelController) {
+    abortHandler = () => {
+      cancelController.cancel();
+    };
+    if (params.signal.aborted) {
+      abortHandler();
+    } else {
+      params.signal.addEventListener("abort", abortHandler, { once: true });
+    }
+  }
+
+  const shouldLogRemotionProgress = isStage3WorkerRuntime();
+  let lastRemotionProgressLogAt = 0;
+  const onRemotionProgress = shouldLogRemotionProgress
+    ? (progress: Record<string, unknown>) => {
+        const now = Date.now();
+        const fraction = readFiniteNumber(progress.progress);
+        const renderedFrames = readFiniteNumber(progress.renderedFrames);
+        const encodedFrames = readFiniteNumber(progress.encodedFrames);
+        const estimatedMs = readFiniteNumber(progress.renderEstimatedTime);
+        const stitchStage = typeof progress.stitchStage === "string" ? progress.stitchStage : null;
+        const isFinal = fraction !== null && fraction >= 0.999;
+        if (!isFinal && now - lastRemotionProgressLogAt < 15_000) {
+          return;
+        }
+        lastRemotionProgressLogAt = now;
+        console.log(
+          [
+            `Remotion render progress ${formatPercent(fraction)}`,
+            renderedFrames === null ? null : `renderedFrames=${Math.round(renderedFrames)}`,
+            encodedFrames === null ? null : `encodedFrames=${Math.round(encodedFrames)}`,
+            estimatedMs === null ? null : `estimatedMs=${Math.round(estimatedMs)}`,
+            stitchStage ? `stage=${stitchStage}` : null
+          ].filter(Boolean).join(" ")
+        );
+      }
+    : undefined;
+
   const renderArgs = {
     composition: composition as { id: string } & Record<string, unknown>,
     serveUrl,
@@ -1024,6 +1086,8 @@ async function runRemotionRender(params: {
     pixelFormat: params.variationProfile.encode.pixelFormat,
     x264Preset: params.variationProfile.encode.x264Preset,
     logLevel: "warn",
+    cancelSignal: cancelController?.cancelSignal,
+    onProgress: onRemotionProgress,
     timeoutInMilliseconds: params.timeoutMs,
     browserExecutable,
     chromeMode,
@@ -1058,9 +1122,15 @@ async function runRemotionRender(params: {
   };
 
   const isAbortError = (error: unknown): boolean =>
-    error instanceof Error && (error.name === "AbortError" || error.message.toLowerCase().includes("aborted"));
+    error instanceof Error &&
+    (error.name === "AbortError" ||
+      error.message.toLowerCase().includes("aborted") ||
+      error.message.toLowerCase().includes("cancelled"));
 
   const renderOnce = async (props: typeof inputProps) => {
+    if (params.signal?.aborted) {
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }
     try {
       await renderMedia({
         ...renderArgs,
@@ -1087,22 +1157,28 @@ async function runRemotionRender(params: {
   };
 
   try {
-    await renderOnce(inputProps);
-    return params.variationProfile;
-  } catch (error) {
-    // Only fall back to the encode-only (signal-disabled) profile for a genuine
-    // signal-overlay failure in hybrid mode, and NEVER after an abort/timeout —
-    // a second full re-render there would just blow the render watchdog again.
-    if (
-      isAbortError(error) ||
-      !params.variationProfile.signal.enabled ||
-      params.variationProfile.appliedMode !== "hybrid"
-    ) {
-      throw error;
+    try {
+      await renderOnce(inputProps);
+      return params.variationProfile;
+    } catch (error) {
+      // Only fall back to the encode-only (signal-disabled) profile for a genuine
+      // signal-overlay failure in hybrid mode, and NEVER after an abort/timeout —
+      // a second full re-render there would just blow the render watchdog again.
+      if (
+        isAbortError(error) ||
+        !params.variationProfile.signal.enabled ||
+        params.variationProfile.appliedMode !== "hybrid"
+      ) {
+        throw error;
+      }
+      const fallbackProfile = createStage3SignalFallbackProfile(params.variationProfile);
+      await renderOnce(buildInputProps(fallbackProfile));
+      return fallbackProfile;
     }
-    const fallbackProfile = createStage3SignalFallbackProfile(params.variationProfile);
-    await renderOnce(buildInputProps(fallbackProfile));
-    return fallbackProfile;
+  } finally {
+    if (params.signal && abortHandler) {
+      params.signal.removeEventListener("abort", abortHandler);
+    }
   }
 }
 
@@ -1694,7 +1770,8 @@ export async function renderStage3Video(
               bottomCompacted: templateSnapshot.fit.bottomCompacted
             },
             variationProfile,
-            timeoutMs
+            timeoutMs,
+            signal: options?.signal
           });
           Object.assign(remotionPayload, {
             outputSizeBytes: await fileSizeBytes(remotionOutputPath),

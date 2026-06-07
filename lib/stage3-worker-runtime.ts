@@ -23,6 +23,7 @@ import {
   resolveStage3WorkerJobTimeoutMs
 } from "./stage3-worker-job-timeout";
 import { ensureManagedStage3WorkerTools } from "./stage3-worker-managed-tools";
+import type { Stage3RenderProgressEvent } from "./stage3-render-service";
 
 declare const __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__: string | undefined;
 
@@ -988,6 +989,44 @@ function exitAfterTimedOutJob(): void {
   timer.unref?.();
 }
 
+function summarizeStage3WorkerProgressPayload(payload: Record<string, unknown> | undefined): string {
+  if (!payload || Object.keys(payload).length === 0) {
+    return "";
+  }
+  try {
+    const serialized = JSON.stringify(payload);
+    return serialized.length > 420 ? `${serialized.slice(0, 417)}...` : serialized;
+  } catch {
+    return "[unserializable payload]";
+  }
+}
+
+export function formatStage3WorkerRenderProgressLog(jobId: string, event: Stage3RenderProgressEvent): string {
+  const parts = [
+    `Render stage ${event.stage} ${event.status} for job ${jobId}`
+  ];
+  if (typeof event.durationMs === "number" && Number.isFinite(event.durationMs)) {
+    parts.push(`durationMs=${Math.round(event.durationMs)}`);
+  }
+  const payload = summarizeStage3WorkerProgressPayload(event.payload);
+  if (payload) {
+    parts.push(`payload=${payload}`);
+  }
+  if (event.errorMessage) {
+    parts.push(`error=${event.errorMessage}`);
+  }
+  return parts.join(" ");
+}
+
+function logStage3WorkerRenderProgress(jobId: string, event: Stage3RenderProgressEvent): void {
+  const message = formatStage3WorkerRenderProgressLog(jobId, event);
+  if (event.status === "failed") {
+    console.error(message);
+    return;
+  }
+  console.log(message);
+}
+
 export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {}): Promise<void> {
   const restartAfterRuntimeSync = options.restartAfterRuntimeSync ?? true;
   const installSignalHandlers = options.installSignalHandlers ?? true;
@@ -1176,7 +1215,12 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
           () => runClaimedJobWithTimeout(
             job,
             payloadJson,
-            (signal) => executeStage3HeavyJobPayload(job.kind, payloadJson, { signal }),
+            (signal) =>
+              executeStage3HeavyJobPayload(job.kind, payloadJson, {
+                signal,
+                onRenderProgress:
+                  job.kind === "render" ? (event) => logStage3WorkerRenderProgress(job.id, event) : undefined
+              }),
             jobController.signal
           )
         );

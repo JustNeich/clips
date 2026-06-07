@@ -9,7 +9,10 @@ import {
   resolveStage3WorkerJobTimeoutMs
 } from "../lib/stage3-worker-job-timeout";
 import { classifyStage3HeavyJobError } from "../lib/stage3-job-executor";
-import { runClaimedJobWithTimeout } from "../lib/stage3-worker-runtime";
+import {
+  formatStage3WorkerRenderProgressLog,
+  runClaimedJobWithTimeout
+} from "../lib/stage3-worker-runtime";
 
 test("worker job timeout defaults keep preview responsive without killing normal renders", () => {
   assert.equal(resolveStage3WorkerJobTimeoutMs("editing-proxy", {}), 5 * 60_000);
@@ -209,6 +212,22 @@ test("claimed worker job stops when the server-side lease is revoked", async () 
   const reason = new Error("lease revoked");
   controller.abort(reason);
   await assert.rejects(promise, /lease revoked/);
+});
+
+test("worker render progress log includes stage, status, duration, payload, and errors", () => {
+  assert.equal(
+    formatStage3WorkerRenderProgressLog("job-render", {
+      stage: "remotion_render",
+      status: "failed",
+      durationMs: 12_345.67,
+      payload: {
+        targetDurationSec: 20,
+        x264Preset: "fast"
+      },
+      errorMessage: "render timeout"
+    }),
+    'Render stage remotion_render failed for job job-render durationMs=12346 payload={"targetDurationSec":20,"x264Preset":"fast"} error=render timeout'
+  );
 });
 
 test("worker timeout error is classifiable", () => {
