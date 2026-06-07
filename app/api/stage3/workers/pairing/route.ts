@@ -5,12 +5,14 @@ import {
   resolveStage3WorkerPublicOrigin
 } from "../../../../../lib/stage3-worker-commands";
 import { issueStage3WorkerPairingToken } from "../../../../../lib/stage3-worker-store";
+import { requireSensitiveArtifactAccess } from "../../../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
+    requireSensitiveArtifactAccess(auth);
     const issued = issueStage3WorkerPairingToken({
       workspaceId: auth.workspace.id,
       userId: auth.user.id

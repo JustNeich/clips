@@ -9,6 +9,7 @@
     "clean:next": "node -e \"try{require('node:fs').rmSync('.next',{recursive:true,force:true})}catch{};try{require('node:fs').unlinkSync('tsconfig.tsbuildinfo')}catch{}\"",
     "clean:typegen": "node -e \"try{require('node:fs').rmSync('.next/types',{recursive:true,force:true})}catch{};try{require('node:fs').unlinkSync('tsconfig.tsbuildinfo')}catch{}\"",
     "dev": "node --no-warnings ./node_modules/next/dist/bin/next dev",
+    "dev:prod-api": "CLIPS_REMOTE_API_ORIGIN=https://clips-vy11.onrender.com node --no-warnings ./node_modules/next/dist/bin/next dev",
     "prebuild": "npm run clean:next && npm run build:stage3-worker && npm run build:stage3-host-render-child",
     "build:stage3-worker": "node scripts/build-stage3-worker.mjs",
     "build:stage3-host-render-child": "node scripts/build-stage3-host-render-child.mjs",
@@ -23,6 +24,8 @@
     "test:viral-worker": "node --import tsx --test --test-concurrency=1 tests/viral-shorts-worker.test.ts",
     "mcp:flows": "tsx scripts/clips-flow-mcp.ts",
     "mcp:control": "tsx scripts/clips-control-mcp.ts",
+    "mcp:owner": "tsx scripts/clips-owner-mcp.ts",
+    "macmini:healthcheck": "node scripts/clips-macmini-healthcheck.mjs",
     "copscopes:daily-production": "node scripts/run-copscopes-daily-production.mjs",
     "stage2-worker": "tsx scripts/viral-shorts-worker.ts",
     "stage3-worker": "tsx apps/stage3-worker/index.ts",
@@ -52,8 +55,8 @@
     "@types/node": "22.10.2",
     "@types/react": "19.0.2",
     "@types/react-dom": "19.0.2",
-    "electron": "^33.4.11",
-    "electron-builder": "^25.1.8",
+    "electron": "^42.3.0",
+    "electron-builder": "^26.8.1",
     "esbuild": "^0.25.0",
     "eslint": "^9.39.4",
     "eslint-config-next": "^15.5.14",
@@ -62,5 +65,8 @@
     "pngjs": "^7.0.0",
     "tsx": "^4.20.6",
     "typescript": "5.7.2"
+  },
+  "overrides": {
+    "postcss": "^8.5.10"
   }
 }

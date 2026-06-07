@@ -8,6 +8,7 @@ import {
   SCIENCE_CARD_V7_TEMPLATE_ID,
   DEFAULT_STAGE3_SOURCE_VIDEO_TEXT_FONT_FAMILY,
   GHOSTFACE_COUNTRY_TEMPLATE_ID,
+  GHOSTFACE_WORKSHOP_TEMPLATE_ID,
   HEDGES_OF_HONOR_TEMPLATE_ID,
   getStage3CardInnerRect,
   isClassicScienceCardTemplateId,
@@ -421,6 +422,19 @@ export function TemplateBackdrop({
           position: "absolute",
           inset: 0,
           background: "#000000"
+        }}
+      />
+    );
+  }
+
+  if (templateId === GHOSTFACE_WORKSHOP_TEMPLATE_ID) {
+    return (
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "radial-gradient(circle at 50% -8%, rgba(95, 135, 156, 0.56), rgba(22, 43, 55, 0.82) 38%, rgba(4, 9, 13, 0.98) 100%), radial-gradient(circle at 18% 18%, rgba(125, 155, 168, 0.24), rgba(125, 155, 168, 0) 34%), radial-gradient(circle at 84% 30%, rgba(51, 77, 88, 0.32), rgba(51, 77, 88, 0) 38%), linear-gradient(180deg, #182f3a 0%, #08141b 62%, #03070a 100%)"
         }}
       />
     );

@@ -44,6 +44,9 @@ RUN apt-get update \
   && npm install -g @openai/codex \
   && rm -rf /var/lib/apt/lists/*
 
+RUN groupadd --system clips \
+  && useradd --system --gid clips --home-dir /home/clips --create-home clips
+
 COPY package.json package-lock.json ./
 RUN npm ci --include=dev
 
@@ -52,9 +55,14 @@ COPY . .
 RUN npx remotion browser ensure
 RUN npm run build
 RUN npm prune --omit=dev
+RUN mkdir -p "$APP_DATA_DIR" "$CODEX_SESSIONS_DIR" \
+  && chown -R clips:clips /var/data /home/clips \
+  && chmod -R go-w /app
 
 ENV NODE_ENV=production
 
 EXPOSE 10000
 
-CMD ["/bin/sh", "-c", "mkdir -p \"$APP_DATA_DIR\" \"$CODEX_SESSIONS_DIR\" && npx next start -H 0.0.0.0 -p ${PORT:-10000}"]
+USER clips
+
+CMD ["/bin/sh", "-c", "mkdir -p \"$APP_DATA_DIR\" \"$CODEX_SESSIONS_DIR\" && ./node_modules/.bin/next start -H 0.0.0.0 -p ${PORT:-10000}"]

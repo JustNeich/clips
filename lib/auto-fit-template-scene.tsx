@@ -9,6 +9,8 @@ import {
   SCIENCE_CARD_GREEN_TEMPLATE_ID,
   SCIENCE_CARD_V7_TEMPLATE_ID,
   HEDGES_OF_HONOR_TEMPLATE_ID,
+  GHOSTFACE_COUNTRY_TEMPLATE_ID,
+  GHOSTFACE_WORKSHOP_TEMPLATE_ID,
   Stage3TemplateConfig,
   isClassicScienceCardTemplateId,
   getTemplateById,
@@ -53,6 +55,7 @@ export type MeasuredSlotSpec = {
   scale: number;
   lineHeightFloor: number;
   lineHeightCeil: number;
+  fitMode: "target_fill" | "max_safe";
 };
 
 export type MeasuredSlotResult = {
@@ -188,7 +191,7 @@ function buildCacheKey(
   templateConfig: Stage3TemplateConfig
 ): string {
   return JSON.stringify({
-    version: "scene-autofit-v10",
+    version: "scene-autofit-v11",
     templateId,
     topText: baseComputed.top,
     bottomText: baseComputed.bottom,
@@ -369,6 +372,24 @@ export function solveMeasuredSlotForMeasurements(
   }
 
   if (candidates.length > 0) {
+    if (spec.fitMode === "max_safe") {
+      candidates.sort((left, right) => {
+        const fontDelta = right.font - left.font;
+        if (Math.abs(fontDelta) > 0.0001) {
+          return fontDelta;
+        }
+        const fillDelta = right.fill - left.fill;
+        if (Math.abs(fillDelta) > 0.0001) {
+          return fillDelta;
+        }
+        return Math.abs(left.lineHeight - spec.baseLineHeight) - Math.abs(right.lineHeight - spec.baseLineHeight);
+      });
+      return {
+        font: candidates[0].font,
+        lineHeight: candidates[0].lineHeight
+      };
+    }
+
     let bestCandidate:
       | {
           font: number;
@@ -473,6 +494,8 @@ function buildMeasuredComputed(
   const usesWideHeadlineScaling =
     templateId === SCIENCE_CARD_V7_TEMPLATE_ID || templateId === HEDGES_OF_HONOR_TEMPLATE_ID;
   const usesChannelStoryLayout = templateConfig.layoutKind === "channel_story";
+  const usesGhostfaceLayout =
+    templateId === GHOSTFACE_COUNTRY_TEMPLATE_ID || templateId === GHOSTFACE_WORKSHOP_TEMPLATE_ID;
   const topMinFont = ceilStage3TextFontPx(Math.max(14, Math.floor(templateConfig.typography.top.min * 0.58)));
   const bottomMinFont = ceilStage3TextFontPx(Math.max(14, Math.floor(templateConfig.typography.bottom.min * 0.58)));
   const topConfiguredMaxFont = Math.max(topFigmaFont, templateConfig.typography.top.max);
@@ -492,7 +515,7 @@ function buildMeasuredComputed(
       configuredMaxFont: topConfiguredMaxFont,
       minFont: topMinFont,
       scale: topScale,
-      maxScaleBoost: getTopFontHeadroom(templateId) * (usesWideHeadlineScaling ? 1.24 : 1.18)
+      maxScaleBoost: getTopFontHeadroom(templateId) * (usesGhostfaceLayout ? 1.8 : usesWideHeadlineScaling ? 1.24 : 1.18)
     }),
     preferredFont: baseComputed.topFont,
     maxLines: resolveScaledMaxLines(templateConfig.typography.top.maxLines, topScale, "top"),
@@ -516,7 +539,8 @@ function buildMeasuredComputed(
       usesClassicScienceCardChrome
         ? fitPolicy.topLineHeightCeil
         : Math.min(1.22, Number((baseComputed.topLineHeight + 0.08).toFixed(3)))
-    )
+    ),
+    fitMode: fitPolicy.topFitMode ?? fitPolicy.fitMode
   };
 
   const bottomBodyHeight = Math.max(
@@ -533,7 +557,7 @@ function buildMeasuredComputed(
       configuredMaxFont: bottomConfiguredMaxFont,
       minFont: bottomMinFont,
       scale: bottomScale,
-      maxScaleBoost: getBottomFontHeadroom(templateId) * (usesWideHeadlineScaling ? 1.4 : 1.3)
+      maxScaleBoost: getBottomFontHeadroom(templateId) * (usesGhostfaceLayout ? 1.8 : usesWideHeadlineScaling ? 1.4 : 1.3)
     }),
     preferredFont: baseComputed.bottomFont,
     maxLines: resolveScaledMaxLines(templateConfig.typography.bottom.maxLines, bottomScale, "bottom"),
@@ -557,7 +581,8 @@ function buildMeasuredComputed(
       usesClassicScienceCardChrome
         ? fitPolicy.bottomLineHeightCeil
         : Math.min(1.32, Number((baseComputed.bottomLineHeight + 0.08).toFixed(3)))
-    )
+    ),
+    fitMode: fitPolicy.bottomFitMode ?? fitPolicy.fitMode
   };
 
   const topResult =

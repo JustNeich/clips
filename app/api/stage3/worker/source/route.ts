@@ -3,11 +3,47 @@ import os from "node:os";
 import path from "node:path";
 import { requireStage3WorkerAuth } from "../../../../../lib/auth/stage3-worker";
 import { createNodeStreamResponse } from "../../../../../lib/node-stream-response";
+import { getStage3Job } from "../../../../../lib/stage3-job-store";
 import { ensureSourceMediaCached, getCachedSourceMedia } from "../../../../../lib/source-media-cache";
 import { isUploadedSourceUrl } from "../../../../../lib/uploaded-source";
 import { isSupportedUrl, normalizeSupportedUrl, SUPPORTED_SOURCE_ERROR_MESSAGE } from "../../../../../lib/ytdlp";
 
 export const runtime = "nodejs";
+
+function readJobPayloadSourceUrl(payloadJson: string): string | null {
+  try {
+    const parsed = JSON.parse(payloadJson) as { sourceUrl?: unknown };
+    return typeof parsed.sourceUrl === "string" && parsed.sourceUrl.trim()
+      ? normalizeSupportedUrl(parsed.sourceUrl.trim())
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function requireLeasedJobSourceAccess(input: {
+  workspaceId: string;
+  workerId: string;
+  jobId: string | null | undefined;
+  sourceUrl: string;
+}): Response | null {
+  const jobId = input.jobId?.trim();
+  if (!jobId) {
+    return Response.json({ error: "Передайте jobId для source request." }, { status: 400 });
+  }
+  const job = getStage3Job(jobId);
+  if (!job || job.workspaceId !== input.workspaceId) {
+    return Response.json({ error: "Stage 3 job not found." }, { status: 404 });
+  }
+  if (job.assignedWorkerId !== input.workerId || job.status !== "running") {
+    return Response.json({ error: "Stage 3 job is not leased by this worker." }, { status: 409 });
+  }
+  const jobSourceUrl = readJobPayloadSourceUrl(job.payloadJson);
+  if (!jobSourceUrl || jobSourceUrl !== input.sourceUrl) {
+    return Response.json({ error: "Source URL is not assigned to this worker job." }, { status: 403 });
+  }
+  return null;
+}
 
 function encodeStage3SourceFileNameHeader(fileName: string): string {
   return encodeURIComponent(fileName);
@@ -22,8 +58,8 @@ function scheduleDirectoryCleanup(dirPath: string): void {
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    requireStage3WorkerAuth(request);
-    const body = (await request.json().catch(() => null)) as { url?: string; cacheOnly?: boolean } | null;
+    const auth = requireStage3WorkerAuth(request);
+    const body = (await request.json().catch(() => null)) as { url?: string; cacheOnly?: boolean; jobId?: string } | null;
     const rawUrl = body?.url?.trim();
     const cacheOnly = body?.cacheOnly === true;
 
@@ -39,6 +75,15 @@ export async function POST(request: Request): Promise<Response> {
         },
         { status: 400 }
       );
+    }
+    const jobAccessError = requireLeasedJobSourceAccess({
+      workspaceId: auth.workspaceId,
+      workerId: auth.worker.id,
+      jobId: body?.jobId,
+      sourceUrl
+    });
+    if (jobAccessError) {
+      return jobAccessError;
     }
 
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-worker-source-"));

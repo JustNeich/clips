@@ -8,6 +8,7 @@ import {
   SCIENCE_CARD_V7_TEMPLATE_ID,
   HEDGES_OF_HONOR_TEMPLATE_ID,
   GHOSTFACE_COUNTRY_TEMPLATE_ID,
+  GHOSTFACE_WORKSHOP_TEMPLATE_ID,
   STAGE3_TEMPLATE_ID,
   getTemplateById,
   templateUsesBuiltInBackdrop
@@ -126,6 +127,17 @@ const TEMPLATE_VARIANTS: TemplateVariant[] = [
     runtime: {
       usesBuiltInBackdrop: templateUsesBuiltInBackdrop(GHOSTFACE_COUNTRY_TEMPLATE_ID),
       avatarBorderColor: "rgba(255,255,255,0)",
+      previewFrameMode: "full-frame"
+    }
+  },
+  {
+    id: GHOSTFACE_WORKSHOP_TEMPLATE_ID,
+    label: "Ghostface Workshop",
+    formatGroup: "classic_top_bottom",
+    formatLabel: resolveTemplateFormatGroupLabel("classic_top_bottom"),
+    runtime: {
+      usesBuiltInBackdrop: templateUsesBuiltInBackdrop(GHOSTFACE_WORKSHOP_TEMPLATE_ID),
+      avatarBorderColor: "rgba(7, 13, 23, 0.25)",
       previewFrameMode: "full-frame"
     }
   },

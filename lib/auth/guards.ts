@@ -3,6 +3,10 @@ import { AppRole, getWorkspaceCodexIntegration } from "../team-store";
 import { getChannelAccessForUser, getChannelById } from "../chat-history";
 import { resolveChannelPermissions } from "../acl";
 import { authenticateMcpControlWriteToken, authenticateMcpFlowReadToken } from "../mcp-token-store";
+import {
+  authenticateMcpMachineCredentialForScope,
+  type McpMachineCredentialScope
+} from "../mcp-machine-credential-store";
 
 export async function requireAuth(request?: Request) {
   const auth = request ? await getAuthContextFromRequest(request) : await getCurrentAuthContext();
@@ -43,6 +47,15 @@ export async function requireOwnerOrMcpFlowRead(request: Request) {
         token: tokenAuth.token
       };
     }
+    const machineAuth = authenticateMcpMachineCredentialForScope(bearer, "flow:read");
+    if (machineAuth) {
+      return {
+        actor: "mcp_machine" as const,
+        workspace: machineAuth.workspace,
+        user: machineAuth.user,
+        credential: machineAuth.credential
+      };
+    }
   }
 
   const auth = await requireOwner(request);
@@ -65,6 +78,39 @@ export async function requireOwnerOrMcpControlWrite(request: Request) {
         workspace: tokenAuth.workspace,
         user: tokenAuth.user,
         token: tokenAuth.token
+      };
+    }
+    const machineAuth = authenticateMcpMachineCredentialForScope(bearer, "control:write");
+    if (machineAuth) {
+      return {
+        actor: "mcp_machine" as const,
+        workspace: machineAuth.workspace,
+        user: machineAuth.user,
+        credential: machineAuth.credential
+      };
+    }
+  }
+
+  const auth = await requireOwner(request);
+  return {
+    actor: "owner_session" as const,
+    workspace: auth.workspace,
+    user: auth.user,
+    membership: auth.membership
+  };
+}
+
+export async function requireOwnerOrMcpMachineScope(request: Request, requiredScope: McpMachineCredentialScope) {
+  const authorization = request.headers.get("authorization") ?? "";
+  const bearer = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? "";
+  if (bearer) {
+    const machineAuth = authenticateMcpMachineCredentialForScope(bearer, requiredScope);
+    if (machineAuth) {
+      return {
+        actor: "mcp_machine" as const,
+        workspace: machineAuth.workspace,
+        user: machineAuth.user,
+        credential: machineAuth.credential
       };
     }
   }

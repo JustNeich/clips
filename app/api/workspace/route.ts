@@ -19,6 +19,7 @@ import {
 import {
   getWorkspaceOpenRouterStatus
 } from "../../../lib/workspace-openrouter";
+import { canInspectSensitiveArtifacts } from "../../../lib/sensitive-access";
 import { type Stage2PromptConfig } from "../../../lib/stage2-pipeline";
 import { type Stage2HardConstraints } from "../../../lib/stage2-channel-config";
 import {
@@ -46,6 +47,7 @@ type PatchBody = {
 export async function GET(request: Request): Promise<Response> {
   try {
     const auth = await requireAuth(request);
+    const canInspectSensitive = canInspectSensitiveArtifacts(auth.membership.role);
     const workspaceAnthropicIntegration =
       auth.membership.role === "owner"
         ? await getWorkspaceAnthropicStatus(auth)
@@ -58,11 +60,17 @@ export async function GET(request: Request): Promise<Response> {
     const stage3Execution = resolveStage3Execution(stage3ExecutionTarget);
     return Response.json(
       {
-        stage2ExamplesCorpusJson: getWorkspaceStage2ExamplesCorpusJson(auth.workspace.id),
-        stage2HardConstraints: getWorkspaceStage2HardConstraints(auth.workspace.id),
-        stage2PromptConfig: getWorkspaceStage2PromptConfig(auth.workspace.id),
-        codexModelConfig: getWorkspaceCodexModelConfig(auth.workspace.id),
-        stage2CaptionProviderConfig: getWorkspaceStage2CaptionProviderConfig(auth.workspace.id),
+        stage2ExamplesCorpusJson: canInspectSensitive
+          ? getWorkspaceStage2ExamplesCorpusJson(auth.workspace.id)
+          : undefined,
+        stage2HardConstraints: canInspectSensitive
+          ? getWorkspaceStage2HardConstraints(auth.workspace.id)
+          : undefined,
+        stage2PromptConfig: canInspectSensitive ? getWorkspaceStage2PromptConfig(auth.workspace.id) : undefined,
+        codexModelConfig: canInspectSensitive ? getWorkspaceCodexModelConfig(auth.workspace.id) : undefined,
+        stage2CaptionProviderConfig: canInspectSensitive
+          ? getWorkspaceStage2CaptionProviderConfig(auth.workspace.id)
+          : undefined,
         stage3ExecutionTarget: stage3Execution.configuredTarget,
         resolvedStage3ExecutionTarget: stage3Execution.resolvedTarget,
         stage3ExecutionCapabilities: stage3Execution.capabilities,

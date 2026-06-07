@@ -4,7 +4,7 @@ import React from "react";
 import {
   STAGE2_REASONING_EFFORT_OPTIONS,
   type Stage2PromptConfig
-} from "../../lib/stage2-pipeline";
+} from "../../lib/stage2-prompt-client";
 import {
   DEFAULT_ANTHROPIC_CAPTION_MODEL,
   DEFAULT_OPENROUTER_CAPTION_MODEL,
@@ -39,8 +39,9 @@ import {
   findStage2SystemExamplesPresetByJson,
   getStage2SystemExamplesPresetJson,
   STAGE2_SYSTEM_EXAMPLES_PRESETS,
-  type Stage2SystemExamplesPresetId
-} from "../../lib/stage2-system-presets";
+  type Stage2SystemExamplesPresetId,
+  type Stage2SystemExamplesPresetPayload
+} from "../../lib/stage2-system-presets-client";
 import type { Stage3TemplateFormatGroup } from "../../lib/stage3-template-semantics";
 import { AutosaveState } from "./channel-manager-support";
 
@@ -49,6 +50,7 @@ type ChannelManagerStage2TabProps = {
   workspaceExamplesCount?: number;
   workspaceExamplesJson?: string;
   workspaceExamplesError?: string | null;
+  workspaceStage2SystemExamplesPresets?: Stage2SystemExamplesPresetPayload[];
   stage2HardConstraints: Stage2HardConstraints;
   bannedWordsInput: string;
   bannedOpenersInput: string;
@@ -584,12 +586,31 @@ function ChoiceButton(input: {
   );
 }
 
-function getExamplesPresetDisplay(preset: Stage2ExamplesPreset): {
+function getExamplesPresetCount(
+  presetId: Stage2SystemExamplesPresetId,
+  presets: Stage2SystemExamplesPresetPayload[] | null | undefined
+): number {
+  const rawJson = presets?.find((preset) => preset.id === presetId)?.examplesJson;
+  if (!rawJson) {
+    return 0;
+  }
+  try {
+    const parsed = JSON.parse(rawJson) as unknown;
+    return Array.isArray(parsed) ? parsed.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function getExamplesPresetDisplay(
+  preset: Stage2ExamplesPreset,
+  presets?: Stage2SystemExamplesPresetPayload[] | null
+): {
   title: string;
   description: string;
   countLabel: string;
 } {
-  const count = Array.isArray(preset.examples) ? preset.examples.length : 0;
+  const count = getExamplesPresetCount(preset.id, presets);
   const countLabel = `${count} examples`;
   switch (preset.id) {
     case "animals_examples":
@@ -608,11 +629,14 @@ function getExamplesPresetDisplay(preset: Stage2ExamplesPreset): {
   }
 }
 
-function getExamplesPresetDisplayById(presetId: Stage2SystemExamplesPresetId) {
+function getExamplesPresetDisplayById(
+  presetId: Stage2SystemExamplesPresetId,
+  presets?: Stage2SystemExamplesPresetPayload[] | null
+) {
   const preset =
     STAGE2_SYSTEM_EXAMPLES_PRESETS.find((item) => item.id === presetId) ??
     STAGE2_SYSTEM_EXAMPLES_PRESETS[0];
-  return getExamplesPresetDisplay(preset);
+  return getExamplesPresetDisplay(preset, presets);
 }
 
 function ExamplesSourceTabs(input: {
@@ -681,13 +705,14 @@ function ExamplesCustomInputTabs(input: {
 
 function renderExamplesPresetCards(input: {
   selectedId: Stage2SystemExamplesPresetId;
+  presets?: Stage2SystemExamplesPresetPayload[];
   disabled?: boolean;
   onSelect: (presetId: Stage2SystemExamplesPresetId) => void;
 }) {
   return (
     <div className="examples-preset-list">
       {STAGE2_SYSTEM_EXAMPLES_PRESETS.map((preset) => {
-        const display = getExamplesPresetDisplay(preset);
+        const display = getExamplesPresetDisplay(preset, input.presets);
         const active = input.selectedId === preset.id;
         return (
           <button
@@ -717,7 +742,11 @@ export function ChannelManagerStage2Tab({
   stage2HardConstraints,
   bannedWordsInput,
   bannedOpenersInput,
-  workspaceStage2ExamplesCorpusJson = getStage2SystemExamplesPresetJson("system_examples"),
+  workspaceStage2SystemExamplesPresets = [],
+  workspaceStage2ExamplesCorpusJson = getStage2SystemExamplesPresetJson(
+    "system_examples",
+    workspaceStage2SystemExamplesPresets
+  ),
   workspaceStage2ExamplesSourceMode,
   workspaceStage2PromptConfig,
   channelStage2PromptConfig,
@@ -821,18 +850,30 @@ export function ChannelManagerStage2Tab({
   const anthropicIntegrationConnected = workspaceAnthropicIntegration?.status === "connected";
   const openRouterIntegrationConnected = workspaceOpenRouterIntegration?.status === "connected";
   const workspaceExamplesPresetId =
-    findStage2SystemExamplesPresetByJson(workspaceStage2ExamplesCorpusJson) ?? "system_examples";
+    findStage2SystemExamplesPresetByJson(
+      workspaceStage2ExamplesCorpusJson,
+      workspaceStage2SystemExamplesPresets
+    ) ?? "system_examples";
   const resolvedWorkspaceExamplesSourceMode =
     workspaceStage2ExamplesSourceMode ??
-    (findStage2SystemExamplesPresetByJson(workspaceStage2ExamplesCorpusJson)
+    (findStage2SystemExamplesPresetByJson(
+      workspaceStage2ExamplesCorpusJson,
+      workspaceStage2SystemExamplesPresets
+    )
       ? "system"
       : "custom");
   const channelExamplesMode = stage2ExamplesConfig?.useWorkspaceDefault === false ? "channel" : "workspace";
   const channelExamplesSourceMode = stage2ExamplesConfig?.sourceMode ?? "system";
   const channelExamplesInputMode = stage2ExamplesConfig?.customInputMode ?? "json";
   const channelExamplesSystemPresetId = stage2ExamplesConfig?.systemPresetId ?? "system_examples";
-  const workspaceExamplesPresetTitle = getExamplesPresetDisplayById(workspaceExamplesPresetId).title;
-  const channelExamplesPresetTitle = getExamplesPresetDisplayById(channelExamplesSystemPresetId).title;
+  const workspaceExamplesPresetTitle = getExamplesPresetDisplayById(
+    workspaceExamplesPresetId,
+    workspaceStage2SystemExamplesPresets
+  ).title;
+  const channelExamplesPresetTitle = getExamplesPresetDisplayById(
+    channelExamplesSystemPresetId,
+    workspaceStage2SystemExamplesPresets
+  ).title;
   const workspaceExamplesJsonError = (() => {
     if (!workspaceStage2ExamplesCorpusJson.trim()) {
       return null;
@@ -1076,7 +1117,7 @@ export function ChannelManagerStage2Tab({
               }
             />
             <p className="subtle-text">
-              Активный prompt contract: `source_video_json`, `examples_json`, `format_contract_json`, `hard_constraints_json`, `user_instruction`.
+              Активный prompt contract получает источник, примеры, формат, ограничения и инструкцию оператора.
             </p>
             <div className="stage2-config-stage-actions">
               <button
@@ -1152,6 +1193,7 @@ export function ChannelManagerStage2Tab({
             {resolvedWorkspaceExamplesSourceMode === "system" ? (
               renderExamplesPresetCards({
                 selectedId: workspaceExamplesPresetId,
+                presets: workspaceStage2SystemExamplesPresets,
                 disabled: !canEditWorkspaceDefaults,
                 onSelect: updateWorkspaceExamplesPreset
               })
@@ -1344,8 +1386,7 @@ export function ChannelManagerStage2Tab({
             }
           />
           <p className="subtle-text">
-            Runtime передаёт provider-у raw-блоки: `source_video_json`, `examples_json`,
-            `format_contract_json`, `hard_constraints_json`, `user_instruction`.
+            Runtime передаёт provider-у source, examples, format, constraints и operator instruction.
           </p>
         </div>
 
@@ -1504,6 +1545,7 @@ export function ChannelManagerStage2Tab({
               {channelExamplesSourceMode === "system" ? (
                 renderExamplesPresetCards({
                   selectedId: channelExamplesSystemPresetId,
+                  presets: workspaceStage2SystemExamplesPresets,
                   disabled: !canEditChannelExamples,
                   onSelect: updateChannelExamplesSystemPreset
                 })

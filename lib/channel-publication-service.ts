@@ -1186,8 +1186,11 @@ export async function deleteChannelPublicationWithRemoteSync(
   });
 }
 
-export function restoreCanceledChannelPublicationToQueue(publicationId: string): ChannelPublication {
-  return restoreCanceledChannelPublication(publicationId);
+export function restoreCanceledChannelPublicationToQueue(
+  publicationId: string,
+  options?: { remoteDeleteConfirmed?: boolean; reason?: string }
+): ChannelPublication {
+  return restoreCanceledChannelPublication(publicationId, options);
 }
 
 export async function retryFailedChannelPublication(publicationId: string): Promise<ChannelPublication> {

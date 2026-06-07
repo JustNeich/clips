@@ -2,6 +2,7 @@ import { setAppSessionCookie } from "../../../../lib/auth/cookies";
 import { bootstrapOwner, hasWorkspaceBootstrap } from "../../../../lib/team-store";
 import { asErrorResponse } from "../../../../lib/http";
 import { getBootstrapStatus } from "../../../../lib/bootstrap";
+import { enforceRateLimit } from "../../../../lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,20 @@ export async function GET(): Promise<Response> {
 
 export async function POST(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => null)) as Body | null;
+  try {
+    enforceRateLimit({
+      request,
+      scope: "auth-bootstrap-owner",
+      key: body?.email,
+      limit: 5,
+      windowMs: 30 * 60_000
+    });
+  } catch (error) {
+    if (error instanceof Response) {
+      return error;
+    }
+    throw error;
+  }
   const bootstrap = getBootstrapStatus();
   const expectedSecret = process.env.APP_BOOTSTRAP_SECRET?.trim() || null;
   const workspaceName = body?.workspaceName?.trim() ?? "";

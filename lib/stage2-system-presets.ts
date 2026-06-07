@@ -86,6 +86,20 @@ export function getStage2SystemExamplesPresetJson(id: unknown): string {
   return JSON.stringify(getStage2SystemExamplesPreset(id).examples, null, 2);
 }
 
+export function listStage2SystemExamplesPresetPayloads(): Array<{
+  id: Stage2SystemExamplesPresetId;
+  label: string;
+  description: string;
+  examplesJson: string;
+}> {
+  return STAGE2_SYSTEM_EXAMPLES_PRESETS.map((preset) => ({
+    id: preset.id,
+    label: preset.label,
+    description: preset.description,
+    examplesJson: JSON.stringify(preset.examples, null, 2)
+  }));
+}
+
 function normalizeComparableJson(rawJson: string): string | null {
   try {
     return JSON.stringify(JSON.parse(rawJson));

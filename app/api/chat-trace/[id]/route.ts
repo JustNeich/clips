@@ -1,5 +1,6 @@
 import { getChatById } from "../../../../lib/chat-history";
 import { requireAuth, requireChannelVisibility } from "../../../../lib/auth/guards";
+import { requireSensitiveArtifactAccess } from "../../../../lib/sensitive-access";
 import { buildChatTraceExport } from "../../../../lib/chat-trace-export";
 import { buildChatTraceExportFileName } from "../../../../lib/chat-trace-export-shared";
 import { redactForFlowExport } from "../../../../lib/flow-redaction";
@@ -17,6 +18,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
 
   try {
     const auth = await requireAuth(request);
+    requireSensitiveArtifactAccess(auth);
     const chat = await getChatById(id);
     if (!chat || chat.workspaceId !== auth.workspace.id) {
       return Response.json({ error: "Chat not found." }, { status: 404 });

@@ -74,8 +74,16 @@ services:
         value: "3600"
       - key: STAGE3_WORKER_SESSION_TTL_SEC
         value: "2592000"
+      # Inner Remotion render timeout for the host execution path. 180s (3 min)
+      # was too low for a real render and surfaced as render failures; raised to
+      # 10 min so a legitimate render has headroom (renders are now much faster
+      # after removing the redundant finalize re-encode / slow preset / per-frame
+      # solver + noise). NOTE: the LOCAL Clips Worker has its OWN job timeout — if
+      # it still reports "timed out ... after 180s", raise/remove
+      # STAGE3_WORKER_RENDER_TIMEOUT_MS / STAGE3_WORKER_JOB_TIMEOUT_MS on the
+      # worker machine (code default is 10 min).
       - key: REMOTION_RENDER_TIMEOUT_MS
-        value: "180000"
+        value: "600000"
     disk:
       name: clips-data
       mountPath: /var/data

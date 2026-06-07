@@ -31,10 +31,14 @@ pnpm-debug.log*
 /artifacts/copscopes-source-pool-*.csv
 /artifacts/copscopes-source-pool-*.json
 /artifacts/copscopes-source-pool-*.md
+/artifacts/final-whistle/
 
 # local build/cache outputs
 /output
 /.playwright-cli
+/.stage3-worker-runtime
+# Local Assistant runtime state (Brain / telegram cache) — must never enter this repo
+/.assistant/
 *.tsbuildinfo
 /public/stage3-worker/clips-stage3-worker.cjs
 /public/stage3-worker/manifest.json

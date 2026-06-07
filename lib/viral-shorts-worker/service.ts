@@ -59,7 +59,6 @@ import {
   scoreTextMatch
 } from "./analysis";
 import {
-  resolveStage2ExamplesCorpus,
   Stage2CorpusExample,
   Stage2ExamplesConfig,
   Stage2HardConstraints,
@@ -67,6 +66,7 @@ import {
   DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG,
   type Stage2SourceOverlayConfig
 } from "../stage2-channel-config";
+import { resolveStage2ExamplesCorpus } from "../stage2-examples-corpus";
 import { getStage2SystemExamplesPresetJson } from "../stage2-system-presets";
 import {
   type AudiencePacket,

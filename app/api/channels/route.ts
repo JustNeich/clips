@@ -8,7 +8,10 @@ import { resolveChannelPermissions } from "../../../lib/acl";
 import { getRestrictedChannelEditError } from "../../../lib/channel-edit-permissions";
 import { readManagedTemplate } from "../../../lib/managed-template-store";
 import { getChannelPublishIntegration, getChannelPublishSettings } from "../../../lib/publication-store";
-import { Stage2PromptConfig } from "../../../lib/stage2-pipeline";
+import {
+  DEFAULT_STAGE2_PROMPT_CONFIG,
+  Stage2PromptConfig
+} from "../../../lib/stage2-pipeline";
 import {
   Stage2ExamplesConfig,
   Stage2HardConstraints,
@@ -22,10 +25,16 @@ import {
   getWorkspaceStage2ExamplesCorpusJson,
   getWorkspaceStage2HardConstraints
 } from "../../../lib/team-store";
+import { listStage2SystemExamplesPresetPayloads } from "../../../lib/stage2-system-presets";
 import { resolveStage3Execution } from "../../../lib/stage3-execution";
 import { resolveWorkspaceCodexModelConfig } from "../../../lib/workspace-codex-models";
 import { getWorkspaceAnthropicStatus } from "../../../lib/workspace-anthropic";
 import { getWorkspaceOpenRouterStatus } from "../../../lib/workspace-openrouter";
+import {
+  canInspectSensitiveArtifacts,
+  sanitizeChannelForRole,
+  sanitizePublishIntegrationForRole
+} from "../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
@@ -59,6 +68,7 @@ async function ensureChannelTemplateSelectable(
 export async function GET(request: Request): Promise<Response> {
   try {
     const auth = await requireAuth(request);
+    const canInspectSensitive = canInspectSensitiveArtifacts(auth.membership.role);
     const channels = await listVisibleChannelsWithStats({
       workspaceId: auth.workspace.id,
       userId: auth.user.id,
@@ -90,9 +100,12 @@ export async function GET(request: Request): Promise<Response> {
           return null;
         }
         return {
-          ...channel,
+          ...sanitizeChannelForRole(channel, auth.membership.role),
           publishSettings: getChannelPublishSettings(channel.id),
-          publishIntegration: getChannelPublishIntegration(channel.id),
+          publishIntegration: sanitizePublishIntegrationForRole(
+            getChannelPublishIntegration(channel.id),
+            auth.membership.role
+          ),
           currentUserCanOperate: permissions.canOperate,
           currentUserCanEditSetup: permissions.canEditSetup,
           currentUserCanManageAccess: permissions.canManageAccess,
@@ -105,11 +118,21 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json(
       {
         channels: visibleChannels.filter(Boolean),
-        workspaceStage2ExamplesCorpusJson: getWorkspaceStage2ExamplesCorpusJson(auth.workspace.id),
-        workspaceStage2HardConstraints: getWorkspaceStage2HardConstraints(auth.workspace.id),
-        workspaceStage2PromptConfig: auth.workspace.stage2PromptConfig,
-        workspaceCodexModelConfig: getWorkspaceCodexModelConfig(auth.workspace.id),
-        workspaceStage2CaptionProviderConfig: getWorkspaceStage2CaptionProviderConfig(auth.workspace.id),
+        workspaceStage2ExamplesCorpusJson: canInspectSensitive
+          ? getWorkspaceStage2ExamplesCorpusJson(auth.workspace.id)
+          : undefined,
+        workspaceStage2SystemExamplesPresets: canInspectSensitive
+          ? listStage2SystemExamplesPresetPayloads()
+          : undefined,
+        workspaceStage2HardConstraints: canInspectSensitive
+          ? getWorkspaceStage2HardConstraints(auth.workspace.id)
+          : undefined,
+        workspaceStage2PromptConfig: canInspectSensitive ? auth.workspace.stage2PromptConfig : undefined,
+        factoryStage2PromptConfig: canInspectSensitive ? DEFAULT_STAGE2_PROMPT_CONFIG : undefined,
+        workspaceCodexModelConfig: canInspectSensitive ? getWorkspaceCodexModelConfig(auth.workspace.id) : undefined,
+        workspaceStage2CaptionProviderConfig: canInspectSensitive
+          ? getWorkspaceStage2CaptionProviderConfig(auth.workspace.id)
+          : undefined,
         workspaceStage3ExecutionTarget: stage3Execution.configuredTarget,
         workspaceResolvedStage3ExecutionTarget: stage3Execution.resolvedTarget,
         workspaceStage3ExecutionCapabilities: stage3Execution.capabilities,

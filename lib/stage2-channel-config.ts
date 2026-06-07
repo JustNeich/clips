@@ -1,10 +1,10 @@
-import bundledExamplesJson from "../data/examples.json";
-import {
-  DEFAULT_STAGE2_SYSTEM_EXAMPLES_PRESET_ID,
-  getStage2SystemExamplesPresetJson,
-  isStage2SystemExamplesPresetId,
-  type Stage2SystemExamplesPresetId
-} from "./stage2-system-presets";
+import type { Stage2SystemExamplesPresetId } from "./stage2-system-presets-client";
+
+const DEFAULT_STAGE2_SYSTEM_EXAMPLES_PRESET_ID: Stage2SystemExamplesPresetId = "system_examples";
+
+function isStage2SystemExamplesPresetId(value: unknown): value is Stage2SystemExamplesPresetId {
+  return value === "system_examples" || value === "animals_examples";
+}
 
 export type Stage2HardConstraints = {
   topLengthMin: number;
@@ -265,29 +265,6 @@ export function parseStage2ExamplesJson(
   }
 }
 
-const BUNDLED_STAGE2_EXAMPLES_SEED = dedupeStage2CorpusExamples(
-  parseStage2ExamplesJson(JSON.stringify(bundledExamplesJson), WORKSPACE_STAGE2_CORPUS_OWNER).map(
-    (example) => ({
-      ...example,
-      ownerChannelId: WORKSPACE_STAGE2_CORPUS_OWNER.channelId,
-      ownerChannelName: WORKSPACE_STAGE2_CORPUS_OWNER.channelName,
-      sourceChannelId: example.sourceChannelId || WORKSPACE_STAGE2_CORPUS_OWNER.channelId,
-      sourceChannelName: example.sourceChannelName || WORKSPACE_STAGE2_CORPUS_OWNER.channelName
-    })
-  )
-);
-
-export function getBundledStage2ExamplesSeed(): Stage2CorpusExample[] {
-  return BUNDLED_STAGE2_EXAMPLES_SEED.map((example) => ({
-    ...example,
-    whyItWorks: [...example.whyItWorks]
-  }));
-}
-
-export function getBundledStage2ExamplesSeedJson(): string {
-  return JSON.stringify(getBundledStage2ExamplesSeed(), null, 2);
-}
-
 export function normalizeStage2HardConstraints(input: unknown): Stage2HardConstraints {
   const candidate =
     input && typeof input === "object" ? (input as Partial<Stage2HardConstraints>) : undefined;
@@ -518,73 +495,4 @@ export function collectWorkspaceStage2Examples(
       WORKSPACE_STAGE2_CORPUS_OWNER
     )
   );
-}
-
-export function resolveStage2ExamplesCorpus(input: {
-  channel: {
-    id: string;
-    name: string;
-    stage2ExamplesConfig: Stage2ExamplesConfig;
-  };
-  workspaceStage2ExamplesCorpusJson: string | null | undefined;
-}): {
-  source: Stage2ExamplesCorpusSource;
-  corpus: Stage2CorpusExample[];
-  workspaceCorpusCount: number;
-  effectiveConfig: Stage2ExamplesConfig;
-} {
-  const workspaceCorpus = collectWorkspaceStage2Examples(input.workspaceStage2ExamplesCorpusJson);
-  const stage2ExamplesConfig = normalizeStage2ExamplesConfig(
-    input.channel.stage2ExamplesConfig,
-    {
-      channelId: input.channel.id,
-      channelName: input.channel.name
-    }
-  );
-  if (!stage2ExamplesConfig.useWorkspaceDefault) {
-    if (stage2ExamplesConfig.sourceMode === "system") {
-      return {
-        source: "system_preset",
-        corpus: collectWorkspaceStage2Examples(
-          getStage2SystemExamplesPresetJson(stage2ExamplesConfig.systemPresetId)
-        ),
-        workspaceCorpusCount: workspaceCorpus.length,
-        effectiveConfig: normalizeStage2ExamplesConfig(
-          {
-            useWorkspaceDefault: false,
-            sourceMode: "system",
-            systemPresetId: stage2ExamplesConfig.systemPresetId
-          },
-          {
-            channelId: input.channel.id,
-            channelName: input.channel.name
-          }
-        )
-      };
-    }
-    return {
-      source: "channel_custom",
-      corpus: dedupeStage2CorpusExamples(stage2ExamplesConfig.customExamples),
-      workspaceCorpusCount: workspaceCorpus.length,
-      effectiveConfig: stage2ExamplesConfig
-    };
-  }
-
-  return {
-    source: "workspace_default",
-    corpus: workspaceCorpus,
-    workspaceCorpusCount: workspaceCorpus.length,
-    effectiveConfig: normalizeStage2ExamplesConfig(
-      {
-        useWorkspaceDefault: false,
-        sourceMode: "custom",
-        customInputMode: "json",
-        customExamplesJson:
-          input.workspaceStage2ExamplesCorpusJson?.trim() ||
-          JSON.stringify(workspaceCorpus, null, 2),
-        customExamples: workspaceCorpus
-      },
-      WORKSPACE_STAGE2_CORPUS_OWNER
-    )
-  };
 }

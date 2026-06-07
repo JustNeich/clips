@@ -21,6 +21,10 @@ import {
   Stage2SourceOverlayConfig
 } from "../../../../lib/stage2-channel-config";
 import { Stage2StyleProfile } from "../../../../lib/stage2-channel-learning";
+import {
+  sanitizeChannelForRole,
+  sanitizePublishIntegrationForRole
+} from "../../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
@@ -84,9 +88,12 @@ export async function GET(_request: Request, context: Context): Promise<Response
     return Response.json(
       {
         channel: {
-          ...channel,
+          ...sanitizeChannelForRole(channel, auth.membership.role),
           publishSettings: getChannelPublishSettings(channel.id),
-          publishIntegration: getChannelPublishIntegration(channel.id),
+          publishIntegration: sanitizePublishIntegrationForRole(
+            getChannelPublishIntegration(channel.id),
+            auth.membership.role
+          ),
           currentUserCanOperate: permissions.canOperate,
           currentUserCanEditSetup: permissions.canEditSetup,
           currentUserCanManageAccess: permissions.canManageAccess,
@@ -121,12 +128,15 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
 
   try {
     const auth = await requireAuth(request);
-    if (hasOnlyRenderOperatorPatchFields(body)) {
+    const isRenderOperatorPatch = hasOnlyRenderOperatorPatchFields(body);
+    if (isRenderOperatorPatch) {
       await requireChannelOperate(auth, id);
     } else {
       await requireChannelSetupEdit(auth, id);
     }
-    const restrictedError = getRestrictedChannelEditError(auth.membership.role, body);
+    const restrictedError = isRenderOperatorPatch
+      ? null
+      : getRestrictedChannelEditError(auth.membership.role, body);
     if (restrictedError) {
       return Response.json({ error: restrictedError }, { status: 403 });
     }

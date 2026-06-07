@@ -6,14 +6,36 @@ type RestrictedChannelPatch = Partial<{
   username: string;
   systemPrompt: string;
   descriptionPrompt: string;
+  examplesJson: string;
+  stage2WorkerProfileId: string | null;
+  stage2ExamplesConfig: unknown;
   stage2PromptConfig: Stage2PromptConfig;
   stage2HardConstraints: unknown;
+  stage2StyleProfile: unknown;
+  stage2SourceOverlayConfig: unknown;
   templateId: string;
   avatarAssetId: string | null;
   defaultBackgroundAssetId: string | null;
   defaultMusicAssetId: string | null;
   defaultClipDurationSec: number;
 }>;
+
+const SENSITIVE_CHANNEL_SETUP_FIELDS: Array<keyof RestrictedChannelPatch> = [
+  "systemPrompt",
+  "descriptionPrompt",
+  "examplesJson",
+  "stage2WorkerProfileId",
+  "stage2ExamplesConfig",
+  "stage2PromptConfig",
+  "stage2HardConstraints",
+  "stage2StyleProfile",
+  "stage2SourceOverlayConfig",
+  "templateId"
+];
+
+function hasOwnField<T extends object, K extends PropertyKey>(value: T, key: K): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
 
 export function getRestrictedChannelEditError(
   role: AppRole,
@@ -23,11 +45,11 @@ export function getRestrictedChannelEditError(
     return null;
   }
 
-  if (
-    (role === "redactor" || role === "redactor_limited") &&
-    (typeof patch.systemPrompt === "string" || typeof patch.descriptionPrompt === "string")
-  ) {
-    return "Редактор не может менять системные промпты канала.";
+  if (role === "redactor" || role === "redactor_limited") {
+    const touchesSensitiveSetup = SENSITIVE_CHANNEL_SETUP_FIELDS.some((field) => hasOwnField(patch, field));
+    if (touchesSensitiveSetup) {
+      return "Редактор не может менять внутренние Stage 2 настройки канала.";
+    }
   }
 
   return null;

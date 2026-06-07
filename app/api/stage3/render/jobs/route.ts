@@ -1,4 +1,4 @@
-import { requireAuth, requireChannelVisibility } from "../../../../../lib/auth/guards";
+import { requireAuth, requireChannelOperate } from "../../../../../lib/auth/guards";
 import { resolveStage3Execution } from "../../../../../lib/stage3-execution";
 import { buildStage3JobEnvelope, buildStage3JobErrorBody } from "../../../../../lib/stage3-job-http";
 import { enqueueAndScheduleStage3Job } from "../../../../../lib/stage3-job-runtime";
@@ -19,9 +19,17 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const auth = await requireAuth(request);
-    if (body?.channelId?.trim()) {
-      await requireChannelVisibility(auth, body.channelId.trim());
+    const channelId = body?.channelId?.trim() ?? "";
+    if (!channelId) {
+      return Response.json(
+        buildStage3JobErrorBody({
+          message: "Передайте channelId в теле запроса.",
+          recoverable: false
+        }),
+        { status: 400 }
+      );
     }
+    await requireChannelOperate(auth, channelId);
     const sourceUrl = normalizeSupportedUrl(body?.sourceUrl?.trim() ?? "");
     if (!sourceUrl) {
       auditStage3RequestFailure({
@@ -107,12 +115,13 @@ export async function POST(request: Request): Promise<Response> {
       userId: auth.user.id,
       kind: "render",
       executionTarget,
-      dedupeKey: buildStage3RenderRequestDedupeKey(body ?? {}, {
+      dedupeKey: buildStage3RenderRequestDedupeKey({ ...(body ?? {}), channelId, sourceUrl }, {
         workspaceId: auth.workspace.id,
         userId: auth.user.id
       }),
       payloadJson: JSON.stringify({
         ...(body ?? {}),
+        channelId,
         sourceUrl,
         workspaceId: auth.workspace.id
       }),

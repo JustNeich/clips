@@ -63,10 +63,42 @@ async function probeAudioDuration(filePath: string): Promise<number | null> {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function insertRunningWorkerSourceJob(input: {
+  workspaceId: string;
+  userId: string;
+  workerId: string;
+  sourceUrl: string;
+}): string {
+  const jobId = newId();
+  const stamp = nowIso();
+  const leaseUntil = new Date(Date.now() + 60_000).toISOString();
+  getDb()
+    .prepare(
+      `INSERT INTO stage3_jobs
+        (id, workspace_id, user_id, kind, status, execution_target, assigned_worker_id, lease_expires_at, heartbeat_at, dedupe_key, payload_json, result_json, error_code, error_message, recoverable, attempts, attempt_limit, attempt_group, created_at, updated_at, started_at, completed_at)
+        VALUES (?, ?, ?, 'preview', 'running', 'local', ?, ?, ?, NULL, ?, NULL, NULL, NULL, 1, 1, 3, ?, ?, ?, ?, NULL)`
+    )
+    .run(
+      jobId,
+      input.workspaceId,
+      input.userId,
+      input.workerId,
+      leaseUntil,
+      stamp,
+      JSON.stringify({ sourceUrl: input.sourceUrl }),
+      jobId,
+      stamp,
+      stamp,
+      stamp
+    );
+  return jobId;
+}
+
 test("downloadSourceVideo prefers host source cache for local Stage 3 workers", { concurrency: false }, async () => {
   const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-worker-source-cache-"));
   const previousServerOrigin = process.env.STAGE3_WORKER_SERVER_ORIGIN;
   const previousSessionToken = process.env.STAGE3_WORKER_SESSION_TOKEN;
+  const previousCurrentJobId = process.env.STAGE3_WORKER_CURRENT_JOB_ID;
   const previousAppDataDir = process.env.APP_DATA_DIR;
   const originalFetch = globalThis.fetch;
   const url = "https://www.youtube.com/watch?v=abc123XYZ89";
@@ -91,14 +123,21 @@ test("downloadSourceVideo prefers host source cache for local Stage 3 workers", 
     workspaceId: "ws_stage3",
     userId: "user_stage3"
   });
-  const { sessionToken } = exchangeStage3WorkerPairingToken({
+  const { worker, sessionToken } = exchangeStage3WorkerPairingToken({
     pairingToken,
     label: "Worker",
     platform: "win32-x64"
   });
+  const jobId = insertRunningWorkerSourceJob({
+    workspaceId: "ws_stage3",
+    userId: "user_stage3",
+    workerId: worker.id,
+    sourceUrl: url
+  });
 
   process.env.STAGE3_WORKER_SERVER_ORIGIN = "https://clips.example.com";
   process.env.STAGE3_WORKER_SESSION_TOKEN = sessionToken;
+  process.env.STAGE3_WORKER_CURRENT_JOB_ID = jobId;
 
   setSourceAcquisitionDownloadersForTests({
     ytDlp: async (_rawUrl, tmpDir) => {
@@ -127,7 +166,7 @@ test("downloadSourceVideo prefers host source cache for local Stage 3 workers", 
     assert.equal(init?.method, "POST");
     assert.equal((init?.headers as Record<string, string>).Authorization, `Bearer ${sessionToken}`);
     assert.equal((init?.headers as Record<string, string>)["Content-Type"], "application/json");
-    assert.equal(init?.body, JSON.stringify({ url, cacheOnly: true }));
+    assert.equal(init?.body, JSON.stringify({ url, jobId, cacheOnly: true }));
 
     return postStage3WorkerSource(
       new Request(String(input), {
@@ -163,6 +202,11 @@ test("downloadSourceVideo prefers host source cache for local Stage 3 workers", 
     } else {
       process.env.STAGE3_WORKER_SESSION_TOKEN = previousSessionToken;
     }
+    if (previousCurrentJobId === undefined) {
+      delete process.env.STAGE3_WORKER_CURRENT_JOB_ID;
+    } else {
+      process.env.STAGE3_WORKER_CURRENT_JOB_ID = previousCurrentJobId;
+    }
     await fs.rm(tmpDir, { recursive: true, force: true });
     await fs.rm(appDataDir, { recursive: true, force: true });
   }
@@ -172,6 +216,7 @@ test("downloadSourceVideo keeps local acquisition when host cache is cold", { co
   const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-worker-source-local-after-cold-cache-"));
   const previousServerOrigin = process.env.STAGE3_WORKER_SERVER_ORIGIN;
   const previousSessionToken = process.env.STAGE3_WORKER_SESSION_TOKEN;
+  const previousCurrentJobId = process.env.STAGE3_WORKER_CURRENT_JOB_ID;
   const previousAppDataDir = process.env.APP_DATA_DIR;
   const originalFetch = globalThis.fetch;
   const url = "https://www.instagram.com/reel/host-cache-cold/";
@@ -386,6 +431,7 @@ test("downloadSourceVideo falls back to host cache for uploaded mp4 sources with
   const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-worker-upload-source-cache-"));
   const previousServerOrigin = process.env.STAGE3_WORKER_SERVER_ORIGIN;
   const previousSessionToken = process.env.STAGE3_WORKER_SESSION_TOKEN;
+  const previousCurrentJobId = process.env.STAGE3_WORKER_CURRENT_JOB_ID;
   const previousAppDataDir = process.env.APP_DATA_DIR;
   const originalFetch = globalThis.fetch;
   const fileName = "хайлайт тест.mp4";
@@ -411,14 +457,21 @@ test("downloadSourceVideo falls back to host cache for uploaded mp4 sources with
     workspaceId: "ws_stage3_upload",
     userId: "user_stage3_upload"
   });
-  const { sessionToken } = exchangeStage3WorkerPairingToken({
+  const { worker, sessionToken } = exchangeStage3WorkerPairingToken({
     pairingToken,
     label: "Worker",
     platform: "darwin-arm64"
   });
+  const jobId = insertRunningWorkerSourceJob({
+    workspaceId: "ws_stage3_upload",
+    userId: "user_stage3_upload",
+    workerId: worker.id,
+    sourceUrl: url
+  });
 
   process.env.STAGE3_WORKER_SERVER_ORIGIN = "https://clips.example.com";
   process.env.STAGE3_WORKER_SESSION_TOKEN = sessionToken;
+  process.env.STAGE3_WORKER_CURRENT_JOB_ID = jobId;
 
   await storeUploadedSourceMedia({
     sourceUrl: url,
@@ -468,6 +521,11 @@ test("downloadSourceVideo falls back to host cache for uploaded mp4 sources with
       delete process.env.STAGE3_WORKER_SESSION_TOKEN;
     } else {
       process.env.STAGE3_WORKER_SESSION_TOKEN = previousSessionToken;
+    }
+    if (previousCurrentJobId === undefined) {
+      delete process.env.STAGE3_WORKER_CURRENT_JOB_ID;
+    } else {
+      process.env.STAGE3_WORKER_CURRENT_JOB_ID = previousCurrentJobId;
     }
     await fs.rm(tmpDir, { recursive: true, force: true });
     await fs.rm(appDataDir, { recursive: true, force: true });

@@ -1,6 +1,7 @@
 import { setAppSessionCookie } from "../../../../lib/auth/cookies";
 import { getRequestMetadata, loginWithPassword } from "../../../../lib/team-store";
 import { asErrorResponse } from "../../../../lib/http";
+import { enforceRateLimit } from "../../../../lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,13 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
+    enforceRateLimit({
+      request,
+      scope: "auth-login",
+      key: body.email,
+      limit: 8,
+      windowMs: 10 * 60_000
+    });
     const meta = getRequestMetadata(request);
     const result = await loginWithPassword({
       email: body.email,

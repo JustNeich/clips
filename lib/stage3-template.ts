@@ -28,6 +28,7 @@ export const SCIENCE_CARD_V7_TEMPLATE_ID = "science-card-v7";
 export const HEDGES_OF_HONOR_TEMPLATE_ID = "hedges-of-honor-v1";
 export const CHANNEL_STORY_TEMPLATE_ID = "channel-story-v1";
 export const GHOSTFACE_COUNTRY_TEMPLATE_ID = "ghostface-country-v1";
+export const GHOSTFACE_WORKSHOP_TEMPLATE_ID = "ghostface-workshop-v1";
 export const STAGE3_TEMPLATE_ID = SCIENCE_CARD_TEMPLATE_ID;
 
 export type Stage3TemplateFontAsset = {
@@ -804,6 +805,62 @@ export const GHOSTFACE_COUNTRY = {
   highlights: createDefaultTemplateHighlightConfig({
     accentColor: "#ffd433"
   })
+} as const;
+
+export const GHOSTFACE_WORKSHOP = {
+  ...SCIENCE_CARD,
+  card: {
+    ...SCIENCE_CARD.card,
+    radius: 8,
+    borderWidth: 7,
+    borderColor: "#050607"
+  },
+  author: {
+    ...SCIENCE_CARD.author,
+    name: "GHOSTFACE WORKSHOP",
+    handle: "@ghostfaceworkshop",
+    checkAssetPath: "/stage3-template-badges/twitter-verified-badge.png"
+  },
+  typography: {
+    ...SCIENCE_CARD.typography,
+    top: {
+      ...SCIENCE_CARD.typography.top,
+      min: 44,
+      max: 58,
+      maxLines: 5,
+      maxChars: 220,
+      fillTargetMin: 0.88,
+      fillTargetMax: 0.95,
+      letterSpacing: "0"
+    },
+    bottom: {
+      ...SCIENCE_CARD.typography.bottom,
+      min: 24,
+      max: 34,
+      maxLines: 3,
+      maxChars: 170,
+      fillTargetMin: 0.78,
+      fillTargetMax: 0.9,
+      letterSpacing: "0"
+    },
+    authorName: {
+      ...SCIENCE_CARD.typography.authorName,
+      letterSpacing: "0"
+    },
+    authorHandle: {
+      ...SCIENCE_CARD.typography.authorHandle,
+      letterSpacing: "0"
+    }
+  },
+  palette: {
+    ...SCIENCE_CARD.palette,
+    checkBadgeColor: "#1da1f2",
+    borderColor: "#050607"
+  },
+  sourceOverlay: {
+    ...DEFAULT_STAGE3_SOURCE_OVERLAY_CONFIG,
+    enabled: false
+  }
 } as const;
 
 const CLASSIC_SCIENCE_CARD_TEMPLATE_IDS = new Set([
@@ -1769,6 +1826,9 @@ export function getTemplateComputed(
   if (templateId === GHOSTFACE_COUNTRY_TEMPLATE_ID) {
     return getScienceCardComputed(topText, bottomText, fontOverrides, GHOSTFACE_COUNTRY);
   }
+  if (templateId === GHOSTFACE_WORKSHOP_TEMPLATE_ID) {
+    return getScienceCardComputed(topText, bottomText, fontOverrides, GHOSTFACE_WORKSHOP);
+  }
   return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD);
 }
 
@@ -1809,6 +1869,9 @@ export function getTemplateById(templateId: string): Stage3TemplateConfig {
   if (templateId === GHOSTFACE_COUNTRY_TEMPLATE_ID) {
     return GHOSTFACE_COUNTRY;
   }
+  if (templateId === GHOSTFACE_WORKSHOP_TEMPLATE_ID) {
+    return GHOSTFACE_WORKSHOP;
+  }
   return SCIENCE_CARD;
 }
 
@@ -1816,7 +1879,8 @@ export function templateUsesBuiltInBackdrop(templateId: string | null | undefine
   return (
     templateId === SCIENCE_CARD_V7_TEMPLATE_ID ||
     templateId === HEDGES_OF_HONOR_TEMPLATE_ID ||
-    templateId === GHOSTFACE_COUNTRY_TEMPLATE_ID
+    templateId === GHOSTFACE_COUNTRY_TEMPLATE_ID ||
+    templateId === GHOSTFACE_WORKSHOP_TEMPLATE_ID
   );
 }
 

@@ -1,4 +1,5 @@
-import type { Stage2ProgressSnapshot, Stage2PromptConfig } from "../../lib/stage2-pipeline";
+import type { Stage2ProgressSnapshot } from "../../lib/stage2-progress-client";
+import type { Stage2PromptConfig } from "../../lib/stage2-prompt-client";
 import type {
   Stage2ExamplesConfig,
   Stage2HardConstraints,

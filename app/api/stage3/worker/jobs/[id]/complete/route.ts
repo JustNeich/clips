@@ -2,7 +2,7 @@ import { createWriteStream, promises as fs } from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { requireStage3WorkerAuth } from "../../../../../../../lib/auth/stage3-worker";
 import {
@@ -38,10 +38,23 @@ type RouteContext = {
 const require = createRequire(import.meta.url);
 const Busboy = require("next/dist/compiled/busboy") as (options: {
   headers: Record<string, string>;
+  limits?: {
+    fileSize?: number;
+    files?: number;
+    fields?: number;
+    fieldSize?: number;
+  };
 }) => {
   on(event: string, listener: (...args: any[]) => void): void;
   emit(event: string, ...args: any[]): boolean;
     };
+const MAX_WORKER_ARTIFACT_BYTES = 600 * 1024 * 1024;
+const MAX_WORKER_RESULT_JSON_BYTES = 2 * 1024 * 1024;
+const MAX_WORKER_RESULT_BODY_BYTES = MAX_WORKER_RESULT_JSON_BYTES + 4096;
+
+function looksLikeMp4Header(buffer: Buffer): boolean {
+  return buffer.length >= 8 && buffer.toString("ascii", 4, 8) === "ftyp";
+}
 
 function memorySnapshotMb(): Record<string, number> {
   const usage = process.memoryUsage();
@@ -64,16 +77,82 @@ function logStage3WorkerCompletion(event: string, payload: Record<string, unknow
   );
 }
 
+function assertResultJsonWithinLimit(value: string | null): void {
+  if (!value) {
+    return;
+  }
+  if (Buffer.byteLength(value, "utf-8") > MAX_WORKER_RESULT_JSON_BYTES) {
+    throw new Error("Stage 3 result JSON is too large.");
+  }
+}
+
+function parseContentLength(request: Request): number | null {
+  const raw = request.headers.get("content-length")?.trim();
+  if (!raw) {
+    return null;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
 async function createWorkerArtifactTempFile(source: NodeJS.ReadableStream): Promise<{ filePath: string; cleanupDir: string }> {
   const cleanupDir = await fs.mkdtemp(path.join(os.tmpdir(), "clips-stage3-worker-artifact-"));
   const filePath = path.join(cleanupDir, "artifact.mp4");
   try {
-    await pipeline(source, createWriteStream(filePath));
+    let totalBytes = 0;
+    let header = Buffer.alloc(0);
+    let headerChecked = false;
+    const limit = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        totalBytes += buffer.byteLength;
+        if (totalBytes > MAX_WORKER_ARTIFACT_BYTES) {
+          callback(new Error("Stage 3 artifact is too large."));
+          return;
+        }
+        if (!headerChecked) {
+          header = Buffer.concat([header, buffer.subarray(0, Math.max(0, 16 - header.length))]);
+          if (header.length >= 8) {
+            headerChecked = true;
+            if (!looksLikeMp4Header(header)) {
+              callback(new Error("Stage 3 artifact must be a valid mp4 file."));
+              return;
+            }
+          }
+        }
+        callback(null, buffer);
+      },
+      flush(callback) {
+        if (!headerChecked) {
+          callback(new Error("Stage 3 artifact must be a valid mp4 file."));
+          return;
+        }
+        callback();
+      }
+    });
+    await pipeline(source, limit, createWriteStream(filePath));
     return { filePath, cleanupDir };
   } catch (error) {
     await fs.rm(cleanupDir, { recursive: true, force: true }).catch(() => undefined);
     throw error;
   }
+}
+
+async function readRequestTextWithinLimit(request: Request, maxBytes: number): Promise<string> {
+  if (!request.body) {
+    return "";
+  }
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  for await (const chunk of Readable.fromWeb(request.body as any)) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.byteLength;
+    if (totalBytes > maxBytes) {
+      throw new Error("Stage 3 result JSON is too large.");
+    }
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks).toString("utf-8");
 }
 
 async function parseWorkerCompletionMultipart(request: Request): Promise<{
@@ -96,6 +175,12 @@ async function parseWorkerCompletionMultipart(request: Request): Promise<{
     const parser = Busboy({
       headers: {
         "content-type": contentType
+      },
+      limits: {
+        fileSize: MAX_WORKER_ARTIFACT_BYTES,
+        files: 1,
+        fields: 4,
+        fieldSize: MAX_WORKER_RESULT_JSON_BYTES
       }
     });
 
@@ -108,10 +193,17 @@ async function parseWorkerCompletionMultipart(request: Request): Promise<{
           cleanupDir: string;
         }
       | null = null;
+    let artifactFileSeen = false;
     const pendingFiles: Array<Promise<void>> = [];
 
     parser.on("field", (name: string, value: string) => {
       if (name === "resultJson") {
+        try {
+          assertResultJsonWithinLimit(value);
+        } catch (error) {
+          reject(error);
+          return;
+        }
         resultJson = value;
       }
     });
@@ -121,6 +213,11 @@ async function parseWorkerCompletionMultipart(request: Request): Promise<{
         stream.resume();
         return;
       }
+      if (artifactFileSeen) {
+        stream.resume();
+        return;
+      }
+      artifactFileSeen = true;
 
       const meta =
         info && typeof info === "object"
@@ -128,6 +225,10 @@ async function parseWorkerCompletionMultipart(request: Request): Promise<{
           : null;
       const fileName = meta?.filename?.trim() || "artifact.mp4";
       const mimeType = meta?.mimeType?.trim() || legacyMime?.trim() || "video/mp4";
+      stream.on("limit", () => {
+        reject(new Error("Stage 3 artifact is too large."));
+        stream.resume();
+      });
 
       pendingFiles.push(
         createWorkerArtifactTempFile(stream).then(({ filePath, cleanupDir }) => {
@@ -242,6 +343,10 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     });
 
     const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
+    const contentLength = parseContentLength(request);
+    if (contentLength !== null && contentLength > MAX_WORKER_ARTIFACT_BYTES + MAX_WORKER_RESULT_JSON_BYTES) {
+      return Response.json({ error: "Stage 3 completion payload is too large." }, { status: 413 });
+    }
     let resultJson: string | null = null;
     let artifactFile:
       | {
@@ -271,9 +376,12 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
         cleanupDir: storedArtifact.cleanupDir
       };
       resultJson = decodeResultJsonHeader(request.headers.get("x-stage3-result-json"));
+      assertResultJsonWithinLimit(resultJson);
     } else if (contentType.includes("application/json")) {
-      const body = (await request.json().catch(() => null)) as { resultJson?: unknown } | null;
+      const rawBody = await readRequestTextWithinLimit(request, MAX_WORKER_RESULT_BODY_BYTES);
+      const body = rawBody ? (JSON.parse(rawBody) as { resultJson?: unknown }) : null;
       resultJson = typeof body?.resultJson === "string" ? body.resultJson : null;
+      assertResultJsonWithinLimit(resultJson);
     }
 
     let artifactInput:
@@ -357,12 +465,19 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       return error;
     }
     const storageFull = isStage3ArtifactStorageError(error);
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("too large")) {
+      return Response.json({ error: message }, { status: 413 });
+    }
+    if (message.includes("valid mp4")) {
+      return Response.json({ error: message }, { status: 400 });
+    }
     return Response.json(
       {
         error: storageFull
           ? STAGE3_ARTIFACT_STORAGE_FULL_MESSAGE
-          : error instanceof Error
-            ? error.message
+          : message
+            ? message
             : "Не удалось завершить Stage 3 job."
       },
       { status: storageFull ? 507 : 500 }

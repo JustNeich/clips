@@ -23,7 +23,27 @@ function Invoke-ClipsStage3Download {
   )
 
   Write-ClipsStage3BootstrapLog "Downloading $Label"
-  Invoke-WebRequest $Uri -UseBasicParsing -ErrorAction Stop -OutFile $OutFile
+  $headers = @{}
+  if ($script:Stage3WorkerPairingToken) {
+    $headers["X-Stage3-Worker-Pairing-Token"] = $script:Stage3WorkerPairingToken
+  }
+  Invoke-WebRequest $Uri -UseBasicParsing -ErrorAction Stop -Headers $headers -OutFile $OutFile
+}
+
+function Assert-ClipsStage3RelativePath {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Label
+  )
+
+  if (
+    [string]::IsNullOrWhiteSpace($Path) -or
+    [System.IO.Path]::IsPathRooted($Path) -or
+    $Path.Contains("..") -or
+    $Path.Contains("\")
+  ) {
+    throw "Worker manifest contains an unsafe $Label path."
+  }
 }
 
 function Expand-ClipsStage3RuntimeArchive {
@@ -56,6 +76,8 @@ function Install-ClipsStage3Worker {
   )
 
   $serverOrigin = $Server.TrimEnd("/")
+  $runtimeBase = "$serverOrigin/api/stage3/worker/runtime"
+  $script:Stage3WorkerPairingToken = $Token
   $installRoot = Join-Path $env:LOCALAPPDATA "Clips Stage3 Worker"
   $logDir = Join-Path $installRoot "logs"
   New-Item -ItemType Directory -Path $logDir -Force | Out-Null
@@ -93,9 +115,9 @@ function Install-ClipsStage3Worker {
     New-Item -ItemType Directory -Path $publicDir -Force | Out-Null
     Write-ClipsStage3BootstrapLog "Install root: $installRoot"
 
-    Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/clips-stage3-worker.cjs" -OutFile $bundlePath -Label "worker bundle"
-    Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/package.json" -OutFile $packagePath -Label "worker package.json"
-    Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/manifest.json" -OutFile $manifestPath -Label "worker manifest"
+    Invoke-ClipsStage3Download -Uri "$runtimeBase/clips-stage3-worker.cjs" -OutFile $bundlePath -Label "worker bundle"
+    Invoke-ClipsStage3Download -Uri "$runtimeBase/package.json" -OutFile $packagePath -Label "worker package.json"
+    Invoke-ClipsStage3Download -Uri "$runtimeBase/manifest.json" -OutFile $manifestPath -Label "worker manifest"
 
     $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
     $remotionFiles = @($manifest.remotionFiles)
@@ -176,7 +198,8 @@ function Install-ClipsStage3Worker {
     $runtimeSourcesReady = $false
     if ($runtimeSourcesArchiveRelativePath) {
       try {
-        Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/$runtimeSourcesArchiveRelativePath" -OutFile $runtimeSourcesArchivePath -Label "bundled runtime sources"
+        Assert-ClipsStage3RelativePath -Path $runtimeSourcesArchiveRelativePath -Label "runtime sources archive"
+        Invoke-ClipsStage3Download -Uri "$runtimeBase/$runtimeSourcesArchiveRelativePath" -OutFile $runtimeSourcesArchivePath -Label "bundled runtime sources"
         Remove-Item $remotionDir -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item $libDir -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item $designDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -209,30 +232,34 @@ function Install-ClipsStage3Worker {
     if (-not $runtimeSourcesReady) {
       Write-ClipsStage3BootstrapLog "Downloading remotion files: $($remotionFiles.Count)"
       foreach ($file in $remotionFiles) {
+        Assert-ClipsStage3RelativePath -Path $file -Label "remotion file"
         $destination = Join-Path $remotionDir $file
         New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
-        Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/remotion/$file" -OutFile $destination -Label "remotion/$file"
+        Invoke-ClipsStage3Download -Uri "$runtimeBase/remotion/$file" -OutFile $destination -Label "remotion/$file"
       }
 
       Write-ClipsStage3BootstrapLog "Downloading lib files: $($libFiles.Count)"
       foreach ($file in $libFiles) {
+        Assert-ClipsStage3RelativePath -Path $file -Label "lib file"
         $destination = Join-Path $libDir $file
         New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
-        Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/lib/$file" -OutFile $destination -Label "lib/$file"
+        Invoke-ClipsStage3Download -Uri "$runtimeBase/lib/$file" -OutFile $destination -Label "lib/$file"
       }
 
       Write-ClipsStage3BootstrapLog "Downloading design files: $($designFiles.Count)"
       foreach ($file in $designFiles) {
+        Assert-ClipsStage3RelativePath -Path $file -Label "design file"
         $destination = Join-Path $designDir $file
         New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
-        Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/design/$file" -OutFile $destination -Label "design/$file"
+        Invoke-ClipsStage3Download -Uri "$runtimeBase/design/$file" -OutFile $destination -Label "design/$file"
       }
 
       Write-ClipsStage3BootstrapLog "Downloading public assets: $($publicFiles.Count)"
       foreach ($file in $publicFiles) {
+        Assert-ClipsStage3RelativePath -Path $file -Label "public file"
         $destination = Join-Path $publicDir $file
         New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
-        Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/public/$file" -OutFile $destination -Label "public/$file"
+        Invoke-ClipsStage3Download -Uri "$runtimeBase/public/$file" -OutFile $destination -Label "public/$file"
       }
     }
 
@@ -252,7 +279,8 @@ node "%~dp0clips-stage3-worker.cjs" %*
     }
     if ($runtimeArchiveCompatible) {
       try {
-        Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/$runtimeArchiveRelativePath" -OutFile $runtimeArchivePath -Label "bundled runtime dependencies"
+        Assert-ClipsStage3RelativePath -Path $runtimeArchiveRelativePath -Label "runtime dependency archive"
+        Invoke-ClipsStage3Download -Uri "$runtimeBase/$runtimeArchiveRelativePath" -OutFile $runtimeArchivePath -Label "bundled runtime dependencies"
         Write-ClipsStage3BootstrapLog "Unpacking bundled runtime dependencies"
         Expand-ClipsStage3RuntimeArchive -ArchivePath $runtimeArchivePath -Destination $installRoot
         $runtimeReady = Test-Path (Join-Path $installRoot "node_modules")

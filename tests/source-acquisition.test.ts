@@ -11,6 +11,7 @@ import {
   fetchOptionalYtDlpInfo,
   getSourceDownloadErrorContext,
   setSourceAcquisitionDownloadersForTests,
+  setSourceAcquisitionNetworkForTests,
   summarizeProviderTextResponse
 } from "../lib/source-acquisition";
 import { normalizeSupportedUrl } from "../lib/supported-url";
@@ -476,6 +477,10 @@ test("downloadSourceMedia exhausts raw instagram reel variants before trying enc
 
     throw new Error(`Unexpected fetch call during Visolix test: ${requestUrl}`);
   }) as typeof fetch;
+  setSourceAcquisitionNetworkForTests({
+    lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    fetch: async (url, init) => globalThis.fetch(url, init)
+  });
 
   try {
     const result = await downloadSourceMedia(sourceUrl, tmpDir);
@@ -506,6 +511,7 @@ test("downloadSourceMedia exhausts raw instagram reel variants before trying enc
       }
     ]);
   } finally {
+    setSourceAcquisitionNetworkForTests(null);
     globalThis.fetch = originalFetch;
     if (previousVisolixApiKey === undefined) {
       delete process.env.VISOLIX_API_KEY;
@@ -566,6 +572,10 @@ test("downloadSourceMedia sends the canonical instagram reel path to Visolix bef
 
     throw new Error(`Unexpected fetch call during canonical Visolix test: ${requestUrl}`);
   }) as typeof fetch;
+  setSourceAcquisitionNetworkForTests({
+    lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    fetch: async (url, init) => globalThis.fetch(url, init)
+  });
 
   try {
     const result = await downloadSourceMedia(sourceUrl, tmpDir);
@@ -580,7 +590,55 @@ test("downloadSourceMedia sends the canonical instagram reel path to Visolix bef
       }
     ]);
   } finally {
+    setSourceAcquisitionNetworkForTests(null);
     globalThis.fetch = originalFetch;
+    if (previousVisolixApiKey === undefined) {
+      delete process.env.VISOLIX_API_KEY;
+    } else {
+      process.env.VISOLIX_API_KEY = previousVisolixApiKey;
+    }
+    if (previousVisolixBaseUrl === undefined) {
+      delete process.env.VISOLIX_BASE_URL;
+    } else {
+      process.env.VISOLIX_BASE_URL = previousVisolixBaseUrl;
+    }
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("Visolix safe fetch blocks cross-origin redirects before leaking API headers", { concurrency: false }, async () => {
+  const previousVisolixApiKey = process.env.VISOLIX_API_KEY;
+  const previousVisolixBaseUrl = process.env.VISOLIX_BASE_URL;
+  process.env.VISOLIX_API_KEY = "test-visolix-key";
+  process.env.VISOLIX_BASE_URL = "https://visolix.test";
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-acquisition-redirect-secret-test-"));
+  const calls: Array<{ url: string; apiKey: string | null }> = [];
+
+  setSourceAcquisitionNetworkForTests({
+    lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    fetch: async (url, init) => {
+      calls.push({
+        url,
+        apiKey: new Headers(init.headers).get("X-API-KEY")
+      });
+      return new Response(null, {
+        status: 302,
+        headers: { location: "https://evil.example/download" }
+      });
+    }
+  });
+
+  try {
+    await assert.rejects(
+      () => downloadSourceMedia("https://www.instagram.com/reel/DV-jLoyDPJG/", tmpDir),
+      /cross-origin redirect/
+    );
+    assert.ok(calls.length >= 1);
+    assert.equal(calls.some((call) => call.url === "https://evil.example/download"), false);
+    assert.equal(calls.every((call) => call.url === "https://visolix.test/api/download"), true);
+    assert.equal(calls.every((call) => call.apiKey === "test-visolix-key"), true);
+  } finally {
+    setSourceAcquisitionNetworkForTests(null);
     if (previousVisolixApiKey === undefined) {
       delete process.env.VISOLIX_API_KEY;
     } else {

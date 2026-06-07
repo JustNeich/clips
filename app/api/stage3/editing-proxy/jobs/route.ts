@@ -1,4 +1,4 @@
-import { requireAuth, requireChannelVisibility } from "../../../../../lib/auth/guards";
+import { requireAuth, requireChannelOperate } from "../../../../../lib/auth/guards";
 import { resolveStage3Execution } from "../../../../../lib/stage3-execution";
 import {
   buildStage3JobEnvelope,
@@ -25,9 +25,17 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const auth = await requireAuth(request);
-    if (body?.channelId?.trim()) {
-      await requireChannelVisibility(auth, body.channelId.trim());
+    const channelId = body?.channelId?.trim() ?? "";
+    if (!channelId) {
+      return Response.json(
+        buildStage3JobErrorBody({
+          message: "Передайте channelId в теле запроса.",
+          recoverable: false
+        }),
+        { status: 400 }
+      );
     }
+    await requireChannelOperate(auth, channelId);
     const sourceUrl = normalizeSupportedUrl(body?.sourceUrl?.trim() ?? "");
     if (!sourceUrl) {
       auditStage3RequestFailure({
@@ -116,7 +124,7 @@ export async function POST(request: Request): Promise<Response> {
       payloadJson: JSON.stringify({
         sourceUrl,
         chatId: body?.chatId?.trim() || null,
-        channelId: body?.channelId?.trim() || null
+        channelId
       }),
       dedupeKey: await buildStage3EditingProxyDedupeKey(
         { sourceUrl },

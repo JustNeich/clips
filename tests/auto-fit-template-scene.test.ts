@@ -6,6 +6,7 @@ import {
   solveMeasuredSlotForMeasurements,
   type MeasuredSlotSpec
 } from "../lib/auto-fit-template-scene";
+import { getStage3TemplateTextFitPolicy } from "../lib/stage3-text-fit";
 
 test("auto-fit solver finds a high-fill result without exhaustive probing", () => {
   const spec: MeasuredSlotSpec = {
@@ -26,7 +27,8 @@ test("auto-fit solver finds a high-fill result without exhaustive probing", () =
     textAlign: "center",
     scale: 1.08,
     lineHeightFloor: 0.96,
-    lineHeightCeil: 1.06
+    lineHeightCeil: 1.06,
+    fitMode: "target_fill"
   };
 
   let calls = 0;
@@ -45,6 +47,40 @@ test("auto-fit solver finds a high-fill result without exhaustive probing", () =
     result.lineHeight >= spec.lineHeightFloor && result.lineHeight <= spec.lineHeightCeil,
     `expected line height within slot bounds, got ${result.lineHeight}`
   );
+});
+
+test("auto-fit max_safe mode chooses the largest fitting font before overflow", () => {
+  const spec: MeasuredSlotSpec = {
+    text: "Ghostface text",
+    width: 720,
+    height: 180,
+    minFont: 16,
+    maxFont: 60,
+    preferredFont: 32,
+    maxLines: 4,
+    baseLineHeight: 1,
+    fillTargetMin: 0.9,
+    fillTargetMax: 0.96,
+    fontFamily: "Inter",
+    fontWeight: 800,
+    fontStyle: "normal",
+    letterSpacing: "0",
+    textAlign: "center",
+    scale: 1.8,
+    lineHeightFloor: 0.96,
+    lineHeightCeil: 1.06,
+    fitMode: "max_safe"
+  };
+
+  const result = solveMeasuredSlotForMeasurements(spec, (font, lineHeight) => {
+    const lines = font > 44 ? 5 : font > 32 ? 4 : 3;
+    return {
+      height: lines * font * lineHeight,
+      lines
+    };
+  });
+
+  assert.equal(result.font, 44);
 });
 
 test("measured font ceiling scales smoothly around neutral size", () => {
@@ -70,4 +106,13 @@ test("measured font ceiling scales smoothly around neutral size", () => {
     `expected 100% -> 101% to avoid a font cliff, got ${at100} -> ${at101}`
   );
   assert.ok(at100 < input.configuredMaxFont, `expected neutral ceiling to remain local, got ${at100}`);
+});
+
+test("Ghostface text fit policy keeps Country bottom at target-fill while Workshop uses max-safe", () => {
+  const country = getStage3TemplateTextFitPolicy("ghostface-country-v1");
+  const workshop = getStage3TemplateTextFitPolicy("ghostface-workshop-v1");
+
+  assert.equal(country.topFitMode, "max_safe");
+  assert.equal(country.bottomFitMode, "target_fill");
+  assert.equal(workshop.fitMode, "max_safe");
 });

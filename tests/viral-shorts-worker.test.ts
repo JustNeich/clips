@@ -76,15 +76,17 @@ import {
   DEFAULT_STAGE2_EXAMPLES_CONFIG,
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
   formatStage2DelimitedStringList,
-  getBundledStage2ExamplesSeed,
-  getBundledStage2ExamplesSeedJson,
   normalizeStage2HardConstraints,
   parseStage2DelimitedStringList,
-  resolveStage2ExamplesCorpus,
   Stage2CorpusExample,
   Stage2ExamplesConfig,
   Stage2HardConstraints
 } from "../lib/stage2-channel-config";
+import { resolveStage2ExamplesCorpus } from "../lib/stage2-examples-corpus";
+import {
+  getBundledStage2ExamplesSeed,
+  getBundledStage2ExamplesSeedJson
+} from "../lib/stage2-examples-seed";
 import {
   createEmptyStage2EditorialMemorySummary,
   normalizeStage2StyleProfile
@@ -2733,7 +2735,7 @@ test("limited redactor still cannot edit channel setup", () => {
   assert.equal(permissions.canDelete, false);
 });
 
-test("editor restrictions block only system prompts and thinking changes", () => {
+test("editor restrictions block sensitive Stage 2 setup changes", () => {
   assert.equal(
     getRestrictedChannelEditError("redactor", {
       name: "Updated channel",
@@ -2745,25 +2747,31 @@ test("editor restrictions block only system prompts and thinking changes", () =>
     getRestrictedChannelEditError("redactor", {
       stage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS
     }),
-    null
+    "Редактор не может менять внутренние Stage 2 настройки канала."
   );
   assert.equal(
     getRestrictedChannelEditError("redactor", {
       systemPrompt: "New system prompt"
     }),
-    "Редактор не может менять системные промпты канала."
+    "Редактор не может менять внутренние Stage 2 настройки канала."
   );
   assert.equal(
     getRestrictedChannelEditError("redactor", {
       descriptionPrompt: "New description prompt"
     }),
-    "Редактор не может менять системные промпты канала."
+    "Редактор не может менять внутренние Stage 2 настройки канала."
   );
   assert.equal(
     getRestrictedChannelEditError("redactor", {
       stage2PromptConfig: normalizeStage2PromptConfig({})
     }),
-    null
+    "Редактор не может менять внутренние Stage 2 настройки канала."
+  );
+  assert.equal(
+    getRestrictedChannelEditError("redactor", {
+      templateId: "managed-template"
+    }),
+    "Редактор не может менять внутренние Stage 2 настройки канала."
   );
   assert.equal(
     getRestrictedChannelEditError("manager", {

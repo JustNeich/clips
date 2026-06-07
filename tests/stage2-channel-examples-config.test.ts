@@ -4,9 +4,9 @@ import test from "node:test";
 import {
   collectChannelStage2Examples,
   normalizeStage2ExamplesConfig,
-  parseStage2ExamplesJson,
-  resolveStage2ExamplesCorpus
+  parseStage2ExamplesJson
 } from "../lib/stage2-channel-config";
+import { resolveStage2ExamplesCorpus } from "../lib/stage2-examples-corpus";
 import { STAGE2_REFERENCE_ONE_SHOT_PROMPT } from "../lib/stage2-prompt-specs";
 
 const OWNER = {

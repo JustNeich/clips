@@ -6,9 +6,9 @@ import { APP_DB_SCHEMA } from "./schema";
 import { getAppDataDir } from "../app-paths";
 import {
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
-  getBundledStage2ExamplesSeedJson,
   stringifyStage2HardConstraints
 } from "../stage2-channel-config";
+import { getBundledStage2ExamplesSeedJson } from "../stage2-examples-seed";
 import {
   DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG,
   stringifyStage2CaptionProviderConfig
@@ -367,6 +367,18 @@ function applyDbMigrations(db: DatabaseSync): void {
   );
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_mcp_access_tokens_owner ON mcp_access_tokens(owner_user_id, created_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_mcp_machine_credentials_workspace ON mcp_machine_credentials(workspace_id, status, updated_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_mcp_machine_credentials_owner ON mcp_machine_credentials(owner_user_id, updated_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_mcp_machine_credentials_machine ON mcp_machine_credentials(workspace_id, machine_id)"
+  );
+  db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_machine_credentials_active_machine ON mcp_machine_credentials(workspace_id, machine_id) WHERE status != 'revoked'"
   );
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_workspace_templates_workspace_updated ON workspace_templates(workspace_id, archived_at, updated_at DESC)"

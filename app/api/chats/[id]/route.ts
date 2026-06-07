@@ -1,16 +1,17 @@
 import { deleteChatById, getChatById, getChatDraft } from "../../../../lib/chat-history";
 import { requireAuth, requireChannelOperate, requireChannelVisibility } from "../../../../lib/auth/guards";
 import { tryAppendFlowAuditEvent } from "../../../../lib/audit-log-store";
+import { sanitizeChatForRole } from "../../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> }
 ): Promise<Response> {
   const { id } = await context.params;
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
     const chat = await getChatById(id);
     if (!chat) {
       return Response.json({ error: "Chat not found." }, { status: 404 });
@@ -18,7 +19,7 @@ export async function GET(
     await requireChannelVisibility(auth, chat.channelId);
     const draft = await getChatDraft(id, auth.user.id);
 
-    return Response.json({ chat, draft }, { status: 200 });
+    return Response.json({ chat: sanitizeChatForRole(chat, auth.membership.role), draft }, { status: 200 });
   } catch (error) {
     return error instanceof Response
       ? error

@@ -25,6 +25,7 @@ import { getActiveSourceJobForChat } from "../../../../lib/source-job-runtime";
 import type { Stage2Response } from "../../../components/types";
 import { isSupportedUrl, normalizeSupportedUrl, SUPPORTED_SOURCE_ERROR_MESSAGE } from "../../../../lib/ytdlp";
 import type { Stage2DebugMode } from "../../../../lib/viral-shorts-worker/types";
+import { canInspectSensitiveArtifacts, sanitizeStage2ResponseForRole } from "../../../../lib/sensitive-access";
 
 export const runtime = "nodejs";
 
@@ -39,13 +40,17 @@ function normalizeDebugMode(value: unknown): Stage2DebugMode {
   return value === "raw" ? "raw" : "summary";
 }
 
-function serializeStage2RunSummary(run: Stage2RunRecord) {
+function serializeStage2RunSummary(
+  run: Stage2RunRecord,
+  role?: Awaited<ReturnType<typeof requireAuth>>["membership"]["role"]
+) {
+  const canInspectSensitive = role ? canInspectSensitiveArtifacts(role) : true;
   return {
     runId: run.runId,
     chatId: run.chatId,
     channelId: run.channelId,
     sourceUrl: run.sourceUrl,
-    userInstruction: run.userInstruction,
+    userInstruction: canInspectSensitive ? run.userInstruction : null,
     mode: run.mode,
     baseRunId: run.baseRunId,
     status: run.status,
@@ -59,10 +64,15 @@ function serializeStage2RunSummary(run: Stage2RunRecord) {
   };
 }
 
-function serializeStage2RunDetail(run: Stage2RunRecord) {
+function serializeStage2RunDetail(
+  run: Stage2RunRecord,
+  role?: Awaited<ReturnType<typeof requireAuth>>["membership"]["role"]
+) {
   return {
-    ...serializeStage2RunSummary(run),
-    result: (run.resultData ?? null) as Stage2Response | null
+    ...serializeStage2RunSummary(run, role),
+    result: role
+      ? sanitizeStage2ResponseForRole((run.resultData ?? null) as Stage2Response | null, role)
+      : ((run.resultData ?? null) as Stage2Response | null)
   };
 }
 
@@ -105,7 +115,7 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
     scheduleStage2RunProcessing();
 
     if (runId) {
@@ -113,7 +123,7 @@ export async function GET(request: Request): Promise<Response> {
       await requireRunVisibility(auth, run);
       return Response.json(
         {
-          run: serializeStage2RunDetail(run),
+          run: serializeStage2RunDetail(run, auth.membership.role),
           progress: run.snapshot
         },
         { status: 200 }
@@ -125,7 +135,9 @@ export async function GET(request: Request): Promise<Response> {
       return Response.json({ error: "Chat not found." }, { status: 404 });
     }
     await requireChannelVisibility(auth, chat.channelId);
-    const runs = listStage2RunsForChat(chat.id, auth.workspace.id).map(serializeStage2RunSummary);
+    const runs = listStage2RunsForChat(chat.id, auth.workspace.id).map((run) =>
+      serializeStage2RunSummary(run, auth.membership.role)
+    );
     return Response.json({ runs }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) {
@@ -158,7 +170,7 @@ export async function POST(request: Request): Promise<Response> {
   const userInstruction = userInstructionRaw ? userInstructionRaw.slice(0, 2000) : null;
 
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
     const channel =
       chat?.channelId
         ? (await requireChannelOperate(auth, chat.channelId)).channel
@@ -241,7 +253,7 @@ export async function POST(request: Request): Promise<Response> {
         return Response.json(
           {
             error: "stage2_run_already_active",
-            run: serializeStage2RunDetail(activeRun)
+            run: serializeStage2RunDetail(activeRun, auth.membership.role)
           },
           { status: 409 }
         );
@@ -262,7 +274,7 @@ export async function POST(request: Request): Promise<Response> {
       })
     });
 
-    return Response.json({ run: serializeStage2RunDetail(run) }, { status: 202 });
+    return Response.json({ run: serializeStage2RunDetail(run, auth.membership.role) }, { status: 202 });
   } catch (error) {
     if (error instanceof Response) {
       return error;

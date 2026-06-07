@@ -510,6 +510,40 @@ test("source upload route accepts a single raw-body mp4 stream without multipart
   });
 });
 
+test("source upload route rejects raw-body files that are not real mp4", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Source Upload Reject Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const chatHistory = await import("../lib/chat-history");
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Raw Reject Channel",
+      username: "raw_reject"
+    });
+    const headers = buildAuthedHeaders(owner.sessionToken);
+    headers.set("Content-Type", "video/mp4");
+    headers.set("X-Channel-Id", channel.id);
+    headers.set("X-File-Name", encodeURIComponent("fake.mp4"));
+
+    const response = await uploadSourceRoute(
+      new Request("http://localhost/api/pipeline/source-upload", {
+        method: "POST",
+        headers,
+        body: Buffer.from("not an mp4")
+      })
+    );
+    const body = (await response.json()) as { error?: string };
+
+    assert.equal(response.status, 400);
+    assert.equal(body.error, "Загружать можно только готовый mp4 файл.");
+  });
+});
+
 test("source upload route normalizes mixed audio and frame sizes before combining mp4 parts", async () => {
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({

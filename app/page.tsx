@@ -66,9 +66,10 @@ import {
 import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
   normalizeStage2PromptConfig,
-  type Stage2ProgressSnapshot,
   type Stage2PromptConfig
-} from "../lib/stage2-pipeline";
+} from "../lib/stage2-prompt-client";
+import type { Stage2ProgressSnapshot } from "../lib/stage2-progress-client";
+import type { Stage2SystemExamplesPresetPayload } from "../lib/stage2-system-presets-client";
 import {
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
   normalizeStage2HardConstraints,
@@ -445,6 +446,12 @@ type AppToastInput = {
   autoHideMs?: number | null;
 };
 
+const SAFE_EMPTY_STAGE2_PROMPT_CONFIG: Stage2PromptConfig = DEFAULT_STAGE2_PROMPT_CONFIG;
+
+function normalizeStage2PromptConfigForShell(input: Stage2PromptConfig | null | undefined): Stage2PromptConfig {
+  return input && typeof input === "object" ? input : SAFE_EMPTY_STAGE2_PROMPT_CONFIG;
+}
+
 export default function HomePage() {
   const [status, setStatus] = useState("");
   const [statusType, setStatusType] = useState<"ok" | "error" | "">("");
@@ -459,11 +466,16 @@ export default function HomePage() {
   const [autoRunStage2AfterSource, setAutoRunStage2AfterSource] = useState(true);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [workspaceStage2ExamplesCorpusJson, setWorkspaceStage2ExamplesCorpusJson] = useState("[]");
+  const [workspaceStage2SystemExamplesPresets, setWorkspaceStage2SystemExamplesPresets] =
+    useState<Stage2SystemExamplesPresetPayload[]>([]);
   const [workspaceStage2HardConstraints, setWorkspaceStage2HardConstraints] = useState<Stage2HardConstraints>(
     DEFAULT_STAGE2_HARD_CONSTRAINTS
   );
   const [workspaceStage2PromptConfig, setWorkspaceStage2PromptConfig] = useState<Stage2PromptConfig>(
     DEFAULT_STAGE2_PROMPT_CONFIG
+  );
+  const [factoryStage2PromptConfig, setFactoryStage2PromptConfig] = useState<Stage2PromptConfig>(
+    SAFE_EMPTY_STAGE2_PROMPT_CONFIG
   );
   const [workspaceStage2CaptionProviderConfig, setWorkspaceStage2CaptionProviderConfig] =
     useState<Stage2CaptionProviderConfig>(DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG);
@@ -646,6 +658,7 @@ export default function HomePage() {
   const codexLoggedIn = Boolean(codexAuth?.loggedIn);
   const codexRunning = codexAuth?.deviceAuth.status === "running";
   const currentRole = authState?.membership.role ?? null;
+  const canInspectSensitiveArtifacts = currentRole === "owner" || currentRole === "manager";
   const canManageCodex = Boolean(authState?.effectivePermissions.canManageCodex);
   const canCreateChannel = Boolean(authState?.effectivePermissions.canCreateChannel);
   const fetchSourceAvailable = runtimeCapabilities?.features.fetchSource ?? true;
@@ -1373,8 +1386,10 @@ export default function HomePage() {
     const body = (await response.json()) as {
       channels: Channel[];
       workspaceStage2ExamplesCorpusJson?: string;
+      workspaceStage2SystemExamplesPresets?: Stage2SystemExamplesPresetPayload[];
       workspaceStage2HardConstraints?: Stage2HardConstraints;
       workspaceStage2PromptConfig?: Stage2PromptConfig;
+      factoryStage2PromptConfig?: Stage2PromptConfig;
       workspaceStage2CaptionProviderConfig?: Stage2CaptionProviderConfig;
       workspaceStage3ExecutionTarget?: Stage3ExecutionTarget;
       workspaceResolvedStage3ExecutionTarget?: Stage3ExecutionTarget;
@@ -1389,10 +1404,12 @@ export default function HomePage() {
       body.workspaceCodexModelConfig
     );
     setWorkspaceStage2ExamplesCorpusJson(body.workspaceStage2ExamplesCorpusJson ?? "[]");
+    setWorkspaceStage2SystemExamplesPresets(body.workspaceStage2SystemExamplesPresets ?? []);
     setWorkspaceStage2HardConstraints(
       normalizeStage2HardConstraints(body.workspaceStage2HardConstraints)
     );
-    setWorkspaceStage2PromptConfig(normalizeStage2PromptConfig(body.workspaceStage2PromptConfig));
+    setWorkspaceStage2PromptConfig(normalizeStage2PromptConfigForShell(body.workspaceStage2PromptConfig));
+    setFactoryStage2PromptConfig(normalizeStage2PromptConfigForShell(body.factoryStage2PromptConfig));
     setWorkspaceStage2CaptionProviderConfig(
       normalizeStage2CaptionProviderConfig(body.workspaceStage2CaptionProviderConfig)
     );
@@ -6352,7 +6369,7 @@ export default function HomePage() {
         body: JSON.stringify({
           name: input.name,
           username: input.username,
-          stage2HardConstraints: input.stage2HardConstraints
+          ...(canInspectSensitiveArtifacts ? { stage2HardConstraints: input.stage2HardConstraints } : {})
         })
       });
       if (!response.ok) {
@@ -7383,6 +7400,7 @@ export default function HomePage() {
         <Step1PasteLink
           draftUrl={draftUrl}
           activeUrl={activeChat?.url ?? null}
+          activeChannelId={activeChannelId}
           sourceJob={selectedSourceJobDetail ?? (selectedSourceJobSummary ? { ...selectedSourceJobSummary, result: null } : null)}
           sourceJobElapsedMs={sourceJobElapsedMs}
           commentsFallbackActive={stage1FetchState.ready && !stage1FetchState.commentsAvailable}
@@ -7939,8 +7957,10 @@ export default function HomePage() {
           initialTab={channelManagerInitialTab}
           channels={channels}
           workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
+          workspaceStage2SystemExamplesPresets={workspaceStage2SystemExamplesPresets}
           workspaceStage2HardConstraints={workspaceStage2HardConstraints}
           workspaceStage2PromptConfig={workspaceStage2PromptConfig}
+          factoryStage2PromptConfig={factoryStage2PromptConfig}
           workspaceStage2CaptionProviderConfig={workspaceStage2CaptionProviderConfig}
           workspaceAnthropicIntegration={workspaceAnthropicIntegration}
           workspaceOpenRouterIntegration={workspaceOpenRouterIntegration}

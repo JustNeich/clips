@@ -1048,6 +1048,28 @@ export async function getChatById(chatId: string): Promise<ChatThread | null> {
   return row ? mapThread(row, getThreadEvents(chatId)) : null;
 }
 
+export async function findChatsBySourceUrl(input: {
+  workspaceId: string;
+  sourceUrl: string;
+}): Promise<ChatThread[]> {
+  const sourceUrl = normalizeSupportedUrl(input.sourceUrl);
+  if (!sourceUrl) {
+    return [];
+  }
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT *
+         FROM chat_threads
+        WHERE workspace_id = ?
+          AND url = ?
+        ORDER BY updated_at DESC, created_at DESC`
+    )
+    .all(input.workspaceId, sourceUrl) as Record<string, unknown>[];
+  const eventsByThreadId = getThreadEventsByThreadIds(rows.map((row) => String(row.id)));
+  return rows.map((row) => mapThread(row, eventsByThreadId.get(String(row.id)) ?? []));
+}
+
 function getChatDraftSync(threadId: string, userId: string): ChatDraft | null {
   const row = getDraftRow(threadId, userId);
   return row ? mapDraft(row) : null;

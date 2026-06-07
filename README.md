@@ -149,6 +149,8 @@ npm run dev
     - `/api/admin/flows`, `/api/admin/audit-events`, and `/api/admin/mcp-tokens` are owner-only for browser sessions;
     - owner-created MCP tokens can read the same redacted flow data through `npm run mcp:flows` with `CLIPS_APP_URL` and `CLIPS_MCP_TOKEN`;
     - MCP write operations live on a separate control server, `npm run mcp:control`, and require an explicit `control:write` token scope; existing `flow:read` tokens remain read-only and are not upgraded automatically;
+    - Mac mini Assistant owner access uses `npm run mcp:owner` plus a machine credential from `/api/admin/mcp-machines`; this avoids recurring short-lived token creation while keeping revoke/audit/rotation visibility;
+    - Mac mini health checks live in `npm run macmini:healthcheck`; setup details are in [`docs/macmini-owner-mcp.md`](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/macmini-owner-mcp.md);
     - redaction keeps prompts/model/provider/input/output diagnostics visible while removing API keys, cookies, OAuth/session/lease tokens, token hashes, encrypted credential blobs, passwords, and client secrets;
     - deleted videos are retained as compact audit facts: channel/publication/title/actor/time/remote-delete result, not a full generation trace;
   - worker rollout is fail-closed:

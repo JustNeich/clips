@@ -1,6 +1,7 @@
 import { setAppSessionCookie } from "../../../../lib/auth/cookies";
 import { acceptInviteRegistration, getRequestMetadata } from "../../../../lib/team-store";
 import { asErrorResponse } from "../../../../lib/http";
+import { enforceRateLimit } from "../../../../lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,13 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
+    enforceRateLimit({
+      request,
+      scope: "auth-accept-invite",
+      key: token,
+      limit: 8,
+      windowMs: 30 * 60_000
+    });
     const meta = getRequestMetadata(request);
     const result = await acceptInviteRegistration({
       token,
