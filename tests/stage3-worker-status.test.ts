@@ -268,7 +268,7 @@ test("server watchdog fails heartbeat-fresh local jobs after the kind timeout", 
   });
 });
 
-test("server watchdog fails short stuck local renders before the default render timeout", async () => {
+test("server watchdog fails short stuck local renders after the duration-aware render timeout", async () => {
   await withIsolatedAppData(async () => {
     const workspaceId = "w1";
     const userId = "u1";
@@ -304,7 +304,7 @@ test("server watchdog fails short stuck local renders before the default render 
     );
 
     const db = getDb();
-    const staleStartedAt = new Date(Date.now() - 4 * 60_000).toISOString();
+    const staleStartedAt = new Date(Date.now() - 6 * 60_000).toISOString();
     const freshHeartbeatAt = new Date().toISOString();
     const futureLeaseAt = new Date(Date.now() + 30 * 60_000).toISOString();
     db.prepare(
@@ -322,7 +322,7 @@ test("server watchdog fails short stuck local renders before the default render 
     const refreshedJob = getStage3Job(job.id);
     assert.equal(refreshedJob?.status, "failed");
     assert.equal(refreshedJob?.errorCode, "render_timeout");
-    assert.match(refreshedJob?.errorMessage ?? "", /render за 180 секунд/);
+    assert.match(refreshedJob?.errorMessage ?? "", /render за 300 секунд/);
     assert.equal(refreshedJob?.assignedWorkerId, null);
     assert.equal(refreshedJob?.leaseUntil, null);
 
@@ -344,7 +344,7 @@ test("server watchdog fails short stuck local renders before the default render 
   });
 });
 
-test("local render heartbeat fails overdue duration-aware jobs instead of extending lease", async () => {
+test("local render heartbeat fails jobs past the duration-aware timeout instead of extending lease", async () => {
   await withIsolatedAppData(async () => {
     const workspaceId = "w1";
     const userId = "u1";
@@ -380,7 +380,7 @@ test("local render heartbeat fails overdue duration-aware jobs instead of extend
     );
 
     const db = getDb();
-    const staleStartedAt = new Date(Date.now() - 4 * 60_000).toISOString();
+    const staleStartedAt = new Date(Date.now() - 6 * 60_000).toISOString();
     const freshHeartbeatAt = new Date().toISOString();
     const futureLeaseAt = new Date(Date.now() + 30 * 60_000).toISOString();
     db.prepare(

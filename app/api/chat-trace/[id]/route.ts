@@ -1,6 +1,6 @@
 import { getChatById } from "../../../../lib/chat-history";
 import { requireAuth, requireChannelVisibility } from "../../../../lib/auth/guards";
-import { requireSensitiveArtifactAccess } from "../../../../lib/sensitive-access";
+import { sanitizeChatTraceExportForRole } from "../../../../lib/sensitive-access";
 import { buildChatTraceExport } from "../../../../lib/chat-trace-export";
 import { buildChatTraceExportFileName } from "../../../../lib/chat-trace-export-shared";
 import { redactForFlowExport } from "../../../../lib/flow-redaction";
@@ -18,7 +18,6 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
 
   try {
     const auth = await requireAuth(request);
-    requireSensitiveArtifactAccess(auth);
     const chat = await getChatById(id);
     if (!chat || chat.workspaceId !== auth.workspace.id) {
       return Response.json({ error: "Chat not found." }, { status: 404 });
@@ -35,14 +34,15 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
     if (!payload) {
       return Response.json({ error: "Trace export is unavailable for this chat." }, { status: 404 });
     }
+    const visiblePayload = sanitizeChatTraceExportForRole(payload, auth.membership.role);
 
     const fileName = buildChatTraceExportFileName({
       channelUsername: channel.username,
       chatId: chat.id,
-      exportedAt: payload.exportedAt
+      exportedAt: visiblePayload.exportedAt
     });
 
-    return new Response(JSON.stringify(redactForFlowExport(payload), null, 2), {
+    return new Response(JSON.stringify(redactForFlowExport(visiblePayload), null, 2), {
       status: 200,
       headers: {
         "Content-Type": "application/json; charset=utf-8",

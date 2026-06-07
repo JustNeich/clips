@@ -1,5 +1,4 @@
 import { requireAuth } from "../../../../lib/auth/guards";
-import { requireSensitiveArtifactAccess } from "../../../../lib/sensitive-access";
 import {
   createManagedTemplate,
   listManagedTemplateSummaries
@@ -10,7 +9,6 @@ export const runtime = "nodejs";
 export async function GET(request: Request): Promise<Response> {
   try {
     const auth = await requireAuth(request);
-    requireSensitiveArtifactAccess(auth);
     const templates = await listManagedTemplateSummaries(auth.workspace.id);
     return Response.json(
       {

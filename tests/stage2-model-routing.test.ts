@@ -624,7 +624,7 @@ test("prompt-first title guard compacts overlong story titles", async () => {
     result.output.titleOptions.every((option) => option.title.split(/\s+/).filter(Boolean).length <= 7),
     true
   );
-  assert.equal(result.output.titleOptions[0]?.title, "THIS BODY EXPLAINS WHY THE HOLLYWOOD SETUP");
+  assert.equal(result.output.titleOptions[0]?.title, "This body explains why the Hollywood setup");
   assert.equal(
     result.warnings.some((warning) => /title guard compacted 5 overlong title/i.test(warning.message)),
     true

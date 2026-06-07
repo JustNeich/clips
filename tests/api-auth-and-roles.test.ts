@@ -284,7 +284,7 @@ test("chat trace export route returns an attachment for authenticated workspace 
   });
 });
 
-test("redactor_limited cannot read prompts, traces, debug artifacts, or template library internals", async () => {
+test("redactor_limited can use production runtime surfaces without reading prompt/debug internals", async () => {
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({
       workspaceName: "Restricted Editor Workspace",
@@ -482,7 +482,25 @@ test("redactor_limited cannot read prompts, traces, debug artifacts, or template
       }),
       { params: Promise.resolve({ id: chat.id }) }
     );
-    assert.equal(traceResponse.status, 403);
+    const traceBody = (await traceResponse.json()) as {
+      channel?: { stage2HardConstraints?: unknown; stage2ExamplesConfig?: unknown };
+      stage2?: {
+        causalInputs?: { run?: { userInstruction?: string | null } };
+        stageManifests?: Array<{ inputManifest?: unknown; promptTextPresent?: boolean }>;
+        currentResult?: Record<string, unknown> | null;
+        workspaceDefaults?: { examplesCorpusJson?: string; hardConstraints?: unknown; promptConfig?: unknown };
+      };
+    };
+    assert.equal(traceResponse.status, 200);
+    assert.equal(traceBody.channel?.stage2HardConstraints, null);
+    assert.equal(traceBody.channel?.stage2ExamplesConfig, null);
+    assert.equal(traceBody.stage2?.causalInputs?.run?.userInstruction, null);
+    assert.equal(traceBody.stage2?.stageManifests?.[0]?.inputManifest, null);
+    assert.equal(traceBody.stage2?.stageManifests?.[0]?.promptTextPresent, false);
+    assert.equal(traceBody.stage2?.currentResult?.diagnostics, undefined);
+    assert.equal(traceBody.stage2?.workspaceDefaults?.examplesCorpusJson, "[]");
+    assert.equal(traceBody.stage2?.workspaceDefaults?.hardConstraints, null);
+    assert.equal(traceBody.stage2?.workspaceDefaults?.promptConfig, null);
 
     const debugResponse = await getStage2DebugArtifact(
       new Request(`http://localhost/api/pipeline/stage2/debug?runId=${run.runId}&debugRef=debug_secret`, {
@@ -505,7 +523,38 @@ test("redactor_limited cannot read prompts, traces, debug artifacts, or template
         headers: { cookie }
       })
     );
-    assert.equal(templateLibraryResponse.status, 403);
+    const templateLibraryBody = (await templateLibraryResponse.json()) as {
+      templates?: Array<{ id: string }>;
+    };
+    assert.equal(templateLibraryResponse.status, 200);
+    assert.ok((templateLibraryBody.templates?.length ?? 0) > 0);
+
+    const defaultTemplateId = await getWorkspaceDefaultTemplateId(owner.workspace.id);
+    const templateResponse = await getManagedTemplate(
+      new Request(`http://localhost/api/design/templates/${defaultTemplateId}`, {
+        headers: { cookie }
+      }),
+      { params: Promise.resolve({ templateId: defaultTemplateId }) }
+    );
+    const templateBody = (await templateResponse.json()) as { template?: { id?: string } };
+    assert.equal(templateResponse.status, 200);
+    assert.equal(templateBody.template?.id, defaultTemplateId);
+
+    const pairingResponse = await createStage3WorkerPairing(
+      new Request("http://localhost/api/stage3/workers/pairing", {
+        method: "POST",
+        headers: { cookie }
+      })
+    );
+    const pairingBody = (await pairingResponse.json()) as {
+      pairingToken?: string;
+      desktopDeepLink?: string;
+      commands?: { shell?: string; powershell?: string };
+    };
+    assert.equal(pairingResponse.status, 200);
+    assert.equal(typeof pairingBody.pairingToken, "string");
+    assert.match(pairingBody.desktopDeepLink ?? "", /^clips-stage3-worker:\/\//);
+    assert.match(pairingBody.commands?.shell ?? "", /stage3-worker/i);
   });
 });
 
@@ -557,7 +606,7 @@ test("team policy requires invite-issued editor accounts", async () => {
   });
 });
 
-test("redactor accounts cannot create worker pairing tokens or read template internals", async () => {
+test("redactor accounts can use runtime templates and worker pairing while sensitive setup stays closed", async () => {
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({
       workspaceName: "Strict Editor Workspace",
@@ -616,7 +665,9 @@ test("redactor accounts cannot create worker pairing tokens or read template int
           headers: { cookie }
         })
       );
-      assert.equal(pairingResponse.status, 403);
+      const pairingBody = (await pairingResponse.json()) as { desktopDeepLink?: string };
+      assert.equal(pairingResponse.status, 200);
+      assert.match(pairingBody.desktopDeepLink ?? "", /^clips-stage3-worker:\/\//);
 
       const templateResponse = await getManagedTemplate(
         new Request(`http://localhost/api/design/templates/${template.id}`, {
@@ -624,7 +675,10 @@ test("redactor accounts cannot create worker pairing tokens or read template int
         }),
         { params: Promise.resolve({ templateId: template.id }) }
       );
-      assert.equal(templateResponse.status, 403);
+      const templateBody = (await templateResponse.json()) as { template?: { id?: string; name?: string } };
+      assert.equal(templateResponse.status, 200);
+      assert.equal(templateBody.template?.id, template.id);
+      assert.equal(templateBody.template?.name, "Prompt Bearing Template");
 
       const sensitivePatchResponse = await patchChannelRoute(
         new Request(`http://localhost/api/channels/${editorChannel.id}`, {

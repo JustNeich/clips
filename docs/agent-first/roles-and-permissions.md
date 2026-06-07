@@ -25,7 +25,8 @@
 | Create channel | yes | yes | yes | no | `team-store.ts` |
 | Manage any channel access | yes | yes | no | no | `team-store.ts`, `acl.ts` |
 | View internal design routes | yes | yes | yes | no | browser + code pages |
-| Inspect prompts, traces, debug artifacts, template internals | yes | yes | no | no | `sensitive-access.ts`, API tests |
+| Inspect prompts, raw traces, debug artifacts, template editing internals | yes | yes | no | no | `sensitive-access.ts`, API tests |
+| Use runtime template library and personal Stage 3 executor pairing | yes | yes | yes | yes, for granted channels | API tests, Step 3 flow |
 
 ## Channel-level permissions
 
@@ -144,7 +145,7 @@
 | Import template backup into current draft | yes | yes | yes | yes |
 | Export / render | yes | yes | yes | yes |
 | Export JSON payload | yes | yes | no | no |
-| Pair local executor | yes | yes | no | no |
+| Pair local executor | yes | yes | yes | yes |
 | Open template customization tooling | yes | yes | no | no |
 | Open version drawer | yes | yes | yes | yes |
 
@@ -203,7 +204,7 @@ Code-verified:
 - не может читать или менять channel-level Stage 2 prompt/examples/hard constraints и другие внутренние Stage 2 настройки;
 - не может управлять grants других пользователей.
 
-Sensitive artifact access теперь owner/manager-only. Обычный `redactor` остаётся production editor по видимым каналам, но не получает prompt config, trace export, raw debug artifacts, template internals, worker pairing tokens или внутренние Stage 2 настройки.
+Sensitive artifact access теперь owner/manager-only. Обычный `redactor` остаётся production editor по видимым каналам: runtime-шаблоны, sanitized history export и personal Stage 3 executor pairing доступны для ежедневной работы, но prompt config, raw debug artifacts, template editing internals, YouTube setup и внутренние Stage 2 настройки остаются закрыты.
 
 ## Redactor Limited behavior
 

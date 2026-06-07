@@ -1,5 +1,4 @@
 import { requireAuth } from "../../../../../lib/auth/guards";
-import { requireSensitiveArtifactAccess } from "../../../../../lib/sensitive-access";
 import {
   deleteManagedTemplateDetailed,
   getWorkspaceDefaultTemplateId,
@@ -16,7 +15,6 @@ export async function GET(_request: Request, context: Context): Promise<Response
   try {
     const { templateId } = await context.params;
     const auth = await requireAuth(_request);
-    requireSensitiveArtifactAccess(auth);
     const template = await readManagedTemplate(templateId, { workspaceId: auth.workspace.id });
     if (!template) {
       const reference = await inspectManagedTemplateReference(templateId, {

@@ -230,7 +230,7 @@
   - `Каналы`: открывает Channel Manager
   - `Команда`: ведёт на `/team`
   - `Журнал процессов`: ведёт на `/admin/flows`
-  - `Скачать историю`: экспорт trace/history, может быть disabled
+  - `Скачать историю`: экспорт trace/history; для редакторов выгрузка санитизируется без prompt/debug internals
 - `related APIs`:
   - `GET /api/admin/flows`
   - `GET /api/admin/audit-events`
