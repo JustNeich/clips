@@ -698,7 +698,16 @@ export function buildFinalizeRenderedOutputArgs(params: {
   );
 
   if (videoMode === "copy") {
-    args.push("-c:v", "copy");
+    // Stream-copy the already-correct libx264 yuv420p bitstream (no transcode).
+    // Strip the encoder SEI fingerprint (filter_units removes SEI NALs) and stamp
+    // the bt709 limited-range colour VUI in-bitstream (h264_metadata) so copy mode
+    // matches the re-encode path's colour contract without a full pass.
+    args.push(
+      "-c:v",
+      "copy",
+      "-bsf:v",
+      "filter_units=remove_types=6,h264_metadata=video_full_range_flag=0:colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1"
+    );
   } else {
     args.push(
       "-vf",
@@ -1010,6 +1019,9 @@ async function runRemotionRender(params: {
     }
   };
 
+  const isAbortError = (error: unknown): boolean =>
+    error instanceof Error && (error.name === "AbortError" || error.message.toLowerCase().includes("aborted"));
+
   const renderOnce = async (props: typeof inputProps) => {
     try {
       await renderMedia({
@@ -1018,10 +1030,13 @@ async function runRemotionRender(params: {
       });
       return;
     } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
       const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-      const shouldRetryWithLegacyProps =
-        message.includes("inputprops") ||
-        (message.includes("props") && (message.includes("missing") || message.includes("unexpected")));
+      // Narrowed to the exact Remotion legacy-props signature; the previous broad
+      // match on any message containing "props" could trigger a full second render.
+      const shouldRetryWithLegacyProps = message.includes("inputprops");
       if (!shouldRetryWithLegacyProps) {
         throw error;
       }
@@ -1037,7 +1052,14 @@ async function runRemotionRender(params: {
     await renderOnce(inputProps);
     return params.variationProfile;
   } catch (error) {
-    if (!params.variationProfile.signal.enabled || params.variationProfile.appliedMode !== "hybrid") {
+    // Only fall back to the encode-only (signal-disabled) profile for a genuine
+    // signal-overlay failure in hybrid mode, and NEVER after an abort/timeout —
+    // a second full re-render there would just blow the render watchdog again.
+    if (
+      isAbortError(error) ||
+      !params.variationProfile.signal.enabled ||
+      params.variationProfile.appliedMode !== "hybrid"
+    ) {
       throw error;
     }
     const fallbackProfile = createStage3SignalFallbackProfile(params.variationProfile);
@@ -1674,7 +1696,11 @@ export async function renderStage3Video(
           audioInputSizeBytes: await fileSizeBytes(prepared.preparedPath),
           x264Preset: appliedVariationProfile.encode.x264Preset,
           crf: appliedVariationProfile.encode.crf,
-          videoMode: isStage3HostedFastRenderProfileEnabled() ? "copy" : "reencode"
+          // Always remux (copy). The copy branch now stamps the bt709 VUI and strips
+          // the encoder SEI via bitstream filters, so no full re-encode is needed on
+          // any path — this removes a full libx264 pass from every local render
+          // (previously only the hosted fast profile got the copy path).
+          videoMode: "copy"
         };
         await measureRenderStage(options, "finalize", finalizePayload, async () => {
           await finalizeRenderedOutput({
@@ -1686,7 +1712,7 @@ export async function renderStage3Video(
             variationProfile: appliedVariationProfile,
             variationManifest: appliedVariationManifest,
             variationManifestPath,
-            videoMode: isStage3HostedFastRenderProfileEnabled() ? "copy" : "reencode"
+            videoMode: "copy"
           });
           Object.assign(finalizePayload, {
             outputSizeBytes: await fileSizeBytes(outputPath)

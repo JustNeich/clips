@@ -591,6 +591,14 @@ test("hosted fast final render args stream-copy video instead of re-encoding it"
   assert.equal(args[args.indexOf("-c:a") + 1], "copy");
   assert.ok(args.includes("+faststart"));
   assert.ok(args.includes("-map_metadata"));
+  // Copy path must still stamp the bt709 limited-range colour VUI and strip the
+  // encoder SEI fingerprint via bitstream filters (no transcode).
+  const bsf = args[args.indexOf("-bsf:v") + 1] ?? "";
+  assert.match(bsf, /h264_metadata/);
+  assert.match(bsf, /colour_primaries=1/);
+  assert.match(bsf, /matrix_coefficients=1/);
+  assert.match(bsf, /video_full_range_flag=0/);
+  assert.match(bsf, /filter_units=remove_types=6/);
 });
 
 test("final render mux preserves prepared source audio when remotion output has only video", async () => {
@@ -660,6 +668,43 @@ test("final render mux preserves prepared source audio when remotion output has 
   }
 });
 
+test("final render copy mode remuxes to a valid bt709 stream without re-encoding", async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-final-copy-"));
+  const visualPath = path.join(tmpDir, "visual.mp4");
+  const finalPath = path.join(tmpDir, "final.mp4");
+  try {
+    // H.264 yuv420p with UNSPECIFIED colour (like a Remotion render) so the copy
+    // path's h264_metadata bitstream filter must stamp bt709 without a transcode.
+    await execFileAsync("ffmpeg", [
+      "-y", "-f", "lavfi", "-i", "testsrc=s=256x256:r=30:d=1",
+      "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", visualPath
+    ]);
+    await execFileAsync(
+      "ffmpeg",
+      buildFinalizeRenderedOutputArgs({
+        inputPath: visualPath,
+        outputPath: finalPath,
+        metadataTitle: "Copy Mode",
+        variationProfile: createVariationProfile("off"),
+        videoMode: "copy"
+      })
+    );
+    const { stdout } = await execFileAsync("ffprobe", [
+      "-v", "error", "-select_streams", "v:0",
+      "-show_entries", "stream=codec_name,color_primaries,color_transfer,color_space",
+      "-of", "default=noprint_wrappers=1", finalPath
+    ]);
+    assert.match(stdout, /codec_name=h264/);
+    assert.match(stdout, /color_primaries=bt709/);
+    assert.match(stdout, /color_transfer=bt709/);
+    assert.match(stdout, /color_space=bt709/);
+    // Decodes cleanly end-to-end.
+    await execFileAsync("ffmpeg", ["-v", "error", "-i", finalPath, "-f", "null", "-"]);
+  } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test("final render args do not write variation metadata into the mp4 container", () => {
   const args = buildFinalizeRenderedOutputArgs({
     inputPath: "/tmp/raw.mp4",
@@ -689,7 +734,7 @@ test("stage3 render variation defaults to ultra-subtle hybrid mode when no overr
     assert.ok(profile.signal.opacity >= 0.0025);
     assert.ok(profile.signal.opacity <= 0.0055);
     assert.ok([17, 18, 19].includes(profile.encode.crf));
-    assert.ok(["slow", "medium"].includes(profile.encode.x264Preset));
+    assert.ok(["medium", "fast"].includes(profile.encode.x264Preset));
   } finally {
     if (previous === undefined) {
       delete process.env.STAGE3_RENDER_VARIATION_MODE;

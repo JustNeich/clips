@@ -184,7 +184,11 @@ export function createStage3VariationProfile(input?: {
           codec: "h264",
           pixelFormat: "yuv420p",
           crf: readSeedChoice(seed, "encode:crf", [17, 18, 19] as const),
-          x264Preset: readSeedChoice(seed, "encode:preset", ["slow", "medium"] as const),
+          // Local (non-hosted-fast) path: 'slow' was chosen ~50% of the time and
+          // runs 2-4x slower than 'medium' on the worker's x264 for marginal gain
+          // at short-clip bitrates — a major contributor to local renders blowing
+          // the duration-bounded watchdog. Use medium/fast instead.
+          x264Preset: readSeedChoice(seed, "encode:preset", ["medium", "fast"] as const),
           keyintFrames,
           keyintMinFrames: Math.min(keyintFrames, clamp(readSeedInt(seed, "encode:keyint-min", 58, 62), 58, 62))
         };
