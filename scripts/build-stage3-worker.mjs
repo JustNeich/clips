@@ -310,6 +310,34 @@ async function removeLegacyPublicRuntimeOutputs() {
   );
 }
 
+async function syncLegacyPublicRuntimeOutputs() {
+  // Already installed Clips Worker desktop shells can still read /stage3-worker/*
+  // before they download the newer private-runtime-aware worker bundle.
+  await removeLegacyPublicRuntimeOutputs();
+  await fs.mkdir(publicDir, { recursive: true });
+
+  const rootFiles = [
+    bundlePath,
+    manifestPath,
+    workerPackagePath,
+    runtimeDependenciesArchivePath,
+    runtimeSourcesArchivePath
+  ];
+  for (const sourcePath of rootFiles) {
+    await fs.copyFile(sourcePath, path.join(publicDir, path.basename(sourcePath)));
+  }
+
+  const runtimeDirs = [
+    [remotionRuntimeDir, "remotion"],
+    [libRuntimeDir, "lib"],
+    [designRuntimeDir, "design"],
+    [workerRuntimeAssetsDir, "public"]
+  ];
+  for (const [sourceDir, targetName] of runtimeDirs) {
+    await fs.cp(sourceDir, path.join(publicDir, targetName), { recursive: true });
+  }
+}
+
 async function main() {
   const rootPackageJson = await readPackageJson();
   const version =
@@ -372,6 +400,7 @@ async function main() {
   );
   await buildWorkerRuntimeArchive(workerPackageJson);
   await buildWorkerSourcesArchive();
+  await syncLegacyPublicRuntimeOutputs();
 }
 
 main().catch((error) => {

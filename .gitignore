@@ -47,3 +47,5 @@ pnpm-debug.log*
 /public/stage3-worker/runtime-sources.tar.gz
 /public/stage3-worker/remotion
 /public/stage3-worker/lib
+/public/stage3-worker/design
+/public/stage3-worker/public

@@ -82,6 +82,17 @@ test("desktop worker runtime sync can hydrate local runtime dependencies without
   assert.match(runtime, /node_modules/);
 });
 
+test("worker build keeps a legacy public runtime mirror for installed desktop shells", () => {
+  const scriptPath = path.join(process.cwd(), "scripts", "build-stage3-worker.mjs");
+  const script = readFileSync(scriptPath, "utf8");
+
+  assert.match(script, /syncLegacyPublicRuntimeOutputs/);
+  assert.match(script, /removeLegacyPublicRuntimeOutputs/);
+  assert.match(script, /runtimeDependenciesArchivePath/);
+  assert.match(script, /runtimeSourcesArchivePath/);
+  assert.match(script, /fs\.cp\(sourceDir, path\.join\(publicDir, targetName\), \{ recursive: true \}\)/);
+});
+
 test("windows bootstrap script uses basic parsing and writes bootstrap logs", () => {
   const scriptPath = path.join(process.cwd(), "public", "stage3-worker", "bootstrap.ps1");
   const script = readFileSync(scriptPath, "utf8");

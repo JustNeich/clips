@@ -83,13 +83,14 @@ hosted preview/render и вспомогательные subprocess-задачи 
   - `/api/stage3/worker/runtime/manifest.json`
   - `/api/stage3/worker/runtime/runtime-deps.tar.gz`
   - `/api/stage3/worker/runtime/runtime-sources.tar.gz`
+- временно отдавать тот же runtime через legacy public mirror `/stage3-worker/*`, чтобы уже установленные desktop shells, которые еще читают `/stage3-worker/manifest.json`, смогли скачать новый private-runtime-aware bundle без ручной переустановки
 - отдавать managed tool manifest:
   - `/stage3-worker/tool-manifest.json`
 - разрешать публичный доступ к bootstrap assets
 - принимать worker auth / heartbeat / claim / complete / fail
 - фильтровать `/api/stage3/workers` по текущему пользователю, а не показывать общий workspace pool
 
-Важно по безопасности: public `/stage3-worker` больше не является зеркалом runtime. В public остаются только bootstrap scripts и `tool-manifest.json`. Сам worker bundle, Remotion sources, design specs, package metadata и runtime archives лежат в private runtime dir (`.stage3-worker-runtime` по умолчанию) и скачиваются через `/api/stage3/worker/runtime/*` только с валидным worker session token или короткоживущим pairing token.
+Важно по безопасности: новый поддерживаемый путь для worker bundle, Remotion sources, design specs, package metadata и runtime archives остается private API `/api/stage3/worker/runtime/*` с валидным worker session token или короткоживущим pairing token. Legacy public mirror `/stage3-worker/*` нужен только для совместимости уже установленных desktop shells и не должен считаться постоянной auth boundary.
 
 ### 3. Собрать и раздать Clips Worker
 
