@@ -4,6 +4,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV APP_DATA_DIR=/var/data/app
 ENV CODEX_SESSIONS_DIR=/var/data/codex-sessions
 ENV CODEX_BIN=/usr/local/bin/codex
+ENV HOME=/home/clips
+ENV XDG_CACHE_HOME=/home/clips/.cache
+ENV XDG_CONFIG_HOME=/home/clips/.config
+ENV XDG_DATA_HOME=/home/clips/.local/share
+ENV XDG_STATE_HOME=/home/clips/.local/state
 ENV PIP_ROOT_USER_ACTION=ignore
 
 WORKDIR /app
@@ -55,8 +60,10 @@ COPY . .
 RUN npx remotion browser ensure
 RUN npm run build
 RUN npm prune --omit=dev
-RUN mkdir -p "$APP_DATA_DIR" "$CODEX_SESSIONS_DIR" \
+RUN mkdir -p "$APP_DATA_DIR" "$CODEX_SESSIONS_DIR" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME" \
   && chown -R clips:clips /var/data /home/clips \
+  && if [ -d /usr/local/lib/node_modules/@openai ]; then chown -R clips:clips /usr/local/lib/node_modules/@openai; fi \
+  && find /usr/local/bin -maxdepth 1 -name 'codex*' -exec chown -h clips:clips {} + \
   && chmod -R go-w /app
 
 ENV NODE_ENV=production
