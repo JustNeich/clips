@@ -20,6 +20,7 @@ RUN apt-get update \
     ffmpeg \
     fonts-liberation \
     git \
+    gosu \
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
@@ -64,12 +65,11 @@ RUN mkdir -p "$APP_DATA_DIR" "$CODEX_SESSIONS_DIR" "$XDG_CACHE_HOME" "$XDG_CONFI
   && chown -R clips:clips /var/data /home/clips \
   && if [ -d /usr/local/lib/node_modules/@openai ]; then chown -R clips:clips /usr/local/lib/node_modules/@openai; fi \
   && find /usr/local/bin -maxdepth 1 -name 'codex*' -exec chown -h clips:clips {} + \
+  && chmod +x scripts/render-entrypoint.sh \
   && chmod -R go-w /app
 
 ENV NODE_ENV=production
 
 EXPOSE 10000
 
-USER clips
-
-CMD ["/bin/sh", "-c", "mkdir -p \"$APP_DATA_DIR\" \"$CODEX_SESSIONS_DIR\" && ./node_modules/.bin/next start -H 0.0.0.0 -p ${PORT:-10000}"]
+CMD ["/bin/sh", "scripts/render-entrypoint.sh"]
