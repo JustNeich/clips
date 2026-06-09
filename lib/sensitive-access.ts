@@ -44,7 +44,7 @@ export function sanitizeWorkspaceForRole<T extends WorkspaceRecord>(
   } as T;
 }
 
-export function canInspectChannelPromptConfig(input: {
+export function canInspectChannelStage2Setup(input: {
   role: AppRole | null | undefined;
   canEditSetup?: boolean;
 }): boolean {
@@ -54,28 +54,33 @@ export function canInspectChannelPromptConfig(input: {
   );
 }
 
+export const canInspectChannelPromptConfig = canInspectChannelStage2Setup;
+
 export function sanitizeChannelForRole<T extends Channel>(
   channel: T,
   role: AppRole,
-  options: { allowChannelPromptConfig?: boolean } = {}
+  options: { allowChannelStage2Setup?: boolean; allowChannelPromptConfig?: boolean } = {}
 ): T {
   if (canInspectSensitiveArtifacts(role)) {
     return channel;
   }
+
+  const allowChannelStage2Setup =
+    role === "redactor" &&
+    (options.allowChannelStage2Setup || options.allowChannelPromptConfig);
 
   return {
     ...channel,
     systemPrompt: "",
     descriptionPrompt: "",
     examplesJson: "[]",
-    stage2ExamplesConfig: undefined,
-    stage2HardConstraints: undefined,
+    stage2ExamplesConfig: allowChannelStage2Setup ? channel.stage2ExamplesConfig : undefined,
+    stage2HardConstraints: allowChannelStage2Setup ? channel.stage2HardConstraints : undefined,
     stage2PromptConfig:
-      role === "redactor" && options.allowChannelPromptConfig
-        ? channel.stage2PromptConfig
-        : undefined,
+      allowChannelStage2Setup ? channel.stage2PromptConfig : undefined,
     stage2StyleProfile: undefined,
-    stage2SourceOverlayConfig: undefined
+    stage2SourceOverlayConfig:
+      allowChannelStage2Setup ? channel.stage2SourceOverlayConfig : undefined
   } as T;
 }
 

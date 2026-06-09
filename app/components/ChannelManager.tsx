@@ -466,10 +466,12 @@ export function ChannelManager({
   const canOperateChannel = Boolean(activeChannel?.currentUserCanOperate);
   const canInspectSensitiveArtifacts = currentUserRole === "owner" || currentUserRole === "manager";
   const canEditSensitiveChannelSetup = canEditSetup && canInspectSensitiveArtifacts;
+  const canEditChannelStage2Setup =
+    canEditSetup && (canInspectSensitiveArtifacts || currentUserRole === "redactor");
   const canEditWorkspaceDefaults = isOwner && isWorkspaceDefaultsSelection;
   const canEditRenderSettings = Boolean(activeChannel && (canEditSetup || canOperateChannel));
   const canUploadRenderAssets = canEditRenderSettings;
-  const canEditHardConstraints = isWorkspaceDefaultsSelection ? canEditWorkspaceDefaults : canEditSensitiveChannelSetup;
+  const canEditHardConstraints = isWorkspaceDefaultsSelection ? canEditWorkspaceDefaults : canEditChannelStage2Setup;
   const canEditChannelPrompt = resolveChannelManagerCanEditChannelPrompt({
     currentUserCanEditSetup: canEditSetup,
     isWorkspaceDefaultsSelection,
@@ -2354,10 +2356,10 @@ export function ChannelManager({
                 autosaveState={autosaveState}
                 canEditWorkspaceDefaults={canEditWorkspaceDefaults}
                 canEditHardConstraints={canEditHardConstraints}
-                canEditChannelExamples={canEditSensitiveChannelSetup}
+                canEditChannelExamples={canEditChannelStage2Setup}
                 canEditChannelPrompt={canEditChannelPrompt}
                 channelTemplateFormatGroup={channelTemplateFormatGroup}
-                canEditChannelTemplateFormat={canEditSensitiveChannelSetup}
+                canEditChannelTemplateFormat={canEditChannelStage2Setup}
                 updateChannelTemplateFormat={updateChannelTemplateFormat}
                 stage2ExamplesConfig={stage2ExamplesConfig}
                 customExamplesJson={stage2ExamplesConfig.customExamplesJson}

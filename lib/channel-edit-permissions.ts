@@ -33,8 +33,11 @@ const SENSITIVE_CHANNEL_SETUP_FIELDS: Array<keyof RestrictedChannelPatch> = [
   "templateId"
 ];
 
-const REDACTOR_CHANNEL_PROMPT_FIELDS = new Set<keyof RestrictedChannelPatch>([
-  "stage2PromptConfig"
+const REDACTOR_CHANNEL_STAGE2_SETUP_FIELDS = new Set<keyof RestrictedChannelPatch>([
+  "stage2ExamplesConfig",
+  "stage2HardConstraints",
+  "stage2PromptConfig",
+  "stage2SourceOverlayConfig"
 ]);
 
 function hasOwnField<T extends object, K extends PropertyKey>(value: T, key: K): boolean {
@@ -42,7 +45,7 @@ function hasOwnField<T extends object, K extends PropertyKey>(value: T, key: K):
 }
 
 function canRedactorPatchSensitiveField(field: keyof RestrictedChannelPatch): boolean {
-  return REDACTOR_CHANNEL_PROMPT_FIELDS.has(field);
+  return REDACTOR_CHANNEL_STAGE2_SETUP_FIELDS.has(field);
 }
 
 export function getRestrictedChannelEditError(

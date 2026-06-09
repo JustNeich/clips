@@ -608,7 +608,7 @@ test("team policy requires invite-issued editor accounts", async () => {
   });
 });
 
-test("redactor accounts can edit channel prompt config while other sensitive setup stays closed", async () => {
+test("redactor accounts can edit active channel Stage 2 settings while other internals stay closed", async () => {
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({
       workspaceName: "Strict Editor Workspace",
@@ -688,15 +688,29 @@ test("redactor accounts can edit channel prompt config while other sensitive set
         })
       );
       const channelsBody = (await channelsResponse.json()) as {
-        channels?: Array<{ id?: string; stage2PromptConfig?: { useWorkspaceDefault?: boolean } }>;
+        channels?: Array<{
+          id?: string;
+          stage2HardConstraints?: { topLengthMin?: number };
+          stage2PromptConfig?: { useWorkspaceDefault?: boolean };
+          stage2SourceOverlayConfig?: { enabled?: boolean };
+          stage2StyleProfile?: unknown;
+        }>;
         workspaceStage2PromptConfig?: unknown;
         workspaceStage2HardConstraints?: unknown;
+        workspaceStage2ExamplesCorpusJson?: unknown;
       };
       assert.equal(channelsResponse.status, 200);
       assert.equal(channelsBody.channels?.[0]?.id, editorChannel.id);
       assert.equal(channelsBody.channels?.[0]?.stage2PromptConfig?.useWorkspaceDefault, true);
+      assert.equal(
+        channelsBody.channels?.[0]?.stage2HardConstraints?.topLengthMin,
+        DEFAULT_STAGE2_HARD_CONSTRAINTS.topLengthMin
+      );
+      assert.equal(channelsBody.channels?.[0]?.stage2SourceOverlayConfig?.enabled, false);
+      assert.equal(channelsBody.channels?.[0]?.stage2StyleProfile, undefined);
       assert.ok(channelsBody.workspaceStage2PromptConfig);
-      assert.equal(channelsBody.workspaceStage2HardConstraints, undefined);
+      assert.ok(channelsBody.workspaceStage2HardConstraints);
+      assert.equal(typeof channelsBody.workspaceStage2ExamplesCorpusJson, "string");
 
       const channelResponse = await getChannelRoute(
         new Request(`http://localhost/api/channels/${editorChannel.id}`, {
@@ -705,10 +719,17 @@ test("redactor accounts can edit channel prompt config while other sensitive set
         { params: Promise.resolve({ id: editorChannel.id }) }
       );
       const channelBody = (await channelResponse.json()) as {
-        channel?: { stage2PromptConfig?: { useWorkspaceDefault?: boolean } };
+        channel?: {
+          stage2HardConstraints?: { topLengthMin?: number };
+          stage2PromptConfig?: { useWorkspaceDefault?: boolean };
+        };
       };
       assert.equal(channelResponse.status, 200);
       assert.equal(channelBody.channel?.stage2PromptConfig?.useWorkspaceDefault, true);
+      assert.equal(
+        channelBody.channel?.stage2HardConstraints?.topLengthMin,
+        DEFAULT_STAGE2_HARD_CONSTRAINTS.topLengthMin
+      );
 
       const promptPatchResponse = await patchChannelRoute(
         new Request(`http://localhost/api/channels/${editorChannel.id}`, {
@@ -759,7 +780,29 @@ test("redactor accounts can edit channel prompt config while other sensitive set
         }),
         { params: Promise.resolve({ id: editorChannel.id }) }
       );
-      assert.equal(hardConstraintsPatchResponse.status, 403);
+      const hardConstraintsPatchBody = (await hardConstraintsPatchResponse.json()) as {
+        channel?: { stage2HardConstraints?: { topLengthMin?: number } };
+      };
+      assert.equal(hardConstraintsPatchResponse.status, 200);
+      assert.equal(
+        hardConstraintsPatchBody.channel?.stage2HardConstraints?.topLengthMin,
+        DEFAULT_STAGE2_HARD_CONSTRAINTS.topLengthMin + 1
+      );
+
+      const hiddenInternalPatchResponse = await patchChannelRoute(
+        new Request(`http://localhost/api/channels/${editorChannel.id}`, {
+          method: "PATCH",
+          headers: {
+            cookie,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            stage2StyleProfile: { version: 1 }
+          })
+        }),
+        { params: Promise.resolve({ id: editorChannel.id }) }
+      );
+      assert.equal(hiddenInternalPatchResponse.status, 403);
 
       const youtubeConnectionResponse = await getYoutubeConnection(
         new Request(`http://localhost/api/channels/${editorChannel.id}/publishing/youtube/connection`, {

@@ -31,7 +31,7 @@ import { resolveWorkspaceCodexModelConfig } from "../../../lib/workspace-codex-m
 import { getWorkspaceAnthropicStatus } from "../../../lib/workspace-anthropic";
 import { getWorkspaceOpenRouterStatus } from "../../../lib/workspace-openrouter";
 import {
-  canInspectChannelPromptConfig,
+  canInspectChannelStage2Setup,
   canInspectSensitiveArtifacts,
   sanitizeChannelForRole,
   sanitizePublishIntegrationForRole
@@ -102,7 +102,7 @@ export async function GET(request: Request): Promise<Response> {
         }
         return {
           ...sanitizeChannelForRole(channel, auth.membership.role, {
-            allowChannelPromptConfig: canInspectChannelPromptConfig({
+            allowChannelStage2Setup: canInspectChannelStage2Setup({
               role: auth.membership.role,
               canEditSetup: permissions.canEditSetup
             })
@@ -124,13 +124,13 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json(
       {
         channels: visibleChannels.filter(Boolean),
-        workspaceStage2ExamplesCorpusJson: canInspectSensitive
+        workspaceStage2ExamplesCorpusJson: canInspectSensitive || auth.membership.role === "redactor"
           ? getWorkspaceStage2ExamplesCorpusJson(auth.workspace.id)
           : undefined,
-        workspaceStage2SystemExamplesPresets: canInspectSensitive
+        workspaceStage2SystemExamplesPresets: canInspectSensitive || auth.membership.role === "redactor"
           ? listStage2SystemExamplesPresetPayloads()
           : undefined,
-        workspaceStage2HardConstraints: canInspectSensitive
+        workspaceStage2HardConstraints: canInspectSensitive || auth.membership.role === "redactor"
           ? getWorkspaceStage2HardConstraints(auth.workspace.id)
           : undefined,
         workspaceStage2PromptConfig:
