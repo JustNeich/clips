@@ -15,8 +15,7 @@ export APP_DATA_DIR CODEX_SESSIONS_DIR HOME XDG_CACHE_HOME XDG_CONFIG_HOME XDG_D
 mkdir -p "$APP_DATA_DIR" "$CODEX_SESSIONS_DIR" "$HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME"
 
 if [ "$(id -u)" = "0" ]; then
-  chown clips:clips "$APP_DATA_DIR" "$CODEX_SESSIONS_DIR"
-  chown -R clips:clips "$CODEX_SESSIONS_DIR" "$HOME"
+  chown -R clips:clips "$APP_DATA_DIR" "$CODEX_SESSIONS_DIR" "$HOME"
   exec gosu clips ./node_modules/.bin/next start -H 0.0.0.0 -p "$PORT"
 fi
 
