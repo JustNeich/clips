@@ -6,6 +6,7 @@ import type { Channel, ChannelPublishSettings, YouTubeOAuthClientOption } from "
 type ChannelManagerPublishingTabProps = {
   channel: Channel | null;
   canEditSetup: boolean;
+  canManageYouTube: boolean;
   onSaveSettings: (channelId: string, patch: Partial<ChannelPublishSettings>) => Promise<void>;
   onConnectYouTube: (channelId: string, oauthClientKey?: string) => Promise<void>;
   onDisconnectYouTube: (channelId: string) => Promise<void>;
@@ -39,6 +40,7 @@ function buildSlotPreview(settings: ChannelPublishSettings): string[] {
 export function ChannelManagerPublishingTab({
   channel,
   canEditSetup,
+  canManageYouTube,
   onSaveSettings,
   onConnectYouTube,
   onDisconnectYouTube,
@@ -76,9 +78,9 @@ export function ChannelManagerPublishingTab({
   const selectedOauthClient = oauthClients.find((client) => client.key === selectedOauthClientKey) ?? null;
 
   useEffect(() => {
-    if (!channelId) {
+    if (!channelId || !canManageYouTube) {
       setOauthClients([]);
-      setOauthClientsLoaded(false);
+      setOauthClientsLoaded(Boolean(channelId));
       return;
     }
     setOauthClientsLoaded(false);
@@ -121,7 +123,7 @@ export function ChannelManagerPublishingTab({
         setStatusMessage(error instanceof Error ? error.message : "Не удалось загрузить Google OAuth projects.");
       });
     return () => controller.abort();
-  }, [channelId, integrationOauthClientKey]);
+  }, [canManageYouTube, channelId, integrationOauthClientKey]);
 
   const setBusy = (action: typeof busyAction, message: string) => {
     setBusyAction(action);
@@ -186,13 +188,13 @@ export function ChannelManagerPublishingTab({
           </div>
         </div>
 
-        {oauthClients.length ? (
+        {canManageYouTube && oauthClients.length ? (
           <label className="field-stack">
             <span className="field-label">Google project для подключения</span>
             <select
               className="text-input"
               value={selectedOauthClientKey}
-              disabled={!canEditSetup || busyAction === "connect"}
+              disabled={!canManageYouTube || busyAction === "connect"}
               onChange={(event) => setSelectedOauthClientKey(event.target.value)}
             >
               {oauthClients.map((client) => (
@@ -203,7 +205,7 @@ export function ChannelManagerPublishingTab({
               ))}
             </select>
           </label>
-        ) : oauthClientsLoaded ? (
+        ) : canManageYouTube && oauthClientsLoaded ? (
           <p className="danger-text subtle-text">
             Google OAuth project не настроен на сервере.
           </p>
@@ -214,7 +216,7 @@ export function ChannelManagerPublishingTab({
             type="button"
             className="btn btn-secondary"
             disabled={
-              !canEditSetup ||
+              !canManageYouTube ||
               busyAction === "connect" ||
               !selectedOauthClientKey ||
               !oauthClientsLoaded ||
@@ -233,7 +235,7 @@ export function ChannelManagerPublishingTab({
             <button
               type="button"
               className="btn btn-ghost"
-              disabled={!canEditSetup || busyAction === "disconnect"}
+              disabled={!canManageYouTube || busyAction === "disconnect"}
               onClick={() => {
                 if (!window.confirm("Отключить YouTube интеграцию для этого канала?")) {
                   return;
@@ -256,7 +258,7 @@ export function ChannelManagerPublishingTab({
               <select
                 className="text-input"
                 value={selectedChannelId}
-                disabled={!canEditSetup || busyAction === "select"}
+                disabled={!canManageYouTube || busyAction === "select"}
                 onChange={(event) => setSelectedChannelId(event.target.value)}
               >
                 <option value="">Выберите канал</option>
@@ -270,7 +272,7 @@ export function ChannelManagerPublishingTab({
               <button
                 type="button"
                 className="btn btn-secondary"
-                disabled={!canEditSetup || !selectedChannelId || (!selectionRequired && selectedChannelId === integration.selectedYoutubeChannelId) || busyAction === "select"}
+                disabled={!canManageYouTube || !selectedChannelId || (!selectionRequired && selectedChannelId === integration.selectedYoutubeChannelId) || busyAction === "select"}
                 onClick={() => {
                   setBusy("select", "Сохраняем канал назначения…");
                   void onSelectYouTubeDestination(channel.id, selectedChannelId)

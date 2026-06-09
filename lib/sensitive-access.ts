@@ -97,7 +97,6 @@ export function sanitizePublishIntegrationForRole(
     youtubeOAuthClientKey: "",
     youtubeOAuthProjectNumber: null,
     youtubeOAuthDailyUploadBudget: null,
-    selectedYoutubeChannelId: null,
     selectedGoogleAccountEmail: null,
     availableChannels: [],
     scopes: [],

@@ -161,6 +161,8 @@
 | Connect/disconnect YouTube for channel | yes | yes | no | no |
 | Choose YouTube destination channel | yes | yes | no | no |
 
+Примечание: `redactor` не управляет OAuth/destination setup, но Step 3 получает read-only readiness выбранного YouTube destination для доступных каналов, чтобы уже настроенная публикация не выглядела offline.
+
 ## Owner-only surfaces and controls
 
 `owner` — единственная роль, которая одновременно:

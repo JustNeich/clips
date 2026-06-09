@@ -35,13 +35,14 @@ import { POST as createStage3WorkerPairing } from "../app/api/stage3/workers/pai
 import { POST as fetchVideoMeta } from "../app/api/video/meta/route";
 import { PATCH as patchPublicationRoute } from "../app/api/publications/[id]/route";
 import { POST as shiftPublicationRoute } from "../app/api/publications/[id]/shift/route";
-import type { Stage2Response } from "../app/components/types";
+import type { ChannelPublishIntegration, Stage2Response } from "../app/components/types";
 import { DELETE as deleteWorkspaceMemberRoute } from "../app/api/workspace/members/[memberId]/route";
 import { APP_SESSION_COOKIE } from "../lib/auth/cookies";
 import {
   buildPublicationSlotCandidateFromDateAndIndex,
   DEFAULT_CHANNEL_PUBLISH_SETTINGS
 } from "../lib/channel-publishing";
+import { isChannelPublishIntegrationReady } from "../lib/channel-publish-state";
 import { getDb, newId, nowIso } from "../lib/db/client";
 import {
   createManagedTemplate,
@@ -694,6 +695,7 @@ test("redactor accounts can edit active channel Stage 2 settings while other int
           stage2PromptConfig?: { useWorkspaceDefault?: boolean };
           stage2SourceOverlayConfig?: { enabled?: boolean };
           stage2StyleProfile?: unknown;
+          publishIntegration?: ChannelPublishIntegration;
         }>;
         workspaceStage2PromptConfig?: unknown;
         workspaceStage2HardConstraints?: unknown;
@@ -708,6 +710,21 @@ test("redactor accounts can edit active channel Stage 2 settings while other int
       );
       assert.equal(channelsBody.channels?.[0]?.stage2SourceOverlayConfig?.enabled, false);
       assert.equal(channelsBody.channels?.[0]?.stage2StyleProfile, undefined);
+      assert.equal(channelsBody.channels?.[0]?.publishIntegration?.status, "connected");
+      assert.equal(channelsBody.channels?.[0]?.publishIntegration?.selectedYoutubeChannelId, "yt-secret-channel");
+      assert.equal(channelsBody.channels?.[0]?.publishIntegration?.selectedYoutubeChannelTitle, "Secret YouTube");
+      assert.equal(channelsBody.channels?.[0]?.publishIntegration?.selectedYoutubeChannelCustomUrl, "@secret");
+      assert.equal(
+        isChannelPublishIntegrationReady(channelsBody.channels?.[0]?.publishIntegration),
+        true
+      );
+      assert.equal(channelsBody.channels?.[0]?.publishIntegration?.youtubeOAuthClientKey, "");
+      assert.equal(channelsBody.channels?.[0]?.publishIntegration?.youtubeOAuthProjectNumber, null);
+      assert.equal(channelsBody.channels?.[0]?.publishIntegration?.youtubeOAuthDailyUploadBudget, null);
+      assert.equal(channelsBody.channels?.[0]?.publishIntegration?.selectedGoogleAccountEmail, null);
+      assert.deepEqual(channelsBody.channels?.[0]?.publishIntegration?.availableChannels, []);
+      assert.deepEqual(channelsBody.channels?.[0]?.publishIntegration?.scopes, []);
+      assert.equal(channelsBody.channels?.[0]?.publishIntegration?.lastError, null);
       assert.ok(channelsBody.workspaceStage2PromptConfig);
       assert.ok(channelsBody.workspaceStage2HardConstraints);
       assert.equal(typeof channelsBody.workspaceStage2ExamplesCorpusJson, "string");

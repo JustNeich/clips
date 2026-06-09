@@ -466,6 +466,7 @@ export function ChannelManager({
   const canOperateChannel = Boolean(activeChannel?.currentUserCanOperate);
   const canInspectSensitiveArtifacts = currentUserRole === "owner" || currentUserRole === "manager";
   const canEditSensitiveChannelSetup = canEditSetup && canInspectSensitiveArtifacts;
+  const canManageChannelYouTubePublishing = canEditSensitiveChannelSetup;
   const canEditChannelStage2Setup =
     canEditSetup && (canInspectSensitiveArtifacts || currentUserRole === "redactor");
   const canEditWorkspaceDefaults = isOwner && isWorkspaceDefaultsSelection;
@@ -2545,6 +2546,7 @@ export function ChannelManager({
               <ChannelManagerPublishingTab
                 channel={activeChannel}
                 canEditSetup={canEditSetup}
+                canManageYouTube={canManageChannelYouTubePublishing}
                 onSaveSettings={onSavePublishSettings}
                 onConnectYouTube={onConnectYouTube}
                 onDisconnectYouTube={onDisconnectYouTube}
