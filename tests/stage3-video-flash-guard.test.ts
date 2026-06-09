@@ -59,6 +59,14 @@ test("stage3 flash guard detects neutral blank full-frame and media-slot flashes
     }),
     [1]
   );
+  assert.deepEqual(
+    detectStage3BlankFlashFrames({
+      fullFrameStats: [frames[0]!, frames[2]!],
+      mediaStats: [frames[0]!, frames[2]!],
+      probeStats: [[frames[0]!, frames[1]!, frames[2]!]]
+    }),
+    [1]
+  );
 });
 
 test("stage3 flash guard groups flashes and chooses nearest valid replacement frame", () => {

@@ -1795,10 +1795,17 @@ export async function renderStage3Video(
           inputSizeBytes: await fileSizeBytes(remotionOutputPath)
         };
         const flashGuarded = await measureRenderStage(options, "flash_guard", flashGuardPayload, async () => {
+          const textProbeRects = [
+            templateSnapshot.layout.top,
+            templateSnapshot.layout.bottom,
+            templateSnapshot.layout.bottomText,
+            templateSnapshot.layout.author
+          ].filter((rect) => rect.width >= 2 && rect.height >= 2);
           const guarded = await repairStage3BlankFlashFrames({
             inputPath: remotionOutputPath,
             outputPath: path.join(tmpDir, "render.flash-guard.mp4"),
-            mediaRect: templateSnapshot.layout.media
+            mediaRect: templateSnapshot.layout.media,
+            probeRects: textProbeRects
           });
           Object.assign(flashGuardPayload, {
             outputSizeBytes: await fileSizeBytes(guarded.outputPath)

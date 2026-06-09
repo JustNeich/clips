@@ -107,6 +107,7 @@ export function isStage3BlankFlashSignal(frame: Stage3SignalStatsFrame): boolean
 export function detectStage3BlankFlashFrames(params: {
   fullFrameStats: Stage3SignalStatsFrame[];
   mediaStats?: Stage3SignalStatsFrame[] | null;
+  probeStats?: Stage3SignalStatsFrame[][] | null;
 }): number[] {
   const frames = new Set<number>();
   for (const frame of params.fullFrameStats) {
@@ -114,9 +115,11 @@ export function detectStage3BlankFlashFrames(params: {
       frames.add(frame.frame);
     }
   }
-  for (const frame of params.mediaStats ?? []) {
-    if (isStage3BlankFlashSignal(frame)) {
-      frames.add(frame.frame);
+  for (const stats of [params.mediaStats, ...(params.probeStats ?? [])]) {
+    for (const frame of stats ?? []) {
+      if (isStage3BlankFlashSignal(frame)) {
+        frames.add(frame.frame);
+      }
     }
   }
   return [...frames].sort((left, right) => left - right);
@@ -263,16 +266,25 @@ export async function repairStage3BlankFlashFrames(params: {
   inputPath: string;
   outputPath: string;
   mediaRect?: Stage3FlashGuardRect | null;
+  probeRects?: Stage3FlashGuardRect[] | null;
 }): Promise<Stage3FlashGuardResult> {
   const fullFrameStats = await collectSignalStats(params.inputPath);
   const mediaStats = params.mediaRect ? await collectSignalStats(params.inputPath, params.mediaRect) : null;
-  const scannedFrameCount = Math.max(fullFrameStats.length, mediaStats?.length ?? 0);
+  const probeStats = await Promise.all(
+    (params.probeRects ?? []).map((rect) => collectSignalStats(params.inputPath, rect))
+  );
+  const scannedFrameCount = Math.max(
+    fullFrameStats.length,
+    mediaStats?.length ?? 0,
+    ...probeStats.map((stats) => stats.length)
+  );
   if (scannedFrameCount <= 0) {
     throw new Error("Stage 3 flash guard could not scan video frames.");
   }
   const repairedFrames = detectStage3BlankFlashFrames({
     fullFrameStats,
-    mediaStats
+    mediaStats,
+    probeStats
   });
   const repairedRanges = buildStage3FlashRepairRanges(repairedFrames, scannedFrameCount);
 
