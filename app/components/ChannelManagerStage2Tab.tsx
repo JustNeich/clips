@@ -1449,7 +1449,7 @@ export function ChannelManagerStage2Tab({
               <input
                 type="checkbox"
                 checked={sourceOverlayConfig.enabled}
-                disabled={!canEditEffectiveChannelPrompt}
+                disabled={!canEditHardConstraints}
                 onChange={(event) =>
                   updateStage2SourceOverlayConfig({
                     ...sourceOverlayConfig,
@@ -1465,7 +1465,7 @@ export function ChannelManagerStage2Tab({
             className="text-area mono"
             rows={5}
             value={sourceOverlayConfig.prompt}
-            disabled={!canEditEffectiveChannelPrompt}
+            disabled={!canEditHardConstraints}
             onChange={(event) =>
               updateStage2SourceOverlayConfig({
                 ...sourceOverlayConfig,

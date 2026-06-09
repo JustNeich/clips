@@ -31,6 +31,7 @@ import { resolveWorkspaceCodexModelConfig } from "../../../lib/workspace-codex-m
 import { getWorkspaceAnthropicStatus } from "../../../lib/workspace-anthropic";
 import { getWorkspaceOpenRouterStatus } from "../../../lib/workspace-openrouter";
 import {
+  canInspectChannelPromptConfig,
   canInspectSensitiveArtifacts,
   sanitizeChannelForRole,
   sanitizePublishIntegrationForRole
@@ -100,7 +101,12 @@ export async function GET(request: Request): Promise<Response> {
           return null;
         }
         return {
-          ...sanitizeChannelForRole(channel, auth.membership.role),
+          ...sanitizeChannelForRole(channel, auth.membership.role, {
+            allowChannelPromptConfig: canInspectChannelPromptConfig({
+              role: auth.membership.role,
+              canEditSetup: permissions.canEditSetup
+            })
+          }),
           publishSettings: getChannelPublishSettings(channel.id),
           publishIntegration: sanitizePublishIntegrationForRole(
             getChannelPublishIntegration(channel.id),
@@ -127,8 +133,14 @@ export async function GET(request: Request): Promise<Response> {
         workspaceStage2HardConstraints: canInspectSensitive
           ? getWorkspaceStage2HardConstraints(auth.workspace.id)
           : undefined,
-        workspaceStage2PromptConfig: canInspectSensitive ? auth.workspace.stage2PromptConfig : undefined,
-        factoryStage2PromptConfig: canInspectSensitive ? DEFAULT_STAGE2_PROMPT_CONFIG : undefined,
+        workspaceStage2PromptConfig:
+          canInspectSensitive || auth.membership.role === "redactor"
+            ? auth.workspace.stage2PromptConfig
+            : undefined,
+        factoryStage2PromptConfig:
+          canInspectSensitive || auth.membership.role === "redactor"
+            ? DEFAULT_STAGE2_PROMPT_CONFIG
+            : undefined,
         workspaceCodexModelConfig: canInspectSensitive ? getWorkspaceCodexModelConfig(auth.workspace.id) : undefined,
         workspaceStage2CaptionProviderConfig: canInspectSensitive
           ? getWorkspaceStage2CaptionProviderConfig(auth.workspace.id)

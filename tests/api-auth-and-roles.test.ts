@@ -51,6 +51,8 @@ import {
 import { createChannelPublication, createRenderExport } from "../lib/publication-store";
 import { STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
 import { saveChannelPublishIntegration } from "../lib/publication-store";
+import { DEFAULT_STAGE2_HARD_CONSTRAINTS } from "../lib/stage2-channel-config";
+import { DEFAULT_STAGE2_PROMPT_CONFIG } from "../lib/stage2-prompt-client";
 import { setChannelAccess } from "../lib/team-store";
 import {
   acceptInviteRegistration,
@@ -606,7 +608,7 @@ test("team policy requires invite-issued editor accounts", async () => {
   });
 });
 
-test("redactor accounts can use runtime templates and worker pairing while sensitive setup stays closed", async () => {
+test("redactor accounts can edit channel prompt config while other sensitive setup stays closed", async () => {
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({
       workspaceName: "Strict Editor Workspace",
@@ -680,7 +682,35 @@ test("redactor accounts can use runtime templates and worker pairing while sensi
       assert.equal(templateBody.template?.id, template.id);
       assert.equal(templateBody.template?.name, "Prompt Bearing Template");
 
-      const sensitivePatchResponse = await patchChannelRoute(
+      const channelsResponse = await listChannelsRoute(
+        new Request("http://localhost/api/channels", {
+          headers: { cookie }
+        })
+      );
+      const channelsBody = (await channelsResponse.json()) as {
+        channels?: Array<{ id?: string; stage2PromptConfig?: { useWorkspaceDefault?: boolean } }>;
+        workspaceStage2PromptConfig?: unknown;
+        workspaceStage2HardConstraints?: unknown;
+      };
+      assert.equal(channelsResponse.status, 200);
+      assert.equal(channelsBody.channels?.[0]?.id, editorChannel.id);
+      assert.equal(channelsBody.channels?.[0]?.stage2PromptConfig?.useWorkspaceDefault, true);
+      assert.ok(channelsBody.workspaceStage2PromptConfig);
+      assert.equal(channelsBody.workspaceStage2HardConstraints, undefined);
+
+      const channelResponse = await getChannelRoute(
+        new Request(`http://localhost/api/channels/${editorChannel.id}`, {
+          headers: { cookie }
+        }),
+        { params: Promise.resolve({ id: editorChannel.id }) }
+      );
+      const channelBody = (await channelResponse.json()) as {
+        channel?: { stage2PromptConfig?: { useWorkspaceDefault?: boolean } };
+      };
+      assert.equal(channelResponse.status, 200);
+      assert.equal(channelBody.channel?.stage2PromptConfig?.useWorkspaceDefault, true);
+
+      const promptPatchResponse = await patchChannelRoute(
         new Request(`http://localhost/api/channels/${editorChannel.id}`, {
           method: "PATCH",
           headers: {
@@ -688,12 +718,48 @@ test("redactor accounts can use runtime templates and worker pairing while sensi
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            stage2PromptConfig: { useWorkspaceDefault: false }
+            stage2PromptConfig: {
+              ...DEFAULT_STAGE2_PROMPT_CONFIG,
+              useWorkspaceDefault: false,
+              stages: {
+                ...DEFAULT_STAGE2_PROMPT_CONFIG.stages,
+                classicOneShot: {
+                  ...DEFAULT_STAGE2_PROMPT_CONFIG.stages.classicOneShot,
+                  prompt: "EDITOR CHANNEL PROMPT"
+                }
+              }
+            }
           })
         }),
         { params: Promise.resolve({ id: editorChannel.id }) }
       );
-      assert.equal(sensitivePatchResponse.status, 403);
+      const promptPatchBody = (await promptPatchResponse.json()) as {
+        channel?: { stage2PromptConfig?: { useWorkspaceDefault?: boolean; stages?: { classicOneShot?: { prompt?: string } } } };
+      };
+      assert.equal(promptPatchResponse.status, 200);
+      assert.equal(promptPatchBody.channel?.stage2PromptConfig?.useWorkspaceDefault, false);
+      assert.equal(
+        promptPatchBody.channel?.stage2PromptConfig?.stages?.classicOneShot?.prompt,
+        "EDITOR CHANNEL PROMPT"
+      );
+
+      const hardConstraintsPatchResponse = await patchChannelRoute(
+        new Request(`http://localhost/api/channels/${editorChannel.id}`, {
+          method: "PATCH",
+          headers: {
+            cookie,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            stage2HardConstraints: {
+              ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+              topLengthMin: DEFAULT_STAGE2_HARD_CONSTRAINTS.topLengthMin + 1
+            }
+          })
+        }),
+        { params: Promise.resolve({ id: editorChannel.id }) }
+      );
+      assert.equal(hardConstraintsPatchResponse.status, 403);
 
       const youtubeConnectionResponse = await getYoutubeConnection(
         new Request(`http://localhost/api/channels/${editorChannel.id}/publishing/youtube/connection`, {

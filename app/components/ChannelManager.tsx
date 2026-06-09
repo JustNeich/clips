@@ -119,11 +119,12 @@ export function resolveChannelManagerCanEditChannelPrompt(input: {
   currentUserCanEditSetup: boolean;
   isWorkspaceDefaultsSelection: boolean;
   canInspectSensitiveArtifacts?: boolean;
+  allowRedactorChannelPromptEdit?: boolean;
 }): boolean {
   return (
     !input.isWorkspaceDefaultsSelection &&
     input.currentUserCanEditSetup &&
-    input.canInspectSensitiveArtifacts !== false
+    (input.canInspectSensitiveArtifacts !== false || input.allowRedactorChannelPromptEdit === true)
   );
 }
 
@@ -470,9 +471,10 @@ export function ChannelManager({
   const canUploadRenderAssets = canEditRenderSettings;
   const canEditHardConstraints = isWorkspaceDefaultsSelection ? canEditWorkspaceDefaults : canEditSensitiveChannelSetup;
   const canEditChannelPrompt = resolveChannelManagerCanEditChannelPrompt({
-    currentUserCanEditSetup: canEditSensitiveChannelSetup,
+    currentUserCanEditSetup: canEditSetup,
     isWorkspaceDefaultsSelection,
-    canInspectSensitiveArtifacts
+    canInspectSensitiveArtifacts,
+    allowRedactorChannelPromptEdit: currentUserRole === "redactor"
   });
   const availableTabs = useMemo(
     () =>
@@ -1198,7 +1200,7 @@ export function ChannelManager({
   ]);
 
   useEffect(() => {
-    if (!activeChannel || !canEditHardConstraints) {
+    if (!activeChannel || (!canEditHardConstraints && !canEditChannelPrompt)) {
       return;
     }
     if (skipAutosaveRef.current.stage2) {
@@ -1220,12 +1222,16 @@ export function ChannelManager({
     const revision = ++autosaveRevisionRef.current.stage2;
     const timerId = window.setTimeout(() => {
       setAutosaveFeedback("stage2", "saving", "Сохраняем настройки второго этапа…");
-      void saveChannelRef.current(activeChannel.id, {
-        stage2HardConstraints,
-        stage2ExamplesConfig,
-        stage2PromptConfig: channelStage2PromptConfig,
-        stage2SourceOverlayConfig
-      })
+      const patch: ChannelSavePatch = {};
+      if (canEditHardConstraints) {
+        patch.stage2HardConstraints = stage2HardConstraints;
+        patch.stage2ExamplesConfig = stage2ExamplesConfig;
+        patch.stage2SourceOverlayConfig = stage2SourceOverlayConfig;
+      }
+      if (canEditChannelPrompt) {
+        patch.stage2PromptConfig = channelStage2PromptConfig;
+      }
+      void saveChannelRef.current(activeChannel.id, patch)
         .then(() => {
           if (autosaveRevisionRef.current.stage2 !== revision) {
             return;

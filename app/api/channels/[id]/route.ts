@@ -22,6 +22,7 @@ import {
 } from "../../../../lib/stage2-channel-config";
 import { Stage2StyleProfile } from "../../../../lib/stage2-channel-learning";
 import {
+  canInspectChannelPromptConfig,
   sanitizeChannelForRole,
   sanitizePublishIntegrationForRole
 } from "../../../../lib/sensitive-access";
@@ -88,7 +89,12 @@ export async function GET(_request: Request, context: Context): Promise<Response
     return Response.json(
       {
         channel: {
-          ...sanitizeChannelForRole(channel, auth.membership.role),
+          ...sanitizeChannelForRole(channel, auth.membership.role, {
+            allowChannelPromptConfig: canInspectChannelPromptConfig({
+              role: auth.membership.role,
+              canEditSetup: permissions.canEditSetup
+            })
+          }),
           publishSettings: getChannelPublishSettings(channel.id),
           publishIntegration: sanitizePublishIntegrationForRole(
             getChannelPublishIntegration(channel.id),

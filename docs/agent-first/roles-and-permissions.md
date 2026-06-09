@@ -25,7 +25,7 @@
 | Create channel | yes | yes | yes | no | `team-store.ts` |
 | Manage any channel access | yes | yes | no | no | `team-store.ts`, `acl.ts` |
 | View internal design routes | yes | yes | yes | no | browser + code pages |
-| Inspect prompts, raw traces, debug artifacts, template editing internals | yes | yes | no | no | `sensitive-access.ts`, API tests |
+| Inspect prompts, raw traces, debug artifacts, template editing internals | yes | yes | channel prompt config only for editable channels | no | `sensitive-access.ts`, API tests |
 | Use runtime template library and personal Stage 3 executor pairing | yes | yes | yes | yes, for granted channels | API tests, Step 3 flow |
 
 ## Channel-level permissions
@@ -37,6 +37,7 @@
 | See channel | all | all | own or granted | granted only |
 | Operate channel in daily flow | yes | yes | yes if visible | yes if granted |
 | Edit channel setup | yes | yes | yes if visible | no |
+| View/edit channel Stage 2 prompt config | yes | yes | yes if editable; workspace defaults stay read-only fallback | no |
 | Manage channel access | yes | yes | no | no |
 | Delete channel | yes | yes | only own channels | no |
 

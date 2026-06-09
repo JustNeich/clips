@@ -44,7 +44,21 @@ export function sanitizeWorkspaceForRole<T extends WorkspaceRecord>(
   } as T;
 }
 
-export function sanitizeChannelForRole<T extends Channel>(channel: T, role: AppRole): T {
+export function canInspectChannelPromptConfig(input: {
+  role: AppRole | null | undefined;
+  canEditSetup?: boolean;
+}): boolean {
+  return (
+    canInspectSensitiveArtifacts(input.role) ||
+    (input.role === "redactor" && input.canEditSetup === true)
+  );
+}
+
+export function sanitizeChannelForRole<T extends Channel>(
+  channel: T,
+  role: AppRole,
+  options: { allowChannelPromptConfig?: boolean } = {}
+): T {
   if (canInspectSensitiveArtifacts(role)) {
     return channel;
   }
@@ -56,7 +70,10 @@ export function sanitizeChannelForRole<T extends Channel>(channel: T, role: AppR
     examplesJson: "[]",
     stage2ExamplesConfig: undefined,
     stage2HardConstraints: undefined,
-    stage2PromptConfig: undefined,
+    stage2PromptConfig:
+      role === "redactor" && options.allowChannelPromptConfig
+        ? channel.stage2PromptConfig
+        : undefined,
     stage2StyleProfile: undefined,
     stage2SourceOverlayConfig: undefined
   } as T;

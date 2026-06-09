@@ -11,6 +11,7 @@ import { buildQuickRegeneratePrompt } from "../lib/stage2-quick-regenerate";
 import {
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
   DEFAULT_STAGE2_EXAMPLES_CONFIG,
+  DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG,
   type Stage2CorpusExample
 } from "../lib/stage2-channel-config";
 import {
@@ -690,4 +691,78 @@ test("ChannelManagerStage2Tab presents channel examples as presets or custom cor
   assert.match(html, /Use workspace default/);
   assert.doesNotMatch(html, /Channel override/);
   assert.doesNotMatch(html, /System examples/);
+});
+
+test("ChannelManagerStage2Tab lets channel redactors edit prompts without opening source overlay internals", () => {
+  const channelPromptConfig = {
+    ...DEFAULT_STAGE2_PROMPT_CONFIG,
+    useWorkspaceDefault: false,
+    stages: {
+      ...DEFAULT_STAGE2_PROMPT_CONFIG.stages,
+      classicOneShot: {
+        ...DEFAULT_STAGE2_PROMPT_CONFIG.stages.classicOneShot,
+        prompt: "EDITOR CHANNEL PROMPT"
+      }
+    }
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(ChannelManagerStage2Tab, {
+      isWorkspaceDefaultsSelection: false,
+      stage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      bannedWordsInput: "",
+      bannedOpenersInput: "",
+      workspaceStage2PromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG,
+      channelStage2PromptConfig: channelPromptConfig,
+      channelStage2PromptOverridesActive: true,
+      stage2SourceOverlayConfig: {
+        ...DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG,
+        prompt: "SOURCE OVERLAY PROMPT"
+      },
+      workspaceStage2CaptionProviderConfig: DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG,
+      workspaceCodexModelConfig: DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
+      resolvedWorkspaceCodexModelConfig: resolveWorkspaceCodexModelConfig({
+        config: DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG
+      }),
+      autosaveState: {
+        brand: { status: "idle", message: null },
+        stage2: { status: "idle", message: null },
+        stage2Defaults: { status: "idle", message: null },
+        render: { status: "idle", message: null }
+      },
+      canEditWorkspaceDefaults: false,
+      canEditHardConstraints: false,
+      canEditChannelPrompt: true,
+      canEditChannelExamples: false,
+      stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+      updateStage2HardConstraint: () => undefined,
+      updateBannedWordsInput: () => undefined,
+      updateBannedOpenersInput: () => undefined,
+      updateStage2PromptTemplate: () => undefined,
+      updateStage2PromptReasoning: () => undefined,
+      resetStage2PromptStage: () => undefined,
+      updateChannelStage2PromptTemplate: () => undefined,
+      updateChannelStage2PromptReasoning: () => undefined,
+      resetChannelStage2PromptConfig: () => undefined,
+      updateStage2SourceOverlayConfig: () => undefined,
+      updateWorkspaceCaptionProvider: () => undefined,
+      updateWorkspaceAnthropicModel: () => undefined,
+      updateWorkspaceOpenRouterModel: () => undefined,
+      updateAnthropicApiKeyInput: () => undefined,
+      saveWorkspaceAnthropicIntegration: async () => undefined,
+      disconnectWorkspaceAnthropicIntegration: async () => undefined,
+      updateOpenRouterApiKeyInput: () => undefined,
+      saveWorkspaceOpenRouterIntegration: async () => undefined,
+      disconnectWorkspaceOpenRouterIntegration: async () => undefined,
+      updateWorkspaceCodexModelSetting: () => undefined
+    })
+  );
+
+  const promptTextarea = html.match(/<textarea[^>]*rows="12"[^>]*>EDITOR CHANNEL PROMPT<\/textarea>/)?.[0] ?? "";
+  const sourceOverlayTextarea =
+    html.match(/<textarea[^>]*rows="5"[^>]*>SOURCE OVERLAY PROMPT<\/textarea>/)?.[0] ?? "";
+
+  assert.ok(promptTextarea);
+  assert.doesNotMatch(promptTextarea, /disabled/);
+  assert.ok(sourceOverlayTextarea);
+  assert.match(sourceOverlayTextarea, /disabled/);
 });
