@@ -26,6 +26,7 @@
     "mcp:control": "tsx scripts/clips-control-mcp.ts",
     "mcp:owner": "tsx scripts/clips-owner-mcp.ts",
     "macmini:healthcheck": "node scripts/clips-macmini-healthcheck.mjs",
+    "market:stats-refresh": "node scripts/market-stats-refresh.mjs",
     "copscopes:daily-production": "node scripts/run-copscopes-daily-production.mjs",
     "stage2-worker": "tsx scripts/viral-shorts-worker.ts",
     "stage3-worker": "tsx apps/stage3-worker/index.ts",

@@ -348,6 +348,26 @@ async function main() {
   const { token, tokenPath } = readToken(config.tokenPath);
   const control = createControlCaller(config, token);
 
+  // MI v2 contract: refresh the market stats lane before a production run so
+  // take-decisions rest on <=1h-fresh data. Best-effort: a market failure must
+  // never block publishing; the agent's daily_brief canDecide gate is the hard
+  // guard at decision time.
+  try {
+    const { runMarketStatsRefresh } = await import("./market-stats-refresh.mjs");
+    const refresh = runMarketStatsRefresh({ argv: [] });
+    ledger.push({
+      step: "market_stats_refresh",
+      status: refresh.ok ? "passed" : "failed_best_effort",
+      laneStatus: refresh.laneStatus || refresh.reason || null
+    });
+  } catch (error) {
+    ledger.push({
+      step: "market_stats_refresh",
+      status: "failed_best_effort",
+      laneStatus: error instanceof Error ? error.message.slice(0, 200) : String(error)
+    });
+  }
+
   const health = await fetchJson(`${config.appUrl}/api/health`, {}, 3);
   ledger.push({ step: "health", status: "passed", health });
 
