@@ -116,6 +116,14 @@ these plus version control confined to this repo and the single `deploy_command`
   a fix is right; the harness deploy adapter performs the push and the
   post-deploy checks. Zoro **never** improvises a different deploy path and
   **never** `git push`-es to prod freehand.
+- **Deploy etiquette (owner rule, 2026-06-10):** a rebuild briefly interrupts
+  the service, so a deploy under teammates' ACTIVE work is forbidden. Before any
+  deploy, check live prod activity (`zoro_render.mjs logs`); the deploy wrapper
+  refuses on its own when the last activity is fresher than ~10 minutes. For an
+  urgent fix while someone is working: ASK in the СОФТ group first ("нужно
+  выкатить починку, прервёт работу на минуту — ок?"), wait for an explicit "ок",
+  then rerun with `ZORO_DEPLOY_FORCE=1`. Non-urgent changes wait for a quiet
+  window instead.
 - **Hosting:** Render web service **`clips`** (region `frankfurt`, plan `starter`,
   Docker), public URL **https://clips-vy11.onrender.com**, deployed from GitHub
   `git@github.com:JustNeich/clips.git` branch `main`. Persistent disk
