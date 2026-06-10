@@ -38,8 +38,8 @@ stops and reports rather than editing blind.
   check.
 - **Privileged team identity:** the **chief editor — Даниил (Y UTalkin)** — is the
   only Plane-B-privileged user. The harness resolves him from the worker's
-  gitignored secret file via a role-link key (TODO — owner-only: confirm the exact
-  key name in the secret file, e.g. `chief_editor_role_link`). His Telegram id is
+  gitignored secret file `<repo>/.mvz_role_links.json` (roles: `owner`,
+  `chief_editor`; excluded via .git/info/exclude; created 2026-06-10). His Telegram id is
   **not** stored here. If the harness does not resolve the inbound sender as
   Даниил, the message is a normal report-only signal — no Plane-B action.
 
@@ -102,7 +102,11 @@ these plus version control confined to this repo and the single `deploy_command`
 
 ## 4. Deploy — the single harness command (Zoro never pushes prod by hand)
 
-- **`deploy_command` (the ONLY deploy path):** `git push origin main`. There is
+- **`deploy_command` (the ONLY deploy path):**
+  `bash "/Users/neichyabazhi/Zoro-dev/support/autonomous_workers/zoro_tools/zoro_deploy.sh"` —
+  it wraps `git push origin main` with a pre-deploy money-path probe, the canary
+  compare after the Render build, and an automatic git-revert rollback on
+  regression (proven live 2026-06-10: pre-probe -> push -> canary PASS). There is
   **no** Render CLI deploy and **no** in-repo deploy script. `render.yaml` sets
   `autoDeploy: true`, so a push to `main` makes Render rebuild the Docker image
   (`runtime: docker`, `dockerfilePath: ./Dockerfile`) and roll the service. This
@@ -141,8 +145,13 @@ these plus version control confined to this repo and the single `deploy_command`
 >    scoped-bearer (`requireOwner` / `requireOwnerOrMcp*`); `middleware.ts` is the
 >    bearer-token-bypass gate for these admin routes.
 >
-> **Canary reality (a gap to state honestly):** the repo has **NO money-path
-> canary and NO automatic rollback.** `render.yaml` `healthCheckPath` is
+> **Canary reality:** since 2026-06-10 the deploy wrapper above RUNS a real
+> money-path canary (zoro_canary.mjs: health + owner-status + channels +
+> access grants + publications + templates compared before/after; a lost
+> access grant or publication fails the canary and triggers automatic
+> git-revert rollback). Verified live on a real deploy AND on an injected
+> regression. Residual honesty: the build-live wait is time-based (~270s +
+> retries), not Render-API-confirmed.** Previously: `render.yaml` `healthCheckPath` is
 > `/api/health`, which is **liveness-only** (`app/api/health/route.ts` returns
 > `{ ok: true }` — it schedules background work but asserts nothing about access,
 > publishing, or tokens). So a deploy that touches a money-path route is **never
@@ -288,8 +297,13 @@ through `git push origin main`.
     `clips_control_get_channel_status`, `clips_control_list_source_pool`.
   - No freehand edits to production config files, no direct writes to the prod
     `app.db`, no reaching outside this target.
-- **Versioned backup BEFORE every edit (the "промпты пропали" lesson) — KNOWN
-  GAP:** **a one-command backup/restore for live DB data does NOT yet exist.**
+- **Versioned backup BEFORE every edit (the "промпты пропали" lesson):**
+  `node "/Users/neichyabazhi/Zoro-dev/support/autonomous_workers/zoro_tools/zoro_planeb_snapshot.mjs" <label>`
+  captures channels (incl. per-channel prompts/config), templates, access
+  grants and publications to a timestamped JSON under
+  `~/Zoro-dev/.assistant/planeb_snapshots/` (verified live: 27 channels, 64
+  templates, 21 grants, 50 publications). Restore = re-apply the captured
+  fields via the clips-owner write tools (semi-automatic).
   All Plane-B objects (channels, prompts/`stage2_prompt_config`, templates,
   avatars/names) live in the single SQLite DB (`/var/data/app/app.db` on Render's
   `clips-data` disk); there is no MCP "snapshot template version" / "restore
