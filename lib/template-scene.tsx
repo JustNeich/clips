@@ -12,6 +12,7 @@ import {
   HEDGES_OF_HONOR_TEMPLATE_ID,
   getStage3CardInnerRect,
   isClassicScienceCardTemplateId,
+  resolveStage3TemplateAvatarBorderRadius,
   STAGE3_TEMPLATE_ID,
   Stage3TemplateConfig,
   getTemplateById,
@@ -552,7 +553,10 @@ function renderDefaultAvatar(
       style={{
         width: avatarSize,
         height: avatarSize,
-        borderRadius: 999,
+        borderRadius: resolveStage3TemplateAvatarBorderRadius({
+          avatarShape: author.avatarShape,
+          avatarSize
+        }),
         border: `${author.avatarBorder}px solid ${borderColor}`,
         background: usesClassicScienceCardChrome ? "#d9d9d9" : background,
         color: "rgba(255,255,255,0.95)",

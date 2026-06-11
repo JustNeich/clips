@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type { Stage3RenderPlan } from "../app/components/types";
+import type { Stage3AudioMode, Stage3RenderPlan } from "../app/components/types";
 import type { Stage3RenderRequestBody } from "../lib/stage3-render-service";
 import {
   appendChatEvent,
@@ -96,6 +96,10 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function stringValue(value: unknown, fallback = ""): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function audioModeValue(value: unknown, fallback: Stage3AudioMode = "source_only"): Stage3AudioMode {
+  return value === "source_plus_music" || value === "source_only" ? value : fallback;
 }
 
 function numberValue(value: unknown, fallback: number): number {
@@ -578,6 +582,9 @@ async function applyGhostfaceChannelRenderAssets(input: {
     required: false
   });
   const basePlan = asRecord(input.item.stage3Body.renderPlan);
+  const sourceAudioEnabled =
+    typeof basePlan.sourceAudioEnabled === "boolean" ? Boolean(basePlan.sourceAudioEnabled) : true;
+  const audioMode = audioModeValue(basePlan.audioMode);
   const renderPlan: Partial<Stage3RenderPlan> = {
     ...basePlan,
     templateId: input.channel.templateId,
@@ -587,8 +594,8 @@ async function applyGhostfaceChannelRenderAssets(input: {
     normalizeToTargetEnabled: false,
     policy: "fixed_segments",
     editorSelectionMode: "window",
-    sourceAudioEnabled: true,
-    audioMode: "source_only",
+    sourceAudioEnabled,
+    audioMode,
     avatarAssetId: avatar.assetId,
     avatarAssetMimeType: avatar.mimeType,
     backgroundAssetId: background.assetId,
@@ -685,7 +692,7 @@ async function renderNativeItem(input: {
           existingChannelRequired: true,
           avatarRequired: true,
           sourceStretchForbidden: true,
-          sourceAudioEnabled: true
+          sourceAudioEnabled: Boolean(asRecord(hydratedBody.renderPlan).sourceAudioEnabled ?? true)
         }
       }
     });

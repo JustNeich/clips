@@ -9,6 +9,7 @@ import {
   DEFAULT_STAGE3_SOURCE_VIDEO_TEXT_FONT_FAMILY,
   STAGE3_TEMPLATE_ID,
   cloneStage3TemplateConfig,
+  type Stage3TemplateAvatarShape,
   type Stage3TemplateConfig,
   type Stage3TemplateFontAsset,
   getTemplateById,
@@ -127,6 +128,15 @@ type SelectControlProps = {
   options: Array<{ label: string; value: string }>;
   onChange: (value: string) => void;
 };
+
+const AVATAR_SHAPE_OPTIONS: Array<{ label: string; value: Stage3TemplateAvatarShape }> = [
+  { label: "Круг", value: "circle" },
+  { label: "Квадрат", value: "rounded-square" }
+];
+
+function formatAvatarShapeLabel(shape?: Stage3TemplateAvatarShape): string {
+  return shape === "rounded-square" ? "Квадрат" : "Круг";
+}
 
 type BadgeOption = {
   label: string;
@@ -3265,6 +3275,13 @@ export function TemplateStyleEditor({
                 onChange={(value) => updateAuthor("checkAssetPath", value)}
               />
               <div className="template-road-editor-grid three-up">
+                <SelectControl
+                  label="Форма аватара"
+                  hint="Квадрат нужен для формата соц-поста, круг оставляет текущий вид."
+                  value={templateConfig.author.avatarShape ?? "circle"}
+                  options={AVATAR_SHAPE_OPTIONS}
+                  onChange={(value) => updateAuthor("avatarShape", value as Stage3TemplateAvatarShape)}
+                />
                 <SliderControl
                   label="Размер аватара"
                   hint="Крупнее делает header row заметнее, меньше — чище и плотнее."
@@ -5219,6 +5236,9 @@ export function TemplateStyleEditor({
               ) : (
                 <>
                   <span className="meta-pill">Аватар: {templateConfig.author.avatarSize}px</span>
+                  <span className="meta-pill">
+                    Форма: {formatAvatarShapeLabel(templateConfig.author.avatarShape)}
+                  </span>
                   <span className="meta-pill">Бейдж: {templateConfig.author.checkSize}px</span>
                   <span className="meta-pill">
                     {currentBadgeOption?.label ?? (currentBadgeAssetPath ? "Свой бейдж" : "Twitter цветная")}
@@ -5268,6 +5288,13 @@ export function TemplateStyleEditor({
             <div className="template-road-editor-grid three-up">
               {!isChannelStoryTemplate ? (
                 <>
+                  <SelectControl
+                    label="Форма аватара"
+                    hint="Квадрат повторяет соц-постовый вид, круг оставляет текущий шаблон без изменений."
+                    value={templateConfig.author.avatarShape ?? "circle"}
+                    options={AVATAR_SHAPE_OPTIONS}
+                    onChange={(value) => updateAuthor("avatarShape", value as Stage3TemplateAvatarShape)}
+                  />
                   <SliderControl
                     label="Размер аватара"
                     hint="Крупнее делает строку автора заметнее, меньше — деликатнее."

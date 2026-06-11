@@ -9,7 +9,8 @@ import {
   SCIENCE_CARD_GREEN_TEMPLATE_ID,
   SCIENCE_CARD_V7_TEMPLATE_ID,
   HEDGES_OF_HONOR_TEMPLATE_ID,
-  GHOSTFACE_COUNTRY_TEMPLATE_ID
+  GHOSTFACE_COUNTRY_TEMPLATE_ID,
+  resolveStage3TemplateAvatarBorderRadius
 } from "../../../lib/stage3-template";
 import { buildTemplateRenderSnapshot } from "../../../lib/stage3-template-core";
 import { resolveManagedTemplateRuntime } from "../../../lib/managed-template-runtime";
@@ -620,7 +621,10 @@ export default async function ScienceCardDesignPage({ searchParams }: ScienceCar
                       style={{
                         width: avatarSize,
                         height: avatarSize,
-                        borderRadius: 999,
+                        borderRadius: resolveStage3TemplateAvatarBorderRadius({
+                          avatarShape: templateConfig.author.avatarShape,
+                          avatarSize
+                        }),
                         border: `${templateConfig.author.avatarBorder}px solid ${resolveTemplateAvatarBorderColorNode(templateId)}`,
                         background: "#10131a",
                         objectFit: "cover",

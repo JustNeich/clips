@@ -26,7 +26,10 @@ import {
   getStage3DesignLabPreset,
   listStage3DesignLabPresets
 } from "../../lib/stage3-design-lab";
-import { getTemplateById } from "../../lib/stage3-template";
+import {
+  getTemplateById,
+  resolveStage3TemplateAvatarBorderRadius
+} from "../../lib/stage3-template";
 import {
   getTemplateVariant,
   resolveTemplateAvatarBorderColor
@@ -443,7 +446,10 @@ function CompareScene({
                 style={{
                   width: renderSnapshot.layout.avatar.width,
                   height: renderSnapshot.layout.avatar.height,
-                  borderRadius: 999,
+                  borderRadius: resolveStage3TemplateAvatarBorderRadius({
+                    avatarShape: templateConfig.author.avatarShape,
+                    avatarSize: renderSnapshot.layout.avatar.width
+                  }),
                   border: `${templateConfig.author.avatarBorder}px solid ${resolveTemplateAvatarBorderColor(templateId)}`,
                   objectFit: "cover",
                   display: "block",

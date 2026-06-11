@@ -15,6 +15,7 @@ import type { Stage3VariationProfile } from "../lib/stage3-render-variation";
 import {
   SCIENCE_CARD_TEMPLATE_ID,
   getTemplateById,
+  resolveStage3TemplateAvatarBorderRadius,
   type Stage3TemplateConfig
 } from "../lib/stage3-template";
 import {
@@ -552,7 +553,10 @@ export function ScienceCardV1({
       style={{
         width: renderSnapshot.layout.avatar.width,
         height: renderSnapshot.layout.avatar.height,
-        borderRadius: 999,
+        borderRadius: resolveStage3TemplateAvatarBorderRadius({
+          avatarShape: templateConfig.author.avatarShape,
+          avatarSize: renderSnapshot.layout.avatar.width
+        }),
         border: `${templateConfig.author.avatarBorder}px solid ${resolveTemplateAvatarBorderColor(resolvedTemplateId)}`,
         objectFit: "cover",
         boxSizing: "border-box",

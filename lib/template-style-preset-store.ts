@@ -8,6 +8,7 @@ import { type TemplateContentFixture } from "./template-calibration-types";
 import {
   STAGE3_TEMPLATE_ID,
   cloneStage3TemplateConfig,
+  normalizeStage3TemplateAvatarShape,
   normalizeStage3SourceVideoTextLayerConfig,
   normalizeStage3SourceVideoWatermarkConfig,
   type Stage3TemplateConfig,
@@ -245,6 +246,7 @@ function normalizeTemplateConfig(raw: unknown, templateId: string): Stage3Templa
     if (typeof author.handle === "string") {
       base.author.handle = author.handle;
     }
+    base.author.avatarShape = normalizeStage3TemplateAvatarShape(author.avatarShape);
     if (typeof author.checkAssetPath === "string") {
       base.author.checkAssetPath = author.checkAssetPath;
     }

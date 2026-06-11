@@ -115,3 +115,39 @@ test("Ghostface preview batch blocks short sources instead of stretching them", 
     /Choose a longer native-speed source instead of stretching/
   );
 });
+
+test("Ghostface preview batch preserves an explicit muted-source override", () => {
+  const item = buildGhostfacePreviewBatchItemFromRequest({
+    requestPath: "/tmp/country-muted.json",
+    renderId: "country-muted",
+    previewPath: "/tmp/country-muted.mp4",
+    request: {
+      channel: {
+        key: "country",
+        name: "Ghostface Country",
+        clips_username: "ghostfacecountry",
+        clips_channel_id: "clips_channel_country_real"
+      },
+      template: {
+        template_id: "ghostface-country-v1",
+        duration_sec: 22
+      },
+      source: {
+        url: "https://www.youtube.com/watch?v=source",
+        title: "Cherry shaker clears a row"
+      },
+      copy: {
+        title: "THE ROW SHAKER KEEPS MOVING",
+        top_text: "It looks slow from far away until the whole tree starts dumping fruit into one moving catch system.",
+        bottom_text: "That pace is the point. Clean passes keep the row moving without turning the ground into a mess."
+      }
+    }
+  });
+
+  item.stage3Body.renderPlan = {
+    ...item.stage3Body.renderPlan,
+    sourceAudioEnabled: false
+  };
+
+  assert.equal(item.stage3Body.renderPlan?.sourceAudioEnabled, false);
+});

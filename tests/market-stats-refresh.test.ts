@@ -4,8 +4,7 @@ import test from "node:test";
 import {
   DEFAULT_MAX_STALENESS_MINUTES,
   buildRefreshPlan,
-  parseArgs,
-  // eslint-disable-next-line import/extensions
+  parseArgs
 } from "../scripts/market-stats-refresh.mjs";
 
 test("parseArgs defaults and overrides", () => {

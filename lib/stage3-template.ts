@@ -43,6 +43,22 @@ export type Stage3TemplateFontAsset = {
   createdAt?: string;
 };
 
+export type Stage3TemplateAvatarShape = "circle" | "rounded-square";
+
+export function normalizeStage3TemplateAvatarShape(shape: unknown): Stage3TemplateAvatarShape {
+  return shape === "rounded-square" ? "rounded-square" : "circle";
+}
+
+export function resolveStage3TemplateAvatarBorderRadius(input: {
+  avatarShape?: Stage3TemplateAvatarShape | null;
+  avatarSize: number;
+}): number {
+  if (normalizeStage3TemplateAvatarShape(input.avatarShape) !== "rounded-square") {
+    return 999;
+  }
+  return Math.max(4, Math.round(input.avatarSize * 0.14));
+}
+
 export type Stage3SourceVideoTextAlign = "left" | "center" | "right";
 
 export type Stage3SourceVideoTextLayerConfig = {
@@ -951,6 +967,7 @@ export type Stage3TemplateConfig = {
   author: {
     name: string;
     handle: string;
+    avatarShape?: Stage3TemplateAvatarShape;
     avatarSize: number;
     avatarBorder: number;
     checkSize: number;

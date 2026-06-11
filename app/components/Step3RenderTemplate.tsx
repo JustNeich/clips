@@ -47,6 +47,7 @@ import {
   SCIENCE_CARD_V7_TEMPLATE_ID,
   STAGE3_TEMPLATE_ID,
   getTemplateById,
+  resolveStage3TemplateAvatarBorderRadius,
   type Stage3TemplateConfig
 } from "../../lib/stage3-template";
 import {
@@ -2201,6 +2202,10 @@ function Stage3LivePreviewPanel({
                           height: previewTemplateSnapshot.layout.avatar.height,
                           borderWidth: templateConfig.author.avatarBorder,
                           borderColor: resolveTemplateAvatarBorderColor(templateId),
+                          borderRadius: resolveStage3TemplateAvatarBorderRadius({
+                            avatarShape: templateConfig.author.avatarShape,
+                            avatarSize: previewTemplateSnapshot.layout.avatar.width
+                          }),
                           backgroundImage: `url(${avatarUrl})`,
                           backgroundSize: "cover",
                           backgroundPosition: "center"
