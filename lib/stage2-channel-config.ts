@@ -63,6 +63,41 @@ export const DEFAULT_STAGE2_HARD_CONSTRAINTS: Stage2HardConstraints = {
   bannedOpeners: []
 };
 
+/**
+ * Escapes a string for safe use as a literal inside a RegExp.
+ */
+export function escapeStage2RegExpLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Whether `text` contains `bannedWord` as a WHOLE word (case-insensitive
+ * word-boundary match), matching the banned-word cleanup semantics used in
+ * lib/viral-shorts-worker/service.ts (`\bword\b`).
+ *
+ * A plain substring match must NOT count: a banned word like "vibe" appears
+ * inside ordinary words such as "describe", "archive" or "revive". With a
+ * substring check those captions were rejected as "banned words", yet the
+ * cleanup step only strips whole words — so it could never repair them, and
+ * Stage 2 looped, re-running many times before any candidate passed
+ * (the "banned words по кругу" report). Whole-word matching keeps the detector
+ * and the cleanup in agreement.
+ */
+export function captionTextContainsBannedWord(text: string, bannedWord: string): boolean {
+  const normalizedWord = bannedWord.trim().replace(/\s+/g, " ");
+  if (!normalizedWord) {
+    return false;
+  }
+  return new RegExp(`\\b${escapeStage2RegExpLiteral(normalizedWord)}\\b`, "i").test(text);
+}
+
+/**
+ * Whether `text` contains any of `bannedWords` as a whole word.
+ */
+export function captionContainsBannedWord(text: string, bannedWords: readonly string[]): boolean {
+  return bannedWords.some((word) => captionTextContainsBannedWord(text, word));
+}
+
 export const DEFAULT_STAGE2_EXAMPLES_CONFIG: Stage2ExamplesConfig = {
   version: 2,
   useWorkspaceDefault: true,

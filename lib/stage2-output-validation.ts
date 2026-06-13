@@ -1,6 +1,7 @@
 import type { Stage2Output } from "../app/components/types";
 import {
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
+  captionContainsBannedWord,
   type Stage2HardConstraints
 } from "./stage2-channel-config";
 
@@ -10,8 +11,7 @@ export type Stage2ValidationWarning = {
 };
 
 function containsBannedContent(text: string, constraints: Stage2HardConstraints): boolean {
-  const lower = text.toLowerCase();
-  return constraints.bannedWords.some((word) => lower.includes(word.toLowerCase()));
+  return captionContainsBannedWord(text, constraints.bannedWords);
 }
 
 function startsWithBannedOpener(text: string, constraints: Stage2HardConstraints): boolean {

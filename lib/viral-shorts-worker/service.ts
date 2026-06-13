@@ -62,6 +62,7 @@ import {
   Stage2CorpusExample,
   Stage2ExamplesConfig,
   Stage2HardConstraints,
+  captionContainsBannedWord,
   normalizeStage2SourceOverlayConfig,
   DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG,
   type Stage2SourceOverlayConfig
@@ -6055,8 +6056,7 @@ function normalizeFinalSelector(raw: unknown, candidates: CandidateCaption[]): F
 }
 
 function containsBannedContent(text: string, constraints: Stage2HardConstraints): boolean {
-  const lower = text.toLowerCase();
-  return constraints.bannedWords.some((word) => lower.includes(word.toLowerCase()));
+  return captionContainsBannedWord(text, constraints.bannedWords);
 }
 
 function startsWithBannedOpener(text: string, constraints: Stage2HardConstraints): boolean {

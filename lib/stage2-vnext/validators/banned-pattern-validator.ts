@@ -1,4 +1,7 @@
-import type { Stage2HardConstraints } from "../../stage2-channel-config";
+import {
+  captionTextContainsBannedWord,
+  type Stage2HardConstraints
+} from "../../stage2-channel-config";
 
 export const STAGE2_VNEXT_AI_STOCK_PHRASES = [
   "the reaction says it all",
@@ -37,7 +40,6 @@ export function validateBannedPatterns(input: {
   const bottom = input.bottom.trim();
   const full = `${top}\n${bottom}`;
   const lowerTop = top.toLowerCase();
-  const lowerFull = full.toLowerCase();
 
   for (const opener of input.constraints.bannedOpeners) {
     if (lowerTop.startsWith(opener.toLowerCase())) {
@@ -46,7 +48,7 @@ export function validateBannedPatterns(input: {
   }
 
   for (const bannedWord of input.constraints.bannedWords) {
-    if (lowerFull.includes(bannedWord.toLowerCase())) {
+    if (captionTextContainsBannedWord(full, bannedWord)) {
       issues.push(`Caption contains banned word "${bannedWord}".`);
     }
   }
