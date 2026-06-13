@@ -625,6 +625,7 @@ export type Stage3PlannerSnapshotDigest = {
     audioMode: Stage3AudioMode;
     videoZoom: number;
     videoScaleY: number;
+    videoScaleX: number;
     topFontScale: number;
     bottomFontScale: number;
     textPolicy: Stage3TextPolicy;
@@ -683,6 +684,7 @@ export type Stage3EditorDraftOverrides = {
   focusY: number;
   videoZoom: number;
   videoScaleY: number;
+  videoScaleX: number;
   videoBrightness: number;
   videoExposure: number;
   videoContrast: number;
@@ -871,6 +873,7 @@ export type Stage3RenderPlan = {
   focusX: number;
   videoZoom: number;
   videoScaleY: number;
+  videoScaleX: number;
   videoBrightness: number;
   videoExposure: number;
   videoContrast: number;

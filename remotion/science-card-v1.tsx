@@ -84,6 +84,7 @@ type ScienceCardV1Props = {
   cameraScaleKeyframes: Stage3ScaleKeyframe[];
   videoZoom: number;
   videoScaleY: number;
+  videoScaleX: number;
   videoBrightness: number;
   videoExposure: number;
   videoContrast: number;
@@ -323,6 +324,7 @@ export function ScienceCardV1({
   focusY,
   videoZoom,
   videoScaleY = 1,
+  videoScaleX = 1,
   videoBrightness,
   videoExposure,
   videoContrast,
@@ -419,6 +421,7 @@ export function ScienceCardV1({
     focusY: animatedFocus,
     videoZoom: normalizedZoom,
     videoScaleY,
+    videoScaleX,
     mirrorEnabled: segmentTransform.mirrorEnabled
   });
   const backgroundPlacementStyle = buildStage3VideoPlacementStyle({

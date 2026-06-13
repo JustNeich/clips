@@ -46,7 +46,12 @@ import {
   normalizeStage3VideoExposure,
   normalizeStage3VideoSaturation
 } from "../lib/stage3-video-adjustments";
-import { DEFAULT_STAGE3_VIDEO_SCALE_Y, normalizeStage3VideoScaleY } from "../lib/stage3-video-scale";
+import {
+  DEFAULT_STAGE3_VIDEO_SCALE_X,
+  DEFAULT_STAGE3_VIDEO_SCALE_Y,
+  normalizeStage3VideoScaleX,
+  normalizeStage3VideoScaleY
+} from "../lib/stage3-video-scale";
 import {
   DEFAULT_STAGE3_CLIP_DURATION_SEC,
   normalizeStage3ClipDurationSec,
@@ -609,6 +614,7 @@ export function fallbackRenderPlan(): Stage3RenderPlan {
     focusX: 0.5,
     videoZoom: 1,
     videoScaleY: DEFAULT_STAGE3_VIDEO_SCALE_Y,
+    videoScaleX: DEFAULT_STAGE3_VIDEO_SCALE_X,
     videoBrightness: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.brightness,
     videoExposure: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.exposure,
     videoContrast: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.contrast,
@@ -726,6 +732,7 @@ export function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderP
     focusX: plan.focusX,
     videoZoom: plan.videoZoom,
     videoScaleY: plan.videoScaleY,
+    videoScaleX: plan.videoScaleX,
     videoBrightness: plan.videoBrightness,
     videoExposure: plan.videoExposure,
     videoContrast: plan.videoContrast,
@@ -759,6 +766,7 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
       ? clampStage3FocusX(candidate.focusX)
       : base.focusX;
   const videoScaleY = normalizeStage3VideoScaleY(candidate?.videoScaleY, base.videoScaleY);
+  const videoScaleX = normalizeStage3VideoScaleX(candidate?.videoScaleX, base.videoScaleX);
   const legacyCameraKeyframes = normalizeStage3CameraKeyframes(candidate?.cameraKeyframes ?? base.cameraKeyframes, {
     clipDurationSec: targetDurationSec,
     fallbackFocusY: 0.5,
@@ -831,6 +839,7 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
     focusX,
     videoZoom,
     videoScaleY,
+    videoScaleX,
     videoBrightness: normalizeStage3VideoBrightness(candidate?.videoBrightness, base.videoBrightness),
     videoExposure: normalizeStage3VideoExposure(candidate?.videoExposure, base.videoExposure),
     videoContrast: normalizeStage3VideoContrast(candidate?.videoContrast, base.videoContrast),

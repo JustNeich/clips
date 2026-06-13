@@ -24,7 +24,7 @@ import {
   normalizeStage3VideoExposure,
   normalizeStage3VideoSaturation
 } from "./stage3-video-adjustments";
-import { normalizeStage3VideoScaleY } from "./stage3-video-scale";
+import { normalizeStage3VideoScaleX, normalizeStage3VideoScaleY } from "./stage3-video-scale";
 import {
   analyzeBestClipAndFocus,
   clampClipStart,
@@ -947,6 +947,7 @@ async function runRemotionRender(params: {
   cameraScaleKeyframes: Stage3RenderPlan["cameraScaleKeyframes"];
   videoZoom: number;
   videoScaleY: number;
+  videoScaleX: number;
   videoBrightness: number;
   videoExposure: number;
   videoContrast: number;
@@ -1001,6 +1002,7 @@ async function runRemotionRender(params: {
     cameraScaleKeyframes: params.cameraScaleKeyframes,
     videoZoom: params.videoZoom,
     videoScaleY: params.videoScaleY,
+    videoScaleX: params.videoScaleX,
     videoBrightness: params.videoBrightness,
     videoExposure: params.videoExposure,
     videoContrast: params.videoContrast,
@@ -1220,6 +1222,7 @@ export function normalizeRenderPlan(
       ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, rawPlan.videoZoom))
       : 1;
   const videoScaleY = normalizeStage3VideoScaleY(rawPlan?.videoScaleY);
+  const videoScaleX = normalizeStage3VideoScaleX(rawPlan?.videoScaleX);
   const cameraTracks = resolveStage3EffectiveCameraTracks({
     cameraPositionKeyframes: rawPlan?.cameraPositionKeyframes,
     cameraScaleKeyframes: rawPlan?.cameraScaleKeyframes,
@@ -1270,6 +1273,7 @@ export function normalizeRenderPlan(
         : 0.5,
     videoZoom,
     videoScaleY,
+    videoScaleX,
     videoBrightness: normalizeStage3VideoBrightness(rawPlan?.videoBrightness, templateVideoAdjustments.brightness),
     videoExposure: normalizeStage3VideoExposure(rawPlan?.videoExposure, templateVideoAdjustments.exposure),
     videoContrast: normalizeStage3VideoContrast(rawPlan?.videoContrast, templateVideoAdjustments.contrast),
@@ -1746,6 +1750,7 @@ export async function renderStage3Video(
             cameraScaleKeyframes: renderPlan.cameraScaleKeyframes,
             videoZoom: renderPlan.videoZoom,
             videoScaleY: renderPlan.videoScaleY,
+            videoScaleX: renderPlan.videoScaleX,
             videoBrightness: renderPlan.videoBrightness,
             videoExposure: renderPlan.videoExposure,
             videoContrast: renderPlan.videoContrast,

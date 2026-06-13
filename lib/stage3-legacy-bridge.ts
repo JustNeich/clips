@@ -26,7 +26,12 @@ import {
   normalizeStage3VideoExposure,
   normalizeStage3VideoSaturation
 } from "./stage3-video-adjustments";
-import { DEFAULT_STAGE3_VIDEO_SCALE_Y, normalizeStage3VideoScaleY } from "./stage3-video-scale";
+import {
+  DEFAULT_STAGE3_VIDEO_SCALE_X,
+  DEFAULT_STAGE3_VIDEO_SCALE_Y,
+  normalizeStage3VideoScaleX,
+  normalizeStage3VideoScaleY
+} from "./stage3-video-scale";
 import {
   DEFAULT_STAGE3_CLIP_DURATION_SEC,
   normalizeStage3DurationMode,
@@ -61,6 +66,7 @@ function fallbackRenderPlan(): Stage3RenderPlan {
     focusX: 0.5,
     videoZoom: 1,
     videoScaleY: DEFAULT_STAGE3_VIDEO_SCALE_Y,
+    videoScaleX: DEFAULT_STAGE3_VIDEO_SCALE_X,
     videoBrightness: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.brightness,
     videoExposure: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.exposure,
     videoContrast: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.contrast,
@@ -99,6 +105,7 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
       ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, candidate.videoZoom))
       : fallback.videoZoom;
   const videoScaleY = normalizeStage3VideoScaleY(candidate?.videoScaleY, fallback.videoScaleY);
+  const videoScaleX = normalizeStage3VideoScaleX(candidate?.videoScaleX, fallback.videoScaleX);
   const cameraTracks = resolveStage3EffectiveCameraTracks({
     cameraPositionKeyframes: candidate?.cameraPositionKeyframes,
     cameraScaleKeyframes: candidate?.cameraScaleKeyframes,
@@ -149,6 +156,7 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
         : fallback.focusX,
     videoZoom,
     videoScaleY,
+    videoScaleX,
     videoBrightness: normalizeStage3VideoBrightness(candidate?.videoBrightness, fallback.videoBrightness),
     videoExposure: normalizeStage3VideoExposure(candidate?.videoExposure, fallback.videoExposure),
     videoContrast: normalizeStage3VideoContrast(candidate?.videoContrast, fallback.videoContrast),

@@ -20,7 +20,7 @@ import {
   normalizeStage3VideoExposure,
   normalizeStage3VideoSaturation
 } from "./stage3-video-adjustments";
-import { normalizeStage3VideoScaleY } from "./stage3-video-scale";
+import { normalizeStage3VideoScaleX, normalizeStage3VideoScaleY } from "./stage3-video-scale";
 import {
   DEFAULT_STAGE3_CLIP_DURATION_SEC,
   normalizeStage3DurationMode,
@@ -251,6 +251,7 @@ function normalizeRenderPlan(
       ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, rawPlan.videoZoom))
       : 1;
   const videoScaleY = normalizeStage3VideoScaleY(rawPlan?.videoScaleY);
+  const videoScaleX = normalizeStage3VideoScaleX(rawPlan?.videoScaleX);
   const cameraTracks = resolveStage3EffectiveCameraTracks({
     cameraPositionKeyframes: rawPlan?.cameraPositionKeyframes,
     cameraScaleKeyframes: rawPlan?.cameraScaleKeyframes,
@@ -299,6 +300,7 @@ function normalizeRenderPlan(
         : 0.5,
     videoZoom,
     videoScaleY,
+    videoScaleX,
     videoBrightness: normalizeStage3VideoBrightness(rawPlan?.videoBrightness, templateVideoAdjustments.brightness),
     videoExposure: normalizeStage3VideoExposure(rawPlan?.videoExposure, templateVideoAdjustments.exposure),
     videoContrast: normalizeStage3VideoContrast(rawPlan?.videoContrast, templateVideoAdjustments.contrast),

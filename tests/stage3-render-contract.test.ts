@@ -398,6 +398,58 @@ test("stage3 vertical source scale keeps Y pan based on effective vertical overf
   assert.equal(style.transform, "translate(-12.800%, 3.840%) scale(1.400, 1.120)");
 });
 
+test("stage3 video placement can horizontally stretch only the source video", () => {
+  const style = buildStage3VideoPlacementStyle({
+    focusX: 0.5,
+    focusY: 0.5,
+    videoZoom: 1,
+    videoScaleX: 1.25,
+    mirrorEnabled: false
+  });
+
+  assert.equal(style.objectPosition, "50.000% 50.000%");
+  assert.equal(style.transform, "translate(0.000%, 0.000%) scale(1.250, 1.000)");
+  assert.equal(style.transformOrigin, "center center");
+});
+
+test("stage3 horizontal source scale pans X based on effective horizontal overflow", () => {
+  const style = buildStage3VideoPlacementStyle({
+    focusX: 0.82,
+    focusY: 0.5,
+    videoZoom: 1,
+    videoScaleX: 1.5,
+    mirrorEnabled: false
+  });
+
+  assert.equal(style.objectPosition, "82.000% 50.000%");
+  assert.equal(style.transform, "translate(-16.000%, 0.000%) scale(1.500, 1.000)");
+});
+
+test("stage3 horizontal stretch composes with mirror by flipping the widened X scale", () => {
+  const style = buildStage3VideoPlacementStyle({
+    focusX: 0.5,
+    focusY: 0.5,
+    videoZoom: 1,
+    videoScaleX: 1.2,
+    mirrorEnabled: true
+  });
+
+  assert.equal(style.transform, "translate(0.000%, 0.000%) scale(-1.200, 1.000)");
+});
+
+test("stage3 width and height source scales apply independently", () => {
+  const style = buildStage3VideoPlacementStyle({
+    focusX: 0.5,
+    focusY: 0.5,
+    videoZoom: 1,
+    videoScaleX: 1.3,
+    videoScaleY: 0.8,
+    mirrorEnabled: false
+  });
+
+  assert.equal(style.transform, "translate(0.000%, 0.000%) scale(1.300, 0.800)");
+});
+
 test("render segment extraction uses decode-accurate timestamps to reduce boundary flashes", () => {
   assert.equal(resolveStage3SegmentExtractionMode("render"), "accurate");
   const args = buildStage3ExtractSegmentFfmpegArgs({

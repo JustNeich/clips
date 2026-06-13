@@ -43,7 +43,12 @@ import {
   normalizeStage3VideoExposure,
   normalizeStage3VideoSaturation
 } from "./stage3-video-adjustments";
-import { DEFAULT_STAGE3_VIDEO_SCALE_Y, normalizeStage3VideoScaleY } from "./stage3-video-scale";
+import {
+  DEFAULT_STAGE3_VIDEO_SCALE_X,
+  DEFAULT_STAGE3_VIDEO_SCALE_Y,
+  normalizeStage3VideoScaleX,
+  normalizeStage3VideoScaleY
+} from "./stage3-video-scale";
 import {
   DEFAULT_STAGE3_CLIP_DURATION_SEC,
   normalizeStage3DurationMode,
@@ -706,6 +711,7 @@ function createDefaultRenderPlan(
     focusX: 0.5,
     videoZoom: 1,
     videoScaleY: DEFAULT_STAGE3_VIDEO_SCALE_Y,
+    videoScaleX: DEFAULT_STAGE3_VIDEO_SCALE_X,
     videoBrightness: videoAdjustments.brightness,
     videoExposure: videoAdjustments.exposure,
     videoContrast: videoAdjustments.contrast,
@@ -751,6 +757,7 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
       ? clamp(input.videoZoom, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM)
       : defaultPlan.videoZoom;
   const videoScaleY = normalizeStage3VideoScaleY(input?.videoScaleY, defaultPlan.videoScaleY);
+  const videoScaleX = normalizeStage3VideoScaleX(input?.videoScaleX, defaultPlan.videoScaleX);
   const cameraTracks = resolveStage3EffectiveCameraTracks({
     cameraPositionKeyframes: input?.cameraPositionKeyframes,
     cameraScaleKeyframes: input?.cameraScaleKeyframes,
@@ -805,6 +812,7 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
         : defaultPlan.focusX,
     videoZoom,
     videoScaleY,
+    videoScaleX,
     videoBrightness: normalizeStage3VideoBrightness(input?.videoBrightness, defaultPlan.videoBrightness),
     videoExposure: normalizeStage3VideoExposure(input?.videoExposure, defaultPlan.videoExposure),
     videoContrast: normalizeStage3VideoContrast(input?.videoContrast, defaultPlan.videoContrast),

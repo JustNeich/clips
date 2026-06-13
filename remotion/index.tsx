@@ -60,6 +60,7 @@ export type ScienceCardV1Props = {
   cameraScaleKeyframes: Stage3ScaleKeyframe[];
   videoZoom: number;
   videoScaleY: number;
+  videoScaleX: number;
   videoBrightness: number;
   videoExposure: number;
   videoContrast: number;
@@ -123,6 +124,7 @@ function buildDefaultProps(templateId: string, authorName: string, authorHandle:
     cameraScaleKeyframes: [],
     videoZoom: 1,
     videoScaleY: 1,
+    videoScaleX: 1,
     videoBrightness: 1,
     videoExposure: 0,
     videoContrast: 1,

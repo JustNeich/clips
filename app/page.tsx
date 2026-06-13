@@ -2673,6 +2673,10 @@ export default function HomePage() {
             typeof draftOverrides?.videoScaleY === "number" && Number.isFinite(draftOverrides.videoScaleY)
               ? draftOverrides.videoScaleY
               : stage3RenderPlan.videoScaleY,
+          videoScaleX:
+            typeof draftOverrides?.videoScaleX === "number" && Number.isFinite(draftOverrides.videoScaleX)
+              ? draftOverrides.videoScaleX
+              : stage3RenderPlan.videoScaleX,
           videoBrightness:
             typeof draftOverrides?.videoBrightness === "number" &&
             Number.isFinite(draftOverrides.videoBrightness)
@@ -7548,6 +7552,7 @@ export default function HomePage() {
           mirrorEnabled={stage3RenderPlan.mirrorEnabled}
           videoZoom={stage3RenderPlan.videoZoom}
           videoScaleY={stage3RenderPlan.videoScaleY}
+          videoScaleX={stage3RenderPlan.videoScaleX}
           videoBrightness={stage3RenderPlan.videoBrightness}
           videoExposure={stage3RenderPlan.videoExposure}
           videoContrast={stage3RenderPlan.videoContrast}
@@ -7882,6 +7887,17 @@ export default function HomePage() {
                 {
                   ...prev,
                   videoScaleY: value
+                },
+                fallbackRenderPlan()
+              )
+            )
+          }
+          onVideoScaleXChange={(value) =>
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  videoScaleX: value
                 },
                 fallbackRenderPlan()
               )
