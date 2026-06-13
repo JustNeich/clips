@@ -6,6 +6,7 @@ import {
   createOrGetChatBySource,
   deleteChannelById,
   getChannelById,
+  getChatById,
   updateChannelById,
   type Channel
 } from "../../../../lib/chat-history";
@@ -27,7 +28,12 @@ import {
   listChannelPublications
 } from "../../../../lib/publication-store";
 import { requireRuntimeTool } from "../../../../lib/runtime-capabilities";
-import { listManagedTemplateSummaries } from "../../../../lib/managed-template-store";
+import {
+  createManagedTemplate,
+  listManagedTemplateSummaries,
+  readManagedTemplate,
+  updateManagedTemplate
+} from "../../../../lib/managed-template-store";
 import { ensureCodexLoggedIn } from "../../../../lib/codex-runner";
 import { buildStage2RunChannelSnapshot } from "../../../../lib/stage2-run-channel-snapshot";
 import { buildStage2RunRequestSnapshot } from "../../../../lib/stage2-run-request";
@@ -69,6 +75,11 @@ import {
 import { runCopscopesDailyPool } from "../../../../lib/copscopes-daily-runner";
 import { getFlowObservabilityDetail, listFlowObservability } from "../../../../lib/flow-observability";
 import type { McpMachineCredentialScope } from "../../../../lib/mcp-machine-credential-store";
+import { resolveStage3Execution } from "../../../../lib/stage3-execution";
+import { enqueueAndScheduleStage3Job } from "../../../../lib/stage3-job-runtime";
+import { buildStage3JobEnvelope } from "../../../../lib/stage3-job-http";
+import { buildStage3RenderRequestDedupeKey } from "../../../../lib/stage3-render-request";
+import type { Stage3RenderRequestBody } from "../../../../lib/stage3-render-service";
 
 export const runtime = "nodejs";
 
@@ -88,6 +99,10 @@ const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
   clips_owner_update_channel: "entity:write",
   clips_owner_delete_channel: "entity:write",
   clips_owner_list_templates: "flow:read",
+  clips_owner_create_template: "entity:write",
+  clips_owner_get_template: "flow:read",
+  clips_owner_update_template: "entity:write",
+  clips_owner_render_video: "pipeline:run",
   clips_owner_list_members: "flow:read",
   clips_owner_list_channel_access: "flow:read",
   clips_owner_set_channel_access: "entity:write",
@@ -406,6 +421,55 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     return { templates: await listManagedTemplateSummaries(auth.workspace.id) };
   }
 
+  if (tool === "clips_owner_create_template") {
+    const template = await createManagedTemplate(input, {
+      workspaceId: auth.workspace.id,
+      creatorUserId: auth.user.id,
+      creatorDisplayName: auth.user.displayName
+    });
+    auditControl({
+      auth,
+      action: "owner_control.template.created",
+      entityType: "managed_template",
+      entityId: template.id,
+      status: "created",
+      payload: { name: template.name, layoutFamily: template.layoutFamily }
+    });
+    return { template };
+  }
+
+  if (tool === "clips_owner_get_template") {
+    const templateId = resolveString(input.templateId);
+    if (!templateId) {
+      throw new Response(JSON.stringify({ error: "templateId is required." }), { status: 400 });
+    }
+    const template = await readManagedTemplate(templateId, { workspaceId: auth.workspace.id });
+    if (!template) {
+      throw new Response(JSON.stringify({ error: "Template not found." }), { status: 404 });
+    }
+    return { template };
+  }
+
+  if (tool === "clips_owner_update_template") {
+    const templateId = resolveString(input.templateId);
+    if (!templateId) {
+      throw new Response(JSON.stringify({ error: "templateId is required." }), { status: 400 });
+    }
+    const template = await updateManagedTemplate(templateId, input, { workspaceId: auth.workspace.id });
+    if (!template) {
+      throw new Response(JSON.stringify({ error: "Template not found." }), { status: 404 });
+    }
+    auditControl({
+      auth,
+      action: "owner_control.template.updated",
+      entityType: "managed_template",
+      entityId: template.id,
+      status: "succeeded",
+      payload: { name: template.name, layoutFamily: template.layoutFamily }
+    });
+    return { template };
+  }
+
   if (tool === "clips_owner_list_members") {
     return { members: listWorkspaceMembers(auth.workspace.id) };
   }
@@ -623,6 +687,67 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     };
   }
 
+  if (tool === "clips_owner_render_video") {
+    const channel = await requireChannel(auth.workspace.id, input);
+    const chatId = resolveString(input.chatId);
+    if (!chatId) {
+      throw new Response(JSON.stringify({ error: "chatId is required." }), { status: 400 });
+    }
+    const chat = await getChatById(chatId);
+    if (!chat || chat.workspaceId !== auth.workspace.id) {
+      throw new Response(JSON.stringify({ error: "Chat not found." }), { status: 404 });
+    }
+    if (chat.channelId !== channel.id) {
+      throw new Response(JSON.stringify({ error: "Chat does not belong to the channel." }), { status: 400 });
+    }
+    const sourceUrl = normalizeSupportedUrl(chat.url);
+    if (!isSupportedUrl(sourceUrl)) {
+      throw new Response(JSON.stringify({ error: SUPPORTED_SOURCE_ERROR_MESSAGE }), { status: 400 });
+    }
+    const templateId = resolveString(input.templateId);
+    const normalizedBody = {
+      channelId: channel.id,
+      chatId: chat.id,
+      sourceUrl,
+      workspaceId: auth.workspace.id,
+      publishAfterRender: resolveBoolean(input.publishAfterRender),
+      ...(templateId ? { templateId } : {})
+    } satisfies Stage3RenderRequestBody;
+    const executionTarget = resolveStage3Execution(auth.workspace.stage3ExecutionTarget).resolvedTarget;
+    const job = enqueueAndScheduleStage3Job({
+      workspaceId: auth.workspace.id,
+      userId: auth.user.id,
+      kind: "render",
+      executionTarget,
+      dedupeKey: buildStage3RenderRequestDedupeKey(normalizedBody, {
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id
+      }),
+      payloadJson: JSON.stringify(normalizedBody),
+      reuseCompleted: false
+    });
+    auditControl({
+      auth,
+      action: "owner_control.render.queued",
+      entityType: "stage3_job",
+      entityId: job.id,
+      channelId: channel.id,
+      chatId: chat.id,
+      status: job.status,
+      payload: {
+        executionTarget,
+        publishAfterRender: normalizedBody.publishAfterRender,
+        templateId: templateId ?? null
+      }
+    });
+    return {
+      ...buildStage3JobEnvelope(job, job.artifact ? `/api/stage3/render/jobs/${job.id}?download=1` : null),
+      channel: summarizeChannel(channel),
+      pollUrl: `/api/stage3/render/jobs/${job.id}`,
+      downloadUrl: `/api/admin/render-exports/${job.id}`
+    };
+  }
+
   if (tool === "clips_owner_run_copscopes_daily_pool") {
     return runOwnerDailyPool(auth, input);
   }
@@ -790,7 +915,11 @@ export async function POST(request: Request): Promise<Response> {
     }
     const auth = await requireOwnerOrMcpMachineScope(request, requiredScope);
     const result = await handleOwnerTool(auth, request, tool, input);
-    return Response.json(result, { status: tool === "clips_owner_run_video_pipeline" ? 202 : 200 });
+    const accepted =
+      tool === "clips_owner_run_video_pipeline" ||
+      (tool === "clips_owner_render_video" &&
+        (result as { job?: { status?: string } }).job?.status !== "completed");
+    return Response.json(result, { status: accepted ? 202 : 200 });
   } catch (error) {
     if (error instanceof Response) {
       return error;

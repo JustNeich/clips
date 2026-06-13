@@ -34,7 +34,11 @@ import { parseStage2WorkerProfileId } from "./stage2-worker-profile";
 import { listLatestPublicationSummariesByChatIds } from "./publication-store";
 import { listLatestActiveStage2RunsForChats } from "./stage2-progress-store";
 import { listLatestActiveSourceJobsForChats } from "./source-job-store";
-import { getWorkspaceDefaultTemplateId, readManagedTemplate } from "./managed-template-store";
+import {
+  getWorkspaceDefaultTemplateId,
+  readManagedTemplate,
+  resolveManagedTemplate
+} from "./managed-template-store";
 import { DEFAULT_STAGE3_CLIP_DURATION_SEC, normalizeStage3ClipDurationSec } from "./stage3-duration";
 import { getWorkspace, getWorkspaceStage2HardConstraints, type AppRole } from "./team-store";
 import { normalizeSupportedUrl } from "./ytdlp";
@@ -137,6 +141,25 @@ function sanitizeName(value: string | null | undefined, fallback: string): strin
   return normalized || fallback;
 }
 
+async function resolvePersistedChannelTemplateRowId(
+  workspaceId: string,
+  candidate: string
+): Promise<string | null> {
+  const managed = await readManagedTemplate(candidate, { workspaceId });
+  if (managed) {
+    return managed.id;
+  }
+  // A built-in layout family id (e.g. "american-news-v1") is not a managed row, so
+  // readManagedTemplate misses it. resolveManagedTemplate materializes the family into
+  // a workspace-scoped preset template. It also defaults unknown ids to the workspace
+  // default, so only accept the result when the candidate really is that layout family.
+  const resolved = await resolveManagedTemplate(candidate, { workspaceId });
+  if (resolved && resolved.layoutFamily === candidate) {
+    return resolved.id;
+  }
+  return null;
+}
+
 async function resolvePersistedChannelTemplateId(
   workspaceId: string,
   value: string | null | undefined,
@@ -144,17 +167,17 @@ async function resolvePersistedChannelTemplateId(
 ): Promise<string> {
   const candidate = typeof value === "string" && value.trim() ? value.trim() : "";
   if (candidate) {
-    const resolved = await readManagedTemplate(candidate, { workspaceId });
+    const resolved = await resolvePersistedChannelTemplateRowId(workspaceId, candidate);
     if (resolved) {
-      return resolved.id;
+      return resolved;
     }
   }
 
   const fallbackCandidate = fallback?.trim();
   if (fallbackCandidate) {
-    const resolvedFallback = await readManagedTemplate(fallbackCandidate, { workspaceId });
+    const resolvedFallback = await resolvePersistedChannelTemplateRowId(workspaceId, fallbackCandidate);
     if (resolvedFallback) {
-      return resolvedFallback.id;
+      return resolvedFallback;
     }
     return fallbackCandidate;
   }

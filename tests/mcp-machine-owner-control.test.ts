@@ -18,7 +18,7 @@ import {
   createRenderExport,
   getChannelPublicationById
 } from "../lib/publication-store";
-import { enqueueStage3Job } from "../lib/stage3-job-store";
+import { enqueueStage3Job, getStage3Job } from "../lib/stage3-job-store";
 import { bootstrapOwner } from "../lib/team-store";
 
 async function withIsolatedAppData<T>(run: (appDataDir: string) => Promise<T>): Promise<T> {
@@ -155,6 +155,84 @@ test("machine credential can read flows and owner status while short flow token 
       input: {}
     });
     assert.equal(rejected.status, 401);
+  });
+});
+
+test("owner control creates, reads, and updates managed templates", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner } = await seedOwnerControl(appDataDir);
+    const entityWriteMachine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "entity-write-agent",
+      scopes: ["entity:write", "flow:read"]
+    });
+
+    const createResponse = await postOwnerControl(entityWriteMachine.secret, {
+      tool: "clips_owner_create_template",
+      input: { name: "Agent Template", description: "Created by agent" }
+    });
+    assert.equal(createResponse.status, 200);
+    const created = (await createResponse.json()) as {
+      template: { id: string; name: string; description: string };
+    };
+    assert.equal(created.template.name, "Agent Template");
+    assert.ok(created.template.id);
+
+    const getResponse = await postOwnerControl(entityWriteMachine.secret, {
+      tool: "clips_owner_get_template",
+      input: { templateId: created.template.id }
+    });
+    assert.equal(getResponse.status, 200);
+    const fetched = (await getResponse.json()) as { template: { id: string; name: string } };
+    assert.equal(fetched.template.id, created.template.id);
+    assert.equal(fetched.template.name, "Agent Template");
+
+    const updateResponse = await postOwnerControl(entityWriteMachine.secret, {
+      tool: "clips_owner_update_template",
+      input: { templateId: created.template.id, name: "Agent Template v2" }
+    });
+    assert.equal(updateResponse.status, 200);
+    const updated = (await updateResponse.json()) as { template: { id: string; name: string } };
+    assert.equal(updated.template.id, created.template.id);
+    assert.equal(updated.template.name, "Agent Template v2");
+
+    const missing = await postOwnerControl(entityWriteMachine.secret, {
+      tool: "clips_owner_get_template",
+      input: { templateId: "does-not-exist" }
+    });
+    assert.equal(missing.status, 404);
+  });
+});
+
+test("owner control enqueues a Stage 3 render job", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "render-agent"
+    });
+
+    const renderResponse = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_render_video",
+      input: { channelId: channel.id, chatId: chat.id }
+    });
+    // No Stage 3 worker runs in the test harness, so the job stays queued (202).
+    assert.equal(renderResponse.status, 202);
+    const rendered = (await renderResponse.json()) as {
+      job: { id: string; kind: string; status: string };
+      pollUrl: string;
+      downloadUrl: string;
+    };
+    assert.equal(rendered.job.kind, "render");
+    assert.ok(rendered.job.id);
+    assert.equal(rendered.downloadUrl, `/api/admin/render-exports/${rendered.job.id}`);
+    assert.equal(rendered.pollUrl, `/api/stage3/render/jobs/${rendered.job.id}`);
+
+    const enqueued = getStage3Job(rendered.job.id);
+    assert.ok(enqueued);
+    assert.equal(enqueued?.kind, "render");
   });
 });
 

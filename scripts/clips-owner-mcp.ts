@@ -157,6 +157,68 @@ server.registerTool(
   async () => ownerControl("clips_owner_list_templates")
 );
 
+const templateBodySchema = {
+  name: z.string().optional(),
+  description: z.string().optional(),
+  layoutFamily: z.string().optional(),
+  baseTemplateId: z.string().optional(),
+  content: z.record(z.string(), z.unknown()).optional(),
+  templateConfig: z.record(z.string(), z.unknown()).optional(),
+  shadowLayers: z.array(z.record(z.string(), z.unknown())).optional()
+};
+
+server.registerTool(
+  "clips_owner_create_template",
+  {
+    title: "Create Clips template",
+    description:
+      "Create a managed workspace template from a layout family with optional content, template config, and shadow layers.",
+    inputSchema: z.object(templateBodySchema)
+  },
+  async (input) => ownerControl("clips_owner_create_template", input)
+);
+
+server.registerTool(
+  "clips_owner_get_template",
+  {
+    title: "Get Clips template",
+    description: "Get one managed workspace template by id, including content and template config.",
+    inputSchema: z.object({
+      templateId: z.string()
+    })
+  },
+  async (input) => ownerControl("clips_owner_get_template", input)
+);
+
+server.registerTool(
+  "clips_owner_update_template",
+  {
+    title: "Update Clips template",
+    description: "Update a managed workspace template's name, description, content, or template config.",
+    inputSchema: z.object({
+      templateId: z.string(),
+      ...templateBodySchema
+    })
+  },
+  async (input) => ownerControl("clips_owner_update_template", input)
+);
+
+server.registerTool(
+  "clips_owner_render_video",
+  {
+    title: "Render Clips video",
+    description:
+      "Enqueue a Stage 3 render for a chat on a channel. Returns the render job, a poll url, and an authenticated download url.",
+    inputSchema: z.object({
+      ...channelRefSchema,
+      chatId: z.string(),
+      templateId: z.string().optional(),
+      publishAfterRender: z.boolean().optional()
+    })
+  },
+  async (input) => ownerControl("clips_owner_render_video", input)
+);
+
 server.registerTool(
   "clips_owner_list_members",
   {
