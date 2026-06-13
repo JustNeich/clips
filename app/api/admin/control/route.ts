@@ -80,6 +80,7 @@ import { enqueueAndScheduleStage3Job } from "../../../../lib/stage3-job-runtime"
 import { buildStage3JobEnvelope } from "../../../../lib/stage3-job-http";
 import { buildStage3RenderRequestDedupeKey } from "../../../../lib/stage3-render-request";
 import type { Stage3RenderRequestBody } from "../../../../lib/stage3-render-service";
+import { resolveSnapshotManagedTemplateStateForEnqueue } from "../../../../lib/managed-template-runtime";
 
 export const runtime = "nodejs";
 
@@ -705,13 +706,22 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       throw new Response(JSON.stringify({ error: SUPPORTED_SOURCE_ERROR_MESSAGE }), { status: 400 });
     }
     const templateId = resolveString(input.templateId);
+    // Resolve managed (workspace-scoped, non-built-in) templates on the CLOUD at
+    // enqueue time and embed the resolved state in the render snapshot, exactly
+    // like the interactive app/page.tsx path. The Stage 3 worker keeps its local
+    // workspace_templates table empty, so without this it FK-fails at render
+    // stage "template_snapshot". Built-in ids resolve to null and are unchanged.
+    const managedTemplateState = await resolveSnapshotManagedTemplateStateForEnqueue(templateId, {
+      workspaceId: auth.workspace.id
+    });
     const normalizedBody = {
       channelId: channel.id,
       chatId: chat.id,
       sourceUrl,
       workspaceId: auth.workspace.id,
       publishAfterRender: resolveBoolean(input.publishAfterRender),
-      ...(templateId ? { templateId } : {})
+      ...(templateId ? { templateId } : {}),
+      ...(managedTemplateState ? { snapshot: { managedTemplateState } } : {})
     } satisfies Stage3RenderRequestBody;
     const executionTarget = resolveStage3Execution(auth.workspace.stage3ExecutionTarget).resolvedTarget;
     const job = enqueueAndScheduleStage3Job({

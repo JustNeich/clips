@@ -236,6 +236,47 @@ test("owner control enqueues a Stage 3 render job", async () => {
   });
 });
 
+test("owner control embeds managedTemplateState in the render snapshot for a managed template", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "render-managed-agent",
+      scopes: ["entity:write", "flow:read", "pipeline:run"]
+    });
+
+    const createResponse = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_create_template",
+      input: { name: "Invention Template", description: "managed" }
+    });
+    assert.equal(createResponse.status, 200);
+    const created = (await createResponse.json()) as { template: { id: string } };
+    assert.ok(created.template.id);
+
+    const renderResponse = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_render_video",
+      input: { channelId: channel.id, chatId: chat.id, templateId: created.template.id }
+    });
+    assert.equal(renderResponse.status, 202);
+    const rendered = (await renderResponse.json()) as { job: { id: string } };
+
+    // The managed template must be resolved on the cloud at enqueue time and
+    // embedded in the render snapshot so the Stage 3 worker resolves it from the
+    // snapshot instead of the intentionally-empty workspace_templates table
+    // (the FK fix). managedId must equal the requested templateId for the
+    // worker's snapshot-first branch to fire.
+    const enqueued = getStage3Job(rendered.job.id);
+    assert.ok(enqueued);
+    const payload = JSON.parse(enqueued?.payloadJson ?? "{}") as {
+      templateId?: string;
+      snapshot?: { managedTemplateState?: { managedId?: string } };
+    };
+    assert.equal(payload.templateId, created.template.id);
+    assert.equal(payload.snapshot?.managedTemplateState?.managedId, created.template.id);
+  });
+});
+
 test("owner control enforces machine scopes and destructive intent", async () => {
   await withIsolatedAppData(async (appDataDir) => {
     const { owner, channel, publication } = await seedOwnerControl(appDataDir);

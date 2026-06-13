@@ -12,6 +12,7 @@ import type { ManagedTemplate, ManagedTemplateShadowLayer } from "./managed-temp
 import { assertServerRuntime } from "./server-runtime-guard";
 import type { Stage3SnapshotManagedTemplateState } from "../app/components/types";
 import { createEmptyTemplateCaptionHighlights } from "./template-highlights";
+import { isBuiltInStage3TemplateId } from "./stage3-snapshot-managed-template";
 import {
   resolveManagedTemplate,
   resolveManagedTemplateSync
@@ -213,6 +214,54 @@ export function resolveManagedTemplateRuntimeSync(
     return toResolvedBuiltInRuntime(builtInTemplateId);
   }
   return toResolvedRuntime(resolveManagedTemplateSync(templateId, options));
+}
+
+/**
+ * Resolve a managed (workspace-scoped, non-built-in) template id into the
+ * portable {@link Stage3SnapshotManagedTemplateState} embedded in a Stage 3
+ * render snapshot at ENQUEUE time on the cloud.
+ *
+ * The Stage 3 render worker keeps its local workspaces / workspace_templates
+ * tables intentionally empty. When a render snapshot already carries
+ * managedTemplateState whose managedId matches renderPlan.templateId, the worker
+ * resolves the template entirely from the snapshot
+ * (resolveManagedTemplateRuntimeSync -> toResolvedRuntimeFromSnapshot) and never
+ * touches the DB. When it is absent for a managed id, the worker falls to
+ * resolveManagedTemplateSync -> ensureWorkspaceDefaultTemplate ->
+ * INSERT INTO workspace_templates, which FK-fails against the empty workspaces
+ * table ("FOREIGN KEY constraint failed" at render stage "template_snapshot").
+ *
+ * Built-in template ids resolve on the worker without any DB write, so this
+ * helper returns null for them and the built-in path is left untouched. It also
+ * returns null when the managed template cannot be resolved to the exact
+ * requested id (so we never silently swap a managed id for a default).
+ */
+export async function resolveSnapshotManagedTemplateStateForEnqueue(
+  templateId: string | null | undefined,
+  options?: { workspaceId?: string | null }
+): Promise<Stage3SnapshotManagedTemplateState | null> {
+  const candidate = typeof templateId === "string" ? templateId.trim() : "";
+  if (!candidate) {
+    return null;
+  }
+  // Built-in / layout-family ids resolve on the worker with no DB write.
+  if (isBuiltInStage3TemplateId(candidate)) {
+    return null;
+  }
+  const resolved = await resolveManagedTemplate(candidate, options);
+  // Only attach when the cloud actually resolved the *requested* managed id.
+  // resolveManagedTemplate falls back to a workspace default when the id is
+  // missing; attaching that would lie about which template renders, and the
+  // worker would reject the mismatched snapshot anyway (managedId !== templateId).
+  if (!resolved || resolved.id !== candidate) {
+    return null;
+  }
+  return {
+    managedId: candidate,
+    baseTemplateId: resolved.baseTemplateId,
+    templateConfig: cloneStage3TemplateConfig(resolved.templateConfig),
+    updatedAt: resolved.updatedAt ?? new Date().toISOString()
+  };
 }
 
 export function computeManagedTemplateTextFit(input: {

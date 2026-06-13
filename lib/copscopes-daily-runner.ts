@@ -34,6 +34,7 @@ import { resolveStage3Execution } from "./stage3-execution";
 import { enqueueAndScheduleStage3Job } from "./stage3-job-runtime";
 import { buildStage3RenderRequestDedupeKey } from "./stage3-render-request";
 import { normalizeRenderPlan, type Stage3RenderRequestBody } from "./stage3-render-service";
+import { resolveSnapshotManagedTemplateStateForEnqueue } from "./managed-template-runtime";
 import { ensureStage3SourceCached } from "./stage3-server-control";
 import { listFutureActivePublicationsForChannel } from "./publication-store";
 import { findCopscopesDuplicateStory } from "./copscopes-story-dedupe";
@@ -601,6 +602,21 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
     authorName: channel.name,
     authorHandle: `@${channel.username}`
   });
+
+  // Ensure the render snapshot carries a resolved managedTemplateState for
+  // managed (non-built-in) templates so the Stage 3 worker never touches its
+  // intentionally-empty workspace_templates table (FK fail at render stage
+  // "template_snapshot"). The Stage 3 session snapshot usually already carries
+  // this, but harden it for any path where it is missing. Built-in ids -> null.
+  if (!renderSnapshot.managedTemplateState) {
+    const resolvedManagedTemplateState = await resolveSnapshotManagedTemplateStateForEnqueue(
+      renderSnapshot.renderPlan.templateId,
+      { workspaceId: input.workspaceId }
+    );
+    if (resolvedManagedTemplateState) {
+      renderSnapshot.managedTemplateState = resolvedManagedTemplateState;
+    }
+  }
 
   const gatePreview = validateCopscopesRenderBodyForPublication({
     topText: renderSnapshot.topText,
