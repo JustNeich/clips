@@ -367,6 +367,21 @@ function extractStage2ProviderModel(run: Stage2RunLite | null): { provider: stri
   return { provider, model: model?.trim() || null };
 }
 
+function stageProjectionPriority(stage: FlowObservabilityStage): number {
+  switch (stage) {
+    case "publishing":
+      return 4;
+    case "stage3":
+      return 3;
+    case "stage2":
+      return 2;
+    case "source":
+      return 1;
+    case "new":
+      return 0;
+  }
+}
+
 function chooseLatestStage(input: {
   chat: ChatFlowRow;
   source: SourceJobLite | null;
@@ -379,14 +394,7 @@ function chooseLatestStage(input: {
     status: FlowObservabilityStatus;
     updatedAt: string;
     lastError: string | null;
-  }> = [
-    {
-      stage: "new",
-      status: "new",
-      updatedAt: input.chat.chat_updated_at,
-      lastError: null
-    }
-  ];
+  }> = [];
   if (input.source) {
     candidates.push({
       stage: "source",
@@ -419,7 +427,19 @@ function chooseLatestStage(input: {
       lastError: input.publication.last_error ?? null
     });
   }
-  return candidates.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]!;
+  if (!candidates.length) {
+    return {
+      stage: "new",
+      status: "new",
+      updatedAt: input.chat.chat_updated_at,
+      lastError: null
+    };
+  }
+  return candidates.sort(
+    (left, right) =>
+      right.updatedAt.localeCompare(left.updatedAt) ||
+      stageProjectionPriority(right.stage) - stageProjectionPriority(left.stage)
+  )[0]!;
 }
 
 function matchesFilters(flow: FlowObservabilitySummary, filters: FlowObservabilityFilters): boolean {
@@ -721,6 +741,56 @@ function findSearchMatchedChatIds(workspaceId: string, search: string, limit: nu
   return [...chatIds].slice(0, limit);
 }
 
+function listStage3RowsForChats(workspaceId: string, chatIds: string[]): Stage3JobLite[] {
+  if (!chatIds.length) {
+    return [];
+  }
+  const db = getDb();
+  const placeholders = chatIds.map(() => "?").join(", ");
+  const likeConditions = chatIds.map(() => "payload_json LIKE ?").join(" OR ");
+  return db
+    .prepare(
+      `SELECT
+          id,
+          user_id,
+          status,
+          payload_json,
+          error_code,
+          error_message,
+          kind,
+          execution_target,
+          assigned_worker_id,
+          lease_expires_at,
+          heartbeat_at,
+          dedupe_key,
+          recoverable,
+          attempts,
+          attempt_limit,
+          attempt_group,
+          created_at,
+          updated_at,
+          started_at,
+          completed_at,
+          CASE
+            WHEN payload_json IS NOT NULL AND json_valid(payload_json)
+              THEN json_extract(payload_json, '$.chatId')
+            ELSE NULL
+          END AS payload_chat_id
+        FROM stage3_jobs
+        WHERE workspace_id = ?
+          AND (
+            CASE
+              WHEN payload_json IS NOT NULL AND json_valid(payload_json)
+                THEN json_extract(payload_json, '$.chatId')
+              ELSE NULL
+            END IN (${placeholders})
+            OR ${likeConditions}
+          )
+        ORDER BY updated_at DESC, created_at DESC`
+    )
+    .all(workspaceId, ...chatIds, ...chatIds.map((chatId) => `%${chatId}%`)) as Stage3JobLite[];
+}
+
 export function listFlowObservability(input: {
   workspaceId: string;
   filters?: FlowObservabilityFilters;
@@ -863,7 +933,9 @@ export function listFlowObservability(input: {
             .all(input.workspaceId, ...chatIds) as PublicationLite[]
         )
       : new Map<string, PublicationLite>();
-  const stage3Rows = db
+  const stage3Rows = listStage3RowsForChats(input.workspaceId, chatIds);
+  const stage3ByChat = latestStage3ByChat(stage3Rows);
+  const stage3RuntimeRows = db
     .prepare(
       `SELECT
           id,
@@ -896,7 +968,6 @@ export function listFlowObservability(input: {
         LIMIT 2000`
     )
     .all(input.workspaceId) as Stage3JobLite[];
-  const stage3ByChat = latestStage3ByChat(stage3Rows);
 
   const auditEvents = listFlowAuditEvents({
     workspaceId: input.workspaceId,
@@ -922,7 +993,7 @@ export function listFlowObservability(input: {
   return {
     flows: redactForFlowExport(flows),
     metrics: computeMetrics(flows, auditEvents, filters),
-    stage3Runtime: computeStage3RuntimeMetrics(stage3Rows, auditEvents, sweptLocalJobs),
+    stage3Runtime: computeStage3RuntimeMetrics(stage3RuntimeRows, auditEvents, sweptLocalJobs),
     auditEvents: redactForFlowExport(auditEvents)
   };
 }

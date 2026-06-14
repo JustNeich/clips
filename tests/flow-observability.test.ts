@@ -294,6 +294,91 @@ test("flow list aggregates jobs, runs, publication state, and model metadata", a
   });
 });
 
+test("flow detail projects completed Stage 3 render even when chat activity and job history are newer", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Flow Stage3 Projection",
+      email: "projection-owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const channel = await createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Wisdom Stories",
+      username: "wisdom-stories"
+    });
+    const chat = await createOrGetChatByUrl("https://www.instagram.com/reel/DI-_kijx-rj/", channel.id);
+    const artifactPath = path.join(appDataDir, "VIDEO_BY_ADVICEFROMCEO_S.mp4");
+    await writeFile(artifactPath, "video");
+    const stage3 = enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "render",
+      payloadJson: JSON.stringify({
+        chatId: chat.id,
+        channelId: channel.id,
+        sourceUrl: chat.url
+      })
+    });
+    completeStage3Job(stage3.id, {
+      resultJson: JSON.stringify({ ok: true }),
+      artifact: {
+        fileName: "VIDEO_BY_ADVICEFROMCEO_S.mp4",
+        filePath: artifactPath,
+        mimeType: "video/mp4",
+        sizeBytes: 11_748_558
+      }
+    });
+
+    const db = getDb();
+    const completedAt = "2001-01-02T03:04:05.000Z";
+    db.prepare("UPDATE stage3_jobs SET created_at = ?, updated_at = ?, completed_at = ? WHERE id = ?").run(
+      completedAt,
+      completedAt,
+      completedAt,
+      stage3.id
+    );
+    db.prepare("UPDATE chat_threads SET updated_at = ? WHERE id = ?").run("2099-01-02T03:04:05.000Z", chat.id);
+
+    const insertNoise = db.prepare(
+      `INSERT INTO stage3_jobs
+        (id, workspace_id, user_id, kind, status, execution_target, dedupe_key, payload_json, result_json, error_code, error_message, recoverable, attempts, attempt_limit, attempt_group, created_at, updated_at, started_at, completed_at)
+        VALUES (?, ?, ?, 'render', 'completed', 'local', NULL, ?, '{}', NULL, NULL, 1, 1, 3, NULL, ?, ?, ?, ?)`
+    );
+    for (let index = 0; index < 2005; index += 1) {
+      const stamp = `2099-01-01T00:${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}.000Z`;
+      insertNoise.run(
+        `noise-stage3-${index}`,
+        owner.workspace.id,
+        owner.user.id,
+        JSON.stringify({
+          chatId: `noise-chat-${index}`,
+          channelId: channel.id,
+          sourceUrl: `https://example.com/noise-${index}`
+        }),
+        stamp,
+        stamp,
+        stamp,
+        stamp
+      );
+    }
+
+    const detail = await getFlowObservabilityDetail({
+      workspace: owner.workspace,
+      userId: owner.user.id,
+      chatId: chat.id
+    });
+
+    assert.ok(detail);
+    assert.equal(detail?.flow.latestStage, "stage3");
+    assert.equal(detail?.flow.latestStatus, "completed");
+    assert.equal(detail?.flow.stage3JobId, stage3.id);
+    assert.equal(detail?.stage3Jobs[0]?.id, stage3.id);
+    assert.equal(detail?.stage3Jobs[0]?.artifact?.fileName, "VIDEO_BY_ADVICEFROMCEO_S.mp4");
+  });
+});
+
 test("flow list exposes Stage 3 backlog and worker-unavailable diagnostics", async () => {
   await withIsolatedAppData(async (appDataDir) => {
     const { owner, channel, chat } = await seedFlow(appDataDir);

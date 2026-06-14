@@ -6,7 +6,7 @@ import test from "node:test";
 
 import { GET as getAdminFlows } from "../app/api/admin/flows/route";
 import { POST as ownerControlRoute } from "../app/api/admin/control/route";
-import { createChannel, createOrGetChatByUrl } from "../lib/chat-history";
+import { appendChatEvent, createChannel, createOrGetChatByUrl } from "../lib/chat-history";
 import { buildPublicationSlotCandidateFromDateAndIndex, DEFAULT_CHANNEL_PUBLISH_SETTINGS } from "../lib/channel-publishing";
 import {
   authenticateMcpMachineCredentialForScope,
@@ -106,6 +106,38 @@ async function seedOwnerControl(appDataDir: string) {
     createdByUserId: owner.user.id
   });
   return { owner, channel, chat, publication };
+}
+
+async function appendStage2CaptionEvent(chatId: string): Promise<void> {
+  await appendChatEvent(chatId, {
+    role: "assistant",
+    type: "stage2",
+    text: "Stage 2 ready",
+    data: {
+      source: {
+        url: "https://youtube.com/watch?v=owner-mcp-1",
+        title: "Owner MCP source",
+        totalComments: 0,
+        topComments: [],
+        allComments: [],
+        commentsUsedForPrompt: 0
+      },
+      output: {
+        captionOptions: [
+          {
+            option: 1,
+            top: "SERVER SNAPSHOT TOP",
+            bottom: "Server-side Stage 2 caption text must reach the MCP render snapshot.",
+            highlights: { top: [], bottom: [] }
+          }
+        ],
+        finalPick: { option: 1 },
+        titleOptions: [{ option: 1, title: "Owner MCP video" }],
+        sourceOverlayOptions: [{ option: 1, text: "source: owner mcp" }],
+        sourceOverlayFinalPick: { option: 1 }
+      }
+    }
+  });
 }
 
 function postOwnerControl(token: string, body: unknown): Promise<Response> {
@@ -274,6 +306,58 @@ test("owner control embeds managedTemplateState in the render snapshot for a man
     };
     assert.equal(payload.templateId, created.template.id);
     assert.equal(payload.snapshot?.managedTemplateState?.managedId, created.template.id);
+  });
+});
+
+test("owner control render_video builds a full caption snapshot with upright source defaults", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    await appendStage2CaptionEvent(chat.id);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "render-snapshot-agent",
+      scopes: ["flow:read", "pipeline:run"]
+    });
+
+    const renderResponse = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_render_video",
+      input: { channelId: channel.id, chatId: chat.id, sourceDurationSec: 53.6 }
+    });
+    assert.equal(renderResponse.status, 202);
+    const rendered = (await renderResponse.json()) as { job: { id: string } };
+    const enqueued = getStage3Job(rendered.job.id);
+    assert.ok(enqueued);
+    const payload = JSON.parse(enqueued?.payloadJson ?? "{}") as {
+      snapshot?: {
+        topText?: string;
+        bottomText?: string;
+        sourceOverlayText?: string;
+        templateSnapshot?: { snapshotHash?: string };
+        textFit?: { fitHash?: string };
+        managedTemplateState?: { managedId?: string };
+        renderPlan?: {
+          durationMode?: string;
+          mirrorEnabled?: boolean;
+          targetDurationSec?: number;
+          templateId?: string;
+        };
+      };
+    };
+
+    assert.equal(payload.snapshot?.topText, "SERVER SNAPSHOT TOP");
+    assert.equal(
+      payload.snapshot?.bottomText,
+      "Server-side Stage 2 caption text must reach the MCP render snapshot."
+    );
+    assert.equal(payload.snapshot?.sourceOverlayText, "source: owner mcp");
+    assert.equal(payload.snapshot?.renderPlan?.durationMode, "source_full");
+    assert.equal(payload.snapshot?.renderPlan?.targetDurationSec, 53.6);
+    assert.equal(payload.snapshot?.renderPlan?.mirrorEnabled, false);
+    assert.equal(payload.snapshot?.renderPlan?.templateId, channel.templateId);
+    assert.equal(payload.snapshot?.managedTemplateState?.managedId, channel.templateId);
+    assert.ok(payload.snapshot?.templateSnapshot?.snapshotHash);
+    assert.ok(payload.snapshot?.textFit?.fitHash);
   });
 });
 

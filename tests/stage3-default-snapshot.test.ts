@@ -186,6 +186,7 @@ test("built-in channel_default: captions populated, hashes present, worker fresh
   assert.equal(snapshot.renderPlan.durationMode, "channel_default");
   assert.equal(snapshot.renderPlan.targetDurationSec, 6);
   assert.equal(snapshot.renderPlan.authorName, "Wisdom Stories");
+  assert.equal(snapshot.renderPlan.mirrorEnabled, false);
 
   // Worker computes its OWN source duration (e.g. 53.6) even though the server
   // built at null; the hash must still match because hash inputs are content-only.
@@ -209,6 +210,7 @@ test("source_full honors a passed source duration (full-length render)", () => {
   assert.equal(snapshot.renderPlan.durationMode, "source_full");
   assert.equal(snapshot.clipDurationSec, 53.6);
   assert.equal(snapshot.sourceDurationSec, 53.6);
+  assert.equal(snapshot.renderPlan.mirrorEnabled, false);
 
   const { baseSnapshotHash } = reproduceWorkerTemplateSnapshot({
     snapshot,
