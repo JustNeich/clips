@@ -208,11 +208,12 @@ server.registerTool(
   {
     title: "Render Clips video",
     description:
-      "Enqueue a Stage 3 render for a chat on a channel. Returns the render job, a poll url, and an authenticated download url.",
+      "Enqueue a Stage 3 render for a chat on a channel. Returns the render job, a poll url, and an authenticated download url. Pass sourceDurationSec (seconds) to render the FULL source (e.g. a 53.6s talking-head) instead of the channel default clip length; omit it to use the channel's default duration.",
     inputSchema: z.object({
       ...channelRefSchema,
       chatId: z.string(),
       templateId: z.string().optional(),
+      sourceDurationSec: z.number().positive().optional(),
       publishAfterRender: z.boolean().optional()
     })
   },

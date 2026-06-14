@@ -81,6 +81,8 @@ import { buildStage3JobEnvelope } from "../../../../lib/stage3-job-http";
 import { buildStage3RenderRequestDedupeKey } from "../../../../lib/stage3-render-request";
 import type { Stage3RenderRequestBody } from "../../../../lib/stage3-render-service";
 import { resolveSnapshotManagedTemplateStateForEnqueue } from "../../../../lib/managed-template-runtime";
+import { findLatestStage2Event } from "../../../../lib/chat-workflow";
+import { buildDefaultStage3RenderSnapshot } from "../../../../lib/stage3-default-snapshot";
 
 export const runtime = "nodejs";
 
@@ -705,23 +707,67 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     if (!isSupportedUrl(sourceUrl)) {
       throw new Response(JSON.stringify({ error: SUPPORTED_SOURCE_ERROR_MESSAGE }), { status: 400 });
     }
-    const templateId = resolveString(input.templateId);
+    const requestedTemplateId = resolveString(input.templateId);
+    // The render target is the explicitly-requested template id when the caller
+    // supplies one, otherwise the channel's own template (UI parity: the React
+    // app always renders the active channel's template). Resolving it here — and
+    // resolving managedTemplateState against the SAME id below — is load-bearing:
+    // the server snapshot embeds renderPlan.templateId = effectiveTemplateId, and
+    // the worker prefers snapshot.renderPlan.templateId. If we resolved managed
+    // state only from input.templateId (omitted on the natural MCP call), a
+    // managed-channel render would ship a managed renderPlan.templateId with NO
+    // embedded managedTemplateState and FK-fail at render stage "template_snapshot"
+    // — the exact bug the prior fix closed.
+    const effectiveTemplateId = requestedTemplateId ?? resolveString(channel.templateId);
     // Resolve managed (workspace-scoped, non-built-in) templates on the CLOUD at
     // enqueue time and embed the resolved state in the render snapshot, exactly
     // like the interactive app/page.tsx path. The Stage 3 worker keeps its local
     // workspace_templates table empty, so without this it FK-fails at render
     // stage "template_snapshot". Built-in ids resolve to null and are unchanged.
-    const managedTemplateState = await resolveSnapshotManagedTemplateStateForEnqueue(templateId, {
-      workspaceId: auth.workspace.id
-    });
+    const managedTemplateState = await resolveSnapshotManagedTemplateStateForEnqueue(
+      effectiveTemplateId,
+      {
+        workspaceId: auth.workspace.id
+      }
+    );
+    // The interactive React app assembles the FULL Stage 3 caption snapshot
+    // (text/highlights/renderPlan/templateSnapshot/textFit) before enqueuing.
+    // The MCP path has no React state, so without this it would render the
+    // template over footage with BLANK captions. When the caller did not supply
+    // its own snapshot, rebuild the same no-override snapshot server-side from
+    // the chat's latest Stage 2 result. Built-in / no-stage2 chats fall back to
+    // the prior sparse body (managedTemplateState only), unchanged.
+    const callerSnapshot =
+      input.snapshot && typeof input.snapshot === "object"
+        ? (input.snapshot as Stage3RenderRequestBody["snapshot"])
+        : null;
+    const stage2Event = callerSnapshot ? null : findLatestStage2Event(chat);
+    const defaultSnapshot =
+      stage2Event && stage2Event.payload
+        ? buildDefaultStage3RenderSnapshot({
+            stage2: stage2Event.payload,
+            channel,
+            templateId: effectiveTemplateId,
+            managedTemplateState,
+            sourceDurationSec: resolveNumber(input.sourceDurationSec) ?? null
+          })
+        : null;
+    const resolvedSnapshot =
+      callerSnapshot ??
+      defaultSnapshot ??
+      (managedTemplateState ? { managedTemplateState } : null);
     const normalizedBody = {
       channelId: channel.id,
       chatId: chat.id,
       sourceUrl,
       workspaceId: auth.workspace.id,
       publishAfterRender: resolveBoolean(input.publishAfterRender),
-      ...(templateId ? { templateId } : {}),
-      ...(managedTemplateState ? { snapshot: { managedTemplateState } } : {})
+      // Carry the effective template id (channel's own when none was requested)
+      // so the worker's body-level fallback agrees with the embedded snapshot's
+      // renderPlan.templateId, and the no-Stage-2 sparse path still names the
+      // managed template whose state we embedded above.
+      ...(effectiveTemplateId ? { templateId: effectiveTemplateId } : {}),
+      ...(resolvedSnapshot ? { snapshot: resolvedSnapshot } : {})
     } satisfies Stage3RenderRequestBody;
     const executionTarget = resolveStage3Execution(auth.workspace.stage3ExecutionTarget).resolvedTarget;
     const job = enqueueAndScheduleStage3Job({
@@ -747,7 +793,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       payload: {
         executionTarget,
         publishAfterRender: normalizedBody.publishAfterRender,
-        templateId: templateId ?? null
+        templateId: effectiveTemplateId ?? null
       }
     });
     return {
