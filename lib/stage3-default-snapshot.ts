@@ -73,7 +73,15 @@ function buildChannelRenderPlan(
       backgroundAssetMimeType: background?.mimeType ?? null,
       musicAssetId: channel.defaultMusicAssetId,
       musicAssetMimeType: music?.mimeType ?? null,
-      audioMode: channel.defaultMusicAssetId ? "source_plus_music" : "source_only"
+      audioMode: channel.defaultMusicAssetId ? "source_plus_music" : "source_only",
+      // ZoroKing/copscopes standard: never horizontally mirror the source. The
+      // product-wide default (`normalizeRenderPlan` falls back to `mirrorEnabled
+      // ?? true`) mirrors footage for anti-fingerprinting, but that reverses any
+      // baked donor captions/watermarks left-to-right — which is exactly the
+      // broken "flipped text" we saw on the first MCP render. The copscopes
+      // publication quality gate already REQUIRES `mirrorEnabled === false`; the
+      // MCP default snapshot must agree so the Stage 3 worker draws upright text.
+      mirrorEnabled: false
     },
     null,
     resolvedTemplateId,
