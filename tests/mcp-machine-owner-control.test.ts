@@ -361,6 +361,88 @@ test("owner control render_video builds a full caption snapshot with upright sou
   });
 });
 
+test("owner control render_video preserves caller snapshot media controls", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    await appendStage2CaptionEvent(chat.id);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "render-caller-snapshot-agent",
+      scopes: ["flow:read", "pipeline:run"]
+    });
+    const callerSnapshot = {
+      topText: "CALLER SNAPSHOT TOP",
+      bottomText: "Caller snapshot bottom",
+      clipStartSec: 4.25,
+      clipDurationSec: 54,
+      focusY: 0.41,
+      sourceDurationSec: 54,
+      renderPlan: {
+        templateId: channel.templateId,
+        durationMode: "source_full",
+        targetDurationSec: 54,
+        mirrorEnabled: false,
+        videoZoom: 1.13,
+        sourceCrop: {
+          enabled: true,
+          x: 0,
+          y: 0,
+          width: 1,
+          height: 0.82,
+          confidence: 0.93,
+          source: "editor-controlled-source-crop"
+        }
+      }
+    };
+
+    const renderResponse = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_render_video",
+      input: {
+        channelId: channel.id,
+        chatId: chat.id,
+        sourceDurationSec: 54,
+        snapshot: callerSnapshot
+      }
+    });
+    assert.equal(renderResponse.status, 202);
+    const rendered = (await renderResponse.json()) as { job: { id: string } };
+    const enqueued = getStage3Job(rendered.job.id);
+    assert.ok(enqueued);
+    const payload = JSON.parse(enqueued?.payloadJson ?? "{}") as {
+      snapshot?: {
+        topText?: string;
+        bottomText?: string;
+        clipStartSec?: number;
+        focusY?: number;
+        renderPlan?: {
+          durationMode?: string;
+          targetDurationSec?: number;
+          mirrorEnabled?: boolean;
+          videoZoom?: number;
+          sourceCrop?: {
+            enabled?: boolean;
+            height?: number;
+            source?: string;
+          };
+        };
+      };
+    };
+
+    assert.equal(payload.snapshot?.topText, "CALLER SNAPSHOT TOP");
+    assert.equal(payload.snapshot?.bottomText, "Caller snapshot bottom");
+    assert.equal(payload.snapshot?.clipStartSec, 4.25);
+    assert.equal(payload.snapshot?.focusY, 0.41);
+    assert.equal(payload.snapshot?.renderPlan?.durationMode, "source_full");
+    assert.equal(payload.snapshot?.renderPlan?.targetDurationSec, 54);
+    assert.equal(payload.snapshot?.renderPlan?.mirrorEnabled, false);
+    assert.equal(payload.snapshot?.renderPlan?.videoZoom, 1.13);
+    assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.enabled, true);
+    assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.height, 0.82);
+    assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.source, "editor-controlled-source-crop");
+  });
+});
+
 test("owner control enforces machine scopes and destructive intent", async () => {
   await withIsolatedAppData(async (appDataDir) => {
     const { owner, channel, publication } = await seedOwnerControl(appDataDir);

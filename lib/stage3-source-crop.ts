@@ -2,6 +2,23 @@ import type { Stage3SourceCrop } from "../app/components/types";
 
 const MIN_CROP_SIDE = 0.05;
 
+export const CHANNEL_STORY_LOWER_SOURCE_STRIP_CROP_SOURCE =
+  "channel-story-lower-source-strip-v1";
+
+export function createChannelStoryLowerSourceStripCrop(): Stage3SourceCrop {
+  return {
+    enabled: true,
+    x: 0,
+    y: 0,
+    width: 1,
+    height: 0.84,
+    confidence: 0.86,
+    source: CHANNEL_STORY_LOWER_SOURCE_STRIP_CROP_SOURCE,
+    notes:
+      "Channel story full-source renders crop the lower source strip before fitting media, so donor handles and baked lower captions stay outside the visible viewport."
+  };
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -97,4 +114,3 @@ export function buildStage3SourceCropFfmpegFilter(crop: Stage3SourceCrop | null 
     `:trunc(ih*${y}/2)*2`
   ].join("");
 }
-

@@ -1,15 +1,18 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { pathToFileURL } from "node:url";
 import { z } from "zod";
 
 type JsonRecord = Record<string, unknown>;
 
 const appUrl = (process.env.CLIPS_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "");
-const token = process.env.CLIPS_MCP_TOKEN?.trim() ?? "";
 
-if (!token) {
-  console.error("CLIPS_MCP_TOKEN is required.");
-  process.exit(1);
+function getToken(): string {
+  const token = process.env.CLIPS_MCP_TOKEN?.trim() ?? "";
+  if (!token) {
+    throw new Error("CLIPS_MCP_TOKEN is required.");
+  }
+  return token;
 }
 
 function jsonContent(value: unknown) {
@@ -27,7 +30,7 @@ async function ownerControl(tool: string, input: JsonRecord = {}): Promise<Retur
   const response = await fetch(`${appUrl}/api/admin/control`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${getToken()}`,
       "Content-Type": "application/json",
       Accept: "application/json"
     },
@@ -50,6 +53,17 @@ const channelRefSchema = {
   channelUsername: z.string().optional(),
   username: z.string().optional()
 };
+
+const looseObjectSchema = z.object({}).passthrough();
+
+export const clipsOwnerRenderVideoInputSchema = z.object({
+  ...channelRefSchema,
+  chatId: z.string(),
+  templateId: z.string().optional(),
+  sourceDurationSec: z.number().positive().optional(),
+  publishAfterRender: z.boolean().optional(),
+  snapshot: looseObjectSchema.optional()
+});
 
 const server = new McpServer({
   name: "clips-owner-control",
@@ -209,13 +223,7 @@ server.registerTool(
     title: "Render Clips video",
     description:
       "Enqueue a Stage 3 render for a chat on a channel. Returns the render job, a poll url, and an authenticated download url. Pass sourceDurationSec (seconds) to render the FULL source (e.g. a 53.6s talking-head) instead of the channel default clip length; omit it to use the channel's default duration.",
-    inputSchema: z.object({
-      ...channelRefSchema,
-      chatId: z.string(),
-      templateId: z.string().optional(),
-      sourceDurationSec: z.number().positive().optional(),
-      publishAfterRender: z.boolean().optional()
-    })
+    inputSchema: clipsOwnerRenderVideoInputSchema
   },
   async (input) => ownerControl("clips_owner_render_video", input)
 );
@@ -411,7 +419,9 @@ async function main(): Promise<void> {
   await server.connect(new StdioServerTransport());
 }
 
-void main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  void main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

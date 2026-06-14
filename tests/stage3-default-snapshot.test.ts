@@ -5,6 +5,7 @@ import type {
   Channel,
   Stage2Response,
   Stage3RenderPlan,
+  Stage3SourceCrop,
   Stage3SnapshotManagedTemplateState,
   Stage3StateSnapshot
 } from "../app/components/types";
@@ -17,15 +18,19 @@ import { resolveManagedTemplateRuntimeSync } from "../lib/managed-template-runti
 import { buildTemplateRenderSnapshot } from "../lib/stage3-template-core";
 import { assertStage3RenderTemplateSnapshotFresh } from "../lib/stage3-render-template-snapshot";
 import {
+  CHANNEL_STORY_TEMPLATE_ID,
   STAGE3_TEMPLATE_ID,
   cloneStage3TemplateConfig,
   getTemplateById
 } from "../lib/stage3-template";
+import { CHANNEL_STORY_LOWER_SOURCE_STRIP_CROP_SOURCE } from "../lib/stage3-source-crop";
 
 const TOP_TEXT = "ЭТО ВЕРХНИЙ ТЕКСТ";
 const BOTTOM_TEXT = "а это нижний текст подписи";
 const SOURCE_OVERLAY_TEXT = "источник: канал";
 const MANAGED_TEMPLATE_ID = "managed-invention-terraon-test";
+const WISDOM_STORIES_TEMPLATE_ID = "wisdom-stories-invention-1c607d01";
+const DONOR_SOURCE_STRIP_START_Y = 0.84;
 
 /**
  * Minimal synthetic Stage 2 result. `buildStage2ToStage3HandoffSummary` reads
@@ -89,6 +94,48 @@ function makeManagedTemplateState(): Stage3SnapshotManagedTemplateState {
     baseTemplateId,
     templateConfig,
     updatedAt: new Date().toISOString()
+  };
+}
+
+function makeChannelStoryManagedTemplateState(): Stage3SnapshotManagedTemplateState {
+  const templateConfig = cloneStage3TemplateConfig(getTemplateById(CHANNEL_STORY_TEMPLATE_ID));
+  templateConfig.author.name = "Wisdom Stories";
+  templateConfig.author.handle = "@wisdomstories9";
+  return {
+    managedId: WISDOM_STORIES_TEMPLATE_ID,
+    baseTemplateId: CHANNEL_STORY_TEMPLATE_ID,
+    templateConfig,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function resolveVisibleSourceYRange(input: {
+  sourceAspect: number;
+  viewportAspect: number;
+  sourceCrop: Stage3SourceCrop | null;
+}): { top: number; bottom: number } {
+  const crop = input.sourceCrop ?? {
+    enabled: true,
+    x: 0,
+    y: 0,
+    width: 1,
+    height: 1
+  };
+  if (!crop.enabled) {
+    return { top: 0, bottom: 1 };
+  }
+  const croppedSourceAspect = (input.sourceAspect * crop.width) / crop.height;
+  if (croppedSourceAspect >= input.viewportAspect) {
+    return {
+      top: crop.y,
+      bottom: crop.y + crop.height
+    };
+  }
+  const visibleHeightWithinCrop = Math.min(1, croppedSourceAspect / input.viewportAspect);
+  const hiddenHeightWithinCrop = Math.max(0, 1 - visibleHeightWithinCrop);
+  return {
+    top: crop.y + crop.height * (hiddenHeightWithinCrop / 2),
+    bottom: crop.y + crop.height * (1 - hiddenHeightWithinCrop / 2)
   };
 }
 
@@ -216,6 +263,98 @@ test("source_full honors a passed source duration (full-length render)", () => {
     snapshot,
     bodyTemplateId: STAGE3_TEMPLATE_ID,
     workerSourceDurationSec: 53.6
+  });
+  assert.equal(baseSnapshotHash, snapshot.templateSnapshot?.snapshotHash);
+});
+
+test("channel_story source_full default snapshot crops the lower source strip inside media", () => {
+  const managedState = makeChannelStoryManagedTemplateState();
+  const snapshot = buildDefaultStage3RenderSnapshot({
+    stage2: makeStage2Response(),
+    channel: makeChannel(WISDOM_STORIES_TEMPLATE_ID),
+    templateId: WISDOM_STORIES_TEMPLATE_ID,
+    managedTemplateState: managedState,
+    sourceDurationSec: 54
+  });
+
+  assert.equal(snapshot.renderPlan.templateId, WISDOM_STORIES_TEMPLATE_ID);
+  assert.equal(snapshot.managedTemplateState?.managedId, WISDOM_STORIES_TEMPLATE_ID);
+  assert.equal(snapshot.managedTemplateState?.baseTemplateId, CHANNEL_STORY_TEMPLATE_ID);
+  assert.equal(snapshot.managedTemplateState?.templateConfig.layoutKind, "channel_story");
+  assert.equal(snapshot.renderPlan.durationMode, "source_full");
+  assert.equal(snapshot.renderPlan.targetDurationSec, 54);
+  assert.equal(snapshot.clipDurationSec, 54);
+  assert.equal(snapshot.sourceDurationSec, 54);
+  assert.equal(snapshot.renderPlan.mirrorEnabled, false);
+  assert.equal(snapshot.renderPlan.authorName, "Wisdom Stories");
+  assert.equal(snapshot.renderPlan.authorHandle, "@wisdomstories");
+  assert.ok(snapshot.topText.trim());
+  assert.ok(snapshot.bottomText.trim());
+
+  const crop = snapshot.renderPlan.sourceCrop;
+  assert.ok(crop, "channel_story full-source default snapshot must include sourceCrop");
+  assert.equal(crop.source, CHANNEL_STORY_LOWER_SOURCE_STRIP_CROP_SOURCE);
+  assert.equal(crop.x, 0);
+  assert.equal(crop.y, 0);
+  assert.equal(crop.width, 1);
+  assert.equal(crop.height, 0.84);
+
+  const renderSnapshot = buildTemplateRenderSnapshot({
+    templateId: CHANNEL_STORY_TEMPLATE_ID,
+    templateConfigOverride: managedState.templateConfig,
+    content: {
+      topText: snapshot.topText,
+      bottomText: snapshot.bottomText,
+      sourceOverlayText: snapshot.sourceOverlayText ?? "",
+      channelName: snapshot.renderPlan.authorName,
+      channelHandle: snapshot.renderPlan.authorHandle,
+      highlights: snapshot.captionHighlights,
+      topFontScale: snapshot.renderPlan.topFontScale,
+      bottomFontScale: snapshot.renderPlan.bottomFontScale,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    }
+  });
+  assert.equal(renderSnapshot.layout.frame.width, 1080);
+  assert.equal(renderSnapshot.layout.frame.height, 1920);
+
+  const viewportAspect = renderSnapshot.layout.media.width / renderSnapshot.layout.media.height;
+  const beforeCrop = resolveVisibleSourceYRange({
+    sourceAspect: 16 / 9,
+    viewportAspect,
+    sourceCrop: null
+  });
+  const afterCrop = resolveVisibleSourceYRange({
+    sourceAspect: 16 / 9,
+    viewportAspect,
+    sourceCrop: crop
+  });
+  assert.ok(
+    beforeCrop.bottom > DONOR_SOURCE_STRIP_START_Y,
+    "without sourceCrop the lower donor/source strip can remain visible in a landscape source"
+  );
+  assert.ok(
+    afterCrop.bottom <= DONOR_SOURCE_STRIP_START_Y,
+    "sourceCrop excludes the lower donor/source strip before fitting the media viewport"
+  );
+
+  const workerPlan = normalizeRenderPlan(
+    snapshot.renderPlan,
+    54,
+    WISDOM_STORIES_TEMPLATE_ID,
+    undefined,
+    snapshot.managedTemplateState
+  );
+  assert.equal(workerPlan.sourceCrop?.source, CHANNEL_STORY_LOWER_SOURCE_STRIP_CROP_SOURCE);
+  assert.equal(workerPlan.durationMode, "source_full");
+  assert.equal(workerPlan.mirrorEnabled, false);
+
+  const { baseSnapshotHash } = reproduceWorkerTemplateSnapshot({
+    snapshot,
+    bodyTemplateId: WISDOM_STORIES_TEMPLATE_ID,
+    workerSourceDurationSec: 54
   });
   assert.equal(baseSnapshotHash, snapshot.templateSnapshot?.snapshotHash);
 });

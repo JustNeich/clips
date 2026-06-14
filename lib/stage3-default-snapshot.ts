@@ -16,6 +16,10 @@ import {
   normalizeStage3SourceFullDurationSec,
   resolveStage3OutputDurationSec
 } from "./stage3-duration";
+import {
+  createChannelStoryLowerSourceStripCrop,
+  normalizeStage3SourceCrop
+} from "./stage3-source-crop";
 import { buildStage3EditorSession } from "./stage3-editor-core";
 import { buildTemplateRenderSnapshot } from "./stage3-template-core";
 import { createStage3TextFitSnapshot } from "./stage3-text-fit";
@@ -23,7 +27,7 @@ import {
   resolveStage3SnapshotManagedTemplateState,
   toSnapshotManagedTemplateState
 } from "./stage3-snapshot-managed-template";
-import { STAGE3_TEMPLATE_ID } from "./stage3-template";
+import { CHANNEL_STORY_TEMPLATE_ID, STAGE3_TEMPLATE_ID } from "./stage3-template";
 // The render worker normalizer is the canonical, server-safe Stage3RenderPlan
 // builder. We deliberately DO NOT import app/home-page-support's client
 // (`"use client"`) applyChannelToRenderPlan/normalizeRenderPlan/findAssetById;
@@ -88,6 +92,36 @@ function buildChannelRenderPlan(
     undefined,
     null
   );
+}
+
+function isChannelStoryTemplate(
+  templateId: string,
+  managedTemplateState: Stage3SnapshotManagedTemplateState | null
+): boolean {
+  if (managedTemplateState?.managedId === templateId) {
+    return (
+      managedTemplateState.baseTemplateId === CHANNEL_STORY_TEMPLATE_ID ||
+      managedTemplateState.templateConfig.layoutKind === "channel_story"
+    );
+  }
+  return templateId === CHANNEL_STORY_TEMPLATE_ID;
+}
+
+function applyChannelStorySourceCropDefault(
+  renderPlan: Stage3RenderPlan,
+  managedTemplateState: Stage3SnapshotManagedTemplateState | null
+): Stage3RenderPlan {
+  if (
+    renderPlan.durationMode !== "source_full" ||
+    !isChannelStoryTemplate(renderPlan.templateId, managedTemplateState) ||
+    normalizeStage3SourceCrop(renderPlan.sourceCrop, null)
+  ) {
+    return renderPlan;
+  }
+  return {
+    ...renderPlan,
+    sourceCrop: createChannelStoryLowerSourceStripCrop()
+  };
 }
 
 export type BuildDefaultStage3RenderSnapshotInput = {
@@ -196,7 +230,7 @@ export function buildDefaultStage3RenderSnapshot(
     targetDurationSec: baseRenderPlan.targetDurationSec,
     sourceDurationSec
   });
-  const renderPlan: Stage3RenderPlan = {
+  let renderPlan: Stage3RenderPlan = {
     ...baseRenderPlan,
     ...editorSession.renderPlanPatch
   };
@@ -211,6 +245,7 @@ export function buildDefaultStage3RenderSnapshot(
     activeManagedTemplateState,
     renderPlan.templateId
   );
+  renderPlan = applyChannelStorySourceCropDefault(renderPlan, snapshotManagedTemplateState);
 
   // 5. Template render snapshot + text fit, built with the SAME inputs the
   //    worker re-feeds buildTemplateRenderSnapshot at render stage, so the
