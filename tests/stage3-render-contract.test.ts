@@ -341,6 +341,7 @@ test("stage3 video placement anchors zoom transform to Position X and Y", () => 
   });
 
   assert.equal(style.objectPosition, "82.000% 18.000%");
+  assert.equal(style.objectFit, "cover");
   assert.equal(style.transform, "translate(-12.800%, 12.800%) scale(1.400, 1.400)");
   assert.equal(style.transformOrigin, "center center");
 });
@@ -448,6 +449,22 @@ test("stage3 width and height source scales apply independently", () => {
   });
 
   assert.equal(style.transform, "translate(0.000%, 0.000%) scale(1.300, 0.800)");
+});
+
+test("stage3 video placement preserves contain fit for readability mode", () => {
+  const style = buildStage3VideoPlacementStyle({
+    focusX: 0.5,
+    focusY: 0.5,
+    videoZoom: 1,
+    videoScaleX: 1,
+    videoScaleY: 1,
+    videoFit: "contain",
+    mirrorEnabled: false
+  });
+
+  assert.equal(style.objectFit, "contain");
+  assert.equal(style.objectPosition, "50.000% 50.000%");
+  assert.equal(style.transform, "translate(0.000%, 0.000%) scale(1.000, 1.000)");
 });
 
 test("render segment extraction uses decode-accurate timestamps to reduce boundary flashes", () => {

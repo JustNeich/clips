@@ -111,16 +111,16 @@ function applyChannelStorySourceCropDefault(
   renderPlan: Stage3RenderPlan,
   managedTemplateState: Stage3SnapshotManagedTemplateState | null
 ): Stage3RenderPlan {
-  if (
-    renderPlan.durationMode !== "source_full" ||
-    !isChannelStoryTemplate(renderPlan.templateId, managedTemplateState) ||
-    normalizeStage3SourceCrop(renderPlan.sourceCrop, null)
-  ) {
+  if (renderPlan.durationMode !== "source_full" || !isChannelStoryTemplate(renderPlan.templateId, managedTemplateState)) {
     return renderPlan;
   }
+
+  const normalizedCrop = normalizeStage3SourceCrop(renderPlan.sourceCrop, null);
+
   return {
     ...renderPlan,
-    sourceCrop: createChannelStoryLowerSourceStripCrop()
+    videoFit: "contain",
+    sourceCrop: normalizedCrop ?? createChannelStoryLowerSourceStripCrop()
   };
 }
 

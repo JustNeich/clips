@@ -28,6 +28,11 @@ import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../lib/stage3-cons
 import { buildStage3VideoFilterCss } from "../lib/stage3-video-adjustments";
 import { buildStage3VideoPlacementStyle } from "../lib/stage3-video-placement";
 import {
+  DEFAULT_STAGE3_VIDEO_FIT,
+  normalizeStage3VideoFit,
+  type Stage3VideoFit
+} from "../lib/stage3-video-fit";
+import {
   cloneTemplateCaptionHighlights,
   createEmptyTemplateCaptionHighlights,
   type TemplateCaptionHighlights
@@ -85,6 +90,7 @@ type ScienceCardV1Props = {
   videoZoom: number;
   videoScaleY: number;
   videoScaleX: number;
+  videoFit?: Stage3VideoFit;
   videoBrightness: number;
   videoExposure: number;
   videoContrast: number;
@@ -325,6 +331,7 @@ export function ScienceCardV1({
   videoZoom,
   videoScaleY = 1,
   videoScaleX = 1,
+  videoFit = DEFAULT_STAGE3_VIDEO_FIT,
   videoBrightness,
   videoExposure,
   videoContrast,
@@ -422,6 +429,7 @@ export function ScienceCardV1({
     videoZoom: normalizedZoom,
     videoScaleY,
     videoScaleX,
+    videoFit,
     mirrorEnabled: segmentTransform.mirrorEnabled
   });
   const backgroundPlacementStyle = buildStage3VideoPlacementStyle({
@@ -538,7 +546,7 @@ export function ScienceCardV1({
       style={{
         width: "100%",
         height: "100%",
-        objectFit: "cover",
+        objectFit: normalizeStage3VideoFit(slotPlacementStyle.objectFit),
         objectPosition: slotPlacementStyle.objectPosition,
         ...(videoFilter ? { filter: videoFilter } : {}),
         transform: slotPlacementStyle.transform,

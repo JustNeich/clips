@@ -26,6 +26,10 @@ import {
   STAGE3_REMOTION_FPS,
   buildStage3CompositionMetadata
 } from "./stage3-composition-metadata";
+import {
+  DEFAULT_STAGE3_VIDEO_FIT,
+  type Stage3VideoFit
+} from "../lib/stage3-video-fit";
 
 type RemotionStage3TimingMode = "auto" | "compress" | "stretch";
 type RemotionStage3Segment = {
@@ -61,6 +65,7 @@ export type ScienceCardV1Props = {
   videoZoom: number;
   videoScaleY: number;
   videoScaleX: number;
+  videoFit?: Stage3VideoFit;
   videoBrightness: number;
   videoExposure: number;
   videoContrast: number;
@@ -125,6 +130,7 @@ function buildDefaultProps(templateId: string, authorName: string, authorHandle:
     videoZoom: 1,
     videoScaleY: 1,
     videoScaleX: 1,
+    videoFit: DEFAULT_STAGE3_VIDEO_FIT,
     videoBrightness: 1,
     videoExposure: 0,
     videoContrast: 1,

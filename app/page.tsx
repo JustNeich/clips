@@ -2677,6 +2677,7 @@ export default function HomePage() {
             typeof draftOverrides?.videoScaleX === "number" && Number.isFinite(draftOverrides.videoScaleX)
               ? draftOverrides.videoScaleX
               : stage3RenderPlan.videoScaleX,
+          videoFit: draftOverrides?.videoFit ?? stage3RenderPlan.videoFit,
           videoBrightness:
             typeof draftOverrides?.videoBrightness === "number" &&
             Number.isFinite(draftOverrides.videoBrightness)
@@ -7553,6 +7554,7 @@ export default function HomePage() {
           videoZoom={stage3RenderPlan.videoZoom}
           videoScaleY={stage3RenderPlan.videoScaleY}
           videoScaleX={stage3RenderPlan.videoScaleX}
+          videoFit={stage3RenderPlan.videoFit}
           videoBrightness={stage3RenderPlan.videoBrightness}
           videoExposure={stage3RenderPlan.videoExposure}
           videoContrast={stage3RenderPlan.videoContrast}

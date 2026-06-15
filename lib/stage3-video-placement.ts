@@ -1,8 +1,13 @@
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 import { clampStage3FocusX, clampStage3FocusY } from "./stage3-camera";
 import { normalizeStage3VideoScaleX, normalizeStage3VideoScaleY } from "./stage3-video-scale";
+import {
+  normalizeStage3VideoFit,
+  type Stage3VideoFit
+} from "./stage3-video-fit";
 
 export type Stage3VideoPlacementStyle = {
+  objectFit: Stage3VideoFit;
   objectPosition: string;
   transform: string;
   transformOrigin: string;
@@ -21,6 +26,7 @@ export function buildStage3VideoPlacementStyle(input: {
   videoZoom?: number | null;
   videoScaleY?: number | null;
   videoScaleX?: number | null;
+  videoFit?: unknown;
   mirrorEnabled?: boolean | null;
   extraScale?: number;
 }): Stage3VideoPlacementStyle {
@@ -50,6 +56,7 @@ export function buildStage3VideoPlacementStyle(input: {
   const transformScale = `scale(${scaleX.toFixed(3)}, ${scaleY.toFixed(3)})`;
 
   return {
+    objectFit: normalizeStage3VideoFit(input.videoFit),
     objectPosition: `${xPercent}% ${yPercent}%`,
     transform: `${transformTranslate} ${transformScale}`,
     transformOrigin: "center center"

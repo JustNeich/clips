@@ -17,6 +17,7 @@ import type {
 import type { Stage3TemplateConfig } from "../../lib/stage3-template";
 import type { TemplateCaptionHighlights } from "../../lib/template-highlights";
 import type { Stage3DurationMode } from "../../lib/stage3-duration";
+import type { Stage3VideoFit } from "../../lib/stage3-video-fit";
 import type {
   ChannelEditorialFeedbackEvent,
   Stage2ExplorationMode,
@@ -626,6 +627,7 @@ export type Stage3PlannerSnapshotDigest = {
     videoZoom: number;
     videoScaleY: number;
     videoScaleX: number;
+    videoFit: Stage3VideoFit;
     topFontScale: number;
     bottomFontScale: number;
     textPolicy: Stage3TextPolicy;
@@ -685,6 +687,7 @@ export type Stage3EditorDraftOverrides = {
   videoZoom: number;
   videoScaleY: number;
   videoScaleX: number;
+  videoFit?: Stage3VideoFit;
   videoBrightness: number;
   videoExposure: number;
   videoContrast: number;
@@ -874,6 +877,7 @@ export type Stage3RenderPlan = {
   videoZoom: number;
   videoScaleY: number;
   videoScaleX: number;
+  videoFit: Stage3VideoFit;
   videoBrightness: number;
   videoExposure: number;
   videoContrast: number;

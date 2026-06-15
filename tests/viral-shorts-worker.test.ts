@@ -924,6 +924,7 @@ function makeStep3RenderTemplateProps(overrides?: Partial<React.ComponentProps<t
     videoZoom: 1,
     videoScaleY: 1,
     videoScaleX: 1,
+    videoFit: "cover",
     videoBrightness: 1,
     videoExposure: 0,
     videoContrast: 1,

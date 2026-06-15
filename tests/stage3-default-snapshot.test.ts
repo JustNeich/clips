@@ -288,6 +288,7 @@ test("channel_story source_full default snapshot crops the lower source strip in
   assert.equal(snapshot.renderPlan.mirrorEnabled, false);
   assert.equal(snapshot.renderPlan.authorName, "Wisdom Stories");
   assert.equal(snapshot.renderPlan.authorHandle, "@wisdomstories");
+  assert.equal(snapshot.renderPlan.videoFit, "contain");
   assert.ok(snapshot.topText.trim());
   assert.ok(snapshot.bottomText.trim());
 
@@ -350,6 +351,7 @@ test("channel_story source_full default snapshot crops the lower source strip in
   assert.equal(workerPlan.sourceCrop?.source, CHANNEL_STORY_LOWER_SOURCE_STRIP_CROP_SOURCE);
   assert.equal(workerPlan.durationMode, "source_full");
   assert.equal(workerPlan.mirrorEnabled, false);
+  assert.equal(workerPlan.videoFit, "contain");
 
   const { baseSnapshotHash } = reproduceWorkerTemplateSnapshot({
     snapshot,

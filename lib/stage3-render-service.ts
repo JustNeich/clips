@@ -26,6 +26,11 @@ import {
 } from "./stage3-video-adjustments";
 import { normalizeStage3VideoScaleX, normalizeStage3VideoScaleY } from "./stage3-video-scale";
 import {
+  DEFAULT_STAGE3_VIDEO_FIT,
+  normalizeStage3VideoFit,
+  type Stage3VideoFit
+} from "./stage3-video-fit";
+import {
   analyzeBestClipAndFocus,
   clampClipStart,
   prepareStage3SourceClip,
@@ -948,6 +953,7 @@ async function runRemotionRender(params: {
   videoZoom: number;
   videoScaleY: number;
   videoScaleX: number;
+  videoFit: Stage3VideoFit;
   videoBrightness: number;
   videoExposure: number;
   videoContrast: number;
@@ -1003,6 +1009,7 @@ async function runRemotionRender(params: {
     videoZoom: params.videoZoom,
     videoScaleY: params.videoScaleY,
     videoScaleX: params.videoScaleX,
+    videoFit: params.videoFit,
     videoBrightness: params.videoBrightness,
     videoExposure: params.videoExposure,
     videoContrast: params.videoContrast,
@@ -1223,6 +1230,7 @@ export function normalizeRenderPlan(
       : 1;
   const videoScaleY = normalizeStage3VideoScaleY(rawPlan?.videoScaleY);
   const videoScaleX = normalizeStage3VideoScaleX(rawPlan?.videoScaleX);
+  const videoFit = normalizeStage3VideoFit(rawPlan?.videoFit, DEFAULT_STAGE3_VIDEO_FIT);
   const cameraTracks = resolveStage3EffectiveCameraTracks({
     cameraPositionKeyframes: rawPlan?.cameraPositionKeyframes,
     cameraScaleKeyframes: rawPlan?.cameraScaleKeyframes,
@@ -1274,6 +1282,7 @@ export function normalizeRenderPlan(
     videoZoom,
     videoScaleY,
     videoScaleX,
+    videoFit,
     videoBrightness: normalizeStage3VideoBrightness(rawPlan?.videoBrightness, templateVideoAdjustments.brightness),
     videoExposure: normalizeStage3VideoExposure(rawPlan?.videoExposure, templateVideoAdjustments.exposure),
     videoContrast: normalizeStage3VideoContrast(rawPlan?.videoContrast, templateVideoAdjustments.contrast),
@@ -1751,6 +1760,7 @@ export async function renderStage3Video(
             videoZoom: renderPlan.videoZoom,
             videoScaleY: renderPlan.videoScaleY,
             videoScaleX: renderPlan.videoScaleX,
+            videoFit: renderPlan.videoFit,
             videoBrightness: renderPlan.videoBrightness,
             videoExposure: renderPlan.videoExposure,
             videoContrast: renderPlan.videoContrast,

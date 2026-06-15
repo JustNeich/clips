@@ -33,6 +33,10 @@ import {
   normalizeStage3VideoScaleY
 } from "./stage3-video-scale";
 import {
+  DEFAULT_STAGE3_VIDEO_FIT,
+  normalizeStage3VideoFit
+} from "./stage3-video-fit";
+import {
   DEFAULT_STAGE3_CLIP_DURATION_SEC,
   normalizeStage3DurationMode,
   resolveStage3OutputDurationSec
@@ -67,6 +71,7 @@ function fallbackRenderPlan(): Stage3RenderPlan {
     videoZoom: 1,
     videoScaleY: DEFAULT_STAGE3_VIDEO_SCALE_Y,
     videoScaleX: DEFAULT_STAGE3_VIDEO_SCALE_X,
+    videoFit: DEFAULT_STAGE3_VIDEO_FIT,
     videoBrightness: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.brightness,
     videoExposure: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.exposure,
     videoContrast: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.contrast,
@@ -106,6 +111,7 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
       : fallback.videoZoom;
   const videoScaleY = normalizeStage3VideoScaleY(candidate?.videoScaleY, fallback.videoScaleY);
   const videoScaleX = normalizeStage3VideoScaleX(candidate?.videoScaleX, fallback.videoScaleX);
+  const videoFit = normalizeStage3VideoFit(candidate?.videoFit, fallback.videoFit);
   const cameraTracks = resolveStage3EffectiveCameraTracks({
     cameraPositionKeyframes: candidate?.cameraPositionKeyframes,
     cameraScaleKeyframes: candidate?.cameraScaleKeyframes,
@@ -157,6 +163,7 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
     videoZoom,
     videoScaleY,
     videoScaleX,
+    videoFit,
     videoBrightness: normalizeStage3VideoBrightness(candidate?.videoBrightness, fallback.videoBrightness),
     videoExposure: normalizeStage3VideoExposure(candidate?.videoExposure, fallback.videoExposure),
     videoContrast: normalizeStage3VideoContrast(candidate?.videoContrast, fallback.videoContrast),

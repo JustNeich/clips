@@ -45,14 +45,16 @@ test("stage 3 draft render-plan override keeps per-draft duration and source gai
     {
       ...base,
       targetDurationSec: 59,
-      sourceAudioGain: 1.75
+      sourceAudioGain: 1.75,
+      videoFit: "contain"
     },
     base
   );
 
   assert.deepEqual(buildStage3DraftRenderPlanOverride(current, base), {
     targetDurationSec: 59,
-    sourceAudioGain: 1.75
+    sourceAudioGain: 1.75,
+    videoFit: "contain"
   });
 
   assert.deepEqual(
@@ -60,12 +62,14 @@ test("stage 3 draft render-plan override keeps per-draft duration and source gai
       targetDurationSec: 15,
       durationMode: "channel_default",
       sourceAudioGain: 0.5,
+      videoFit: "contain",
       templateId: "template-owned-by-channel"
     }),
     {
       durationMode: "channel_default",
       targetDurationSec: 15,
-      sourceAudioGain: 0.5
+      sourceAudioGain: 0.5,
+      videoFit: "contain"
     }
   );
 });
@@ -147,6 +151,27 @@ test("normalizeRenderPlan preserves Stage 3 source crop", () => {
   assert.equal(normalized.sourceCrop?.x, 0.08);
   assert.equal(normalized.sourceCrop?.height, 0.66);
   assert.equal(normalized.sourceCrop?.confidence, 0.62);
+});
+
+test("normalizeRenderPlan preserves contain video fit and rejects invalid values", () => {
+  const base = fallbackRenderPlan();
+  const contained = normalizeRenderPlan(
+    {
+      ...base,
+      videoFit: "contain"
+    },
+    base
+  );
+  const invalid = normalizeRenderPlan(
+    {
+      ...base,
+      videoFit: "stretch" as never
+    },
+    base
+  );
+
+  assert.equal(contained.videoFit, "contain");
+  assert.equal(invalid.videoFit, "cover");
 });
 
 test("normalizeRenderPlan preserves and clamps Stage 3 vertical source scale", () => {

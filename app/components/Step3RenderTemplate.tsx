@@ -164,6 +164,11 @@ import {
   normalizeStage3ClipDurationSec,
   type Stage3DurationMode
 } from "../../lib/stage3-duration";
+import {
+  DEFAULT_STAGE3_VIDEO_FIT,
+  normalizeStage3VideoFit,
+  type Stage3VideoFit
+} from "../../lib/stage3-video-fit";
 
 export type Step3ManagedTemplateState = Stage3SnapshotManagedTemplateState & {
   name: string;
@@ -255,6 +260,7 @@ type Step3RenderTemplateProps = {
   videoZoom: number;
   videoScaleY: number;
   videoScaleX: number;
+  videoFit: Stage3VideoFit;
   videoBrightness: number;
   videoExposure: number;
   videoContrast: number;
@@ -314,6 +320,7 @@ type Step3RenderTemplateProps = {
   onVideoZoomChange: (value: number) => void;
   onVideoScaleYChange: (value: number) => void;
   onVideoScaleXChange: (value: number) => void;
+  onVideoFitChange?: (value: Stage3VideoFit) => void;
   onVideoBrightnessChange: (value: number) => void;
   onVideoExposureChange: (value: number) => void;
   onVideoContrastChange: (value: number) => void;
@@ -819,6 +826,7 @@ function PreviewClipVideo({
   playbackTimingKey,
   className,
   placementStyle,
+  videoFit,
   videoBrightness,
   videoExposure,
   videoContrast,
@@ -839,6 +847,7 @@ function PreviewClipVideo({
   playbackTimingKey: string;
   className: string;
   placementStyle: Stage3VideoPlacementStyle;
+  videoFit: Stage3VideoFit;
   videoBrightness: number;
   videoExposure: number;
   videoContrast: number;
@@ -1180,6 +1189,7 @@ function PreviewClipVideo({
       playsInline
       preload="metadata"
       style={{
+        objectFit: normalizeStage3VideoFit(videoFit),
         objectPosition: placementStyle.objectPosition,
         ...(videoFilter ? { filter: videoFilter } : {}),
         transform: placementStyle.transform,
@@ -1229,6 +1239,7 @@ type Stage3LivePreviewPanelProps = {
   videoZoom: number;
   videoScaleY: number;
   videoScaleX: number;
+  videoFit: Stage3VideoFit;
   videoBrightness: number;
   videoExposure: number;
   videoContrast: number;
@@ -1293,6 +1304,7 @@ function Stage3LivePreviewPanel({
   videoZoom,
   videoScaleY,
   videoScaleX,
+  videoFit,
   videoBrightness,
   videoExposure,
   videoContrast,
@@ -1454,6 +1466,7 @@ function Stage3LivePreviewPanel({
     videoZoom: cameraState.zoom,
     videoScaleY,
     videoScaleX,
+    videoFit,
     mirrorEnabled: playbackTransformState.mirrorEnabled
   });
   const backgroundPlacementStyle = buildStage3VideoPlacementStyle({
@@ -2172,6 +2185,7 @@ function Stage3LivePreviewPanel({
                         playbackTimingKey={playbackTimingKey}
                         className="preview-slot-video"
                         placementStyle={slotPlacementStyle}
+                        videoFit={slotPlacementStyle.objectFit}
                         videoBrightness={videoBrightness}
                         videoExposure={videoExposure}
                         videoContrast={videoContrast}
@@ -2382,6 +2396,7 @@ export function Step3RenderTemplate({
   videoZoom,
   videoScaleY,
   videoScaleX,
+  videoFit = DEFAULT_STAGE3_VIDEO_FIT,
   videoBrightness,
   videoExposure,
   videoContrast,
@@ -6874,6 +6889,7 @@ export function Step3RenderTemplate({
             videoZoom={previewVideoZoom}
             videoScaleY={localVideoScaleY}
             videoScaleX={localVideoScaleX}
+            videoFit={normalizeStage3VideoFit(videoFit)}
             videoBrightness={localVideoBrightness}
             videoExposure={localVideoExposure}
             videoContrast={localVideoContrast}

@@ -106,6 +106,7 @@ function makeStep3RenderTemplateProps(
     videoZoom: 1,
     videoScaleY: 1,
     videoScaleX: 1,
+    videoFit: "cover",
     videoBrightness: 1,
     videoExposure: 0,
     videoContrast: 1,
@@ -195,6 +196,21 @@ test("step 3 framing controls expose both horizontal and vertical positioning", 
 
   assert.match(html, /Position X/);
   assert.match(html, /Position Y/);
+});
+
+test("step 3 preview applies contain fit to the source slot inline", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      Step3RenderTemplate,
+      makeStep3RenderTemplateProps({
+        previewVideoUrl: "https://example.com/source.mp4",
+        videoFit: "contain"
+      })
+    )
+  );
+
+  assert.match(html, /class="preview-slot-video"/);
+  assert.match(html, /object-fit:contain/);
 });
 
 test("workspace render tab warns when configured host mode is currently forced back to local", () => {
