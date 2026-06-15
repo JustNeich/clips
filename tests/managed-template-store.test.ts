@@ -500,6 +500,46 @@ test("managed templates persist an explicit empty badge asset path", async () =>
   });
 });
 
+test("managed template partial author updates preserve the existing avatar shape", async () => {
+  await withIsolatedTemplateWorkspace(async ({ owner }) => {
+    const template = await createManagedTemplate(
+      {
+        name: "Author Shape Control",
+        baseTemplateId: "science-card-v1",
+        templateConfig: {
+          author: {
+            avatarShape: "rounded-square"
+          }
+        }
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id
+      }
+    );
+
+    const updated = await updateManagedTemplate(
+      template.id,
+      {
+        baseTemplateId: "science-card-v1",
+        templateConfig: {
+          author: {
+            showHandle: false
+          }
+        }
+      },
+      { workspaceId: owner.workspace.id }
+    );
+    const reloaded = readManagedTemplateSync(template.id, { workspaceId: owner.workspace.id });
+
+    assert.equal(updated?.templateConfig.author.showHandle, false);
+    assert.equal(updated?.templateConfig.author.avatarShape, "rounded-square");
+    assert.equal(reloaded?.templateConfig.author.showHandle, false);
+    assert.equal(reloaded?.templateConfig.author.avatarShape, "rounded-square");
+  });
+});
+
+
 test("managed templates persist custom top and bottom line heights", async () => {
   await withIsolatedTemplateWorkspace(async ({ owner }) => {
     const template = await createManagedTemplate(

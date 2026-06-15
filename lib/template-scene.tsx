@@ -30,6 +30,7 @@ import {
 import {
   buildTemplateHighlightSpansFromPhrases,
   normalizeTemplateHighlightSpans,
+  type TemplateHighlightSlotConfig,
   type TemplateHighlightSlotId,
   type TemplateHighlightSpan
 } from "./template-highlights";
@@ -172,7 +173,7 @@ function resolvePalette(templateConfig: Stage3TemplateConfig = SCIENCE_CARD): St
 function renderHighlightedText(
   text: string,
   highlights: TemplateHighlightSpan[],
-  slotColors: Record<TemplateHighlightSlotId, string>
+  slotStyles: Record<TemplateHighlightSlotId, Pick<TemplateHighlightSlotConfig, "color" | "fontWeight">>
 ): React.ReactNode {
   if (!highlights.length || !text.trim()) {
     return text;
@@ -187,11 +188,13 @@ function renderHighlightedText(
         <React.Fragment key={`plain-${cursor}-${start}`}>{text.slice(cursor, start)}</React.Fragment>
       );
     }
-    const color = slotColors[highlight.slotId];
+    const slotStyle = slotStyles[highlight.slotId];
+    const color = slotStyle?.color;
+    const fontWeight = slotStyle?.fontWeight;
     const segment = text.slice(start, end);
     parts.push(
       color ? (
-        <span key={`hl-${highlight.slotId}-${index}`} style={{ color }}>
+        <span key={`hl-${highlight.slotId}-${index}`} style={{ color, fontWeight }}>
           {segment}
         </span>
       ) : (
@@ -745,11 +748,15 @@ export function TemplateScene({
   const bottomText = computed.bottom || "Нижний текст появится здесь.";
   const topHighlights = resolveBlockHighlights("top", templateConfig, effectiveContent, topText);
   const bottomHighlights = resolveBlockHighlights("bottom", templateConfig, effectiveContent, bottomText);
-  const highlightColors = Object.fromEntries(
-    templateConfig.highlights.slots.map((slot) => [slot.slotId, slot.color])
-  ) as Record<TemplateHighlightSlotId, string>;
+  const highlightStyles = Object.fromEntries(
+    templateConfig.highlights.slots.map((slot) => [
+      slot.slotId,
+      { color: slot.color, fontWeight: slot.fontWeight }
+    ])
+  ) as Record<TemplateHighlightSlotId, Pick<TemplateHighlightSlotConfig, "color" | "fontWeight">>;
   const authorName = effectiveContent.channelName || templateConfig.author.name;
   const authorHandle = effectiveContent.channelHandle || templateConfig.author.handle;
+  const shouldRenderAuthorHandle = templateConfig.author.showHandle !== false && Boolean(authorHandle.trim());
   const authorGap = templateConfig.author.gap ?? 11;
   const authorCopyGap = templateConfig.author.copyGap ?? 1;
   const authorNameCheckGap = templateConfig.author.nameCheckGap ?? 8;
@@ -799,6 +806,11 @@ export function TemplateScene({
       dangerouslySetInnerHTML={{ __html: fontFaceCss }}
     />
   ) : null;
+  const authorCopyStyle: CSSProperties = {
+    minWidth: 0,
+    display: "grid",
+    gap: shouldRenderAuthorHandle ? authorCopyGap : 0
+  };
 
   const topPaddingTop = usesClassicScienceCardChrome ? chromeMetrics.topPaddingTop : getTopPaddingTop(templateConfig);
   const topPaddingBottom = usesClassicScienceCardChrome ? chromeMetrics.topPaddingBottom : getTopPaddingBottom(templateConfig);
@@ -928,7 +940,7 @@ export function TemplateScene({
             }}
           >
             {avatarNode ?? renderDefaultAvatar(resolvedTemplateId, templateConfig, authorName, authorAvatarSize)}
-            <div style={{ minWidth: 0, display: "grid", gap: authorCopyGap }}>
+            <div style={authorCopyStyle}>
               <div style={{ display: "flex", alignItems: "center", gap: authorNameCheckGap }}>
                 <span
                   style={{
@@ -945,18 +957,20 @@ export function TemplateScene({
                 </span>
                 {renderVerificationBadge(templateConfig, palette, verificationBadgeNode, authorCheckSize)}
               </div>
-              <span
-                style={{
-                  color: palette.authorHandleColor,
-                  fontFamily: authorHandleFontFamily,
-                  fontSize: authorHandleFontSize,
-                  lineHeight: templateConfig.typography.authorHandle.lineHeight,
-                  letterSpacing: authorHandleLetterSpacing,
-                  fontWeight: authorHandleWeight
-                }}
-              >
-                {authorHandle}
-              </span>
+              {shouldRenderAuthorHandle ? (
+                <span
+                  style={{
+                    color: palette.authorHandleColor,
+                    fontFamily: authorHandleFontFamily,
+                    fontSize: authorHandleFontSize,
+                    lineHeight: templateConfig.typography.authorHandle.lineHeight,
+                    letterSpacing: authorHandleLetterSpacing,
+                    fontWeight: authorHandleWeight
+                  }}
+                >
+                  {authorHandle}
+                </span>
+              ) : null}
             </div>
           </section>
 
@@ -1042,7 +1056,7 @@ export function TemplateScene({
                 }}
               >
                 {topHighlights.length > 0
-                  ? renderHighlightedText(topText, topHighlights, highlightColors)
+                  ? renderHighlightedText(topText, topHighlights, highlightStyles)
                   : topText}
               </p>
             </section>
@@ -1084,7 +1098,7 @@ export function TemplateScene({
               }}
             >
               {bottomHighlights.length > 0
-                ? renderHighlightedText(bottomText, bottomHighlights, highlightColors)
+                ? renderHighlightedText(bottomText, bottomHighlights, highlightStyles)
                 : bottomText}
             </p>
           </section>
@@ -1229,7 +1243,7 @@ export function TemplateScene({
                   boxSizing: "border-box"
                 }}
               >
-                {topHighlights.length > 0 ? renderHighlightedText(topText, topHighlights, highlightColors) : topText}
+                {topHighlights.length > 0 ? renderHighlightedText(topText, topHighlights, highlightStyles) : topText}
               </p>
             </section>
 
@@ -1277,7 +1291,7 @@ export function TemplateScene({
                 }}
               >
                 {avatarNode ?? renderDefaultAvatar(resolvedTemplateId, templateConfig, authorName, authorAvatarSize)}
-                <div style={{ minWidth: 0, display: "grid", gap: authorCopyGap }}>
+                <div style={authorCopyStyle}>
                   <div style={{ display: "flex", alignItems: "center", gap: authorNameCheckGap }}>
                     <span
                       style={{
@@ -1294,18 +1308,20 @@ export function TemplateScene({
                     </span>
                     {renderVerificationBadge(templateConfig, palette, verificationBadgeNode, authorCheckSize)}
                   </div>
-                  <span
-                    style={{
-                      color: palette.authorHandleColor,
-                      fontFamily: authorHandleFontFamily,
-                      fontSize: authorHandleFontSize,
-                      lineHeight: templateConfig.typography.authorHandle.lineHeight,
-                      letterSpacing: authorHandleLetterSpacing,
-                      fontWeight: authorHandleWeight
-                    }}
-                  >
-                    {authorHandle}
-                  </span>
+                  {shouldRenderAuthorHandle ? (
+                    <span
+                      style={{
+                        color: palette.authorHandleColor,
+                        fontFamily: authorHandleFontFamily,
+                        fontSize: authorHandleFontSize,
+                        lineHeight: templateConfig.typography.authorHandle.lineHeight,
+                        letterSpacing: authorHandleLetterSpacing,
+                        fontWeight: authorHandleWeight
+                      }}
+                    >
+                      {authorHandle}
+                    </span>
+                  ) : null}
                 </div>
               </div>
               <div
@@ -1339,7 +1355,7 @@ export function TemplateScene({
               }}
             >
                   {bottomHighlights.length > 0
-                    ? renderHighlightedText(bottomText, bottomHighlights, highlightColors)
+                    ? renderHighlightedText(bottomText, bottomHighlights, highlightStyles)
                     : bottomText}
                 </p>
               </div>
@@ -1427,7 +1443,7 @@ export function TemplateScene({
                 boxSizing: "border-box"
               }}
             >
-              {topHighlights.length > 0 ? renderHighlightedText(topText, topHighlights, highlightColors) : topText}
+              {topHighlights.length > 0 ? renderHighlightedText(topText, topHighlights, highlightStyles) : topText}
             </p>
           </section>
 
@@ -1478,7 +1494,7 @@ export function TemplateScene({
             >
               {scienceShellVisuals.authorNode}
               {avatarNode ?? renderDefaultAvatar(resolvedTemplateId, templateConfig, authorName, authorAvatarSize)}
-              <div style={{ minWidth: 0, display: "grid", gap: authorCopyGap }}>
+              <div style={authorCopyStyle}>
                 <div style={{ display: "flex", alignItems: "center", gap: authorNameCheckGap }}>
                   <span
                     style={{
@@ -1495,18 +1511,20 @@ export function TemplateScene({
                   </span>
                   {renderVerificationBadge(templateConfig, palette, verificationBadgeNode, authorCheckSize)}
                 </div>
-                <span
-                  style={{
-                    color: palette.authorHandleColor,
-                    fontFamily: authorHandleFontFamily,
-                    fontSize: authorHandleFontSize,
-                    lineHeight: templateConfig.typography.authorHandle.lineHeight,
-                    letterSpacing: authorHandleLetterSpacing,
-                    fontWeight: authorHandleWeight
-                  }}
-                >
-                  {authorHandle}
-                </span>
+                {shouldRenderAuthorHandle ? (
+                  <span
+                    style={{
+                      color: palette.authorHandleColor,
+                      fontFamily: authorHandleFontFamily,
+                      fontSize: authorHandleFontSize,
+                      lineHeight: templateConfig.typography.authorHandle.lineHeight,
+                      letterSpacing: authorHandleLetterSpacing,
+                      fontWeight: authorHandleWeight
+                    }}
+                  >
+                    {authorHandle}
+                  </span>
+                ) : null}
               </div>
             </div>
             <div
@@ -1546,7 +1564,7 @@ export function TemplateScene({
                 }}
               >
                 {bottomHighlights.length > 0
-                  ? renderHighlightedText(bottomText, bottomHighlights, highlightColors)
+                  ? renderHighlightedText(bottomText, bottomHighlights, highlightStyles)
                   : bottomText}
               </p>
             </div>

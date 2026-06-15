@@ -86,6 +86,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function mergeRecordPatch(base: unknown, patch: unknown): unknown {
+  if (!isRecord(base) || !isRecord(patch)) {
+    return patch;
+  }
+  const merged: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(patch)) {
+    merged[key] = isRecord(value) && isRecord(merged[key]) ? mergeRecordPatch(merged[key], value) : value;
+  }
+  return merged;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -346,7 +357,12 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
     if (typeof author.handle === "string") {
       base.author.handle = author.handle;
     }
-    base.author.avatarShape = normalizeStage3TemplateAvatarShape(author.avatarShape);
+    if (typeof author.showHandle === "boolean") {
+      base.author.showHandle = author.showHandle;
+    }
+    if ("avatarShape" in author) {
+      base.author.avatarShape = normalizeStage3TemplateAvatarShape(author.avatarShape);
+    }
     if (typeof author.checkAssetPath === "string") {
       base.author.checkAssetPath = author.checkAssetPath;
     }
@@ -606,8 +622,14 @@ function normalizeSnapshot(
   );
   const seed = buildSeedSnapshot(layoutFamily);
   const content = normalizeContent(input.content ?? fallback?.content, layoutFamily);
+  const rawTemplateConfig =
+    input.templateConfig === undefined
+      ? fallback?.templateConfig
+      : fallback?.templateConfig
+        ? mergeRecordPatch(fallback.templateConfig, input.templateConfig)
+        : input.templateConfig;
   const templateConfig = normalizeTemplateConfig(
-    input.templateConfig ?? fallback?.templateConfig,
+    rawTemplateConfig,
     layoutFamily
   );
   if (templateConfig.layoutKind === "channel_story" && templateConfig.channelStory) {

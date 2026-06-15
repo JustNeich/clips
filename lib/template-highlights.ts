@@ -6,6 +6,7 @@ export type TemplateHighlightSlotConfig = {
   slotId: TemplateHighlightSlotId;
   enabled: boolean;
   color: string;
+  fontWeight?: number;
   label: string;
   guidance: string;
 };
@@ -84,6 +85,14 @@ function normalizeString(value: unknown, fallback: string): string {
 
 function normalizeNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizeFontWeight(value: unknown, fallback?: number): number | undefined {
+  const numberValue = normalizeNumber(value);
+  if (numberValue === null) {
+    return fallback;
+  }
+  return Math.min(900, Math.max(100, Math.round(numberValue)));
 }
 
 export function createEmptyTemplateCaptionHighlights(): TemplateCaptionHighlights {
@@ -360,8 +369,10 @@ export function mergeTemplateCaptionHighlightsByMode(input: {
 
 export function createDefaultTemplateHighlightConfig(options?: {
   accentColor?: string | null;
+  fontWeight?: number;
 }): TemplateHighlightConfig {
   const slot1Color = options?.accentColor?.trim() || DEFAULT_SLOT_COLORS.slot1;
+  const slot1FontWeight = normalizeFontWeight(options?.fontWeight);
   return {
     enabled: true,
     topEnabled: true,
@@ -370,6 +381,7 @@ export function createDefaultTemplateHighlightConfig(options?: {
       slotId,
       enabled: slotId === "slot1",
       color: slotId === "slot1" ? slot1Color : DEFAULT_SLOT_COLORS[slotId],
+      fontWeight: slotId === "slot1" ? slot1FontWeight : undefined,
       label: DEFAULT_SLOT_LABELS[slotId],
       guidance: DEFAULT_SLOT_GUIDANCE[slotId]
     })) as TemplateHighlightConfig["slots"]
@@ -437,7 +449,7 @@ export function buildCaptionHighlightSourceState(
 
 export function normalizeTemplateHighlightConfig(
   raw: unknown,
-  options?: { accentColor?: string | null }
+  options?: { accentColor?: string | null; fontWeight?: number }
 ): TemplateHighlightConfig {
   const defaults = createDefaultTemplateHighlightConfig(options);
   if (!isRecord(raw)) {
@@ -451,6 +463,7 @@ export function normalizeTemplateHighlightConfig(
       slotId,
       enabled: normalizeBoolean(rawSlot?.enabled, defaults.slots[index].enabled),
       color: normalizeString(rawSlot?.color, defaults.slots[index].color),
+      fontWeight: normalizeFontWeight(rawSlot?.fontWeight, defaults.slots[index].fontWeight),
       label: normalizeString(rawSlot?.label, defaults.slots[index].label),
       guidance: normalizeString(rawSlot?.guidance, defaults.slots[index].guidance)
     };

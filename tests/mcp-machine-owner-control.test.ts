@@ -443,6 +443,165 @@ test("owner control render_video preserves caller snapshot media controls", asyn
   });
 });
 
+test("owner control render_video merges a caller renderPlan patch onto the full server snapshot", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    await appendStage2CaptionEvent(chat.id);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "render-crop-patch-agent",
+      scopes: ["flow:read", "pipeline:run"]
+    });
+
+    const renderResponse = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_render_video",
+      input: {
+        channelId: channel.id,
+        chatId: chat.id,
+        sourceDurationSec: 54,
+        snapshot: {
+          renderPlan: {
+            sourceCrop: {
+              enabled: true,
+              x: 0.08,
+              y: 0.18,
+              width: 0.84,
+              height: 0.62,
+              confidence: 0.91,
+              source: "editor-clean-inner-media"
+            }
+          }
+        }
+      }
+    });
+    assert.equal(renderResponse.status, 202);
+    const rendered = (await renderResponse.json()) as { job: { id: string } };
+    const enqueued = getStage3Job(rendered.job.id);
+    assert.ok(enqueued);
+    const payload = JSON.parse(enqueued?.payloadJson ?? "{}") as {
+      snapshot?: {
+        topText?: string;
+        bottomText?: string;
+        templateSnapshot?: { snapshotHash?: string };
+        textFit?: { fitHash?: string };
+        renderPlan?: {
+          mirrorEnabled?: boolean;
+          sourceCrop?: {
+            enabled?: boolean;
+            y?: number;
+            height?: number;
+            source?: string;
+          };
+        };
+      };
+    };
+
+    assert.equal(payload.snapshot?.topText, "SERVER SNAPSHOT TOP");
+    assert.equal(
+      payload.snapshot?.bottomText,
+      "Server-side Stage 2 caption text must reach the MCP render snapshot."
+    );
+    assert.ok(payload.snapshot?.templateSnapshot?.snapshotHash);
+    assert.ok(payload.snapshot?.textFit?.fitHash);
+    assert.equal(payload.snapshot?.renderPlan?.mirrorEnabled, false);
+    assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.enabled, true);
+    assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.y, 0.18);
+    assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.height, 0.62);
+    assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.source, "editor-clean-inner-media");
+  });
+});
+
+test("owner control render_video drops stale server text fit when caller patches caption text", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    await appendStage2CaptionEvent(chat.id);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "render-text-patch-agent",
+      scopes: ["flow:read", "pipeline:run"]
+    });
+
+    const renderResponse = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_render_video",
+      input: {
+        channelId: channel.id,
+        chatId: chat.id,
+        snapshot: {
+          topText: "CALLER PATCH TOP",
+          renderPlan: {
+            sourceCrop: {
+              enabled: true,
+              x: 0.1,
+              y: 0.2,
+              width: 0.8,
+              height: 0.6,
+              confidence: 0.9,
+              source: "editor-clean-inner-media"
+            }
+          }
+        }
+      }
+    });
+    assert.equal(renderResponse.status, 202);
+    const rendered = (await renderResponse.json()) as { job: { id: string } };
+    const enqueued = getStage3Job(rendered.job.id);
+    assert.ok(enqueued);
+    const payload = JSON.parse(enqueued?.payloadJson ?? "{}") as {
+      snapshot?: {
+        topText?: string;
+        bottomText?: string;
+        templateSnapshot?: unknown;
+        textFit?: unknown;
+        renderPlan?: {
+          sourceCrop?: {
+            enabled?: boolean;
+            x?: number;
+          };
+        };
+      };
+    };
+
+    assert.equal(payload.snapshot?.topText, "CALLER PATCH TOP");
+    assert.equal(
+      payload.snapshot?.bottomText,
+      "Server-side Stage 2 caption text must reach the MCP render snapshot."
+    );
+    assert.equal(payload.snapshot?.templateSnapshot, undefined);
+    assert.equal(payload.snapshot?.textFit, undefined);
+    assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.enabled, true);
+    assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.x, 0.1);
+  });
+});
+
+test("owner control video pipeline accepts platform_v1 as the current manual Stage 2 alias", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel } = await seedOwnerControl(appDataDir);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "platform-v1-agent",
+      scopes: ["pipeline:run"]
+    });
+
+    const response = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_run_video_pipeline",
+      input: {
+        channelId: channel.id,
+        sourceUrl: "https://www.instagram.com/reel/DZA_hMoznPK/",
+        userInstruction: "Use the ZoroKing platform_v1 instruction packet.",
+        mode: "platform_v1",
+        dryRun: true
+      }
+    });
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as { dryRun?: boolean; planned?: string[] };
+    assert.equal(payload.dryRun, true);
+    assert.deepEqual(payload.planned, ["create_or_get_chat", "enqueue_stage2_run"]);
+  });
+});
+
 test("owner control enforces machine scopes and destructive intent", async () => {
   await withIsolatedAppData(async (appDataDir) => {
     const { owner, channel, publication } = await seedOwnerControl(appDataDir);

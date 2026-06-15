@@ -83,6 +83,7 @@ import type { Stage3RenderRequestBody } from "../../../../lib/stage3-render-serv
 import { resolveSnapshotManagedTemplateStateForEnqueue } from "../../../../lib/managed-template-runtime";
 import { findLatestStage2Event } from "../../../../lib/chat-workflow";
 import { buildDefaultStage3RenderSnapshot } from "../../../../lib/stage3-default-snapshot";
+import type { Stage3StateSnapshot } from "../../../../app/components/types";
 
 export const runtime = "nodejs";
 
@@ -138,6 +139,41 @@ function resolveStringArray(value: unknown): string[] | undefined {
     return undefined;
   }
   return value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean);
+}
+
+function mergeStage3SnapshotPatch(
+  base: Stage3StateSnapshot | null,
+  patch: Partial<Stage3StateSnapshot> | null
+): Partial<Stage3StateSnapshot> | null {
+  if (!base) {
+    return patch;
+  }
+  if (!patch) {
+    return base;
+  }
+  const patchRenderPlan = patch.renderPlan ?? {};
+  const textAffectingPatch =
+    "topText" in patch ||
+    "bottomText" in patch ||
+    "sourceOverlayText" in patch ||
+    "captionHighlights" in patch ||
+    "topFontScale" in patchRenderPlan ||
+    "bottomFontScale" in patchRenderPlan ||
+    "authorName" in patchRenderPlan ||
+    "authorHandle" in patchRenderPlan ||
+    "templateId" in patchRenderPlan;
+  return {
+    ...base,
+    ...patch,
+    renderPlan: {
+      ...base.renderPlan,
+      ...(patch.renderPlan ?? {})
+    },
+    managedTemplateState: patch.managedTemplateState ?? base.managedTemplateState,
+    captionHighlights: patch.captionHighlights ?? base.captionHighlights,
+    templateSnapshot: textAffectingPatch ? patch.templateSnapshot : patch.templateSnapshot ?? base.templateSnapshot,
+    textFit: textAffectingPatch ? patch.textFit : patch.textFit ?? base.textFit
+  };
 }
 
 function summarizeChannel(channel: Channel): Record<string, unknown> {
@@ -737,11 +773,11 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     // its own snapshot, rebuild the same no-override snapshot server-side from
     // the chat's latest Stage 2 result. Built-in / no-stage2 chats fall back to
     // the prior sparse body (managedTemplateState only), unchanged.
-    const callerSnapshot =
+    const callerSnapshot: Partial<Stage3StateSnapshot> | null =
       input.snapshot && typeof input.snapshot === "object"
-        ? (input.snapshot as Stage3RenderRequestBody["snapshot"])
+        ? (input.snapshot as Partial<Stage3StateSnapshot>)
         : null;
-    const stage2Event = callerSnapshot ? null : findLatestStage2Event(chat);
+    const stage2Event = findLatestStage2Event(chat);
     const defaultSnapshot =
       stage2Event && stage2Event.payload
         ? buildDefaultStage3RenderSnapshot({
@@ -753,8 +789,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
           })
         : null;
     const resolvedSnapshot =
-      callerSnapshot ??
-      defaultSnapshot ??
+      mergeStage3SnapshotPatch(defaultSnapshot, callerSnapshot) ??
       (managedTemplateState ? { managedTemplateState } : null);
     const normalizedBody = {
       channelId: channel.id,
@@ -845,7 +880,8 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     if (activeStage2Run) {
       throw new Response(JSON.stringify({ error: "stage2_run_already_active", run: activeStage2Run }), { status: 409 });
     }
-    const mode: Stage2RunMode = resolveString(input.mode) === "auto" ? "auto" : "manual";
+    const requestedMode = resolveString(input.mode);
+    const mode: Stage2RunMode = requestedMode === "auto" ? "auto" : "manual";
     const run = enqueueAndScheduleStage2Run({
       workspaceId: auth.workspace.id,
       creatorUserId: auth.user.id,
@@ -972,7 +1008,7 @@ export async function POST(request: Request): Promise<Response> {
     const auth = await requireOwnerOrMcpMachineScope(request, requiredScope);
     const result = await handleOwnerTool(auth, request, tool, input);
     const accepted =
-      tool === "clips_owner_run_video_pipeline" ||
+      (tool === "clips_owner_run_video_pipeline" && (result as { dryRun?: boolean }).dryRun !== true) ||
       (tool === "clips_owner_render_video" &&
         (result as { job?: { status?: string } }).job?.status !== "completed");
     return Response.json(result, { status: accepted ? 202 : 200 });

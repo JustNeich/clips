@@ -967,6 +967,7 @@ export type Stage3TemplateConfig = {
   author: {
     name: string;
     handle: string;
+    showHandle?: boolean;
     avatarShape?: Stage3TemplateAvatarShape;
     avatarSize: number;
     avatarBorder: number;

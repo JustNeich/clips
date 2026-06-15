@@ -18,7 +18,8 @@ import {
 
 test("highlight config defaults stay enabled and seed slot1 from accent color", () => {
   const config = normalizeTemplateHighlightConfig(undefined, {
-    accentColor: "#47c96f"
+    accentColor: "#47c96f",
+    fontWeight: 800
   });
 
   assert.equal(config.enabled, true);
@@ -27,8 +28,45 @@ test("highlight config defaults stay enabled and seed slot1 from accent color", 
   assert.equal(config.slots[0].slotId, "slot1");
   assert.equal(config.slots[0].enabled, true);
   assert.equal(config.slots[0].color, "#47c96f");
+  assert.equal(config.slots[0].fontWeight, 800);
   assert.equal(config.slots[1].slotId, "slot2");
+  assert.equal(config.slots[1].fontWeight, undefined);
   assert.equal(config.slots[2].slotId, "slot3");
+});
+
+test("highlight config normalizes optional slot font weights", () => {
+  const config = normalizeTemplateHighlightConfig({
+    slots: [
+      {
+        slotId: "slot1",
+        enabled: true,
+        color: "#ffffff",
+        fontWeight: 900,
+        label: "Emphasis",
+        guidance: "Use for emphasized terms."
+      },
+      {
+        slotId: "slot2",
+        enabled: true,
+        color: "#eeeeee",
+        fontWeight: 950,
+        label: "Clamped",
+        guidance: "Clamps to max."
+      },
+      {
+        slotId: "slot3",
+        enabled: false,
+        color: "#cccccc",
+        fontWeight: "bold",
+        label: "Fallback",
+        guidance: "Invalid weight is omitted."
+      }
+    ]
+  });
+
+  assert.equal(config.slots[0].fontWeight, 900);
+  assert.equal(config.slots[1].fontWeight, 900);
+  assert.equal(config.slots[2].fontWeight, undefined);
 });
 
 test("highlight spans keep the earliest longest non-overlapping matches", () => {

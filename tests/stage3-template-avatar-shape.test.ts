@@ -58,3 +58,40 @@ test("stage 3 avatar rounded-square shape reaches the template renderer", () => 
   );
   assert.match(markup, /border-radius:14px/);
 });
+
+test("stage 3 template can hide the author handle without leaving rendered username text", () => {
+  const templateConfig = cloneStage3TemplateConfig(getTemplateById(SCIENCE_CARD_TEMPLATE_ID));
+  templateConfig.author.showHandle = false;
+
+  const markup = renderToStaticMarkup(
+    Stage3TemplateRenderer({
+      templateId: SCIENCE_CARD_TEMPLATE_ID,
+      templateConfigOverride: templateConfig,
+      content
+    })
+  );
+
+  assert.doesNotMatch(markup, /@barracks/);
+});
+
+test("stage 3 template renders highlight font weight from slot config", () => {
+  const templateConfig = cloneStage3TemplateConfig(getTemplateById(SCIENCE_CARD_TEMPLATE_ID));
+  templateConfig.highlights.slots[0].color = "#ffffff";
+  templateConfig.highlights.slots[0].fontWeight = 800;
+
+  const markup = renderToStaticMarkup(
+    Stage3TemplateRenderer({
+      templateId: SCIENCE_CARD_TEMPLATE_ID,
+      templateConfigOverride: templateConfig,
+      content: {
+        ...content,
+        highlights: {
+          top: [{ start: 0, end: 3, slotId: "slot1" }],
+          bottom: []
+        }
+      }
+    })
+  );
+
+  assert.match(markup, /font-weight:800/);
+});
