@@ -1222,6 +1222,8 @@ export function buildMontageLearningPlaybook(cases: MontageLearningCase[]): stri
     "- A parameter value is not a lesson. A clean case must explain before -> problem -> action -> after -> why -> tradeoff -> reusable rule.",
     "- Clean cases require source_raw, template_naive, and final_edited visual evidence; missing naive evidence keeps the case in candidate split.",
     "- Treat donor/provenance UI differently from source-native context such as years, subtitles, signage, or location cues.",
+    "- If donor watermark/captions are baked inside the useful source area, do not promote the case as clean crop training; require mask/blur support or reject the source.",
+    "- Crop/zoom that removes provenance by destroying source expressiveness is a failed causal edit, not a reusable lesson.",
     "- A lesson becomes clean training material only after judge PASS against source/template_naive/final frames.",
     "- Reject examples with overzoom, dead canvas, donor UI, unreadable source, or loss of the main action."
   ].join("\n");

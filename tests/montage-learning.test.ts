@@ -323,4 +323,6 @@ test("montage playbook only promotes confirmed clean causal cases", () => {
   assert.match(playbook, /Causal Montage Playbook v2/);
   assert.match(playbook, /no clean causal cases yet/i);
   assert.match(playbook, /No confirmed causal edits yet/);
+  assert.match(playbook, /baked inside the useful source area/i);
+  assert.match(playbook, /failed causal edit/i);
 });
