@@ -213,7 +213,10 @@ async function captureFrameManifest(params: {
   workspaceId?: string | null;
   draftCase: MontageLearningCase;
   finalUrl: string | null;
+  finalRenderExportId: string | null;
+  finalRenderJobId: string | null;
   frameMode: CliOptions["frameMode"];
+  appUrl: string;
 }): Promise<MontageLearningFrameManifest> {
   if (params.frameMode === "metadata") {
     return {
@@ -256,18 +259,81 @@ async function captureFrameManifest(params: {
     workspaceId: params.workspaceId,
     draftCase: params.draftCase
   });
-  const final = params.finalUrl
-    ? await captureFramesForUrl({
+  const finalRenderExportCandidates = [
+    params.finalRenderExportId,
+    params.finalRenderJobId
+  ].filter((value): value is string => Boolean(value?.trim()));
+  const final = finalRenderExportCandidates.length > 0
+    ? await captureFramesForRenderExports({
+        appUrl: params.appUrl,
+        renderExportIds: finalRenderExportCandidates,
+        outDir: path.join(params.caseDir, "final_frames")
+      })
+    : params.finalUrl
+      ? await captureFramesForUrl({
         url: params.finalUrl,
         label: "final",
         outDir: path.join(params.caseDir, "final_frames")
       })
-    : { requested: true as const, count: 0, files: [], status: "unavailable" as const, error: "missing final url" };
+      : { requested: true as const, count: 0, files: [], status: "unavailable" as const, error: "missing final render export/url" };
   return {
     source,
     template_naive: templateNaive,
     final
   };
+}
+
+async function captureFramesForRenderExports(params: {
+  appUrl: string;
+  renderExportIds: string[];
+  outDir: string;
+}): Promise<MontageLearningFrameManifest["final"]> {
+  const ids = params.renderExportIds.map((item) => item.trim()).filter(Boolean);
+  if (ids.length === 0) {
+    return { requested: true, count: 0, files: [], status: "unavailable", error: "missing render export/job id" };
+  }
+  await fs.mkdir(params.outDir, { recursive: true });
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "clips-montage-final-export-"));
+  const mediaPath = path.join(tempDir, "final.mp4");
+  const errors: string[] = [];
+  try {
+    for (const id of ids) {
+      try {
+        const response = await fetch(`${params.appUrl}/api/admin/render-exports/${encodeURIComponent(id)}`, {
+          headers: {
+            Authorization: `Bearer ${getMcpToken()}`,
+            Accept: "video/mp4,application/octet-stream,*/*"
+          }
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const body = Buffer.from(await response.arrayBuffer());
+        if (body.length < 1024) {
+          throw new Error("response was too small to be an mp4 artifact");
+        }
+        await fs.writeFile(mediaPath, body);
+        return await captureFramesFromMediaPath({
+          mediaPath,
+          label: "final",
+          outDir: params.outDir
+        });
+      } catch (error) {
+        errors.push(`${id}: ${sanitizeError(error)}`);
+      }
+    }
+    throw new Error(`render export download failed for all candidates: ${errors.join("; ")}`);
+  } catch (error) {
+    return {
+      requested: true,
+      count: 0,
+      files: [],
+      status: "unavailable",
+      error: sanitizeError(error)
+    };
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+  }
 }
 
 async function captureFramesForUrl(params: {
@@ -778,6 +844,9 @@ async function main(): Promise<void> {
         workspaceId: publication.workspaceId,
         draftCase,
         finalUrl: draftCase.outcome.artifact_refs.youtube_video_url ?? null,
+        finalRenderExportId: draftCase.final.render_export_id ?? null,
+        finalRenderJobId: draftCase.final.stage3_job_id ?? null,
+        appUrl: options.appUrl,
         frameMode: options.frameMode
       });
       let caseItem = buildMontageLearningCase({
