@@ -144,12 +144,48 @@ export type MontageLearningFrameManifest = {
     status: "not_requested" | "available" | "unavailable";
     error?: string;
   };
+  template_naive: {
+    requested: boolean;
+    count: number;
+    files: string[];
+    status: "not_requested" | "available" | "unavailable";
+    error?: string;
+  };
   final: {
     requested: boolean;
     count: number;
     files: string[];
     status: "not_requested" | "available" | "unavailable";
     error?: string;
+  };
+};
+
+export type MontageLearningProblemClass =
+  | "donor_provenance"
+  | "source_context_preservation"
+  | "overzoom_risk"
+  | "action_off_center"
+  | "dead_canvas"
+  | "landscape_strip"
+  | "source_context_loss"
+  | "clip_window_choice"
+  | "template_fit"
+  | "source_readability"
+  | "unknown";
+
+export type MontageLearningCausalEdit = {
+  parameter_or_action: string;
+  before_observation: string;
+  problem_class: MontageLearningProblemClass;
+  change_applied: string;
+  after_observation: string;
+  intent: string;
+  tradeoff: string;
+  reusable_rule: string;
+  evidence_frames: {
+    source_raw: string[];
+    template_naive: string[];
+    final_edited: string[];
   };
 };
 
@@ -163,6 +199,7 @@ export type MontageLearningAnalysis = {
   visual_before_after_summary: string;
   editing_intent_labels: string[];
   parameter_reasoning: Record<string, string>;
+  causal_edits: MontageLearningCausalEdit[];
   tradeoffs: string[];
   reusable_lessons: string[];
   judge_verdict: {
@@ -193,6 +230,23 @@ export type MontageLearningCase = {
     sampled_final_frames: string[];
     final_available: boolean | null;
   };
+  states: {
+    source_raw: {
+      sampled_frames: string[];
+      status: MontageLearningFrameManifest["source"]["status"];
+      note: string;
+    };
+    template_naive: {
+      sampled_frames: string[];
+      status: MontageLearningFrameManifest["template_naive"]["status"];
+      note: string;
+    };
+    final_edited: {
+      sampled_frames: string[];
+      status: MontageLearningFrameManifest["final"]["status"];
+      note: string;
+    };
+  };
   params: MontageLearningParams;
   final_render_plan_raw: MontageLearningJsonRecord;
   final_render_plan_effective: MontageLearningEffectiveRenderPlan;
@@ -214,6 +268,7 @@ export type MontageLearningCase = {
   };
   frame_manifest: MontageLearningFrameManifest;
   clean_training_candidate: boolean;
+  training_split: "clean" | "candidate" | "negative";
   exclusion_reasons: string[];
   analysis: MontageLearningAnalysis;
 };
@@ -229,6 +284,12 @@ const CANONICAL_PUBLICATION_STATUSES = new Set(["published", "scheduled", "queue
 
 const DEFAULT_FRAME_MANIFEST: MontageLearningFrameManifest = {
   source: {
+    requested: false,
+    count: 0,
+    files: [],
+    status: "not_requested"
+  },
+  template_naive: {
     requested: false,
     count: 0,
     files: [],
@@ -507,6 +568,224 @@ export function buildMontageLearningParams(input: {
   };
 }
 
+function causalEvidenceFrames(frameManifest: MontageLearningFrameManifest): MontageLearningCausalEdit["evidence_frames"] {
+  return {
+    source_raw: frameManifest.source.files,
+    template_naive: frameManifest.template_naive.files,
+    final_edited: frameManifest.final.files
+  };
+}
+
+function changedMontageActions(effective: MontageLearningEffectiveRenderPlan): string[] {
+  const actions = new Set<string>();
+  if (Math.abs(effective.focusX - 0.5) >= 0.04) {
+    actions.add("focusX");
+  }
+  if (Math.abs(effective.focusY - 0.5) >= 0.04) {
+    actions.add("focusY");
+  }
+  if (effective.videoZoom > 1.04) {
+    actions.add("videoZoom");
+  }
+  if (effective.videoFit !== DEFAULT_STAGE3_VIDEO_FIT) {
+    actions.add("videoFit");
+  }
+  if (effective.sourceCrop?.enabled) {
+    actions.add("sourceCrop");
+  }
+  if (effective.segments.length > 0) {
+    actions.add("segments");
+  }
+  if (effective.clipStartSec > 0 || effective.clipDurationSec !== null) {
+    actions.add("clip_window");
+  }
+  if (effective.mirrorEnabled === false) {
+    actions.add("mirrorEnabled");
+  }
+  if (Math.abs(effective.topFontScale - 1) >= 0.04 || Math.abs(effective.bottomFontScale - 1) >= 0.04) {
+    actions.add("fontScale");
+  }
+  if (effective.videoScaleX !== null || effective.videoScaleY !== null) {
+    actions.add("videoScale");
+  }
+  return [...actions].sort();
+}
+
+function actionMatchesCausalEdit(action: string, edit: MontageLearningCausalEdit): boolean {
+  const normalized = edit.parameter_or_action.toLowerCase();
+  if (action === "clip_window") {
+    return normalized.includes("clip") || normalized.includes("segment");
+  }
+  if (action === "segments") {
+    return normalized.includes("segment") || normalized.includes("clip");
+  }
+  if (action === "fontScale") {
+    return normalized.includes("font") || normalized.includes("text");
+  }
+  if (action === "videoScale") {
+    return normalized.includes("videoscale") || normalized.includes("scale");
+  }
+  return normalized.includes(action.toLowerCase());
+}
+
+export function findMissingCausalReasoningForChangedActions(
+  effective: MontageLearningEffectiveRenderPlan,
+  causalEdits: MontageLearningCausalEdit[]
+): string[] {
+  return changedMontageActions(effective).filter(
+    (action) => !causalEdits.some((edit) => actionMatchesCausalEdit(action, edit))
+  );
+}
+
+function buildCausalEdit(input: {
+  action: string;
+  problemClass: MontageLearningProblemClass;
+  before: string;
+  change: string;
+  after: string;
+  intent: string;
+  tradeoff: string;
+  reusableRule: string;
+  frameManifest: MontageLearningFrameManifest;
+}): MontageLearningCausalEdit {
+  return {
+    parameter_or_action: input.action,
+    before_observation: input.before,
+    problem_class: input.problemClass,
+    change_applied: input.change,
+    after_observation: input.after,
+    intent: input.intent,
+    tradeoff: input.tradeoff,
+    reusable_rule: input.reusableRule,
+    evidence_frames: causalEvidenceFrames(input.frameManifest)
+  };
+}
+
+export function buildHeuristicCausalEdits(input: {
+  effective: MontageLearningEffectiveRenderPlan;
+  frameManifest: MontageLearningFrameManifest;
+}): MontageLearningCausalEdit[] {
+  const edits: MontageLearningCausalEdit[] = [];
+  const { effective, frameManifest } = input;
+
+  if (effective.sourceCrop?.enabled) {
+    edits.push(buildCausalEdit({
+      action: "sourceCrop",
+      problemClass: "donor_provenance",
+      before:
+        "The naive template state must be inspected for donor avatar/name/username/headline/caption/platform UI/watermark before this edit can be promoted to clean training.",
+      change: `Applied sourceCrop x=${effective.sourceCrop.x}, y=${effective.sourceCrop.y}, width=${effective.sourceCrop.width}, height=${effective.sourceCrop.height}.`,
+      after:
+        "The final edited state should show only the useful inner source media while donor provenance is absent.",
+      intent:
+        "Remove donor/provenance contamination without treating source-native context as automatically bad.",
+      tradeoff:
+        "Cropping can sacrifice edge context; the clean case must prove useful source context remains readable.",
+      reusableRule:
+        "When the naive template shows donor channel UI around the useful source, crop/treat the source first, then verify the final full-phone frame has no donor provenance.",
+      frameManifest
+    }));
+  }
+
+  if (Math.abs(effective.focusX - 0.5) >= 0.04) {
+    edits.push(buildCausalEdit({
+      action: "focusX",
+      problemClass: "action_off_center",
+      before:
+        "The naive or cropped state placed the important subject/action away from the horizontal visual center.",
+      change: `Set focusX=${effective.focusX}.`,
+      after:
+        "The final edited state should keep the important action inside the readable media area.",
+      intent: "Recenter the actual action instead of accepting the default crop center.",
+      tradeoff: "Horizontal reframing may lose less important edge material.",
+      reusableRule: "Use focusX only after checking which side contains the meaningful action or face.",
+      frameManifest
+    }));
+  }
+
+  if (Math.abs(effective.focusY - 0.5) >= 0.04) {
+    edits.push(buildCausalEdit({
+      action: "focusY",
+      problemClass: "template_fit",
+      before:
+        "The naive or cropped state placed the useful source too high/low for the story template.",
+      change: `Set focusY=${effective.focusY}.`,
+      after:
+        "The final edited state should align the source with the text/media stack without phone-control conflict or dead lower canvas.",
+      intent: "Fit the source into the vertical story composition after the crop decision.",
+      tradeoff: "Vertical reframing can hide top or bottom context if pushed too far.",
+      reusableRule: "Use focusY as a visual correction after full-phone preview, never as a fixed pixel recipe.",
+      frameManifest
+    }));
+  }
+
+  if (effective.videoZoom > 1.04) {
+    edits.push(buildCausalEdit({
+      action: "videoZoom",
+      problemClass: "template_fit",
+      before:
+        "The naive source appeared too small, exposed unwanted edges, or lacked enough media visual weight.",
+      change: `Set videoZoom=${effective.videoZoom}.`,
+      after:
+        "The final edited state should increase media weight without making the source unreadable.",
+      intent: "Balance media presence in the template after clean crop/focus.",
+      tradeoff: "Zoom can remove provenance or dead space, but too much zoom harms readability and quality.",
+      reusableRule: "Increase zoom only until donor/edge problems are gone and the source remains understandable on phone previews.",
+      frameManifest
+    }));
+  }
+
+  if (effective.videoFit !== DEFAULT_STAGE3_VIDEO_FIT) {
+    edits.push(buildCausalEdit({
+      action: "videoFit",
+      problemClass: "overzoom_risk",
+      before:
+        "The naive cover/default fit would likely crop too much source context or force destructive zoom.",
+      change: `Set videoFit=${effective.videoFit}.`,
+      after:
+        "The final edited state should preserve source readability while avoiding a thin landscape strip or dead canvas.",
+      intent: "Choose fit mode based on source readability, not on filling every pixel.",
+      tradeoff: "Contain can preserve context but may create underfill that needs visual review.",
+      reusableRule: "Use contain only after clean crop and only if full-phone frames still feel intentional.",
+      frameManifest
+    }));
+  }
+
+  if (effective.segments.length > 0 || effective.clipStartSec > 0 || effective.clipDurationSec !== null) {
+    edits.push(buildCausalEdit({
+      action: "clip_window",
+      problemClass: "clip_window_choice",
+      before:
+        "The whole source timeline includes material that is weaker, off-topic, dirty, or poorly matched to the script.",
+      change: `Selected clipStartSec=${effective.clipStartSec}, clipDurationSec=${effective.clipDurationSec ?? "source/default"}, segments=${effective.segments.length}.`,
+      after:
+        "The final edited state should show the source window that carries the hook, development, or payoff promised by the text.",
+      intent: "Choose the meaningful section of the source instead of blindly using the entire donor reel.",
+      tradeoff: "A tighter window can omit context; the final review must confirm the story still makes sense.",
+      reusableRule: "Select clip windows by semantic payoff and donor cleanliness, not by motion alone.",
+      frameManifest
+    }));
+  }
+
+  if (effective.mirrorEnabled === false) {
+    edits.push(buildCausalEdit({
+      action: "mirrorEnabled",
+      problemClass: "source_context_preservation",
+      before:
+        "Mirroring would make source-native text, signage, UI, subtitles, or dates less trustworthy/readable.",
+      change: "Set mirrorEnabled=false.",
+      after:
+        "The final edited state preserves the source orientation and readable context.",
+      intent: "Avoid damaging source-native visual evidence while cleaning donor provenance through other edits.",
+      tradeoff: "No mirror-based novelty is gained, but source fidelity is preserved.",
+      reusableRule: "Do not mirror sources with readable text, years, UI, captions, tools, or presentation slides.",
+      frameManifest
+    }));
+  }
+
+  return edits;
+}
+
 export function buildHeuristicMontageAnalysis(input: {
   caseId: string;
   channelId: string;
@@ -521,6 +800,10 @@ export function buildHeuristicMontageAnalysis(input: {
   const tradeoffs: string[] = [];
   const lessons: string[] = [];
   const effective = input.effective;
+  const causalEdits = buildHeuristicCausalEdits({
+    effective,
+    frameManifest: input.frameManifest
+  });
 
   if (Math.abs(effective.focusX - 0.5) >= 0.04) {
     labels.add("horizontal_reframing");
@@ -585,11 +868,17 @@ export function buildHeuristicMontageAnalysis(input: {
   }
 
   const reasons: string[] = [];
-  const hasFrameEvidence = input.frameManifest.source.count >= 3 && input.frameManifest.final.count >= 3;
+  const hasFrameEvidence =
+    input.frameManifest.source.count >= 3 &&
+    input.frameManifest.template_naive.count >= 3 &&
+    input.frameManifest.final.count >= 3;
   if (!hasFrameEvidence) {
-    reasons.push("Less than 3 source/final frame pairs are available, so visual claims must be reviewed before clean training use.");
+    reasons.push("Less than 3 source/template_naive/final frame triplets are available, so causal visual claims cannot enter the clean split.");
   }
-  reasons.push("Heuristic analysis explains parameter intent from saved values, but it does not replace an LLM visual judge.");
+  if (causalEdits.length === 0) {
+    reasons.push("No causal edit was generated, so this case does not yet explain what changed from naive to final.");
+  }
+  reasons.push("Heuristic analysis explains possible parameter intent from saved values, but it does not replace LLM visual before/after judging.");
 
   return {
     case_id: input.caseId,
@@ -602,6 +891,7 @@ export function buildHeuristicMontageAnalysis(input: {
       "Offline heuristic seed. Use source/final frames plus LLM judge to convert this into a clean teaching example.",
     editing_intent_labels: [...labels].sort(),
     parameter_reasoning: reasoning,
+    causal_edits: causalEdits,
     tradeoffs,
     reusable_lessons: [...new Set(lessons)],
     judge_verdict: {
@@ -676,9 +966,32 @@ export function buildMontageLearningCase(input: MontageLearningCaseBuildInput): 
   if (frameManifest.source.requested && frameManifest.source.status !== "available") {
     exclusionReasons.push("source_frames_unavailable");
   }
+  if (frameManifest.template_naive.status !== "available" || frameManifest.template_naive.count < 3) {
+    exclusionReasons.push("template_naive_frames_missing");
+  }
   if (frameManifest.final.requested && frameManifest.final.status !== "available") {
     exclusionReasons.push("final_frames_unavailable");
   }
+  if (frameManifest.source.count < 3) {
+    exclusionReasons.push("source_frames_missing");
+  }
+  if (frameManifest.final.count < 3) {
+    exclusionReasons.push("final_frames_missing");
+  }
+  if (analysis.causal_edits.length === 0) {
+    exclusionReasons.push("causal_edits_missing");
+  }
+  for (const action of findMissingCausalReasoningForChangedActions(effective, analysis.causal_edits)) {
+    exclusionReasons.push(`missing_causal_reasoning:${action}`);
+  }
+  const cleanTrainingCandidate = exclusionReasons.length === 0;
+  const trainingSplit =
+    analysis.judge_verdict.status === "REJECT" ||
+    exclusionReasons.some((reason) => reason.startsWith("publication_status:") || reason.startsWith("stage3_job_status:failed"))
+      ? "negative"
+      : cleanTrainingCandidate
+        ? "clean"
+        : "candidate";
 
   return {
     case_id: caseId,
@@ -711,6 +1024,23 @@ export function buildMontageLearningCase(input: MontageLearningCaseBuildInput): 
             ? false
             : null
     },
+    states: {
+      source_raw: {
+        sampled_frames: frameManifest.source.files,
+        status: frameManifest.source.status,
+        note: "Raw uploaded/donor source evidence before template placement."
+      },
+      template_naive: {
+        sampled_frames: frameManifest.template_naive.files,
+        status: frameManifest.template_naive.status,
+        note: "Naive template placement before editor crop/focus/zoom/fit decisions; required for clean causal training."
+      },
+      final_edited: {
+        sampled_frames: frameManifest.final.files,
+        status: frameManifest.final.status,
+        note: "Accepted final render evidence after editor interventions."
+      }
+    },
     params,
     final_render_plan_raw: rawRenderPlan,
     final_render_plan_effective: effective,
@@ -731,7 +1061,8 @@ export function buildMontageLearningCase(input: MontageLearningCaseBuildInput): 
       }
     },
     frame_manifest: frameManifest,
-    clean_training_candidate: exclusionReasons.length === 0,
+    clean_training_candidate: cleanTrainingCandidate,
+    training_split: trainingSplit,
     exclusion_reasons: exclusionReasons,
     analysis
   };
@@ -759,28 +1090,49 @@ function extractSourceMetadata(trace: unknown): MontageLearningJsonRecord {
 export function buildMontageLearningQualityReport(cases: MontageLearningCase[]): MontageLearningJsonRecord {
   const statusCounts = new Map<string, number>();
   const channelCounts = new Map<string, number>();
+  const splitCounts = new Map<string, number>();
+  const problemCounts = new Map<string, number>();
   let clean = 0;
   let withSourceFrames = 0;
+  let withTemplateNaiveFrames = 0;
   let withFinalFrames = 0;
+  let casesWithCausalEdits = 0;
+  let causalEditCount = 0;
   for (const item of cases) {
     statusCounts.set(item.outcome.publication_status, (statusCounts.get(item.outcome.publication_status) ?? 0) + 1);
     channelCounts.set(item.channel_id, (channelCounts.get(item.channel_id) ?? 0) + 1);
+    splitCounts.set(item.training_split, (splitCounts.get(item.training_split) ?? 0) + 1);
     if (item.clean_training_candidate) {
       clean += 1;
     }
     if (item.source.sampled_source_frames.length >= 3) {
       withSourceFrames += 1;
     }
+    if (item.states.template_naive.sampled_frames.length >= 3) {
+      withTemplateNaiveFrames += 1;
+    }
     if (item.final.sampled_final_frames.length >= 3) {
       withFinalFrames += 1;
+    }
+    if (item.analysis.causal_edits.length > 0) {
+      casesWithCausalEdits += 1;
+    }
+    causalEditCount += item.analysis.causal_edits.length;
+    for (const edit of item.analysis.causal_edits) {
+      problemCounts.set(edit.problem_class, (problemCounts.get(edit.problem_class) ?? 0) + 1);
     }
   }
   return {
     total_cases: cases.length,
     clean_training_cases: clean,
     excluded_cases: cases.length - clean,
+    training_split_counts: Object.fromEntries(splitCounts),
     with_3_source_frames: withSourceFrames,
+    with_3_template_naive_frames: withTemplateNaiveFrames,
     with_3_final_frames: withFinalFrames,
+    cases_with_causal_edits: casesWithCausalEdits,
+    causal_edit_count: causalEditCount,
+    causal_problem_counts: Object.fromEntries(problemCounts),
     status_counts: Object.fromEntries(statusCounts),
     channel_counts: Object.fromEntries(channelCounts),
     exclusion_counts: countExclusions(cases),
@@ -800,15 +1152,21 @@ function countExclusions(cases: MontageLearningCase[]): Record<string, number> {
 
 export function buildMontageLearningPlaybook(cases: MontageLearningCase[]): string {
   const cleanCases = cases.filter((item) => item.clean_training_candidate);
-  const reviewedCases = cleanCases.length ? cleanCases : cases;
+  const reviewedCases = cleanCases.length ? cleanCases : [];
   const lessons = new Map<string, number>();
   const labels = new Map<string, number>();
+  const causalByProblem = new Map<string, Map<string, number>>();
   for (const item of reviewedCases) {
     for (const label of item.analysis.editing_intent_labels) {
       labels.set(label, (labels.get(label) ?? 0) + 1);
     }
     for (const lesson of item.analysis.reusable_lessons) {
       lessons.set(lesson, (lessons.get(lesson) ?? 0) + 1);
+    }
+    for (const edit of item.analysis.causal_edits) {
+      const bucket = causalByProblem.get(edit.problem_class) ?? new Map<string, number>();
+      bucket.set(edit.reusable_rule, (bucket.get(edit.reusable_rule) ?? 0) + 1);
+      causalByProblem.set(edit.problem_class, bucket);
     }
   }
   const lessonLines = [...lessons.entries()]
@@ -817,20 +1175,34 @@ export function buildMontageLearningPlaybook(cases: MontageLearningCase[]): stri
   const labelLines = [...labels.entries()]
     .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
     .map(([label, count]) => `- ${label}: ${count}`);
+  const causalSections = [...causalByProblem.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .flatMap(([problem, rules]) => [
+      `### ${problem}`,
+      "",
+      ...[...rules.entries()]
+        .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+        .map(([rule, count]) => `- ${rule} (${count})`),
+      ""
+    ]);
   return [
-    "# Montage Learning Playbook v1",
+    "# Causal Montage Playbook v2",
     "",
-    "This playbook is generated from final Clips publications/render jobs. It is a teaching artifact for future LLM editors, not an automatic production editor.",
+    "This playbook is generated from final Clips publications/render jobs, but it teaches causal editing decisions instead of parameter imitation.",
     "",
     "## Dataset Status",
     "",
     `- Total cases: ${cases.length}`,
     `- Clean training cases: ${cleanCases.length}`,
-    `- Review source: ${cleanCases.length ? "judge PASS cases" : "heuristic seed cases awaiting LLM/visual PASS"}`,
+    `- Review source: ${cleanCases.length ? "judge PASS cases with source/template_naive/final evidence and causal edits" : "no clean causal cases yet; use candidate cases only for review, not training"}`,
     "",
     "## Intent Labels",
     "",
     ...(labelLines.length ? labelLines : ["- No labels yet."]),
+    "",
+    "## Causal Edit Rules",
+    "",
+    ...(causalSections.length ? causalSections : ["- No confirmed causal edits yet."]),
     "",
     "## Reusable Lessons",
     "",
@@ -840,8 +1212,10 @@ export function buildMontageLearningPlaybook(cases: MontageLearningCase[]): stri
     "",
     "- Do not learn from chat_drafts as canonical truth; use final publications/render exports/stage3 jobs.",
     "- Keep raw saved values separate from effective normalized values.",
+    "- A parameter value is not a lesson. A clean case must explain before -> problem -> action -> after -> why -> tradeoff -> reusable rule.",
+    "- Clean cases require source_raw, template_naive, and final_edited visual evidence; missing naive evidence keeps the case in candidate split.",
     "- Treat donor/provenance UI differently from source-native context such as years, subtitles, signage, or location cues.",
-    "- A lesson becomes clean training material only after judge PASS against source/final frames.",
+    "- A lesson becomes clean training material only after judge PASS against source/template_naive/final frames.",
     "- Reject examples with overzoom, dead canvas, donor UI, unreadable source, or loss of the main action."
   ].join("\n");
 }

@@ -39,6 +39,7 @@
   - exact-time toggle больше не сбрасывается сам при клике, `Опубликовать сейчас` требует явного подтверждения вторым нажатием, а desktop inspector скроллится независимо от страницы;
   - фоновые refresh-и и same-chat live hydration после render/save/publication actions больше не перетягивают пользователя на Step 1/2 поверх его ручного выбора;
   - publication routes возвращают typed mutation errors (`code` + `field`), поэтому form-level и field-level ошибки показываются в правильном месте.
+- Offline montage learning export описан в [`docs/montage-learning.md`](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/montage-learning.md): v2 собирает `source_raw -> template_naive -> final_edited` и причинные `causal_edits`, а не просто копирует crop/focus/zoom параметры.
 
 ## 1. Установка зависимостей проекта
 
