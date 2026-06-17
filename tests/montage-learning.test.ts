@@ -7,6 +7,7 @@ import {
   buildMontageLearningCase,
   buildMontageLearningParams,
   buildMontageLearningPlaybook,
+  findMissingCausalReasoningForChangedActions,
   isCanonicalMontagePublication,
   selectFinalStage3Job
 } from "../lib/montage-learning";
@@ -78,6 +79,44 @@ test("montage learning builds causal edits for changed montage actions", () => {
   assert.ok(edits.some((edit) => edit.parameter_or_action === "mirrorEnabled"));
   assert.equal(edits[0]?.evidence_frames.template_naive.length, 3);
   assert.match(edits.find((edit) => edit.parameter_or_action === "sourceCrop")?.reusable_rule ?? "", /donor provenance/i);
+});
+
+test("montage learning does not require causal edit for default video scale", () => {
+  const effective = buildEffectiveRenderPlan({
+    rawRenderPlan: {
+      videoScaleX: 1,
+      videoScaleY: 1,
+      segments: [
+        {
+          startSec: 0,
+          endSec: 6,
+          speed: 1
+        }
+      ]
+    },
+    snapshot: { clipStartSec: 0, clipDurationSec: 6 }
+  });
+
+  assert.deepEqual(
+    findMissingCausalReasoningForChangedActions(effective, [
+      {
+        parameter_or_action: "segments",
+        before_observation: "The naive state has a longer source window than the final clip.",
+        problem_class: "clip_window_choice",
+        change_applied: "Selected the first six seconds.",
+        after_observation: "The final edited state uses a focused source window.",
+        intent: "Choose the clearest moment.",
+        tradeoff: "Later source context is omitted.",
+        reusable_rule: "Explain clip-window changes when a segment is selected.",
+        evidence_frames: {
+          source_raw: ["source.png"],
+          template_naive: ["naive.png"],
+          final_edited: ["final.png"]
+        }
+      }
+    ]),
+    []
+  );
 });
 
 test("montage learning filters canonical publication statuses", () => {

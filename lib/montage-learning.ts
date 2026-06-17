@@ -11,6 +11,10 @@ import {
   normalizeStage3VideoFit,
   type Stage3VideoFit
 } from "./stage3-video-fit";
+import {
+  DEFAULT_STAGE3_VIDEO_SCALE_X,
+  DEFAULT_STAGE3_VIDEO_SCALE_Y
+} from "./stage3-video-scale";
 
 export type MontageLearningJsonRecord = Record<string, unknown>;
 
@@ -605,7 +609,10 @@ function changedMontageActions(effective: MontageLearningEffectiveRenderPlan): s
   if (Math.abs(effective.topFontScale - 1) >= 0.04 || Math.abs(effective.bottomFontScale - 1) >= 0.04) {
     actions.add("fontScale");
   }
-  if (effective.videoScaleX !== null || effective.videoScaleY !== null) {
+  if (
+    (effective.videoScaleX !== null && Math.abs(effective.videoScaleX - DEFAULT_STAGE3_VIDEO_SCALE_X) >= 0.04) ||
+    (effective.videoScaleY !== null && Math.abs(effective.videoScaleY - DEFAULT_STAGE3_VIDEO_SCALE_Y) >= 0.04)
+  ) {
     actions.add("videoScale");
   }
   return [...actions].sort();
