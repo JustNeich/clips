@@ -2178,29 +2178,64 @@ function Stage3LivePreviewPanel({
                       />
                     ) : undefined,
                     mediaNode: activePreviewVideoUrl ? (
-                      <PreviewClipVideo
-                        key={activePreviewVideoUrl}
-                        sourceUrl={activePreviewVideoUrl}
-                        playbackDurationSec={playbackDurationSec}
-                        playbackPlan={playbackPlan}
-                        playbackTimingKey={playbackTimingKey}
-                        className="preview-slot-video"
-                        placementStyle={slotPlacementStyle}
-                        videoFit={slotPlacementStyle.objectFit}
-                        videoBrightness={videoBrightness}
-                        videoExposure={videoExposure}
-                        videoContrast={videoContrast}
-                        videoSaturation={videoSaturation}
-                        muted={isMuted || !sourceAudioEnabled}
-                        volume={sourceAudioGain}
-                        videoRef={slotPreviewRef}
-                        isPlaying={isPlaying}
-                        loopEnabled={loopEnabled}
-                        onPositionChange={handlePreviewPositionChange}
-                        onSourceDurationChange={handleSourceDurationChange}
-                        onClipEnd={handlePreviewClipEnd}
-                        controllerRef={previewTransportRef}
-                      />
+                      <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", background: "#030303" }}>
+                        {templateConfig.layoutKind === "channel_story" &&
+                        normalizeStage3VideoFit(slotPlacementStyle.objectFit) === "contain" ? (
+                          <>
+                            <video
+                              key={`${activePreviewVideoUrl}:matte`}
+                              className="preview-slot-video"
+                              src={activePreviewVideoUrl}
+                              muted
+                              loop
+                              playsInline
+                              preload="metadata"
+                              style={{
+                                position: "absolute",
+                                inset: 0,
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "cover",
+                                objectPosition: "center center",
+                                filter: "blur(18px) brightness(0.48) saturate(0.85)",
+                                transform: "scale(1.08)",
+                                transformOrigin: "center center"
+                              }}
+                            />
+                            <div
+                              style={{
+                                position: "absolute",
+                                inset: 0,
+                                background: "rgba(0,0,0,0.26)",
+                                pointerEvents: "none"
+                              }}
+                            />
+                          </>
+                        ) : null}
+                        <PreviewClipVideo
+                          key={activePreviewVideoUrl}
+                          sourceUrl={activePreviewVideoUrl}
+                          playbackDurationSec={playbackDurationSec}
+                          playbackPlan={playbackPlan}
+                          playbackTimingKey={playbackTimingKey}
+                          className="preview-slot-video"
+                          placementStyle={slotPlacementStyle}
+                          videoFit={slotPlacementStyle.objectFit}
+                          videoBrightness={videoBrightness}
+                          videoExposure={videoExposure}
+                          videoContrast={videoContrast}
+                          videoSaturation={videoSaturation}
+                          muted={isMuted || !sourceAudioEnabled}
+                          volume={sourceAudioGain}
+                          videoRef={slotPreviewRef}
+                          isPlaying={isPlaying}
+                          loopEnabled={loopEnabled}
+                          onPositionChange={handlePreviewPositionChange}
+                          onSourceDurationChange={handleSourceDurationChange}
+                          onClipEnd={handlePreviewClipEnd}
+                          controllerRef={previewTransportRef}
+                        />
+                      </div>
                     ) : (
                       <div
                         style={{

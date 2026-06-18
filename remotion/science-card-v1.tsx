@@ -484,6 +484,10 @@ export function ScienceCardV1({
     hasCustomBackground: hasCustomBackground,
     hasSourceVideo: sourceBlurBackgroundDisabled ? false : Boolean(sourceUrl)
   });
+  const shouldUseContainedMediaMatte =
+    Boolean(sourceUrl) &&
+    templateConfig.layoutKind === "channel_story" &&
+    normalizeStage3VideoFit(slotPlacementStyle.objectFit) === "contain";
 
   const backgroundNode = (
     <AbsoluteFill>
@@ -540,21 +544,43 @@ export function ScienceCardV1({
   );
 
   const mediaNode = sourceUrl ? (
-    <OffthreadVideo
-      src={sourceUrl}
-      startFrom={startFrom}
-      endAt={endAt}
-      style={{
-        width: "100%",
-        height: "100%",
-        objectFit: normalizeStage3VideoFit(slotPlacementStyle.objectFit),
-        objectPosition: slotPlacementStyle.objectPosition,
-        ...(videoFilter ? { filter: videoFilter } : {}),
-        transform: slotPlacementStyle.transform,
-        transformOrigin: slotPlacementStyle.transformOrigin
-      }}
-      volume={1}
-    />
+    <AbsoluteFill style={{ background: "#030303", overflow: "hidden" }}>
+      {shouldUseContainedMediaMatte ? (
+        <>
+          <OffthreadVideo
+            src={sourceUrl}
+            startFrom={startFrom}
+            endAt={endAt}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              objectPosition: "center center",
+              filter: "blur(18px) brightness(0.48) saturate(0.85)",
+              transform: "scale(1.08)",
+              transformOrigin: "center center"
+            }}
+            volume={0}
+          />
+          <AbsoluteFill style={{ background: "rgba(0,0,0,0.26)" }} />
+        </>
+      ) : null}
+      <OffthreadVideo
+        src={sourceUrl}
+        startFrom={startFrom}
+        endAt={endAt}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: normalizeStage3VideoFit(slotPlacementStyle.objectFit),
+          objectPosition: slotPlacementStyle.objectPosition,
+          ...(videoFilter ? { filter: videoFilter } : {}),
+          transform: slotPlacementStyle.transform,
+          transformOrigin: slotPlacementStyle.transformOrigin
+        }}
+        volume={1}
+      />
+    </AbsoluteFill>
   ) : (
     <AbsoluteFill style={{ background: "#dfe5ef" }} />
   );
