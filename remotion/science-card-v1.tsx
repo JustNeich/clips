@@ -544,7 +544,7 @@ export function ScienceCardV1({
   );
 
   const mediaNode = sourceUrl ? (
-    <AbsoluteFill style={{ background: "#030303", overflow: "hidden" }}>
+    <div style={{ position: "relative", width: "100%", height: "100%", background: "#030303", overflow: "hidden" }}>
       {shouldUseContainedMediaMatte ? (
         <>
           <OffthreadVideo
@@ -552,6 +552,8 @@ export function ScienceCardV1({
             startFrom={startFrom}
             endAt={endAt}
             style={{
+              position: "absolute",
+              inset: 0,
               width: "100%",
               height: "100%",
               objectFit: "cover",
@@ -570,6 +572,8 @@ export function ScienceCardV1({
         startFrom={startFrom}
         endAt={endAt}
         style={{
+          position: "absolute",
+          inset: 0,
           width: "100%",
           height: "100%",
           objectFit: normalizeStage3VideoFit(slotPlacementStyle.objectFit),
@@ -580,7 +584,7 @@ export function ScienceCardV1({
         }}
         volume={1}
       />
-    </AbsoluteFill>
+    </div>
   ) : (
     <AbsoluteFill style={{ background: "#dfe5ef" }} />
   );
