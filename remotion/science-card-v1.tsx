@@ -49,7 +49,7 @@ import {
   waitForStage3TemplateFonts
 } from "../lib/stage3-template-fonts";
 import {
-  CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR,
+  resolveChannelStoryEncodeEdgeFallbackStyles,
   resolveChannelStoryContainedMediaMatteStyles,
   resolveChannelStoryFullFrameSourceMatteStyles
 } from "../lib/channel-story-media-matte";
@@ -493,9 +493,11 @@ export function ScienceCardV1({
     Boolean(sourceUrl) &&
     templateConfig.layoutKind === "channel_story" &&
     normalizeStage3VideoFit(slotPlacementStyle.objectFit) === "contain";
+  const shouldUseChannelStoryEncodeEdgeFallback = shouldUseContainedMediaMatte;
   const shouldUseChannelStoryFullFrameMatte = shouldUseContainedMediaMatte && backgroundMode !== "custom";
   const containedMediaMatteStyles = resolveChannelStoryContainedMediaMatteStyles();
   const fullFrameSourceMatteStyles = resolveChannelStoryFullFrameSourceMatteStyles();
+  const encodeEdgeFallbackStyles = resolveChannelStoryEncodeEdgeFallbackStyles();
   const channelStoryFullFrameMatteNode = shouldUseChannelStoryFullFrameMatte ? (
     <AbsoluteFill style={fullFrameSourceMatteStyles.containerStyle}>
       <OffthreadVideo
@@ -507,6 +509,9 @@ export function ScienceCardV1({
       />
       <AbsoluteFill style={fullFrameSourceMatteStyles.densityOverlayStyle} />
     </AbsoluteFill>
+  ) : null;
+  const channelStoryPhysicalEdgeFallbackNode = shouldUseChannelStoryEncodeEdgeFallback ? (
+    <div aria-hidden="true" style={encodeEdgeFallbackStyles.physicalBottomEdgeStyle} />
   ) : null;
 
   const backgroundNode = (
@@ -645,7 +650,9 @@ export function ScienceCardV1({
   return (
     <AbsoluteFill
       style={{
-        backgroundColor: shouldUseChannelStoryFullFrameMatte ? CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR : "#060606",
+        ...(shouldUseChannelStoryEncodeEdgeFallback
+          ? encodeEdgeFallbackStyles.rootStyle
+          : { backgroundColor: "#060606" }),
         width: frame.width,
         height: frame.height
       }}
@@ -664,6 +671,7 @@ export function ScienceCardV1({
         }}
       />
       <RenderVariationOverlay profile={variationProfile} />
+      {channelStoryPhysicalEdgeFallbackNode}
     </AbsoluteFill>
   );
 }

@@ -94,11 +94,17 @@ Requirements:
 - a full-frame source matte may sit behind the card when the card does not reach
   the physical frame edge. This protects the final 1080x1920 render from a pure
   black strip below the story card.
+- the Remotion render root also paints an explicit physical bottom-edge fallback
+  over the lower 48px whenever contained channel-story media is active. This
+  fallback is independent of whether the background path is source-blur or a
+  generated custom `background.jpg`, so the encoded lower 24px cannot fall
+  through to pure black after H.264.
 
 Current Remotion behavior uses a blurred, darkened source-video layer behind
-contained channel-story media and a darker full-frame source matte behind the
-card. Future changes may tune values, but the visual contract above must remain
-true on rendered frames.
+contained channel-story media, may use a darker full-frame source matte behind
+the card, and always uses the bottom-edge fallback at the physical frame edge
+for contained channel-story media. Future changes may tune values, but the
+visual contract above must remain true on rendered frames.
 
 ## Visual QA Gates
 

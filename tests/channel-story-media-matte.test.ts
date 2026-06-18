@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR,
+  CHANNEL_STORY_PHYSICAL_BOTTOM_EDGE_FALLBACK_HEIGHT_PX,
+  resolveChannelStoryEncodeEdgeFallbackStyles,
   resolveChannelStoryContainedMediaMatteStyles,
   resolveChannelStoryFullFrameSourceMatteStyles
 } from "../lib/channel-story-media-matte";
@@ -19,6 +21,7 @@ const REPRESENTATIVE_SOURCE_EDGE: Rgb = { r: 96, g: 152, b: 214 };
 const CLIP_TO_MATTE_SEAM_PERCENT = 42;
 const BOTTOM_STRIP_PERCENT = 99;
 const ENCODE_EDGE_MIN_LUMA = 16;
+const PHYSICAL_BOTTOM_STRIP_PX = 24;
 
 function expectString(value: unknown, label: string): string {
   if (typeof value !== "string") {
@@ -202,8 +205,43 @@ test("channel-story root fallback color is safe for the physical encode edge", (
   const renderSource = readFileSync("remotion/science-card-v1.tsx", "utf8");
 
   assertEncodeEdgeFallbackColor(CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR, "channel-story root fallback");
-  assert.match(renderSource, /CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR/);
+  assert.match(renderSource, /resolveChannelStoryEncodeEdgeFallbackStyles/);
   assert.doesNotMatch(renderSource, /backgroundColor: shouldUseChannelStoryFullFrameMatte \? "#08090a" : "#060606"/);
+});
+
+test("channel-story physical bottom edge fallback covers the encoded bottom strip", () => {
+  const styles = resolveChannelStoryEncodeEdgeFallbackStyles();
+  const renderSource = readFileSync("remotion/science-card-v1.tsx", "utf8");
+  const variationOverlayIndex = renderSource.indexOf("<RenderVariationOverlay profile={variationProfile} />");
+  const physicalEdgeNodeIndex = renderSource.indexOf("{channelStoryPhysicalEdgeFallbackNode}");
+
+  assert.equal(styles.rootStyle.backgroundColor, CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR);
+  assert.equal(styles.physicalBottomEdgeStyle.position, "absolute");
+  assert.equal(styles.physicalBottomEdgeStyle.left, 0);
+  assert.equal(styles.physicalBottomEdgeStyle.right, 0);
+  assert.equal(styles.physicalBottomEdgeStyle.bottom, 0);
+  assert.equal(styles.physicalBottomEdgeStyle.height, CHANNEL_STORY_PHYSICAL_BOTTOM_EDGE_FALLBACK_HEIGHT_PX);
+  assert.equal(styles.physicalBottomEdgeStyle.zIndex, 20);
+  assert.ok(
+    CHANNEL_STORY_PHYSICAL_BOTTOM_EDGE_FALLBACK_HEIGHT_PX >= PHYSICAL_BOTTOM_STRIP_PX,
+    `physical edge fallback must cover the lower ${PHYSICAL_BOTTOM_STRIP_PX}px`
+  );
+  assert.equal(styles.physicalBottomEdgeStyle.backgroundColor, CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR);
+  assertEncodeEdgeFallbackColor(styles.physicalBottomEdgeStyle.backgroundColor, "physical bottom edge fallback");
+  assert.equal(styles.physicalBottomEdgeStyle.pointerEvents, "none");
+  assert.ok(variationOverlayIndex >= 0, "expected render variation overlay in the Remotion tree");
+  assert.ok(
+    physicalEdgeNodeIndex > variationOverlayIndex,
+    "physical bottom edge fallback must be the final frame-edge layer"
+  );
+  assert.match(
+    renderSource,
+    /channelStoryPhysicalEdgeFallbackNode = shouldUseChannelStoryEncodeEdgeFallback \?/
+  );
+  assert.match(
+    renderSource,
+    /const shouldUseChannelStoryEncodeEdgeFallback = shouldUseContainedMediaMatte;/
+  );
 });
 
 test("channel-story contained media matte model rejects black bottom strip and hard seam regressions", () => {
@@ -262,11 +300,13 @@ test("render and live preview use the shared contained media matte helper", () =
     assert.doesNotMatch(source, /rgba\(0,0,0,0\.26\)/);
   }
   assert.match(renderSource, /shouldUseChannelStoryFullFrameMatte/);
+  assert.match(renderSource, /shouldUseChannelStoryEncodeEdgeFallback/);
+  assert.match(renderSource, /channelStoryPhysicalEdgeFallbackNode/);
   assert.match(previewSource, /shouldUseChannelStoryPreviewFullFrameMatte/);
   assert.match(renderSource, /shouldUseContainedMediaMatte && backgroundMode !== "custom"/);
   assert.match(previewSource, /shouldUseContainedPreviewMediaMatte && previewBackgroundMode !== "custom"/);
   assert.match(
     renderSource,
-    /backgroundColor: shouldUseChannelStoryFullFrameMatte \? CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR : "#060606"/
+    /shouldUseChannelStoryEncodeEdgeFallback\s+\? encodeEdgeFallbackStyles\.rootStyle\s+: \{ backgroundColor: "#060606" \}/
   );
 });
