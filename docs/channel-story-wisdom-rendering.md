@@ -89,12 +89,16 @@ Requirements:
 - the bottom area must not become a pure black stripe;
 - there must be no visible seam between the sharp source clip and the blurred
   matte;
-- the blur/matte belongs inside the media slot and must not cover story text or
-  channel chrome.
+- the contained-source blur/matte belongs inside the media slot and must not
+  cover story text or channel chrome;
+- a full-frame source matte may sit behind the card when the card does not reach
+  the physical frame edge. This protects the final 1080x1920 render from a pure
+  black strip below the story card.
 
 Current Remotion behavior uses a blurred, darkened source-video layer behind
-contained channel-story media. Future changes may tune values, but the visual
-contract above must remain true on rendered frames.
+contained channel-story media and a darker full-frame source matte behind the
+card. Future changes may tune values, but the visual contract above must remain
+true on rendered frames.
 
 ## Visual QA Gates
 

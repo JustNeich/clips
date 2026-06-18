@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
+  CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR,
   resolveChannelStoryContainedMediaMatteStyles,
   resolveChannelStoryFullFrameSourceMatteStyles
 } from "../lib/channel-story-media-matte";
@@ -17,6 +18,7 @@ type MatteStyles = ReturnType<typeof resolveChannelStoryContainedMediaMatteStyle
 const REPRESENTATIVE_SOURCE_EDGE: Rgb = { r: 96, g: 152, b: 214 };
 const CLIP_TO_MATTE_SEAM_PERCENT = 42;
 const BOTTOM_STRIP_PERCENT = 99;
+const ENCODE_EDGE_MIN_LUMA = 16;
 
 function expectString(value: unknown, label: string): string {
   if (typeof value !== "string") {
@@ -150,6 +152,14 @@ function assertContainedMediaMatteVisualContract(styles: MatteStyles): void {
   );
 }
 
+function assertEncodeEdgeFallbackColor(value: unknown, label: string): void {
+  const rgb = parseHexRgb(value);
+  assert.ok(
+    luminance(rgb) >= ENCODE_EDGE_MIN_LUMA,
+    `${label} is too dark for the physical 1080x1920 encode edge: ${describeRgb(rgb)}`
+  );
+}
+
 test("channel-story contained media matte is a dense non-black underlay contract", () => {
   const styles = resolveChannelStoryContainedMediaMatteStyles();
 
@@ -172,8 +182,8 @@ test("channel-story full-frame source matte covers non-card frame edges", () => 
 
   assert.equal(styles.containerStyle.position, "absolute");
   assert.equal(styles.containerStyle.inset, 0);
-  assert.equal(styles.containerStyle.background, "#08090a");
-  assert.ok(luminance(parseHexRgb(styles.containerStyle.background)) >= 8);
+  assert.equal(styles.containerStyle.background, CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR);
+  assertEncodeEdgeFallbackColor(styles.containerStyle.background, "full-frame matte fallback");
   assert.equal(styles.containerStyle.overflow, "hidden");
   assert.equal(styles.containerStyle.pointerEvents, "none");
   assert.equal(styles.underlayVideoStyle.left, -36);
@@ -184,8 +194,16 @@ test("channel-story full-frame source matte covers non-card frame edges", () => 
   assert.match(String(styles.underlayVideoStyle.filter), /brightness\(0\.32\)/);
   assert.match(String(styles.underlayVideoStyle.filter), /saturate\(0\.78\)/);
   assert.equal(styles.underlayVideoStyle.transform, "scale(1.18)");
-  assert.match(String(styles.densityOverlayStyle.background), /rgba\(8,9,10,0\.66\) 100%/);
+  assert.match(String(styles.densityOverlayStyle.background), /rgba\(12,14,16,0\.62\) 100%/);
   assertContainedMediaMatteVisualContract(styles);
+});
+
+test("channel-story root fallback color is safe for the physical encode edge", () => {
+  const renderSource = readFileSync("remotion/science-card-v1.tsx", "utf8");
+
+  assertEncodeEdgeFallbackColor(CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR, "channel-story root fallback");
+  assert.match(renderSource, /CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR/);
+  assert.doesNotMatch(renderSource, /backgroundColor: shouldUseChannelStoryFullFrameMatte \? "#08090a" : "#060606"/);
 });
 
 test("channel-story contained media matte model rejects black bottom strip and hard seam regressions", () => {
@@ -247,5 +265,8 @@ test("render and live preview use the shared contained media matte helper", () =
   assert.match(previewSource, /shouldUseChannelStoryPreviewFullFrameMatte/);
   assert.match(renderSource, /shouldUseContainedMediaMatte && backgroundMode !== "custom"/);
   assert.match(previewSource, /shouldUseContainedPreviewMediaMatte && previewBackgroundMode !== "custom"/);
-  assert.match(renderSource, /backgroundColor: shouldUseChannelStoryFullFrameMatte \? "#08090a" : "#060606"/);
+  assert.match(
+    renderSource,
+    /backgroundColor: shouldUseChannelStoryFullFrameMatte \? CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR : "#060606"/
+  );
 });

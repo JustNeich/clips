@@ -49,6 +49,7 @@ import {
   waitForStage3TemplateFonts
 } from "../lib/stage3-template-fonts";
 import {
+  CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR,
   resolveChannelStoryContainedMediaMatteStyles,
   resolveChannelStoryFullFrameSourceMatteStyles
 } from "../lib/channel-story-media-matte";
@@ -644,7 +645,7 @@ export function ScienceCardV1({
   return (
     <AbsoluteFill
       style={{
-        backgroundColor: shouldUseChannelStoryFullFrameMatte ? "#08090a" : "#060606",
+        backgroundColor: shouldUseChannelStoryFullFrameMatte ? CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR : "#060606",
         width: frame.width,
         height: frame.height
       }}

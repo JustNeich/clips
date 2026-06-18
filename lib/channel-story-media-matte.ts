@@ -12,6 +12,8 @@ export type ChannelStoryFullFrameSourceMatteStyles = {
   densityOverlayStyle: CSSProperties;
 };
 
+export const CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR = "#121416";
+
 export function resolveChannelStoryContainedMediaMatteStyles(): ChannelStoryContainedMediaMatteStyles {
   return {
     containerStyle: {
@@ -50,7 +52,7 @@ export function resolveChannelStoryFullFrameSourceMatteStyles(): ChannelStoryFul
       inset: 0,
       width: "100%",
       height: "100%",
-      background: "#08090a",
+      background: CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR,
       overflow: "hidden",
       pointerEvents: "none"
     },
@@ -70,7 +72,7 @@ export function resolveChannelStoryFullFrameSourceMatteStyles(): ChannelStoryFul
       position: "absolute",
       inset: -1,
       background:
-        "linear-gradient(180deg, rgba(5,6,7,0.2) 0%, rgba(5,6,7,0.44) 58%, rgba(8,9,10,0.66) 100%)",
+        "linear-gradient(180deg, rgba(5,6,7,0.16) 0%, rgba(7,8,9,0.38) 58%, rgba(12,14,16,0.62) 100%)",
       pointerEvents: "none"
     }
   };
