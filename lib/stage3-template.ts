@@ -1252,6 +1252,29 @@ export function resolveChannelStoryBodyContentHeight(params: {
   return Math.max(1, Math.min(Math.max(1, params.maxHeight), Math.ceil(measuredHeight)));
 }
 
+export function resolveChannelStoryBodyMaxHeight(
+  templateConfig: Stage3TemplateConfig,
+  bodyY: number
+): number {
+  const channelStory = templateConfig.channelStory;
+  if (templateConfig.layoutKind !== "channel_story" || !channelStory) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const cardInnerRect = getStage3CardInnerRect(templateConfig);
+  const bottomContentHeight = channelStory.footerHeight + channelStory.contentPaddingBottom;
+  const minimumMediaHeight = 120;
+  const availableHeight =
+    cardInnerRect.y +
+    cardInnerRect.height -
+    bottomContentHeight -
+    minimumMediaHeight -
+    channelStory.bodyToMediaGap -
+    bodyY;
+
+  return Math.max(1, Math.floor(availableHeight));
+}
+
 function normalizeFontScale(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return 1;
@@ -1796,7 +1819,7 @@ export function getChannelStoryComputed(
     lines: bottomSized.lines,
     fontPx: bottomSized.font,
     lineHeight: bottomSized.lineHeight,
-    maxHeight: channelStory.bodyHeight
+    maxHeight: resolveChannelStoryBodyMaxHeight(templateConfig, bodyY)
   });
   const topContentHeight =
     bodyY + bodyContentHeight + channelStory.bodyToMediaGap - cardInnerRect.y;

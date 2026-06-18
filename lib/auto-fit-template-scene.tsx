@@ -61,6 +61,7 @@ export type MeasuredSlotSpec = {
 export type MeasuredSlotResult = {
   font: number;
   lineHeight: number;
+  lines: number;
 };
 
 const FIT_CACHE = new Map<string, TemplateSceneComputed>();
@@ -191,7 +192,7 @@ function buildCacheKey(
   templateConfig: Stage3TemplateConfig
 ): string {
   return JSON.stringify({
-    version: "scene-autofit-v11",
+    version: "scene-autofit-v12",
     templateId,
     topText: baseComputed.top,
     bottomText: baseComputed.bottom,
@@ -386,7 +387,8 @@ export function solveMeasuredSlotForMeasurements(
       });
       return {
         font: candidates[0].font,
-        lineHeight: candidates[0].lineHeight
+        lineHeight: candidates[0].lineHeight,
+        lines: measure(candidates[0].font, candidates[0].lineHeight).lines
       };
     }
 
@@ -424,14 +426,17 @@ export function solveMeasuredSlotForMeasurements(
     if (bestCandidate) {
       return {
         font: bestCandidate.font,
-        lineHeight: bestCandidate.lineHeight
+        lineHeight: bestCandidate.lineHeight,
+        lines: measure(bestCandidate.font, bestCandidate.lineHeight).lines
       };
     }
   }
 
+  const fallbackMeasurement = measure(spec.minFont, spec.baseLineHeight);
   return {
     font: spec.minFont,
-    lineHeight: spec.baseLineHeight
+    lineHeight: spec.baseLineHeight,
+    lines: Math.min(fallbackMeasurement.lines, spec.maxLines)
   };
 }
 
@@ -589,7 +594,8 @@ function buildMeasuredComputed(
     topSpec.height <= 1 || !topSpec.text.trim()
       ? {
           font: baseComputed.topFont,
-          lineHeight: baseComputed.topLineHeight
+          lineHeight: baseComputed.topLineHeight,
+          lines: 0
         }
       : solveMeasuredSlot(topMeasureNode, topSpec);
   const bottomResult = solveMeasuredSlot(bottomMeasureNode, bottomSpec);
@@ -598,8 +604,10 @@ function buildMeasuredComputed(
     ...baseComputed,
     topFont: topResult.font,
     topLineHeight: topResult.lineHeight,
+    topLines: topResult.lines,
     bottomFont: bottomResult.font,
-    bottomLineHeight: bottomResult.lineHeight
+    bottomLineHeight: bottomResult.lineHeight,
+    bottomLines: bottomResult.lines
   };
 }
 

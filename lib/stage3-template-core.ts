@@ -3,6 +3,7 @@ import { normalizeTemplateCaptionHighlights } from "./template-highlights";
 import {
   getStage3CardInnerRect,
   isClassicScienceCardTemplateId,
+  resolveChannelStoryBodyMaxHeight,
   resolveChannelStoryBodyContentHeight,
   SCIENCE_CARD_TEMPLATE_ID,
   STAGE3_TEMPLATE_ID,
@@ -83,7 +84,7 @@ export type TemplateRenderSnapshot = {
 
 export type TemplateLayoutOutput = Stage3TemplateComputed;
 
-const TEMPLATE_FIT_REVISION = "template-fit-v2";
+const TEMPLATE_FIT_REVISION = "template-fit-v3";
 
 export type TemplateChromeMetrics = {
   cardRadius: number;
@@ -301,7 +302,7 @@ function resolveChannelStoryDynamicComputed(
     lines: computed.bottomLines,
     fontPx: computed.bottomFont,
     lineHeight: computed.bottomLineHeight,
-    maxHeight: channelStory.bodyHeight
+    maxHeight: resolveChannelStoryBodyMaxHeight(templateConfig, bodyY)
   });
   const topContentHeight =
     bodyY + bodyContentHeight + channelStory.bodyToMediaGap - cardInnerRect.y;

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { solveMeasuredSlotForMeasurements } from "../lib/auto-fit-template-scene";
+import { resolveTemplateDescenderSafetyPx } from "../lib/stage3-template";
 import * as stage3TemplateCoreModule from "../lib/stage3-template-core";
 
 const stage3TemplateCore =
@@ -272,4 +274,97 @@ test("channel-story body text keeps descender-safe line height and responds to s
   );
   assert.ok(reduced.computed.bottomFont < atDefault.computed.bottomFont);
   assert.ok(increased.computed.bottomFont >= atDefault.computed.bottomFont);
+});
+
+test("measured channel-story line count drives rubber body-media layout", () => {
+  const bottomText =
+    "Curiosity begins with one small risk. A camera dropped into a sea-floor hole turned the unknown below into the whole story, inch by inch.";
+
+  const base = buildTemplateRenderSnapshot({
+    templateId: "channel-story-v1",
+    content: {
+      topText: "",
+      bottomText,
+      channelName: "Wisdom Stories",
+      channelHandle: "",
+      highlights: { top: [], bottom: [] },
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    }
+  });
+
+  const measuredThreeLines = buildTemplateRenderSnapshot({
+    templateId: "channel-story-v1",
+    content: base.content,
+    fitOverride: {
+      bottomFontPx: base.computed.bottomFont,
+      bottomLineHeight: base.computed.bottomLineHeight,
+      bottomLines: 3
+    }
+  });
+  const measuredFiveLines = buildTemplateRenderSnapshot({
+    templateId: "channel-story-v1",
+    content: base.content,
+    fitOverride: {
+      bottomFontPx: base.computed.bottomFont,
+      bottomLineHeight: base.computed.bottomLineHeight,
+      bottomLines: 5
+    }
+  });
+
+  const expectedBodyHeight = Math.ceil(
+    5 * base.computed.bottomFont * base.computed.bottomLineHeight +
+      resolveTemplateDescenderSafetyPx(base.computed.bottomFont, base.computed.bottomLineHeight)
+  );
+  const expectedGap = 28;
+
+  assert.ok(
+    measuredFiveLines.layout.bottomText.height >= expectedBodyHeight,
+    `expected body rect to fit five measured lines, got ${measuredFiveLines.layout.bottomText.height} < ${expectedBodyHeight}`
+  );
+  assert.ok(
+    measuredFiveLines.layout.media.y >=
+      measuredFiveLines.layout.bottomText.y + measuredFiveLines.layout.bottomText.height + expectedGap,
+    "expected media to start after the dynamically sized body text plus the template gap"
+  );
+  assert.ok(
+    measuredFiveLines.layout.media.y > measuredThreeLines.layout.media.y,
+    `expected media to move down after measured five-line text, got ${measuredFiveLines.layout.media.y} <= ${measuredThreeLines.layout.media.y}`
+  );
+});
+
+test("measured slot solver preserves the browser-observed line count", () => {
+  const result = solveMeasuredSlotForMeasurements(
+    {
+      text: "one two three four five six seven eight nine ten",
+      width: 420,
+      height: 320,
+      minFont: 28,
+      maxFont: 48,
+      preferredFont: 42,
+      maxLines: 8,
+      baseLineHeight: 1.08,
+      fillTargetMin: 0,
+      fillTargetMax: 0,
+      fontFamily: "Inter, sans-serif",
+      fontWeight: 500,
+      fontStyle: "normal",
+      letterSpacing: "0",
+      textAlign: "left",
+      scale: 1,
+      lineHeightFloor: 1.08,
+      lineHeightCeil: 1.08,
+      fitMode: "max_safe"
+    },
+    (font, lineHeight) => ({
+      height: font * lineHeight * 5,
+      lines: 5
+    })
+  );
+
+  assert.equal(result.lines, 5);
 });
