@@ -153,6 +153,18 @@ function postOwnerControl(token: string, body: unknown): Promise<Response> {
   );
 }
 
+const APPROVED_VISUAL_GATE = {
+  status: "approved",
+  source: "inner-video-editor-loop",
+  judgeVerdict: "approved",
+  innerVideoOnly: true,
+  donorWrapperVisible: false,
+  approvedAt: "2040-01-01T00:00:00.000Z",
+  previewFrames: ["preview/full-phone-01.png"],
+  overlayFrames: ["overlay/source-01.png"],
+  cleanExperimentId: "test-clean-run"
+};
+
 test("machine credential can read flows and owner status while short flow token cannot use owner control", async () => {
   await withIsolatedAppData(async (appDataDir) => {
     const { owner } = await seedOwnerControl(appDataDir);
@@ -187,6 +199,132 @@ test("machine credential can read flows and owner status while short flow token 
       input: {}
     });
     assert.equal(rejected.status, 401);
+  });
+});
+
+test("owner control blocks channel-story render_video until an editor/judge snapshot is approved", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    await appendStage2CaptionEvent(chat.id);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "channel-story-gate-agent",
+      scopes: ["entity:write", "flow:read", "pipeline:run"]
+    });
+
+    const createResponse = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_create_template",
+      input: {
+        name: "Story Gate Template",
+        baseTemplateId: "channel-story-v1",
+        layoutFamily: "channel-story-v1"
+      }
+    });
+    assert.equal(createResponse.status, 200);
+    const created = (await createResponse.json()) as { template: { id: string } };
+
+    const blocked = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_render_video",
+      input: {
+        channelId: channel.id,
+        chatId: chat.id,
+        templateId: created.template.id,
+        snapshot: {
+          renderPlan: {
+            sourceCrop: {
+              enabled: true,
+              x: 0,
+              y: 0.3,
+              width: 1,
+              height: 0.5,
+              confidence: 0.9,
+              source: "unapproved-editor-crop"
+            }
+          }
+        }
+      }
+    });
+    assert.equal(blocked.status, 409);
+    const body = (await blocked.json()) as { code?: string };
+    assert.equal(body.code, "needs_editor_approval");
+
+    const unapprovedArtifactPath = path.join(appDataDir, "unapproved-crop.mp4");
+    await writeFile(unapprovedArtifactPath, "unapproved");
+    const unapprovedJob = enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "render",
+      payloadJson: JSON.stringify({
+        chatId: chat.id,
+        channelId: channel.id,
+        snapshot: {
+          renderPlan: {
+            sourceCrop: {
+              enabled: true,
+              x: 0,
+              y: 0.25,
+              width: 1,
+              height: 0.55,
+              confidence: 0.91,
+              source: "historical-unapproved-crop"
+            }
+          }
+        }
+      })
+    });
+    completeStage3Job(unapprovedJob.id, {
+      artifact: {
+        fileName: "unapproved-crop.mp4",
+        filePath: unapprovedArtifactPath,
+        mimeType: "video/mp4",
+        sizeBytes: 10
+      }
+    });
+
+    const blockedReuse = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_render_video",
+      input: {
+        channelId: channel.id,
+        chatId: chat.id,
+        templateId: created.template.id
+      }
+    });
+    assert.equal(blockedReuse.status, 409);
+    const blockedReuseBody = (await blockedReuse.json()) as { code?: string };
+    assert.equal(blockedReuseBody.code, "needs_editor_approval");
+
+    const approved = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_render_video",
+      input: {
+        channelId: channel.id,
+        chatId: chat.id,
+        templateId: created.template.id,
+        snapshot: {
+          zoroKingApproval: APPROVED_VISUAL_GATE,
+          renderPlan: {
+            sourceCrop: {
+              enabled: true,
+              x: 0,
+              y: 0.3,
+              width: 1,
+              height: 0.5,
+              confidence: 0.96,
+              source: "approved-inner-video-boundary"
+            }
+          }
+        }
+      }
+    });
+    assert.equal(approved.status, 202);
+    const rendered = (await approved.json()) as { job: { id: string } };
+    const enqueued = getStage3Job(rendered.job.id);
+    assert.ok(enqueued);
+    const payload = JSON.parse(enqueued?.payloadJson ?? "{}") as {
+      snapshot?: { zoroKingApproval?: { status?: string; judgeVerdict?: string } };
+    };
+    assert.equal(payload.snapshot?.zoroKingApproval?.status, "approved");
+    assert.equal(payload.snapshot?.zoroKingApproval?.judgeVerdict, "approved");
   });
 });
 
@@ -533,6 +671,7 @@ test("owner control render_video reuses the latest editor source crop instead of
         chatId: chat.id,
         channelId: channel.id,
         snapshot: {
+          zoroKingApproval: APPROVED_VISUAL_GATE,
           bottomText: "OLD EDITOR TEXT",
           clipStartSec: 3.5,
           clipDurationSec: 7.75,

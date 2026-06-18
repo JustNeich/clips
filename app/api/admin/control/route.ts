@@ -87,6 +87,7 @@ import type { Stage3RenderRequestBody } from "../../../../lib/stage3-render-serv
 import { resolveSnapshotManagedTemplateStateForEnqueue } from "../../../../lib/managed-template-runtime";
 import { findLatestStage2Event } from "../../../../lib/chat-workflow";
 import { buildDefaultStage3RenderSnapshot } from "../../../../lib/stage3-default-snapshot";
+import { CHANNEL_STORY_TEMPLATE_ID } from "../../../../lib/stage3-template";
 import type { Stage3RenderPlan, Stage3StateSnapshot } from "../../../../app/components/types";
 
 export const runtime = "nodejs";
@@ -97,8 +98,20 @@ type ControlBody = {
 };
 
 type OwnerControlAuth = Awaited<ReturnType<typeof requireOwnerOrMcpMachineScope>>;
+type ZoroKingVisualApproval = {
+  status?: string;
+  source?: string;
+  judgeVerdict?: string;
+  innerVideoOnly?: boolean;
+  donorWrapperVisible?: boolean;
+  approvedAt?: string;
+  previewFrames?: string[];
+  overlayFrames?: string[];
+  cleanExperimentId?: string;
+};
 type Stage3SnapshotPatch = Partial<Omit<Stage3StateSnapshot, "renderPlan">> & {
   renderPlan?: Partial<Stage3RenderPlan>;
+  zoroKingApproval?: ZoroKingVisualApproval;
 };
 
 const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
@@ -199,6 +212,37 @@ function hasEditorSourceCrop(snapshot: Stage3SnapshotPatch | null): boolean {
   return Boolean(crop && crop.enabled === true && crop.width > 0 && crop.height > 0);
 }
 
+function hasApprovedVisualGate(snapshot: Stage3SnapshotPatch | null): boolean {
+  const approval = snapshot?.zoroKingApproval;
+  return Boolean(
+    hasEditorSourceCrop(snapshot) &&
+      approval &&
+      approval.status === "approved" &&
+      approval.judgeVerdict === "approved" &&
+      approval.innerVideoOnly === true &&
+      approval.donorWrapperVisible === false &&
+      Array.isArray(approval.previewFrames) &&
+      approval.previewFrames.length > 0
+  );
+}
+
+function requiresChannelStoryVisualGate(input: {
+  templateId: string | null | undefined;
+  managedTemplateState: Stage3StateSnapshot["managedTemplateState"] | null | undefined;
+}): boolean {
+  if (input.templateId === CHANNEL_STORY_TEMPLATE_ID) {
+    return true;
+  }
+  const managed = input.managedTemplateState;
+  if (!managed || managed.managedId !== input.templateId) {
+    return false;
+  }
+  return (
+    managed.baseTemplateId === CHANNEL_STORY_TEMPLATE_ID ||
+    managed.templateConfig.layoutKind === "channel_story"
+  );
+}
+
 function pickMontageRenderPlanPatch(plan: Partial<Stage3RenderPlan>): Partial<Stage3RenderPlan> {
   return {
     targetDurationSec: plan.targetDurationSec,
@@ -243,7 +287,8 @@ function buildMontagePatchFromSnapshot(snapshot: Stage3SnapshotPatch): Stage3Sna
     focusX: snapshot.focusX,
     focusY: snapshot.focusY,
     sourceDurationSec: snapshot.sourceDurationSec,
-    renderPlan: pickMontageRenderPlanPatch(snapshot.renderPlan ?? {})
+    renderPlan: pickMontageRenderPlanPatch(snapshot.renderPlan ?? {}),
+    zoroKingApproval: snapshot.zoroKingApproval
   };
 }
 
@@ -258,7 +303,7 @@ function findLatestEditorMontageSnapshot(input: {
   });
   for (const job of jobs) {
     const snapshot = parseJobSnapshot(job);
-    if (snapshot && hasEditorSourceCrop(snapshot)) {
+    if (snapshot && hasApprovedVisualGate(snapshot)) {
       return { job, snapshot };
     }
   }
@@ -877,8 +922,9 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
             sourceDurationSec: resolveNumber(input.sourceDurationSec) ?? null
           })
         : null;
+    const reuseApprovedMontage = input.reuseApprovedMontage !== false;
     const reusedMontage =
-      callerSnapshot === null
+      callerSnapshot === null && reuseApprovedMontage
         ? findLatestEditorMontageSnapshot({
             workspaceId: auth.workspace.id,
             chatId: chat.id
@@ -891,6 +937,40 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
         callerSnapshot
       ) ??
       (managedTemplateState ? { managedTemplateState } : null);
+    const visualGateRequired = requiresChannelStoryVisualGate({
+      templateId: effectiveTemplateId,
+      managedTemplateState
+    });
+    const visualGateApproved = hasApprovedVisualGate(resolvedSnapshot);
+    if (visualGateRequired && !visualGateApproved) {
+      auditControl({
+        auth,
+        action: "owner_control.render.blocked",
+        entityType: "chat",
+        entityId: chat.id,
+        channelId: channel.id,
+        chatId: chat.id,
+        status: "blocked",
+        payload: {
+          reason: "needs_editor_approval",
+          templateId: effectiveTemplateId ?? null,
+          reusedApprovedMontageStage3JobId: reusedMontage?.job.id ?? null,
+          reuseApprovedMontage
+        }
+      });
+      throw new Response(
+        JSON.stringify({
+          error: "needs_editor_approval",
+          code: "needs_editor_approval",
+          message:
+            "Channel-story renders require a fresh editor/judge approved snapshot before final MP4 enqueue."
+        }),
+        {
+          status: 409,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
     const normalizedBody = {
       channelId: channel.id,
       chatId: chat.id,
@@ -929,7 +1009,8 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
         executionTarget,
         publishAfterRender: normalizedBody.publishAfterRender,
         templateId: effectiveTemplateId ?? null,
-        reusedMontageStage3JobId: reusedMontage?.job.id ?? null
+        renderGate: visualGateRequired ? "approved_visual_snapshot" : "not_required",
+        reusedApprovedMontageStage3JobId: reusedMontage?.job.id ?? null
       }
     });
     return {
