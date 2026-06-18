@@ -150,8 +150,10 @@ function Install-ClipsStage3Worker {
         "stage3-template-registry.ts",
         "stage3-background-mode.ts",
         "stage3-video-adjustments.ts",
+        "stage3-video-fit.ts",
         "stage3-video-scale.ts",
         "stage3-video-placement.ts",
+        "channel-story-media-matte.ts",
         "stage3-worker-job-timeout.ts"
       )
     }

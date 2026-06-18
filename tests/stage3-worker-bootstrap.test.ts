@@ -114,6 +114,7 @@ test("windows bootstrap script uses basic parsing and writes bootstrap logs", ()
   assert.equal(manifest.runtimeDependenciesPlatform, `${process.platform}-${process.arch}`);
   assert.equal(manifest.runtimeSourcesArchiveFile, "runtime-sources.tar.gz");
   assert.ok(manifest.libFiles?.includes("stage3-verified-badge.tsx"));
+  assert.ok(manifest.libFiles?.includes("channel-story-media-matte.ts"));
   assert.match(script, /runtimeDependenciesArchiveFile/);
   assert.match(script, /runtimeDependenciesPlatform/);
   assert.match(script, /Detected runtime dependency platform/);

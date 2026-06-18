@@ -62,6 +62,7 @@ const WORKER_LIB_RUNTIME_FILES = [
   "stage3-video-fit.ts",
   "stage3-video-scale.ts",
   "stage3-video-placement.ts",
+  "channel-story-media-matte.ts",
   "stage3-worker-job-timeout.ts"
 ];
 

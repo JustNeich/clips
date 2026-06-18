@@ -76,6 +76,7 @@ import {
 import { resolveTemplateTextFieldSemantics } from "../../lib/stage3-template-semantics";
 import { resolveStage3BackgroundMode } from "../../lib/stage3-background-mode";
 import { resolveTemplateBackdropNode } from "../../lib/stage3-template-runtime";
+import { resolveChannelStoryContainedMediaMatteStyles } from "../../lib/channel-story-media-matte";
 import {
   STAGE3_TEXT_SCALE_UI_MAX,
   STAGE3_TEXT_SCALE_UI_MIN,
@@ -1489,6 +1490,10 @@ function Stage3LivePreviewPanel({
       baseSaturation: 1.05
     }
   );
+  const shouldUseContainedPreviewMediaMatte =
+    templateConfig.layoutKind === "channel_story" &&
+    normalizeStage3VideoFit(slotPlacementStyle.objectFit) === "contain";
+  const containedPreviewMediaMatteStyles = resolveChannelStoryContainedMediaMatteStyles();
   const timelinePercent = clamp((timelineSec / Math.max(0.01, playbackDurationSec)) * 100, 0, 100);
   const activePositionKeyframes = cameraState.positionKeyframes;
   const activeScaleKeyframes = cameraState.scaleKeyframes;
@@ -2178,9 +2183,20 @@ function Stage3LivePreviewPanel({
                       />
                     ) : undefined,
                     mediaNode: activePreviewVideoUrl ? (
-                      <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", background: "#030303" }}>
-                        {templateConfig.layoutKind === "channel_story" &&
-                        normalizeStage3VideoFit(slotPlacementStyle.objectFit) === "contain" ? (
+                      <div
+                        style={
+                          shouldUseContainedPreviewMediaMatte
+                            ? containedPreviewMediaMatteStyles.containerStyle
+                            : {
+                                position: "relative",
+                                width: "100%",
+                                height: "100%",
+                                overflow: "hidden",
+                                background: "#030303"
+                              }
+                        }
+                      >
+                        {shouldUseContainedPreviewMediaMatte ? (
                           <>
                             <video
                               key={`${activePreviewVideoUrl}:matte`}
@@ -2190,26 +2206,9 @@ function Stage3LivePreviewPanel({
                               loop
                               playsInline
                               preload="metadata"
-                              style={{
-                                position: "absolute",
-                                inset: 0,
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover",
-                                objectPosition: "center center",
-                                filter: "blur(18px) brightness(0.48) saturate(0.85)",
-                                transform: "scale(1.08)",
-                                transformOrigin: "center center"
-                              }}
+                              style={containedPreviewMediaMatteStyles.underlayVideoStyle}
                             />
-                            <div
-                              style={{
-                                position: "absolute",
-                                inset: 0,
-                                background: "rgba(0,0,0,0.26)",
-                                pointerEvents: "none"
-                              }}
-                            />
+                            <div style={containedPreviewMediaMatteStyles.densityOverlayStyle} />
                           </>
                         ) : null}
                         <PreviewClipVideo
