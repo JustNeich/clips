@@ -565,7 +565,9 @@ function buildMeasuredComputed(
       maxScaleBoost: getBottomFontHeadroom(templateId) * (usesGhostfaceLayout ? 1.8 : usesWideHeadlineScaling ? 1.4 : 1.3)
     }),
     preferredFont: baseComputed.bottomFont,
-    maxLines: resolveScaledMaxLines(templateConfig.typography.bottom.maxLines, bottomScale, "bottom"),
+    maxLines: usesChannelStoryLayout
+      ? templateConfig.typography.bottom.maxLines
+      : resolveScaledMaxLines(templateConfig.typography.bottom.maxLines, bottomScale, "bottom"),
     baseLineHeight: usesClassicScienceCardChrome ? baseComputed.bottomLineHeight : baseComputed.bottomLineHeight,
     fillTargetMin: fitPolicy.bottomFillTargetMin,
     fillTargetMax: fitPolicy.bottomFillTargetMax,

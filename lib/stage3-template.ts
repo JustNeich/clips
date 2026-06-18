@@ -1771,7 +1771,7 @@ export function getChannelStoryComputed(
   };
   const bottomTypography = {
     ...templateConfig.typography.bottom,
-    maxLines: resolveScaledMaxLines(templateConfig.typography.bottom.maxLines, bottomScale, "bottom")
+    maxLines: templateConfig.typography.bottom.maxLines
   };
   const leadSlot: SlotSize = {
     width: contentWidth,

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { solveMeasuredSlotForMeasurements } from "../lib/auto-fit-template-scene";
-import { resolveTemplateDescenderSafetyPx } from "../lib/stage3-template";
+import { CHANNEL_STORY, resolveTemplateDescenderSafetyPx } from "../lib/stage3-template";
 import * as stage3TemplateCoreModule from "../lib/stage3-template-core";
 
 const stage3TemplateCore =
@@ -367,4 +367,47 @@ test("measured slot solver preserves the browser-observed line count", () => {
   );
 
   assert.equal(result.lines, 5);
+});
+
+test("channel-story bottom scale keeps the configured line cap", () => {
+  const wisdomLikeTemplate = {
+    ...CHANNEL_STORY,
+    typography: {
+      ...CHANNEL_STORY.typography,
+      bottom: {
+        ...CHANNEL_STORY.typography.bottom,
+        maxLines: 4,
+        max: 76
+      }
+    },
+    channelStory: {
+      ...CHANNEL_STORY.channelStory,
+      contentPaddingX: 58,
+      bodyHeight: 270
+    }
+  };
+
+  const snapshot = buildTemplateRenderSnapshot({
+    templateId: "channel-story-v1",
+    templateConfigOverride: wisdomLikeTemplate,
+    content: {
+      topText: "",
+      bottomText:
+        "Curiosity begins with one small risk. A camera dropped into a sea-floor hole turned the unknown below into the whole story, inch by inch.",
+      channelName: "Wisdom Stories",
+      channelHandle: "",
+      highlights: { top: [], bottom: [] },
+      topFontScale: 1,
+      bottomFontScale: 1.25,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    }
+  });
+
+  assert.ok(
+    snapshot.computed.bottomLines <= 4,
+    `expected channel-story scale to fit within four configured lines, got ${snapshot.computed.bottomLines}`
+  );
 });

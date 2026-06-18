@@ -820,6 +820,7 @@ export function TemplateScene({
 
   if (templateConfig.layoutKind === "channel_story" && templateConfig.channelStory) {
     const channelStory = templateConfig.channelStory;
+    const channelStoryBottomMaxLines = templateConfig.typography.bottom.maxLines;
     const leadVisible = Boolean(topText.trim()) && computed.leadVisible !== false && regions.top.height > 0;
     const bodyTextAlign = channelStory.bodyTextAlign ?? "center";
     const headerJustifyContent = channelStory.headerAlign === "center" ? "center" : "flex-start";
@@ -1091,7 +1092,7 @@ export function TemplateScene({
                 lineHeight: computed.bottomLineHeight,
                 display: "-webkit-box",
                 WebkitBoxOrient: "vertical",
-                WebkitLineClamp: bottomMaxLines,
+                WebkitLineClamp: channelStoryBottomMaxLines,
                 overflow: "hidden",
                 paddingBottom: bottomDescenderSafetyPx,
                 boxSizing: "border-box"
