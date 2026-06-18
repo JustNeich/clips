@@ -48,7 +48,6 @@ import {
   collectStage3TemplateFontAssets,
   waitForStage3TemplateFonts
 } from "../lib/stage3-template-fonts";
-import { resolveChannelStoryContainedMediaMatteStyles } from "../lib/channel-story-media-matte";
 
 type RemotionStage3TimingMode = "auto" | "compress" | "stretch";
 type RemotionStage3Segment = {
@@ -489,7 +488,6 @@ export function ScienceCardV1({
     Boolean(sourceUrl) &&
     templateConfig.layoutKind === "channel_story" &&
     normalizeStage3VideoFit(slotPlacementStyle.objectFit) === "contain";
-  const containedMediaMatteStyles = resolveChannelStoryContainedMediaMatteStyles();
 
   const backgroundNode = (
     <AbsoluteFill>
@@ -546,29 +544,27 @@ export function ScienceCardV1({
   );
 
   const mediaNode = sourceUrl ? (
-    <div
-      style={
-        shouldUseContainedMediaMatte
-          ? containedMediaMatteStyles.containerStyle
-          : {
-              position: "relative",
-              width: "100%",
-              height: "100%",
-              background: "#030303",
-              overflow: "hidden"
-            }
-      }
-    >
+    <div style={{ position: "relative", width: "100%", height: "100%", background: "#030303", overflow: "hidden" }}>
       {shouldUseContainedMediaMatte ? (
         <>
           <OffthreadVideo
             src={sourceUrl}
             startFrom={startFrom}
             endAt={endAt}
-            style={containedMediaMatteStyles.underlayVideoStyle}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              objectPosition: "center center",
+              filter: "blur(18px) brightness(0.48) saturate(0.85)",
+              transform: "scale(1.08)",
+              transformOrigin: "center center"
+            }}
             volume={0}
           />
-          <AbsoluteFill style={containedMediaMatteStyles.densityOverlayStyle} />
+          <AbsoluteFill style={{ background: "rgba(0,0,0,0.26)" }} />
         </>
       ) : null}
       <OffthreadVideo

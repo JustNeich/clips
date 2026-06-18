@@ -1116,7 +1116,7 @@ export function TemplateScene({
               border:
                 mediaBorderWidth > 0 ? `${mediaBorderWidth}px solid ${mediaBorderColor}` : "none",
               boxSizing: "border-box",
-              background: "#050607"
+              background: "#101216"
             }}
           >
             {mediaNode}
