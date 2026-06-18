@@ -6,6 +6,12 @@ export type ChannelStoryContainedMediaMatteStyles = {
   densityOverlayStyle: CSSProperties;
 };
 
+export type ChannelStoryFullFrameSourceMatteStyles = {
+  containerStyle: CSSProperties;
+  underlayVideoStyle: CSSProperties;
+  densityOverlayStyle: CSSProperties;
+};
+
 export function resolveChannelStoryContainedMediaMatteStyles(): ChannelStoryContainedMediaMatteStyles {
   return {
     containerStyle: {
@@ -32,6 +38,39 @@ export function resolveChannelStoryContainedMediaMatteStyles(): ChannelStoryCont
       inset: -1,
       background:
         "linear-gradient(180deg, rgba(5,6,7,0.22) 0%, rgba(5,6,7,0.54) 58%, rgba(5,6,7,0.82) 100%)",
+      pointerEvents: "none"
+    }
+  };
+}
+
+export function resolveChannelStoryFullFrameSourceMatteStyles(): ChannelStoryFullFrameSourceMatteStyles {
+  return {
+    containerStyle: {
+      position: "absolute",
+      inset: 0,
+      width: "100%",
+      height: "100%",
+      background: "#08090a",
+      overflow: "hidden",
+      pointerEvents: "none"
+    },
+    underlayVideoStyle: {
+      position: "absolute",
+      left: -36,
+      top: -36,
+      width: "calc(100% + 72px)",
+      height: "calc(100% + 72px)",
+      objectFit: "cover",
+      objectPosition: "center center",
+      filter: "blur(34px) brightness(0.32) contrast(1.08) saturate(0.78)",
+      transform: "scale(1.18)",
+      transformOrigin: "center center"
+    },
+    densityOverlayStyle: {
+      position: "absolute",
+      inset: -1,
+      background:
+        "linear-gradient(180deg, rgba(5,6,7,0.2) 0%, rgba(5,6,7,0.44) 58%, rgba(8,9,10,0.66) 100%)",
       pointerEvents: "none"
     }
   };

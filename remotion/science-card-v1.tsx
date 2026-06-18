@@ -48,7 +48,10 @@ import {
   collectStage3TemplateFontAssets,
   waitForStage3TemplateFonts
 } from "../lib/stage3-template-fonts";
-import { resolveChannelStoryContainedMediaMatteStyles } from "../lib/channel-story-media-matte";
+import {
+  resolveChannelStoryContainedMediaMatteStyles,
+  resolveChannelStoryFullFrameSourceMatteStyles
+} from "../lib/channel-story-media-matte";
 
 type RemotionStage3TimingMode = "auto" | "compress" | "stretch";
 type RemotionStage3Segment = {
@@ -489,11 +492,27 @@ export function ScienceCardV1({
     Boolean(sourceUrl) &&
     templateConfig.layoutKind === "channel_story" &&
     normalizeStage3VideoFit(slotPlacementStyle.objectFit) === "contain";
+  const shouldUseChannelStoryFullFrameMatte = shouldUseContainedMediaMatte && backgroundMode !== "custom";
   const containedMediaMatteStyles = resolveChannelStoryContainedMediaMatteStyles();
+  const fullFrameSourceMatteStyles = resolveChannelStoryFullFrameSourceMatteStyles();
+  const channelStoryFullFrameMatteNode = shouldUseChannelStoryFullFrameMatte ? (
+    <AbsoluteFill style={fullFrameSourceMatteStyles.containerStyle}>
+      <OffthreadVideo
+        src={sourceUrl}
+        startFrom={startFrom}
+        endAt={endAt}
+        style={fullFrameSourceMatteStyles.underlayVideoStyle}
+        volume={0}
+      />
+      <AbsoluteFill style={fullFrameSourceMatteStyles.densityOverlayStyle} />
+    </AbsoluteFill>
+  ) : null;
 
   const backgroundNode = (
     <AbsoluteFill>
-      {backgroundMode === "custom" ? (
+      {channelStoryFullFrameMatteNode ? (
+        channelStoryFullFrameMatteNode
+      ) : backgroundMode === "custom" ? (
         customBackgroundIsVideo ? (
           <OffthreadVideo
             src={customBackgroundSrc!}
@@ -625,7 +644,7 @@ export function ScienceCardV1({
   return (
     <AbsoluteFill
       style={{
-        backgroundColor: "#060606",
+        backgroundColor: shouldUseChannelStoryFullFrameMatte ? "#08090a" : "#060606",
         width: frame.width,
         height: frame.height
       }}

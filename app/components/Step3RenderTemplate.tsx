@@ -76,7 +76,10 @@ import {
 import { resolveTemplateTextFieldSemantics } from "../../lib/stage3-template-semantics";
 import { resolveStage3BackgroundMode } from "../../lib/stage3-background-mode";
 import { resolveTemplateBackdropNode } from "../../lib/stage3-template-runtime";
-import { resolveChannelStoryContainedMediaMatteStyles } from "../../lib/channel-story-media-matte";
+import {
+  resolveChannelStoryContainedMediaMatteStyles,
+  resolveChannelStoryFullFrameSourceMatteStyles
+} from "../../lib/channel-story-media-matte";
 import {
   STAGE3_TEXT_SCALE_UI_MAX,
   STAGE3_TEXT_SCALE_UI_MIN,
@@ -1494,6 +1497,7 @@ function Stage3LivePreviewPanel({
     templateConfig.layoutKind === "channel_story" &&
     normalizeStage3VideoFit(slotPlacementStyle.objectFit) === "contain";
   const containedPreviewMediaMatteStyles = resolveChannelStoryContainedMediaMatteStyles();
+  const fullFramePreviewSourceMatteStyles = resolveChannelStoryFullFrameSourceMatteStyles();
   const timelinePercent = clamp((timelineSec / Math.max(0.01, playbackDurationSec)) * 100, 0, 100);
   const activePositionKeyframes = cameraState.positionKeyframes;
   const activeScaleKeyframes = cameraState.scaleKeyframes;
@@ -1517,6 +1521,8 @@ function Stage3LivePreviewPanel({
   );
   const activePreviewVideoUrl = previewVideoUrl;
   const previewBackgroundMode = backgroundMode;
+  const shouldUseChannelStoryPreviewFullFrameMatte =
+    Boolean(activePreviewVideoUrl) && shouldUseContainedPreviewMediaMatte && previewBackgroundMode !== "custom";
   const overlayTint = useMemo(() => resolveTemplateOverlayTint(templateId), [templateId]);
   const summaryLine = "Используется текущий live draft без сохраненной версии.";
   const sceneContent = useMemo<TemplateContentFixture>(
@@ -1586,7 +1592,10 @@ function Stage3LivePreviewPanel({
       return;
     }
     const duration = Number.isFinite(bg.duration) && bg.duration > 0 ? bg.duration : null;
-    const desiredSec = previewBackgroundMode === "source-blur" ? sourceSec : outputSec;
+    const desiredSec =
+      previewBackgroundMode === "source-blur" || shouldUseChannelStoryPreviewFullFrameMatte
+        ? sourceSec
+        : outputSec;
     const next = resolveLoopedMediaTime(desiredSec, duration);
     if (Math.abs(bg.currentTime - next) > 0.08) {
       bg.currentTime = next;
@@ -1594,7 +1603,7 @@ function Stage3LivePreviewPanel({
     if (isPlayingRef.current && bg.paused) {
       void bg.play().catch(() => undefined);
     }
-  }, [previewBackgroundMode]);
+  }, [previewBackgroundMode, shouldUseChannelStoryPreviewFullFrameMatte]);
 
   const syncMusicToOutputTime = useCallback((outputSec: number) => {
     const music = musicPreviewRef.current;
@@ -2102,7 +2111,36 @@ function Stage3LivePreviewPanel({
                   }}
                   runtime={{
                     showSafeArea: false,
-                    backgroundNode: previewBackgroundMode === "custom"
+                    backgroundNode: shouldUseChannelStoryPreviewFullFrameMatte
+                      ? (
+                        <div style={fullFramePreviewSourceMatteStyles.containerStyle}>
+                          <video
+                            key={`${activePreviewVideoUrl}:full-frame-matte`}
+                            ref={backgroundPreviewRef}
+                            src={activePreviewVideoUrl ?? undefined}
+                            muted
+                            loop
+                            playsInline
+                            preload="metadata"
+                            style={fullFramePreviewSourceMatteStyles.underlayVideoStyle}
+                            onLoadedMetadata={() => {
+                              const position = resolveStage3PlaybackPosition(playbackPlan, timelineSec);
+                              syncBackgroundTo(
+                                position?.outputTimeSec ?? timelineSec,
+                                position?.sourceTimeSec ?? timelineSec
+                              );
+                              if (isPlaying) {
+                                const bg = backgroundPreviewRef.current;
+                                if (bg) {
+                                  void bg.play().catch(() => undefined);
+                                }
+                              }
+                            }}
+                          />
+                          <div style={fullFramePreviewSourceMatteStyles.densityOverlayStyle} />
+                        </div>
+                      )
+                      : previewBackgroundMode === "custom"
                         ? backgroundIsVideo
                           ? (
                             <video
