@@ -92,6 +92,12 @@ export const RENDER_WAIT_TIMEOUT_MS = 60_000;
 const DEFAULT_TEXT_SCALE = 1.25;
 const execFileAsync = promisify(execFile);
 const MEMORY_CONSTRAINED_REMOTION_CONCURRENCY = 1;
+// Long renders on the local (non-hosted) worker exhaust Chrome memory at Remotion's
+// default concurrency (one browser tab per core, each holding a full long composition),
+// crashing mid-render with "Target closed". Once a clip crosses this duration we bound
+// concurrency and enable the memory-safe render options; short clips keep the fast path.
+const LONG_RENDER_MEMORY_SAFE_THRESHOLD_SEC = 18;
+const LONG_RENDER_REMOTION_CONCURRENCY = 2;
 const SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
 let remotionServeUrlPromise: Promise<string> | null = null;
 let remotionRuntimePromise: Promise<RemotionModule> | null = null;
@@ -436,6 +442,33 @@ function resolveFunction(sources: unknown[], key: string, optional = false): Asy
 
 function isMemoryConstrainedRuntime(): boolean {
   return isStage3HostedRuntime();
+}
+
+function isLongLocalRender(clipDurationSec: number): boolean {
+  return (
+    !isMemoryConstrainedRuntime() &&
+    Number.isFinite(clipDurationSec) &&
+    clipDurationSec > LONG_RENDER_MEMORY_SAFE_THRESHOLD_SEC
+  );
+}
+
+// Frame-level Remotion concurrency for a render. Hosted stays at 1; long local renders
+// are bounded to avoid the Chrome OOM crash; short local renders keep Remotion's fast
+// default (null = pick from CPU budget).
+export function resolveRemotionRenderConcurrency(clipDurationSec: number): number | null {
+  if (isMemoryConstrainedRuntime()) {
+    return MEMORY_CONSTRAINED_REMOTION_CONCURRENCY;
+  }
+  if (isLongLocalRender(clipDurationSec)) {
+    return LONG_RENDER_REMOTION_CONCURRENCY;
+  }
+  return null;
+}
+
+// Whether to enable Remotion's low-memory render options (serial encode, single
+// offthread thread, small frame/media caches). On for hosted and for long local renders.
+export function shouldUseMemorySafeRenderOptions(clipDurationSec: number): boolean {
+  return isMemoryConstrainedRuntime() || isLongLocalRender(clipDurationSec);
 }
 
 function getStage3PreparedRenderCacheDir(): string {
@@ -1085,49 +1118,55 @@ async function runRemotionRender(params: {
       }
     : undefined;
 
-  const renderArgs = {
-    composition: composition as { id: string } & Record<string, unknown>,
-    serveUrl,
-    outputLocation: params.outputPath,
-    inputProps,
-    codec: params.variationProfile.encode.codec,
-    crf: params.variationProfile.encode.crf,
-    pixelFormat: params.variationProfile.encode.pixelFormat,
-    x264Preset: params.variationProfile.encode.x264Preset,
-    logLevel: "warn",
-    cancelSignal: cancelController?.cancelSignal,
-    onProgress: onRemotionProgress,
-    timeoutInMilliseconds: params.timeoutMs,
-    browserExecutable,
-    chromeMode,
-    concurrency: isMemoryConstrainedRuntime() ? MEMORY_CONSTRAINED_REMOTION_CONCURRENCY : null,
-    disallowParallelEncoding: isMemoryConstrainedRuntime(),
-    chromiumOptions: isMemoryConstrainedRuntime()
-      ? {
-          enableMultiProcessOnLinux: false,
-          gl: null
+  const buildRenderArgs = (forceMinimalConcurrency: boolean) => {
+    const memorySafe = forceMinimalConcurrency || shouldUseMemorySafeRenderOptions(params.clipDurationSec);
+    const concurrency = forceMinimalConcurrency
+      ? MEMORY_CONSTRAINED_REMOTION_CONCURRENCY
+      : resolveRemotionRenderConcurrency(params.clipDurationSec);
+    return {
+      composition: composition as { id: string } & Record<string, unknown>,
+      serveUrl,
+      outputLocation: params.outputPath,
+      inputProps,
+      codec: params.variationProfile.encode.codec,
+      crf: params.variationProfile.encode.crf,
+      pixelFormat: params.variationProfile.encode.pixelFormat,
+      x264Preset: params.variationProfile.encode.x264Preset,
+      logLevel: "warn",
+      cancelSignal: cancelController?.cancelSignal,
+      onProgress: onRemotionProgress,
+      timeoutInMilliseconds: params.timeoutMs,
+      browserExecutable,
+      chromeMode,
+      concurrency,
+      disallowParallelEncoding: memorySafe,
+      chromiumOptions: memorySafe
+        ? {
+            enableMultiProcessOnLinux: false,
+            gl: null
+          }
+        : undefined,
+      offthreadVideoThreads: memorySafe ? 1 : undefined,
+      offthreadVideoCacheSizeInBytes: memorySafe ? 32 * 1024 * 1024 : undefined,
+      mediaCacheSizeInBytes: memorySafe ? 32 * 1024 * 1024 : undefined,
+      ffmpegOverride: ({ type, args }: { type: "pre-stitcher" | "stitcher"; args: string[] }) => {
+        if (type !== "stitcher" || args.length === 0) {
+          return args;
         }
-      : undefined,
-    offthreadVideoThreads: isMemoryConstrainedRuntime() ? 1 : undefined,
-    offthreadVideoCacheSizeInBytes: isMemoryConstrainedRuntime() ? 32 * 1024 * 1024 : undefined,
-    mediaCacheSizeInBytes: isMemoryConstrainedRuntime() ? 32 * 1024 * 1024 : undefined,
-    ffmpegOverride: ({ type, args }: { type: "pre-stitcher" | "stitcher"; args: string[] }) => {
-      if (type !== "stitcher" || args.length === 0) {
-        return args;
+        const outputLocation = args.at(-1);
+        if (!outputLocation) {
+          return args;
+        }
+        return [
+          ...args.slice(0, -1),
+          "-g",
+          String(params.variationProfile.encode.keyintFrames),
+          "-keyint_min",
+          String(params.variationProfile.encode.keyintMinFrames),
+          outputLocation
+        ];
       }
-      const outputLocation = args.at(-1);
-      if (!outputLocation) {
-        return args;
-      }
-      return [
-        ...args.slice(0, -1),
-        "-g",
-        String(params.variationProfile.encode.keyintFrames),
-        "-keyint_min",
-        String(params.variationProfile.encode.keyintMinFrames),
-        outputLocation
-      ];
-    }
+    };
   };
 
   const isAbortError = (error: unknown): boolean =>
@@ -1136,10 +1175,20 @@ async function runRemotionRender(params: {
       error.message.toLowerCase().includes("aborted") ||
       error.message.toLowerCase().includes("cancelled"));
 
-  const renderOnce = async (props: typeof inputProps) => {
-    if (params.signal?.aborted) {
-      throw new DOMException("The operation was aborted.", "AbortError");
-    }
+  // Chrome ran out of resources mid-render. Remotion exhausts its own per-frame retries
+  // before surfacing one of these, so we treat it as a signal to drop to minimal concurrency.
+  const isBrowserCrashError = (error: unknown): boolean => {
+    const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+    return (
+      message.includes("target closed") ||
+      message.includes("session closed") ||
+      message.includes("page.bringtofront") ||
+      (message.includes("browser") && message.includes("crash"))
+    );
+  };
+
+  const renderWithArgs = async (props: typeof inputProps, forceMinimalConcurrency: boolean) => {
+    const renderArgs = buildRenderArgs(forceMinimalConcurrency);
     try {
       await renderMedia({
         ...renderArgs,
@@ -1162,6 +1211,35 @@ async function runRemotionRender(params: {
         props,
         inputProps: undefined
       });
+    }
+  };
+
+  const renderOnce = async (props: typeof inputProps) => {
+    if (params.signal?.aborted) {
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }
+    try {
+      await renderWithArgs(props, false);
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+      // A long local render can still exhaust Chrome memory at the bounded-but-parallel
+      // concurrency. Before failing the job (which re-queues it and redoes source prep),
+      // retry once at concurrency=1 with full memory-safe options, reusing the already
+      // prepared source. Hosted runs are already at minimal concurrency, so skip there.
+      const alreadyMinimal =
+        resolveRemotionRenderConcurrency(params.clipDurationSec) === MEMORY_CONSTRAINED_REMOTION_CONCURRENCY;
+      if (!alreadyMinimal && isBrowserCrashError(error)) {
+        if (isStage3WorkerRuntime()) {
+          console.warn(
+            `Remotion browser crashed (clipDurationSec=${params.clipDurationSec}); retrying once at minimal concurrency.`
+          );
+        }
+        await renderWithArgs(props, true);
+        return;
+      }
+      throw error;
     }
   };
 
