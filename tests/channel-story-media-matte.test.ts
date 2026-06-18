@@ -220,8 +220,9 @@ test("channel-story physical bottom edge fallback covers the encoded bottom stri
   assert.equal(styles.physicalBottomEdgeStyle.left, 0);
   assert.equal(styles.physicalBottomEdgeStyle.right, 0);
   assert.equal(styles.physicalBottomEdgeStyle.bottom, 0);
+  assert.equal(styles.physicalBottomEdgeStyle.width, "100%");
   assert.equal(styles.physicalBottomEdgeStyle.height, CHANNEL_STORY_PHYSICAL_BOTTOM_EDGE_FALLBACK_HEIGHT_PX);
-  assert.equal(styles.physicalBottomEdgeStyle.zIndex, 20);
+  assert.equal(styles.physicalBottomEdgeStyle.zIndex, 2147483647);
   assert.ok(
     CHANNEL_STORY_PHYSICAL_BOTTOM_EDGE_FALLBACK_HEIGHT_PX >= PHYSICAL_BOTTOM_STRIP_PX,
     `physical edge fallback must cover the lower ${PHYSICAL_BOTTOM_STRIP_PX}px`
@@ -240,7 +241,7 @@ test("channel-story physical bottom edge fallback covers the encoded bottom stri
   );
   assert.match(
     renderSource,
-    /const shouldUseChannelStoryEncodeEdgeFallback = shouldUseContainedMediaMatte;/
+    /Boolean\(sourceUrl\) && templateConfig\.layoutKind === "channel_story"/
   );
 });
 

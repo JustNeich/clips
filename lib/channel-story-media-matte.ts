@@ -94,9 +94,10 @@ export function resolveChannelStoryEncodeEdgeFallbackStyles(): ChannelStoryEncod
       left: 0,
       right: 0,
       bottom: 0,
+      width: "100%",
       height: CHANNEL_STORY_PHYSICAL_BOTTOM_EDGE_FALLBACK_HEIGHT_PX,
       backgroundColor: CHANNEL_STORY_ENCODE_EDGE_FALLBACK_COLOR,
-      zIndex: 20,
+      zIndex: 2147483647,
       pointerEvents: "none"
     }
   };

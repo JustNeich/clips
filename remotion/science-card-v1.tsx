@@ -493,7 +493,8 @@ export function ScienceCardV1({
     Boolean(sourceUrl) &&
     templateConfig.layoutKind === "channel_story" &&
     normalizeStage3VideoFit(slotPlacementStyle.objectFit) === "contain";
-  const shouldUseChannelStoryEncodeEdgeFallback = shouldUseContainedMediaMatte;
+  const shouldUseChannelStoryEncodeEdgeFallback =
+    Boolean(sourceUrl) && templateConfig.layoutKind === "channel_story";
   const shouldUseChannelStoryFullFrameMatte = shouldUseContainedMediaMatte && backgroundMode !== "custom";
   const containedMediaMatteStyles = resolveChannelStoryContainedMediaMatteStyles();
   const fullFrameSourceMatteStyles = resolveChannelStoryFullFrameSourceMatteStyles();
