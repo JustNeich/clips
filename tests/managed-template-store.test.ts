@@ -570,6 +570,76 @@ test("managed templates persist custom top and bottom line heights", async () =>
   });
 });
 
+test("managed templates persist text-fit typography constraints", async () => {
+  await withIsolatedTemplateWorkspace(async ({ owner }) => {
+    const template = await createManagedTemplate(
+      {
+        name: "Text Fit Control",
+        baseTemplateId: "channel-story-v1",
+        templateConfig: {
+          typography: {
+            top: {
+              min: 28,
+              max: 64,
+              softLimit: 120,
+              penalty: 0.22,
+              lineHeight: 1.11,
+              maxLines: 3,
+              maxChars: 180,
+              horizontalSafety: 0.94,
+              glyphFactor: 0.52,
+              fillTargetMin: 0.73,
+              fillTargetMax: 0.88
+            },
+            bottom: {
+              min: 34,
+              max: 76,
+              softLimit: 220,
+              penalty: 0.18,
+              lineHeight: 1.03,
+              maxLines: 4,
+              maxChars: 260,
+              horizontalSafety: 0.985,
+              glyphFactor: 0.5,
+              fillTargetMin: 0.84,
+              fillTargetMax: 0.92
+            }
+          }
+        }
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id
+      }
+    );
+
+    const reloaded = readManagedTemplateSync(template.id, { workspaceId: owner.workspace.id });
+
+    assert.equal(reloaded?.templateConfig.typography.top.min, 28);
+    assert.equal(reloaded?.templateConfig.typography.top.max, 64);
+    assert.equal(reloaded?.templateConfig.typography.top.softLimit, 120);
+    assert.equal(reloaded?.templateConfig.typography.top.penalty, 0.22);
+    assert.equal(reloaded?.templateConfig.typography.top.lineHeight, 1.11);
+    assert.equal(reloaded?.templateConfig.typography.top.maxLines, 3);
+    assert.equal(reloaded?.templateConfig.typography.top.maxChars, 180);
+    assert.equal(reloaded?.templateConfig.typography.top.horizontalSafety, 0.94);
+    assert.equal(reloaded?.templateConfig.typography.top.glyphFactor, 0.52);
+    assert.equal(reloaded?.templateConfig.typography.top.fillTargetMin, 0.73);
+    assert.equal(reloaded?.templateConfig.typography.top.fillTargetMax, 0.88);
+    assert.equal(reloaded?.templateConfig.typography.bottom.min, 34);
+    assert.equal(reloaded?.templateConfig.typography.bottom.max, 76);
+    assert.equal(reloaded?.templateConfig.typography.bottom.softLimit, 220);
+    assert.equal(reloaded?.templateConfig.typography.bottom.penalty, 0.18);
+    assert.equal(reloaded?.templateConfig.typography.bottom.lineHeight, 1.03);
+    assert.equal(reloaded?.templateConfig.typography.bottom.maxLines, 4);
+    assert.equal(reloaded?.templateConfig.typography.bottom.maxChars, 260);
+    assert.equal(reloaded?.templateConfig.typography.bottom.horizontalSafety, 0.985);
+    assert.equal(reloaded?.templateConfig.typography.bottom.glyphFactor, 0.5);
+    assert.equal(reloaded?.templateConfig.typography.bottom.fillTargetMin, 0.84);
+    assert.equal(reloaded?.templateConfig.typography.bottom.fillTargetMax, 0.92);
+  });
+});
+
 test("managed templates persist custom top and bottom text glow", async () => {
   await withIsolatedTemplateWorkspace(async ({ owner }) => {
     const template = await createManagedTemplate(

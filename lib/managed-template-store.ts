@@ -101,6 +101,60 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+type TemplateTypographyTextConfig = Stage3TemplateConfig["typography"]["top"];
+type TemplateTypographyNumberKey =
+  | "min"
+  | "max"
+  | "softLimit"
+  | "penalty"
+  | "lineHeight"
+  | "maxLines"
+  | "maxChars"
+  | "horizontalSafety"
+  | "glyphFactor"
+  | "fillTargetMin"
+  | "fillTargetMax";
+
+function copyTypographyNumber(
+  input: Record<string, unknown>,
+  output: TemplateTypographyTextConfig,
+  key: TemplateTypographyNumberKey,
+  min: number,
+  max: number,
+  options: { integer?: boolean } = {}
+): void {
+  const value = input[key];
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return;
+  }
+  const normalized = clamp(value, min, max);
+  output[key] = options.integer ? Math.round(normalized) : normalized;
+}
+
+function copyTypographyTextFitConfig(
+  input: Record<string, unknown>,
+  output: TemplateTypographyTextConfig
+): void {
+  copyTypographyNumber(input, output, "min", 8, 180);
+  copyTypographyNumber(input, output, "max", 8, 220);
+  copyTypographyNumber(input, output, "softLimit", 24, 800, { integer: true });
+  copyTypographyNumber(input, output, "penalty", 0, 1);
+  copyTypographyNumber(input, output, "lineHeight", 0.7, 2);
+  copyTypographyNumber(input, output, "maxLines", 1, 12, { integer: true });
+  copyTypographyNumber(input, output, "maxChars", 24, 900, { integer: true });
+  copyTypographyNumber(input, output, "horizontalSafety", 0.7, 1);
+  copyTypographyNumber(input, output, "glyphFactor", 0.35, 0.9);
+  copyTypographyNumber(input, output, "fillTargetMin", 0, 1);
+  copyTypographyNumber(input, output, "fillTargetMax", 0, 1);
+  if (
+    typeof output.fillTargetMin === "number" &&
+    typeof output.fillTargetMax === "number" &&
+    output.fillTargetMax < output.fillTargetMin
+  ) {
+    output.fillTargetMax = output.fillTargetMin;
+  }
+}
+
 function sanitizeTemplateId(value: string): string {
   return value.replace(/[^a-z0-9_-]+/gi, "").toLowerCase();
 }
@@ -372,6 +426,7 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
   if (typography) {
     const top = isRecord(typography.top) ? typography.top : null;
     if (top) {
+      copyTypographyTextFitConfig(top, base.typography.top);
       if (typeof top.weight === "number" && Number.isFinite(top.weight)) {
         base.typography.top.weight = clamp(top.weight, 100, 900);
       }
@@ -401,6 +456,7 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
 
     const bottom = isRecord(typography.bottom) ? typography.bottom : null;
     if (bottom) {
+      copyTypographyTextFitConfig(bottom, base.typography.bottom);
       if (typeof bottom.weight === "number" && Number.isFinite(bottom.weight)) {
         base.typography.bottom.weight = clamp(bottom.weight, 100, 900);
       }
