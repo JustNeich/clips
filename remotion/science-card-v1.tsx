@@ -430,6 +430,7 @@ export function ScienceCardV1({
     videoScaleY,
     videoScaleX,
     videoFit,
+    verticalAlign: templateConfig.layoutKind === "channel_story" ? "top" : "center",
     mirrorEnabled: segmentTransform.mirrorEnabled
   });
   const backgroundPlacementStyle = buildStage3VideoPlacementStyle({

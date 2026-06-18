@@ -467,6 +467,23 @@ test("stage3 video placement preserves contain fit for readability mode", () => 
   assert.equal(style.transform, "translate(0.000%, 0.000%) scale(1.000, 1.000)");
 });
 
+test("stage3 video placement can top-align contained story media", () => {
+  const style = buildStage3VideoPlacementStyle({
+    focusX: 0.5,
+    focusY: 0.5,
+    videoZoom: 1,
+    videoScaleX: 1,
+    videoScaleY: 1,
+    videoFit: "contain",
+    verticalAlign: "top",
+    mirrorEnabled: false
+  });
+
+  assert.equal(style.objectFit, "contain");
+  assert.equal(style.objectPosition, "50.000% 0.000%");
+  assert.equal(style.transform, "translate(0.000%, 0.000%) scale(1.000, 1.000)");
+});
+
 test("render segment extraction uses decode-accurate timestamps to reduce boundary flashes", () => {
   assert.equal(resolveStage3SegmentExtractionMode("render"), "accurate");
   const args = buildStage3ExtractSegmentFfmpegArgs({

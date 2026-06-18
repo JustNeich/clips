@@ -14,6 +14,7 @@ export type Stage3VideoPlacementStyle = {
 };
 
 const POSITION_CENTER = 0.5;
+type Stage3VideoVerticalAlign = "center" | "top";
 
 function buildTranslatePercent(focus: number, scale: number): number {
   const maxTranslatePercent = Math.max(0, (scale - 1) * 50);
@@ -27,6 +28,7 @@ export function buildStage3VideoPlacementStyle(input: {
   videoScaleY?: number | null;
   videoScaleX?: number | null;
   videoFit?: unknown;
+  verticalAlign?: Stage3VideoVerticalAlign;
   mirrorEnabled?: boolean | null;
   extraScale?: number;
 }): Stage3VideoPlacementStyle {
@@ -48,15 +50,16 @@ export function buildStage3VideoPlacementStyle(input: {
   const scaleY = scale * normalizeStage3VideoScaleY(input.videoScaleY);
   const baseScaleX = scale * normalizeStage3VideoScaleX(input.videoScaleX);
   const scaleX = input.mirrorEnabled ? -baseScaleX : baseScaleX;
+  const objectFit = normalizeStage3VideoFit(input.videoFit);
   const xPercent = (focusX * 100).toFixed(3);
-  const yPercent = (focusY * 100).toFixed(3);
+  const yPercent = objectFit === "contain" && input.verticalAlign === "top" ? "0.000" : (focusY * 100).toFixed(3);
   const translateX = buildTranslatePercent(focusX, baseScaleX);
   const translateY = buildTranslatePercent(focusY, scaleY);
   const transformTranslate = `translate(${translateX.toFixed(3)}%, ${translateY.toFixed(3)}%)`;
   const transformScale = `scale(${scaleX.toFixed(3)}, ${scaleY.toFixed(3)})`;
 
   return {
-    objectFit: normalizeStage3VideoFit(input.videoFit),
+    objectFit,
     objectPosition: `${xPercent}% ${yPercent}%`,
     transform: `${transformTranslate} ${transformScale}`,
     transformOrigin: "center center"

@@ -1467,6 +1467,7 @@ function Stage3LivePreviewPanel({
     videoScaleY,
     videoScaleX,
     videoFit,
+    verticalAlign: templateConfig.layoutKind === "channel_story" ? "top" : "center",
     mirrorEnabled: playbackTransformState.mirrorEnabled
   });
   const backgroundPlacementStyle = buildStage3VideoPlacementStyle({
