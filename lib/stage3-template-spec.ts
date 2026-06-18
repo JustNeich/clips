@@ -230,7 +230,7 @@ function buildGeneratedSpec(templateId: string): TemplateFigmaSpec {
           x: cardInnerRect.x + channelStory.contentPaddingX,
           y: bodyY,
           width: contentWidth,
-          height: channelStory.bodyHeight
+          height: computed.bottomBodyHeight
         }
       }
     };

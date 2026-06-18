@@ -9,7 +9,8 @@ import {
   CHANNEL_STORY,
   CHANNEL_STORY_TEMPLATE_ID,
   SCIENCE_CARD,
-  cloneStage3TemplateConfig
+  cloneStage3TemplateConfig,
+  resolveChannelStoryBodyContentHeight
 } from "../lib/stage3-template";
 import {
   buildStage3TemplateFontFaceCss,
@@ -602,6 +603,75 @@ test("channel story body-to-video gap reaches zero without changing separate med
   assert.equal(snapshot.layout.media.y, snapshot.layout.bottomText.y + snapshot.layout.bottomText.height);
   assert.equal(snapshot.layout.media.x, snapshot.layout.card.x + templateConfig.card.borderWidth + 10);
   assert.equal(snapshot.computed.bottomBlockHeight, templateConfig.card.borderWidth + 86 + 40);
+});
+
+test("channel story media stack follows measured body text after final text fit", () => {
+  const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
+  templateConfig.channelStory!.leadMode = "off";
+  templateConfig.channelStory!.bodyHeight = 360;
+  templateConfig.channelStory!.bodyToMediaGap = 12;
+
+  const content = {
+    topText: "",
+    bottomText: "The final caption should push the media only by the text it actually uses.",
+    channelName: "Wisdom Stories",
+    channelHandle: "@wisdomstories",
+    highlights: { top: [], bottom: [] },
+    topFontScale: 1,
+    bottomFontScale: 1,
+    previewScale: 1,
+    mediaAsset: null,
+    backgroundAsset: null,
+    avatarAsset: null
+  } satisfies TemplateContentFixture;
+
+  const threeLineSnapshot = buildTemplateRenderSnapshot({
+    templateId: CHANNEL_STORY_TEMPLATE_ID,
+    content,
+    templateConfigOverride: templateConfig,
+    fitOverride: {
+      bottomFontPx: 50,
+      bottomLineHeight: 1,
+      bottomLines: 3,
+      bottomCompacted: false
+    }
+  });
+  const fourLineSnapshot = buildTemplateRenderSnapshot({
+    templateId: CHANNEL_STORY_TEMPLATE_ID,
+    content,
+    templateConfigOverride: templateConfig,
+    fitOverride: {
+      bottomFontPx: 50,
+      bottomLineHeight: 1,
+      bottomLines: 4,
+      bottomCompacted: false
+    }
+  });
+  const threeLineBodyHeight = resolveChannelStoryBodyContentHeight({
+    lines: 3,
+    fontPx: 50,
+    lineHeight: 1,
+    maxHeight: templateConfig.channelStory!.bodyHeight
+  });
+  const fourLineBodyHeight = resolveChannelStoryBodyContentHeight({
+    lines: 4,
+    fontPx: 50,
+    lineHeight: 1,
+    maxHeight: templateConfig.channelStory!.bodyHeight
+  });
+
+  assert.equal(threeLineSnapshot.layout.bottomText.height, threeLineBodyHeight);
+  assert.equal(fourLineSnapshot.layout.bottomText.height, fourLineBodyHeight);
+  assert.equal(
+    threeLineSnapshot.layout.media.y,
+    threeLineSnapshot.layout.bottomText.y + threeLineBodyHeight + templateConfig.channelStory!.bodyToMediaGap
+  );
+  assert.equal(
+    fourLineSnapshot.layout.media.y - threeLineSnapshot.layout.media.y,
+    fourLineBodyHeight - threeLineBodyHeight
+  );
+  assert.equal(threeLineSnapshot.computed.videoY, threeLineSnapshot.layout.media.y);
+  assert.equal(fourLineSnapshot.computed.videoY, fourLineSnapshot.layout.media.y);
 });
 
 test("channel story scene markup keeps localized content inside the centered card shell", () => {

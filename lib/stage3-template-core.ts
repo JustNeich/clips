@@ -3,6 +3,7 @@ import { normalizeTemplateCaptionHighlights } from "./template-highlights";
 import {
   getStage3CardInnerRect,
   isClassicScienceCardTemplateId,
+  resolveChannelStoryBodyContentHeight,
   SCIENCE_CARD_TEMPLATE_ID,
   STAGE3_TEMPLATE_ID,
   Stage3TemplateComputed,
@@ -82,7 +83,7 @@ export type TemplateRenderSnapshot = {
 
 export type TemplateLayoutOutput = Stage3TemplateComputed;
 
-const TEMPLATE_FIT_REVISION = "template-fit-v1";
+const TEMPLATE_FIT_REVISION = "template-fit-v2";
 
 export type TemplateChromeMetrics = {
   cardRadius: number;
@@ -167,6 +168,7 @@ function buildFallbackSectionRects(
   computed: Stage3TemplateComputed
 ) {
   if (templateConfig.layoutKind === "channel_story") {
+    const channelComputed = resolveChannelStoryDynamicComputed(templateConfig, computed);
     const channelStory = templateConfig.channelStory!;
     const cardInnerRect = getStage3CardInnerRect(templateConfig);
     const contentX = cardInnerRect.x + channelStory.contentPaddingX;
@@ -189,16 +191,19 @@ function buildFallbackSectionRects(
         height: computed.leadVisible === false ? 0 : channelStory.leadHeight
       },
       media: {
-        x: computed.videoX,
-        y: computed.videoY,
-        width: computed.videoWidth,
-        height: computed.videoHeight
+        x: channelComputed.videoX,
+        y: channelComputed.videoY,
+        width: channelComputed.videoWidth,
+        height: channelComputed.videoHeight
       },
       bottom: {
         x: cardInnerRect.x,
-        y: computed.videoY + computed.videoHeight,
+        y: channelComputed.videoY + channelComputed.videoHeight,
         width: cardInnerRect.width,
-        height: computed.bottomBlockHeight
+        height: Math.max(
+          0,
+          cardInnerRect.y + cardInnerRect.height - (channelComputed.videoY + channelComputed.videoHeight)
+        )
       },
       author: {
         x: contentX,
@@ -216,7 +221,7 @@ function buildFallbackSectionRects(
         x: contentX,
         y: bodyY,
         width: contentWidth,
-        height: channelStory.bodyHeight
+        height: channelComputed.bottomBodyHeight
       }
     };
   }
@@ -272,6 +277,43 @@ function buildFallbackSectionRects(
         getBottomTextPaddingTop(templateConfig) -
         getBottomTextPaddingBottom(templateConfig)
     }
+  };
+}
+
+function resolveChannelStoryDynamicComputed(
+  templateConfig: Stage3TemplateConfig,
+  computed: Stage3TemplateComputed
+): Stage3TemplateComputed {
+  if (templateConfig.layoutKind !== "channel_story" || !templateConfig.channelStory) {
+    return computed;
+  }
+  const channelStory = templateConfig.channelStory;
+  const cardInnerRect = getStage3CardInnerRect(templateConfig);
+  const headerY = computed.headerY ?? cardInnerRect.y + channelStory.contentPaddingTop;
+  const bodyY =
+    computed.bottomTextY ??
+    headerY +
+      channelStory.headerHeight +
+      (computed.leadVisible === false
+        ? Math.max(channelStory.headerToLeadGap, 12)
+        : channelStory.headerToLeadGap + channelStory.leadHeight + channelStory.leadToBodyGap);
+  const bodyContentHeight = resolveChannelStoryBodyContentHeight({
+    lines: computed.bottomLines,
+    fontPx: computed.bottomFont,
+    lineHeight: computed.bottomLineHeight,
+    maxHeight: channelStory.bodyHeight
+  });
+  const topContentHeight =
+    bodyY + bodyContentHeight + channelStory.bodyToMediaGap - cardInnerRect.y;
+  const bottomContentHeight = channelStory.footerHeight + channelStory.contentPaddingBottom;
+
+  return {
+    ...computed,
+    bottomBodyHeight: bodyContentHeight,
+    topBlockHeight: cardInnerRect.inset + topContentHeight,
+    bottomBlockHeight: cardInnerRect.inset + bottomContentHeight,
+    videoY: cardInnerRect.y + topContentHeight,
+    videoHeight: Math.max(120, cardInnerRect.height - topContentHeight - bottomContentHeight)
   };
 }
 
@@ -416,7 +458,8 @@ export function buildTemplateRenderSnapshot(input: TemplateLayoutInput): Templat
     topCompacted: fit.topCompacted,
     bottomCompacted: fit.bottomCompacted
   };
-  const layout = buildTemplateLayoutModel(resolvedTemplateId, snapshotComputed, effectiveTemplateConfig);
+  const finalComputed = resolveChannelStoryDynamicComputed(effectiveTemplateConfig, snapshotComputed);
+  const layout = buildTemplateLayoutModel(resolvedTemplateId, finalComputed, effectiveTemplateConfig);
   const snapshotHash = stableHash(
     JSON.stringify({
       templateId: resolvedTemplateId,
@@ -448,7 +491,7 @@ export function buildTemplateRenderSnapshot(input: TemplateLayoutInput): Templat
     content,
     fit,
     layout,
-    computed: snapshotComputed
+    computed: finalComputed
   };
 }
 

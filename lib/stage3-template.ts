@@ -1235,6 +1235,23 @@ export function resolveTemplateDescenderSafetyPx(fontPx: number, lineHeight: num
   return clampNumber(Math.ceil(fontPx * ratio), 3, 8);
 }
 
+export function resolveChannelStoryBodyContentHeight(params: {
+  lines: number;
+  fontPx: number;
+  lineHeight: number;
+  maxHeight: number;
+}): number {
+  const lines = Math.max(0, Math.ceil(params.lines));
+  if (lines <= 0) {
+    return 0;
+  }
+  const fontPx = Math.max(1, params.fontPx);
+  const lineHeight = Math.max(0.5, params.lineHeight);
+  const measuredHeight =
+    lines * fontPx * lineHeight + resolveTemplateDescenderSafetyPx(fontPx, lineHeight);
+  return Math.max(1, Math.min(Math.max(1, params.maxHeight), Math.ceil(measuredHeight)));
+}
+
 function normalizeFontScale(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return 1;
@@ -1775,8 +1792,14 @@ export function getChannelStoryComputed(
     config: bottomTypography,
     scale: bottomScale
   });
+  const bodyContentHeight = resolveChannelStoryBodyContentHeight({
+    lines: bottomSized.lines,
+    fontPx: bottomSized.font,
+    lineHeight: bottomSized.lineHeight,
+    maxHeight: channelStory.bodyHeight
+  });
   const topContentHeight =
-    bodyY + channelStory.bodyHeight + channelStory.bodyToMediaGap - cardInnerRect.y;
+    bodyY + bodyContentHeight + channelStory.bodyToMediaGap - cardInnerRect.y;
   const bottomContentHeight = channelStory.footerHeight + channelStory.contentPaddingBottom;
   const topBlockHeight = cardInnerRect.inset + topContentHeight;
   const bottomBlockHeight = cardInnerRect.inset + bottomContentHeight;
@@ -1798,7 +1821,7 @@ export function getChannelStoryComputed(
     bottomCompacted: bottomFit.compacted,
     videoHeight,
     bottomMetaHeight: channelStory.headerHeight,
-    bottomBodyHeight: channelStory.bodyHeight,
+    bottomBodyHeight: bodyContentHeight,
     topBlockHeight,
     bottomBlockHeight,
     videoY: cardInnerRect.y + topContentHeight,
