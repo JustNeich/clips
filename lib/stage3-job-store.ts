@@ -424,6 +424,51 @@ export function getStage3Job(jobId: string): Stage3JobRecord | null {
   return mapJobRow(readJobRow(jobId));
 }
 
+export function listCompletedStage3RenderJobsForChat(input: {
+  workspaceId: string;
+  chatId: string;
+  limit?: number;
+}): Stage3JobRecord[] {
+  const workspaceId = input.workspaceId.trim();
+  const chatId = input.chatId.trim();
+  if (!workspaceId || !chatId) {
+    return [];
+  }
+  const limit = Math.max(1, Math.min(100, Math.floor(input.limit ?? 25)));
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT id
+         FROM stage3_jobs
+        WHERE workspace_id = ?
+          AND kind = 'render'
+          AND status = 'completed'
+          AND payload_json LIKE ?
+        ORDER BY COALESCE(completed_at, updated_at, created_at) DESC,
+                 updated_at DESC,
+                 id DESC
+        LIMIT ?`
+    )
+    .all(workspaceId, `%"chatId":"${chatId}"%`, Math.max(limit * 4, limit)) as { id: string }[];
+
+  const jobs: Stage3JobRecord[] = [];
+  for (const row of rows) {
+    const job = mapJobRow(readJobRow(String(row.id)));
+    if (!job) {
+      continue;
+    }
+    const payload = parseStage3JobPayload(job.payloadJson);
+    if (payload.chatId !== chatId) {
+      continue;
+    }
+    jobs.push(job);
+    if (jobs.length >= limit) {
+      break;
+    }
+  }
+  return jobs;
+}
+
 export function interruptPendingStage3Jobs(): number {
   const stamp = nowIso();
   return runInTransaction((db) => {

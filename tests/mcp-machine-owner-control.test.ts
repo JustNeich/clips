@@ -18,7 +18,7 @@ import {
   createRenderExport,
   getChannelPublicationById
 } from "../lib/publication-store";
-import { enqueueStage3Job, getStage3Job } from "../lib/stage3-job-store";
+import { completeStage3Job, enqueueStage3Job, getStage3Job } from "../lib/stage3-job-store";
 import { bootstrapOwner } from "../lib/team-store";
 
 async function withIsolatedAppData<T>(run: (appDataDir: string) => Promise<T>): Promise<T> {
@@ -509,6 +509,144 @@ test("owner control render_video merges a caller renderPlan patch onto the full 
     assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.y, 0.18);
     assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.height, 0.62);
     assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.source, "editor-clean-inner-media");
+  });
+});
+
+test("owner control render_video reuses the latest editor source crop instead of regressing to a default render", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    await appendStage2CaptionEvent(chat.id);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "render-montage-reuse-agent",
+      scopes: ["flow:read", "pipeline:run"]
+    });
+
+    const cleanArtifactPath = path.join(appDataDir, "clean-editor.mp4");
+    await writeFile(cleanArtifactPath, "clean");
+    const cleanJob = enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "render",
+      payloadJson: JSON.stringify({
+        chatId: chat.id,
+        channelId: channel.id,
+        snapshot: {
+          bottomText: "OLD EDITOR TEXT",
+          clipStartSec: 3.5,
+          clipDurationSec: 7.75,
+          focusY: 0.44,
+          renderPlan: {
+            targetDurationSec: 7.75,
+            durationMode: "fixed_segments",
+            timingMode: "auto",
+            normalizeToTargetEnabled: false,
+            editorSelectionMode: "window",
+            mirrorEnabled: false,
+            videoFit: "contain",
+            videoZoom: 1.08,
+            focusX: 0.51,
+            sourceCrop: {
+              enabled: true,
+              x: 0.08,
+              y: 0.36,
+              width: 0.86,
+              height: 0.42,
+              confidence: 0.96,
+              source: "editor-inner-video-boundary"
+            },
+            segments: [{ startSec: 3.5, endSec: 11.25, speed: 1, label: "editor window" }],
+            policy: "fixed_segments"
+          }
+        }
+      })
+    });
+    completeStage3Job(cleanJob.id, {
+      artifact: {
+        fileName: "clean-editor.mp4",
+        filePath: cleanArtifactPath,
+        mimeType: "video/mp4",
+        sizeBytes: 5
+      }
+    });
+
+    const defaultArtifactPath = path.join(appDataDir, "default-regression.mp4");
+    await writeFile(defaultArtifactPath, "bad");
+    const badJob = enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "render",
+      payloadJson: JSON.stringify({
+        chatId: chat.id,
+        channelId: channel.id,
+        snapshot: {
+          bottomText: "BAD DEFAULT TEXT",
+          renderPlan: {
+            durationMode: "channel_default",
+            mirrorEnabled: false,
+            videoFit: "cover",
+            videoZoom: 1,
+            sourceCrop: null
+          }
+        }
+      })
+    });
+    completeStage3Job(badJob.id, {
+      artifact: {
+        fileName: "default-regression.mp4",
+        filePath: defaultArtifactPath,
+        mimeType: "video/mp4",
+        sizeBytes: 3
+      }
+    });
+
+    const renderResponse = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_render_video",
+      input: { channelId: channel.id, chatId: chat.id }
+    });
+    assert.equal(renderResponse.status, 202);
+    const rendered = (await renderResponse.json()) as { job: { id: string } };
+    const enqueued = getStage3Job(rendered.job.id);
+    assert.ok(enqueued);
+    const payload = JSON.parse(enqueued?.payloadJson ?? "{}") as {
+      snapshot?: {
+        bottomText?: string;
+        clipStartSec?: number;
+        clipDurationSec?: number;
+        focusY?: number;
+        renderPlan?: {
+          durationMode?: string;
+          targetDurationSec?: number;
+          normalizeToTargetEnabled?: boolean;
+          videoFit?: string;
+          videoZoom?: number;
+          sourceCrop?: {
+            enabled?: boolean;
+            y?: number;
+            height?: number;
+            source?: string;
+          } | null;
+        };
+      };
+    };
+
+    assert.equal(
+      payload.snapshot?.bottomText,
+      "Server-side Stage 2 caption text must reach the MCP render snapshot."
+    );
+    assert.equal(payload.snapshot?.clipStartSec, 3.5);
+    assert.equal(payload.snapshot?.clipDurationSec, 7.75);
+    assert.equal(payload.snapshot?.focusY, 0.44);
+    assert.equal(payload.snapshot?.renderPlan?.durationMode, "fixed_segments");
+    assert.equal(payload.snapshot?.renderPlan?.targetDurationSec, 7.75);
+    assert.equal(payload.snapshot?.renderPlan?.normalizeToTargetEnabled, false);
+    assert.equal(payload.snapshot?.renderPlan?.videoFit, "contain");
+    assert.equal(payload.snapshot?.renderPlan?.videoZoom, 1.08);
+    assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.enabled, true);
+    assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.y, 0.36);
+    assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.height, 0.42);
+    assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.source, "editor-inner-video-boundary");
   });
 });
 

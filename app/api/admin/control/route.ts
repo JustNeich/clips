@@ -77,13 +77,17 @@ import { getFlowObservabilityDetail, listFlowObservability } from "../../../../l
 import type { McpMachineCredentialScope } from "../../../../lib/mcp-machine-credential-store";
 import { resolveStage3Execution } from "../../../../lib/stage3-execution";
 import { enqueueAndScheduleStage3Job } from "../../../../lib/stage3-job-runtime";
+import {
+  listCompletedStage3RenderJobsForChat,
+  type Stage3JobRecord
+} from "../../../../lib/stage3-job-store";
 import { buildStage3JobEnvelope } from "../../../../lib/stage3-job-http";
 import { buildStage3RenderRequestDedupeKey } from "../../../../lib/stage3-render-request";
 import type { Stage3RenderRequestBody } from "../../../../lib/stage3-render-service";
 import { resolveSnapshotManagedTemplateStateForEnqueue } from "../../../../lib/managed-template-runtime";
 import { findLatestStage2Event } from "../../../../lib/chat-workflow";
 import { buildDefaultStage3RenderSnapshot } from "../../../../lib/stage3-default-snapshot";
-import type { Stage3StateSnapshot } from "../../../../app/components/types";
+import type { Stage3RenderPlan, Stage3StateSnapshot } from "../../../../app/components/types";
 
 export const runtime = "nodejs";
 
@@ -93,6 +97,9 @@ type ControlBody = {
 };
 
 type OwnerControlAuth = Awaited<ReturnType<typeof requireOwnerOrMcpMachineScope>>;
+type Stage3SnapshotPatch = Partial<Omit<Stage3StateSnapshot, "renderPlan">> & {
+  renderPlan?: Partial<Stage3RenderPlan>;
+};
 
 const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
   clips_owner_status: "integration:readiness",
@@ -142,9 +149,9 @@ function resolveStringArray(value: unknown): string[] | undefined {
 }
 
 function mergeStage3SnapshotPatch(
-  base: Stage3StateSnapshot | null,
-  patch: Partial<Stage3StateSnapshot> | null
-): Partial<Stage3StateSnapshot> | null {
+  base: Stage3SnapshotPatch | null,
+  patch: Stage3SnapshotPatch | null
+): Stage3SnapshotPatch | null {
   if (!base) {
     return patch;
   }
@@ -168,12 +175,94 @@ function mergeStage3SnapshotPatch(
     renderPlan: {
       ...base.renderPlan,
       ...(patch.renderPlan ?? {})
-    },
+    } as Stage3RenderPlan,
     managedTemplateState: patch.managedTemplateState ?? base.managedTemplateState,
     captionHighlights: patch.captionHighlights ?? base.captionHighlights,
     templateSnapshot: textAffectingPatch ? patch.templateSnapshot : patch.templateSnapshot ?? base.templateSnapshot,
     textFit: textAffectingPatch ? patch.textFit : patch.textFit ?? base.textFit
   };
+}
+
+function parseJobSnapshot(job: Stage3JobRecord): Stage3SnapshotPatch | null {
+  try {
+    const payload = JSON.parse(job.payloadJson) as { snapshot?: unknown };
+    return payload.snapshot && typeof payload.snapshot === "object"
+      ? (payload.snapshot as Stage3SnapshotPatch)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function hasEditorSourceCrop(snapshot: Stage3SnapshotPatch | null): boolean {
+  const crop = snapshot?.renderPlan?.sourceCrop;
+  return Boolean(crop && crop.enabled === true && crop.width > 0 && crop.height > 0);
+}
+
+function pickMontageRenderPlanPatch(plan: Partial<Stage3RenderPlan>): Partial<Stage3RenderPlan> {
+  return {
+    targetDurationSec: plan.targetDurationSec,
+    durationMode: plan.durationMode,
+    timingMode: plan.timingMode,
+    normalizeToTargetEnabled: plan.normalizeToTargetEnabled,
+    editorSelectionMode: plan.editorSelectionMode,
+    audioMode: plan.audioMode,
+    sourceAudioEnabled: plan.sourceAudioEnabled,
+    sourceAudioGain: plan.sourceAudioGain,
+    smoothSlowMo: plan.smoothSlowMo,
+    mirrorEnabled: plan.mirrorEnabled,
+    cameraMotion: plan.cameraMotion,
+    cameraKeyframes: plan.cameraKeyframes,
+    cameraPositionKeyframes: plan.cameraPositionKeyframes,
+    cameraScaleKeyframes: plan.cameraScaleKeyframes,
+    focusX: plan.focusX,
+    videoZoom: plan.videoZoom,
+    videoScaleY: plan.videoScaleY,
+    videoScaleX: plan.videoScaleX,
+    videoFit: plan.videoFit,
+    videoBrightness: plan.videoBrightness,
+    videoExposure: plan.videoExposure,
+    videoContrast: plan.videoContrast,
+    videoSaturation: plan.videoSaturation,
+    sourceCrop: plan.sourceCrop,
+    musicGain: plan.musicGain,
+    textPolicy: plan.textPolicy,
+    segments: plan.segments,
+    policy: plan.policy,
+    backgroundAssetId: plan.backgroundAssetId,
+    backgroundAssetMimeType: plan.backgroundAssetMimeType,
+    musicAssetId: plan.musicAssetId,
+    musicAssetMimeType: plan.musicAssetMimeType
+  };
+}
+
+function buildMontagePatchFromSnapshot(snapshot: Stage3SnapshotPatch): Stage3SnapshotPatch {
+  return {
+    clipStartSec: snapshot.clipStartSec,
+    clipDurationSec: snapshot.clipDurationSec,
+    focusX: snapshot.focusX,
+    focusY: snapshot.focusY,
+    sourceDurationSec: snapshot.sourceDurationSec,
+    renderPlan: pickMontageRenderPlanPatch(snapshot.renderPlan ?? {})
+  };
+}
+
+function findLatestEditorMontageSnapshot(input: {
+  workspaceId: string;
+  chatId: string;
+}): { job: Stage3JobRecord; snapshot: Stage3SnapshotPatch } | null {
+  const jobs = listCompletedStage3RenderJobsForChat({
+    workspaceId: input.workspaceId,
+    chatId: input.chatId,
+    limit: 25
+  });
+  for (const job of jobs) {
+    const snapshot = parseJobSnapshot(job);
+    if (snapshot && hasEditorSourceCrop(snapshot)) {
+      return { job, snapshot };
+    }
+  }
+  return null;
 }
 
 function summarizeChannel(channel: Channel): Record<string, unknown> {
@@ -788,8 +877,19 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
             sourceDurationSec: resolveNumber(input.sourceDurationSec) ?? null
           })
         : null;
+    const reusedMontage =
+      callerSnapshot === null
+        ? findLatestEditorMontageSnapshot({
+            workspaceId: auth.workspace.id,
+            chatId: chat.id
+          })
+        : null;
+    const montagePatch = reusedMontage ? buildMontagePatchFromSnapshot(reusedMontage.snapshot) : null;
     const resolvedSnapshot =
-      mergeStage3SnapshotPatch(defaultSnapshot, callerSnapshot) ??
+      mergeStage3SnapshotPatch(
+        mergeStage3SnapshotPatch(defaultSnapshot, montagePatch),
+        callerSnapshot
+      ) ??
       (managedTemplateState ? { managedTemplateState } : null);
     const normalizedBody = {
       channelId: channel.id,
@@ -802,7 +902,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       // renderPlan.templateId, and the no-Stage-2 sparse path still names the
       // managed template whose state we embedded above.
       ...(effectiveTemplateId ? { templateId: effectiveTemplateId } : {}),
-      ...(resolvedSnapshot ? { snapshot: resolvedSnapshot } : {})
+      ...(resolvedSnapshot ? { snapshot: resolvedSnapshot as Partial<Stage3StateSnapshot> } : {})
     } satisfies Stage3RenderRequestBody;
     const executionTarget = resolveStage3Execution(auth.workspace.stage3ExecutionTarget).resolvedTarget;
     const job = enqueueAndScheduleStage3Job({
@@ -828,7 +928,8 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       payload: {
         executionTarget,
         publishAfterRender: normalizedBody.publishAfterRender,
-        templateId: effectiveTemplateId ?? null
+        templateId: effectiveTemplateId ?? null,
+        reusedMontageStage3JobId: reusedMontage?.job.id ?? null
       }
     });
     return {
