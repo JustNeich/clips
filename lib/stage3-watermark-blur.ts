@@ -75,14 +75,16 @@ export function normalizeStage3WatermarkBlurs(value: unknown): Stage3WatermarkBl
   return boxes;
 }
 
-function evenPx(dimension: "iw" | "ih", fraction: number): string {
+function evenExpr(dimension: string, fraction: number): string {
   return `trunc(${dimension}*${fraction.toFixed(6)}/2)*2`;
 }
 
 // Builds a filter_complex graph that blurs each box region in place: the source
 // is split into a base plus one copy per box, each copy is cropped to the box
-// and boxblur'd, then overlaid back onto the base at the box origin. Output pad
-// is [vwm]. Returns null when there is nothing to blur.
+// and gaussian-blurred, then overlaid back onto the base at the box origin.
+// crop x/y/w/h use iw/ih (valid in crop); overlay x/y use main_w/main_h
+// (overlay does NOT accept iw/ih and silently produces zero frames if it does).
+// Output pad is [vwm]. Returns null when there is nothing to blur.
 export function buildStage3WatermarkBlurFilterComplex(
   boxes: Stage3WatermarkBlurBox[]
 ): string | null {
@@ -96,19 +98,19 @@ export function buildStage3WatermarkBlurFilterComplex(
   parts.push(`[0:v]split=${count + 1}[${splitLabels.join("][")}]`);
 
   normalized.forEach((box, index) => {
-    const width = evenPx("iw", box.width);
-    const height = evenPx("ih", box.height);
-    const x = evenPx("iw", box.x);
-    const y = evenPx("ih", box.y);
+    const width = evenExpr("iw", box.width);
+    const height = evenExpr("ih", box.height);
+    const x = evenExpr("iw", box.x);
+    const y = evenExpr("ih", box.y);
     parts.push(
-      `[wmsrc${index}]crop=${width}:${height}:${x}:${y},boxblur=lr=${box.strength}:cr=${box.strength}[wmblur${index}]`
+      `[wmsrc${index}]crop=${width}:${height}:${x}:${y},gblur=sigma=${box.strength}[wmblur${index}]`
     );
   });
 
   let previous = "wmbase";
   normalized.forEach((box, index) => {
-    const x = evenPx("iw", box.x);
-    const y = evenPx("ih", box.y);
+    const x = evenExpr("main_w", box.x);
+    const y = evenExpr("main_h", box.y);
     const output = index === count - 1 ? "vwm" : `wmstage${index}`;
     parts.push(`[${previous}][wmblur${index}]overlay=${x}:${y}[${output}]`);
     previous = output;

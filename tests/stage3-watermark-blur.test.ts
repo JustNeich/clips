@@ -59,8 +59,10 @@ test("one box builds a split/crop/boxblur/overlay graph ending in [vwm]", () => 
   ]);
   assert.ok(graph);
   assert.match(graph as string, /\[0:v\]split=2\[wmbase\]\[wmsrc0\]/);
-  assert.match(graph as string, /boxblur=lr=16:cr=16\[wmblur0\]/);
-  assert.match(graph as string, /\[wmbase\]\[wmblur0\]overlay=.*\[vwm\]$/);
+  assert.match(graph as string, /gblur=sigma=16\[wmblur0\]/);
+  // overlay must position with main_w/main_h, never iw/ih (which yields 0 frames)
+  assert.match(graph as string, /\[wmbase\]\[wmblur0\]overlay=trunc\(main_w.*\[vwm\]$/);
+  assert.doesNotMatch(graph as string, /overlay=trunc\(iw/);
 });
 
 test("two boxes chain overlays and still terminate in [vwm]", () => {
