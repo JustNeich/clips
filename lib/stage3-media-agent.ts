@@ -14,6 +14,10 @@ import { sanitizeFileName } from "./ytdlp";
 import { buildStage3EditorSession } from "./stage3-editor-core";
 import { repairStage3BlankFlashFrames } from "./stage3-video-flash-guard";
 import { buildStage3SourceCropFfmpegFilter } from "./stage3-source-crop";
+import {
+  buildStage3WatermarkBlurFfmpegArgs,
+  normalizeStage3WatermarkBlurs
+} from "./stage3-watermark-blur";
 import { isStage3HostedFastRenderProfileEnabled } from "./stage3-render-variation";
 import { isUploadedSourceUrl } from "./uploaded-source";
 
@@ -1045,6 +1049,37 @@ async function probeHasAudio(videoPath: string): Promise<boolean> {
   }
 }
 
+// Softens static donor watermark boxes in place on the raw source before any
+// crop/segmentation, so a watermark that sits inside the kept inner video does
+// not force a resolution-destroying zoom crop to push it out of frame. No-op
+// (returns null) when no boxes are configured, leaving the existing pipeline
+// byte-identical for every render that does not opt in.
+export async function applyStage3WatermarkBlur(params: {
+  sourcePath: string;
+  outputPath: string;
+  renderPlan: Pick<Stage3RenderPlan, "watermarkBlurs">;
+}): Promise<string | null> {
+  const boxes = normalizeStage3WatermarkBlurs(params.renderPlan.watermarkBlurs);
+  if (boxes.length === 0) {
+    return null;
+  }
+  const sourceHasAudio = await probeHasAudio(params.sourcePath);
+  const args = buildStage3WatermarkBlurFfmpegArgs({
+    sourcePath: params.sourcePath,
+    outputPath: params.outputPath,
+    boxes,
+    sourceHasAudio
+  });
+  if (!args) {
+    return null;
+  }
+  await execFileAsync("ffmpeg", args, {
+    timeout: 5 * 60_000,
+    maxBuffer: 1024 * 1024 * 16
+  });
+  return params.outputPath;
+}
+
 export async function normalizeStage3SourceVideo(params: {
   sourcePath: string;
   outputPath: string;
@@ -1700,7 +1735,13 @@ export async function prepareStage3SourceClip(params: {
     clipDurationSec: params.clipDurationSec
   });
 
-  const segmentFiles = await extractSegmentsToFiles(params.sourcePath, params.tmpDir, segments, profile, params.renderPlan);
+  const watermarkBlurredSource = await applyStage3WatermarkBlur({
+    sourcePath: params.sourcePath,
+    outputPath: path.join(params.tmpDir, "source.watermark-blur.mp4"),
+    renderPlan: params.renderPlan
+  });
+  const segmentSourcePath = watermarkBlurredSource ?? params.sourcePath;
+  const segmentFiles = await extractSegmentsToFiles(segmentSourcePath, params.tmpDir, segments, profile, params.renderPlan);
   const joined =
     segmentFiles.length === 1 ? segmentFiles[0] : await concatSegments(segmentFiles, params.tmpDir, profile);
   const fitted = await fitClipToDuration({

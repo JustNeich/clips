@@ -74,6 +74,7 @@ import {
   normalizeStage3RenderPlanSegments,
   resolveCanonicalStage3RenderPolicy
 } from "./stage3-render-plan";
+import { normalizeStage3WatermarkBlurs } from "./stage3-watermark-blur";
 import { ensureStage3RenderBrowser } from "./stage3-browser-runtime";
 import { repairStage3BlankFlashFrames } from "./stage3-video-flash-guard";
 import { resolveStage3BackgroundMode } from "./stage3-background-mode";
@@ -1366,6 +1367,7 @@ export function normalizeRenderPlan(
     videoContrast: normalizeStage3VideoContrast(rawPlan?.videoContrast, templateVideoAdjustments.contrast),
     videoSaturation: normalizeStage3VideoSaturation(rawPlan?.videoSaturation, templateVideoAdjustments.saturation),
     sourceCrop: normalizeStage3SourceCrop(rawPlan?.sourceCrop, null),
+    watermarkBlurs: normalizeStage3WatermarkBlurs(rawPlan?.watermarkBlurs),
     topFontScale:
       typeof rawPlan?.topFontScale === "number" && Number.isFinite(rawPlan.topFontScale)
         ? clampStage3TextScaleUi(rawPlan.topFontScale)

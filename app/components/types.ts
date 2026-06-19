@@ -858,6 +858,16 @@ export type Stage3SourceCrop = {
   notes?: string | null;
 };
 
+export type Stage3WatermarkBlurBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  strength: number;
+  source?: string | null;
+  notes?: string | null;
+};
+
 export type Stage3RenderPlan = {
   targetDurationSec: number;
   durationMode?: Stage3DurationMode;
@@ -883,6 +893,7 @@ export type Stage3RenderPlan = {
   videoContrast: number;
   videoSaturation: number;
   sourceCrop: Stage3SourceCrop | null;
+  watermarkBlurs?: Stage3WatermarkBlurBox[];
   topFontScale: number;
   bottomFontScale: number;
   musicGain: number;
