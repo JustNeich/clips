@@ -3,6 +3,7 @@ import { requireOwnerOrMcpMachineScope, requireSharedCodexAvailable } from "../.
 import { appendFlowAuditEvent } from "../../../../lib/audit-log-store";
 import {
   createChannel,
+  createChannelAsset,
   createOrGetChatBySource,
   deleteChannelById,
   getChannelById,
@@ -10,6 +11,11 @@ import {
   updateChannelById,
   type Channel
 } from "../../../../lib/chat-history";
+import {
+  buildChannelAssetUrl,
+  saveChannelAssetFile,
+  validateChannelAssetMime
+} from "../../../../lib/channel-assets";
 import {
   deleteChannelPublicationWithRemoteSync,
   restoreCanceledChannelPublicationToQueue,
@@ -121,6 +127,7 @@ const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
   clips_owner_get_channel: "flow:read",
   clips_owner_create_channel: "entity:write",
   clips_owner_update_channel: "entity:write",
+  clips_owner_upload_channel_asset: "entity:write",
   clips_owner_delete_channel: "entity:write",
   clips_owner_list_templates: "flow:read",
   clips_owner_create_template: "entity:write",
@@ -552,7 +559,8 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       descriptionPrompt: resolveString(input.descriptionPrompt),
       examplesJson: resolveString(input.examplesJson),
       templateId: resolveString(input.templateId),
-      defaultClipDurationSec: resolveNumber(input.defaultClipDurationSec)
+      defaultClipDurationSec: resolveNumber(input.defaultClipDurationSec),
+      defaultBackgroundAssetId: resolveString(input.defaultBackgroundAssetId)
     });
     auditControl({
       auth,
@@ -564,6 +572,77 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       payload: { username: updated.username }
     });
     return { channel: summarizeChannel(updated) };
+  }
+
+  if (tool === "clips_owner_upload_channel_asset") {
+    const channel = await requireChannel(auth.workspace.id, input);
+    const kindRaw = resolveString(input.kind);
+    if (kindRaw !== "avatar" && kindRaw !== "background" && kindRaw !== "music") {
+      throw new Response(
+        JSON.stringify({ error: "kind must be one of avatar|background|music." }),
+        { status: 400, headers: { "content-type": "application/json" } }
+      );
+    }
+    const kind = kindRaw;
+    const mimeType = (resolveString(input.mimeType) ?? "").toLowerCase();
+    if (!validateChannelAssetMime(kind, mimeType)) {
+      throw new Response(
+        JSON.stringify({ error: `Unsupported mime type "${mimeType}" for kind ${kind}.` }),
+        { status: 400, headers: { "content-type": "application/json" } }
+      );
+    }
+    const dataBase64 = resolveString(input.dataBase64);
+    if (!dataBase64) {
+      throw new Response(JSON.stringify({ error: "dataBase64 is required." }), {
+        status: 400,
+        headers: { "content-type": "application/json" }
+      });
+    }
+    const buffer = Buffer.from(dataBase64, "base64");
+    const maxBytes =
+      kind === "avatar"
+        ? 10 * 1024 * 1024
+        : kind === "background"
+          ? 50 * 1024 * 1024
+          : 80 * 1024 * 1024;
+    if (buffer.byteLength <= 0 || buffer.byteLength > maxBytes) {
+      throw new Response(
+        JSON.stringify({ error: `File must be 1..${Math.round(maxBytes / (1024 * 1024))} MB.` }),
+        { status: 400, headers: { "content-type": "application/json" } }
+      );
+    }
+    const assetId = randomUUID().replace(/-/g, "");
+    const saved = await saveChannelAssetFile({ channelId: channel.id, assetId, mimeType, buffer });
+    const asset = await createChannelAsset({
+      channelId: channel.id,
+      kind,
+      assetId,
+      fileName: saved.fileName,
+      originalName: resolveString(input.fileName) ?? `${kind}-asset`,
+      mimeType,
+      sizeBytes: buffer.byteLength
+    });
+    // By default, wire the freshly uploaded asset as the channel's active asset of
+    // that kind (avatar -> avatarAssetId, background -> defaultBackgroundAssetId),
+    // unless the caller passes setAsDefault:false. Replaces the source-blur with a
+    // real background for top&&bottom templates.
+    const setAsDefault = input.setAsDefault !== false;
+    if (kind === "avatar" && setAsDefault) {
+      await updateChannelById(channel.id, { avatarAssetId: asset.id });
+    }
+    if (kind === "background" && setAsDefault) {
+      await updateChannelById(channel.id, { defaultBackgroundAssetId: asset.id });
+    }
+    auditControl({
+      auth,
+      action: "owner_control.channel.asset_uploaded",
+      entityType: "channel",
+      entityId: channel.id,
+      channelId: channel.id,
+      status: "succeeded",
+      payload: { kind, assetId: asset.id, sizeBytes: buffer.byteLength, setAsDefault }
+    });
+    return { asset: { ...asset, url: buildChannelAssetUrl(asset.channelId, asset.id) } };
   }
 
   if (tool === "clips_owner_delete_channel") {
