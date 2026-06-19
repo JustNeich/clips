@@ -34,6 +34,15 @@ import { CHANNEL_STORY_TEMPLATE_ID, STAGE3_TEMPLATE_ID } from "./stage3-template
 // pulling that module into a server route would drag DOM-only code in.
 import { normalizeRenderPlan } from "./stage3-render-service";
 
+// Owner rule (2026-06-19): the top&&bottom group — the `science-card-red`
+// template family (King Leo, IRON KING, Dark JoyBoy, THE LIGHT KINGDOM, …) —
+// ships WITHOUT caption highlighting; the caption renders as plain text. This is
+// a GROUP-level pipeline rule for every top&&bottom channel, deliberately not a
+// per-video override, so automated and manual renders both stay highlight-free.
+function isTopBottomHighlightSuppressed(templateId: string | null | undefined): boolean {
+  return typeof templateId === "string" && templateId.trim().startsWith("science-card-red");
+}
+
 function findAssetById(
   assets: ChannelAsset[],
   assetId: string | null | undefined
@@ -175,9 +184,10 @@ export function buildDefaultStage3RenderSnapshot(
   const topText = handoff.topText ?? "";
   const bottomText = handoff.bottomText ?? "";
   const sourceOverlayText = handoff.sourceOverlayText ?? "";
-  const captionHighlights = handoff.caption?.highlights
-    ? cloneTemplateCaptionHighlights(handoff.caption.highlights)
-    : createEmptyTemplateCaptionHighlights();
+  const captionHighlights =
+    !isTopBottomHighlightSuppressed(input.templateId) && handoff.caption?.highlights
+      ? cloneTemplateCaptionHighlights(handoff.caption.highlights)
+      : createEmptyTemplateCaptionHighlights();
 
   // 2. Channel -> base render plan (no overrides), then resolve the effective
   //    output duration. Honor source-full when the source duration is known.

@@ -19,6 +19,7 @@ import { buildTemplateRenderSnapshot } from "../lib/stage3-template-core";
 import { assertStage3RenderTemplateSnapshotFresh } from "../lib/stage3-render-template-snapshot";
 import {
   CHANNEL_STORY_TEMPLATE_ID,
+  SCIENCE_CARD_RED_TEMPLATE_ID,
   STAGE3_TEMPLATE_ID,
   cloneStage3TemplateConfig,
   getTemplateById
@@ -243,6 +244,45 @@ test("built-in channel_default: captions populated, hashes present, worker fresh
     workerSourceDurationSec: 53.6
   });
   assert.equal(baseSnapshotHash, snapshot.templateSnapshot?.snapshotHash);
+});
+
+test("top&&bottom group (science-card-red) ships highlight-free; other families keep Stage 2 highlights", () => {
+  // Owner rule 2026-06-19: remove caption highlighting for every top&&bottom
+  // (science-card-red) channel, as a pipeline/group rule — not a per-video edit.
+  const stage2 = makeStage2Response();
+  (stage2 as unknown as { output: { captionOptions: Array<{ highlights: unknown }> } }).output
+    .captionOptions[0].highlights = {
+    top: [{ start: 0, end: 3, slotId: "slot1" }],
+    bottom: []
+  };
+
+  for (const templateId of [SCIENCE_CARD_RED_TEMPLATE_ID, "science-card-red-1cbf5e07"]) {
+    const suppressed = buildDefaultStage3RenderSnapshot({
+      stage2,
+      channel: makeChannel(templateId),
+      templateId,
+      managedTemplateState: null,
+      sourceDurationSec: null
+    });
+    assert.deepEqual(
+      suppressed.captionHighlights,
+      { top: [], bottom: [] },
+      `${templateId} must render captions without highlight spans`
+    );
+  }
+
+  // A non-top&&bottom family must still honor the Stage 2 highlight spans.
+  const kept = buildDefaultStage3RenderSnapshot({
+    stage2,
+    channel: makeChannel(STAGE3_TEMPLATE_ID),
+    templateId: STAGE3_TEMPLATE_ID,
+    managedTemplateState: null,
+    sourceDurationSec: null
+  });
+  assert.ok(
+    kept.captionHighlights.top.length > 0,
+    "non-suppressed family preserves Stage 2 caption highlights"
+  );
 });
 
 test("source_full honors a passed source duration (full-length render)", () => {
