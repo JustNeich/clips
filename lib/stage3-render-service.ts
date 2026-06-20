@@ -32,6 +32,11 @@ import {
 } from "./stage3-video-fit";
 import { normalizeStage3MediaRegionHeightPx } from "./stage3-media-geometry";
 import {
+  mergeAutoGeometry,
+  resolveStage3AutoGeometry,
+  resolveTemplateMediaSlot
+} from "./stage3-auto-geometry";
+import {
   analyzeBestClipAndFocus,
   clampClipStart,
   prepareStage3SourceClip,
@@ -226,6 +231,7 @@ export type Stage3RenderProgressEvent = {
   stage:
     | "source_cache"
     | "auto_focus"
+    | "auto_geometry"
     | "template_snapshot"
     | "asset_resolve"
     | "remotion_bundle"
@@ -1537,16 +1543,74 @@ export async function renderStage3Video(
 
     const clipStartSec = clampClipStart(requestedClipStart ?? auto.clipStartSec, sourceDurationSec, clipDurationSec);
     const focusY = sanitizeFocusY(requestedFocus ?? auto.focusY);
+    const templateIdFromInput =
+      typeof (snapshot?.renderPlan as Partial<Stage3RenderPlan> | undefined)?.templateId === "string" &&
+      (snapshot?.renderPlan as Partial<Stage3RenderPlan>).templateId?.trim()
+        ? String((snapshot?.renderPlan as Partial<Stage3RenderPlan>).templateId).trim()
+        : typeof body.renderPlan?.templateId === "string" && body.renderPlan.templateId.trim()
+          ? body.renderPlan.templateId.trim()
+          : body.templateId?.trim() || STAGE3_TEMPLATE_ID;
+    // Deterministic geometry: resolve the media slot once, then compute the
+    // no-bars fit from the real source aspect. Merged as a BASELINE into the raw
+    // plan (an explicit agent/judge override still wins) before BOTH the preview
+    // and the final render, so preview == final by construction.
+    const provisionalPlan = normalizeRenderPlan(
+      snapshot?.renderPlan ?? body.renderPlan,
+      sourceDurationSec,
+      templateIdFromInput,
+      body.agentPrompt,
+      snapshot?.managedTemplateState,
+      workspaceId
+    );
+    const provisionalRuntime = resolveManagedTemplateRuntimeSync(
+      provisionalPlan.templateId,
+      snapshot?.managedTemplateState,
+      { workspaceId }
+    );
+    const mediaSlot = resolveTemplateMediaSlot({
+      templateId: provisionalPlan.templateId,
+      topText: snapshot?.topText ?? body.topText ?? "",
+      bottomText: snapshot?.bottomText ?? body.bottomText ?? "",
+      topFontScale: provisionalPlan.topFontScale,
+      bottomFontScale: provisionalPlan.bottomFontScale,
+      templateConfigOverride: provisionalRuntime.templateConfig
+    });
+    const autoGeometryPayload: Record<string, unknown> = {
+      slotWidthPx: mediaSlot.slotWidthPx,
+      slotHeightPx: mediaSlot.slotHeightPx
+    };
+    const autoGeometry = await measureRenderStage(options, "auto_geometry", autoGeometryPayload, async () => {
+      const result = await runHostedStage3HeavyJob(
+        () =>
+          resolveStage3AutoGeometry({
+            sourcePath: source.sourcePath,
+            slotWidthPx: mediaSlot.slotWidthPx,
+            slotHeightPx: mediaSlot.slotHeightPx
+          }),
+        {
+          signal: options?.signal,
+          waitTimeoutMs
+        }
+      );
+      if (result) {
+        Object.assign(autoGeometryPayload, {
+          mode: result.decision.mode,
+          contentAspect: Number(result.contentAspect.toFixed(3)),
+          mediaRegionHeightPx: result.patch.mediaRegionHeightPx ?? null,
+          videoFit: result.patch.videoFit ?? null,
+          videoScaleX: result.patch.videoScaleX ?? null,
+          sourceCropApplied: Boolean(result.patch.sourceCrop),
+          escalateToJudge: result.escalateToJudge,
+          escalationReason: result.escalationReason
+        });
+      } else {
+        Object.assign(autoGeometryPayload, { resolved: false });
+      }
+      return result;
+    });
     const templateState = await measureRenderStage(options, "template_snapshot", null, async () => {
-      const templateIdFromInput =
-        typeof (snapshot?.renderPlan as Partial<Stage3RenderPlan> | undefined)?.templateId === "string" &&
-        (snapshot?.renderPlan as Partial<Stage3RenderPlan>).templateId?.trim()
-          ? String((snapshot?.renderPlan as Partial<Stage3RenderPlan>).templateId).trim()
-          : typeof body.renderPlan?.templateId === "string" && body.renderPlan.templateId.trim()
-            ? body.renderPlan.templateId.trim()
-            : body.templateId?.trim() || STAGE3_TEMPLATE_ID;
       const renderPlan = normalizeRenderPlan(
-        snapshot?.renderPlan ?? body.renderPlan,
+        mergeAutoGeometry(snapshot?.renderPlan ?? body.renderPlan, autoGeometry?.patch ?? null),
         sourceDurationSec,
         templateIdFromInput,
         body.agentPrompt,

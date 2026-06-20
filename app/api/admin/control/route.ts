@@ -43,7 +43,8 @@ import {
 } from "../../../../lib/managed-template-store";
 import { ensureCodexLoggedIn } from "../../../../lib/codex-runner";
 import { buildStage2RunChannelSnapshot } from "../../../../lib/stage2-run-channel-snapshot";
-import { parseAgentManualCaption } from "../../../../lib/stage2-agent-manual";
+import { agentManualCaptionIssues, parseAgentManualCaption } from "../../../../lib/stage2-agent-manual";
+import { resolveEffectiveStage2HardConstraints } from "../../../../lib/stage2-template-contract";
 import { buildStage2RunRequestSnapshot } from "../../../../lib/stage2-run-request";
 import {
   enqueueAndScheduleStage2Run,
@@ -1142,6 +1143,49 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
         }
       );
     }
+    // Render-time text-length contract. The agent_manual Stage 2 path validates
+    // caption length/banned words, but text injected directly through the render
+    // snapshot (snapshot.topText/bottomText) would otherwise bypass it. Enforce
+    // the channel's per-element hard constraints here so the char-range contract
+    // holds regardless of which text route produced the caption.
+    const renderTop = typeof resolvedSnapshot?.topText === "string" ? resolvedSnapshot.topText : "";
+    const renderBottom = typeof resolvedSnapshot?.bottomText === "string" ? resolvedSnapshot.bottomText : "";
+    if (renderTop.trim() || renderBottom.trim()) {
+      const textConstraints = resolveEffectiveStage2HardConstraints({
+        hardConstraints: channel.stage2HardConstraints,
+        templateId: effectiveTemplateId ?? channel.templateId,
+        workspaceId: auth.workspace.id
+      });
+      const textIssues = agentManualCaptionIssues({ top: renderTop, bottom: renderBottom }, textConstraints);
+      if (textIssues.length > 0) {
+        auditControl({
+          auth,
+          action: "owner_control.render.blocked",
+          entityType: "chat",
+          entityId: chat.id,
+          channelId: channel.id,
+          chatId: chat.id,
+          status: "blocked",
+          payload: {
+            reason: "text_constraints_failed",
+            templateId: effectiveTemplateId ?? null,
+            issues: textIssues
+          }
+        });
+        throw new Response(
+          JSON.stringify({
+            error: "text_constraints_failed",
+            code: "text_constraints_failed",
+            message: `Caption text is outside the channel's hard constraints: ${textIssues.join(" ")}`,
+            issues: textIssues
+          }),
+          {
+            status: 409,
+            headers: { "content-type": "application/json" }
+          }
+        );
+      }
+    }
     const normalizedBody = {
       channelId: channel.id,
       chatId: chat.id,
@@ -1237,7 +1281,23 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     const mode: Stage2RunMode = requestedMode === "auto" ? "auto" : "manual";
     // agent_manual mode: an external agent supplies the final caption text; the
     // platform skips generation but still runs the hard-constraint validator.
+    const agentCaptionProvided = input.agentCaption !== undefined && input.agentCaption !== null;
     const agentCaption = parseAgentManualCaption(input.agentCaption);
+    // Fail loudly instead of silently downgrading to platform generation: a
+    // malformed agentCaption (missing string top/bottom) used to be swallowed,
+    // dropping the agent's text onto the unvalidated path. Surface it so the
+    // caller fixes the payload rather than shipping platform-generated text.
+    if (agentCaptionProvided && !agentCaption) {
+      throw new Response(
+        JSON.stringify({
+          error: "agent_caption_malformed",
+          code: "agent_caption_malformed",
+          message:
+            "agentCaption was provided but is missing string top/bottom fields; refusing to silently fall back to platform generation."
+        }),
+        { status: 400, headers: { "content-type": "application/json" } }
+      );
+    }
     const run = enqueueAndScheduleStage2Run({
       workspaceId: auth.workspace.id,
       creatorUserId: auth.user.id,

@@ -27,6 +27,11 @@ import {
 } from "./stage3-video-fit";
 import { normalizeStage3MediaRegionHeightPx } from "./stage3-media-geometry";
 import {
+  mergeAutoGeometry,
+  resolveStage3AutoGeometry,
+  resolveTemplateMediaSlot
+} from "./stage3-auto-geometry";
+import {
   DEFAULT_STAGE3_CLIP_DURATION_SEC,
   normalizeStage3DurationMode,
   resolveStage3OutputDurationSec
@@ -471,8 +476,42 @@ export async function prepareStage3Preview(
   const clipStartCandidate = parseFiniteNumber(snapshot?.clipStartSec) ?? parseFiniteNumber(body.clipStartSec) ?? 0;
   const clipStartSec = clampClipStart(clipStartCandidate, source.sourceDurationSec, clipDurationSec);
   const rawPlan = snapshot?.renderPlan ?? body.renderPlan;
-  const renderPlan = normalizeRenderPlan(
+  // Deterministic geometry baseline — the SAME resolver the final render uses, so
+  // the preview frames the judge approves match the final MP4 exactly. Agent
+  // overrides still win (mergeAutoGeometry only fills unset fields).
+  const provisionalPlan = normalizeRenderPlan(
     rawPlan,
+    source.sourceDurationSec,
+    snapshot?.managedTemplateState,
+    workspaceId
+  );
+  const provisionalRuntime = resolveManagedTemplateRuntimeSync(
+    provisionalPlan.templateId,
+    snapshot?.managedTemplateState,
+    { workspaceId }
+  );
+  const mediaSlot = resolveTemplateMediaSlot({
+    templateId: provisionalPlan.templateId,
+    topText: snapshot?.topText ?? "",
+    bottomText: snapshot?.bottomText ?? "",
+    topFontScale: provisionalPlan.topFontScale,
+    bottomFontScale: provisionalPlan.bottomFontScale,
+    templateConfigOverride: provisionalRuntime.templateConfig
+  });
+  const autoGeometry = await runHostedStage3HeavyJob(
+    () =>
+      resolveStage3AutoGeometry({
+        sourcePath: source.sourcePath,
+        slotWidthPx: mediaSlot.slotWidthPx,
+        slotHeightPx: mediaSlot.slotHeightPx
+      }),
+    {
+      signal: options?.signal,
+      waitTimeoutMs
+    }
+  );
+  const renderPlan = normalizeRenderPlan(
+    mergeAutoGeometry(rawPlan, autoGeometry?.patch ?? null),
     source.sourceDurationSec,
     snapshot?.managedTemplateState,
     workspaceId
