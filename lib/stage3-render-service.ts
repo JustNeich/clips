@@ -1585,7 +1585,8 @@ export async function renderStage3Video(
           resolveStage3AutoGeometry({
             sourcePath: source.sourcePath,
             slotWidthPx: mediaSlot.slotWidthPx,
-            slotHeightPx: mediaSlot.slotHeightPx
+            slotHeightPx: mediaSlot.slotHeightPx,
+            sourceCrop: (snapshot?.renderPlan ?? body.renderPlan)?.sourceCrop
           }),
         {
           signal: options?.signal,

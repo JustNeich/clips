@@ -97,6 +97,51 @@ test("baked-in bars detected -> sourceCrop set, aspect from inner rect", async (
   assert.ok(Math.abs(result!.contentAspect - 1000 / 562) < 0.01);
 });
 
+test("agent wrapper crop -> aspect from POST-crop region, exact region_height (THE LIGHT KINGDOM)", async () => {
+  // The real L/R-bar bug: agent eyeballed mediaRegionHeightPx slightly too small so
+  // the slot was wider than the content -> pillarbox. Deterministic computes the
+  // EXACT slot height from the post-crop aspect, so slot aspect == content aspect.
+  const result = await resolveStage3AutoGeometry({
+    sourcePath: "/tmp/fake.mp4",
+    ...SLOT,
+    sourceCrop: { enabled: true, x: 0.0185, y: 0.3375, width: 0.963, height: 0.407 },
+    probeDimensions: stubProbe(1080, 1920),
+    detectContentRect: async () => {
+      throw new Error("cropdetect must NOT run when a non-full agent crop is provided");
+    }
+  });
+  assert.ok(result);
+  const expectedAspect = (0.963 * 1080) / (0.407 * 1920); // ~1.33, wider than slot 1.21
+  assert.ok(Math.abs(result!.contentAspect - expectedAspect) < 0.001, `got ${result!.contentAspect}`);
+  assert.equal(result!.decision.mode, "region_height");
+  // slot height set so slotWidth/height == content aspect (no L/R bars under contain OR cover)
+  const expectedHeight = SLOT.slotWidthPx / expectedAspect;
+  assert.ok(
+    Math.abs(result!.patch.mediaRegionHeightPx! - expectedHeight) <= 2,
+    `got ${result!.patch.mediaRegionHeightPx}, expected ~${Math.round(expectedHeight)}`
+  );
+  assert.equal(result!.patch.sourceCrop, undefined); // agent crop wins via mergeAutoGeometry
+});
+
+test("agent full-frame crop (0,0,1,1) falls back to cropdetect", async () => {
+  let called = false;
+  const result = await resolveStage3AutoGeometry({
+    sourcePath: "/tmp/fake.mp4",
+    ...SLOT,
+    sourceCrop: { enabled: true, x: 0, y: 0, width: 1, height: 1 },
+    probeDimensions: stubProbe(960, 720), // clean 4:3 boxing source (King Leo)
+    detectContentRect: async () => {
+      called = true;
+      return NO_BARS;
+    }
+  });
+  assert.ok(result);
+  assert.equal(called, true);
+  // 4:3 full frame (1.33) wider than slot 1.21 -> region_height
+  assert.equal(result!.decision.mode, "region_height");
+  assert.ok(Math.abs(result!.contentAspect - 960 / 720) < 0.001);
+});
+
 test("unprobeable source -> null (never blocks the render)", async () => {
   const result = await resolveStage3AutoGeometry({
     sourcePath: "/tmp/fake.mp4",

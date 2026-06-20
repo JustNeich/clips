@@ -61,6 +61,37 @@ export type Stage3AutoGeometryResult = {
 type ProbeDimensions = (sourcePath: string) => Promise<{ width: number; height: number } | null>;
 type DetectContentRect = typeof detectSourceContentRect;
 
+type NormalizedCrop = { x: number; y: number; width: number; height: number };
+
+// The content remotion fits into the media slot is the source AFTER sourceCrop is
+// applied (ffmpeg extracts the inner region first), so the aspect that drives the
+// fit is the CROP region's aspect, not the full frame's. A non-full agent crop is
+// authoritative; a full-frame crop (0,0,1,1) means "no wrapper crop", so we fall
+// back to cropdetect to catch baked-in letterbox/pillarbox.
+function normalizeAgentCrop(value: unknown): NormalizedCrop | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const c = value as { enabled?: unknown; x?: unknown; y?: unknown; width?: unknown; height?: unknown };
+  if (c.enabled === false) {
+    return null;
+  }
+  const width = typeof c.width === "number" ? c.width : NaN;
+  const height = typeof c.height === "number" ? c.height : NaN;
+  if (!(width > 0 && width <= 1) || !(height > 0 && height <= 1)) {
+    return null;
+  }
+  if (width >= 0.999 && height >= 0.999) {
+    return null;
+  }
+  return {
+    x: typeof c.x === "number" ? c.x : 0,
+    y: typeof c.y === "number" ? c.y : 0,
+    width,
+    height
+  };
+}
+
 async function defaultProbeDimensions(sourcePath: string): Promise<{ width: number; height: number } | null> {
   // Lazy import keeps this module (and its unit tests, which inject stubs) free
   // of stage3-media-agent's heavy transitive graph at load time.
@@ -78,6 +109,7 @@ export async function resolveStage3AutoGeometry(params: {
   sourcePath: string;
   slotWidthPx: number;
   slotHeightPx: number;
+  sourceCrop?: unknown;
   caps?: Partial<Stage3AspectFitCaps>;
   probeDimensions?: ProbeDimensions;
   detectContentRect?: DetectContentRect;
@@ -91,19 +123,32 @@ export async function resolveStage3AutoGeometry(params: {
     return null;
   }
 
-  const detect = params.detectContentRect ?? detectSourceContentRect;
-  const detected = await detect({
-    sourcePath: params.sourcePath,
-    sourceWidth: dims.width,
-    sourceHeight: dims.height
-  });
+  // The effective content region = the agent's wrapper crop when it supplied one;
+  // otherwise cropdetect's baked-in-bar rectangle; otherwise the full frame.
+  const agentCrop = normalizeAgentCrop(params.sourceCrop);
+  let detected: DetectedSourceContent = { rect: null, hasBars: false, pixelCrop: null };
+  let cropWidthFrac = 1;
+  let cropHeightFrac = 1;
+  if (agentCrop) {
+    cropWidthFrac = agentCrop.width;
+    cropHeightFrac = agentCrop.height;
+  } else {
+    const detect = params.detectContentRect ?? detectSourceContentRect;
+    detected = await detect({
+      sourcePath: params.sourcePath,
+      sourceWidth: dims.width,
+      sourceHeight: dims.height
+    });
+    if (detected.hasBars && detected.rect) {
+      cropWidthFrac = detected.rect.width;
+      cropHeightFrac = detected.rect.height;
+    }
+  }
 
-  // Aspect of the REAL inner content: when cropdetect found baked-in bars, the
-  // fit must be computed from the inner rectangle (after the donor bars are
-  // stripped by sourceCrop), not from the padded full frame.
-  const contentWidthPx = detected.hasBars && detected.pixelCrop ? detected.pixelCrop.w : dims.width;
-  const contentHeightPx = detected.hasBars && detected.pixelCrop ? detected.pixelCrop.h : dims.height;
-  const contentAspect = contentWidthPx / Math.max(1, contentHeightPx);
+  // Aspect of the REAL inner content fed to the slot, after the crop is applied.
+  const contentWidthPx = Math.max(1, cropWidthFrac * dims.width);
+  const contentHeightPx = Math.max(1, cropHeightFrac * dims.height);
+  const contentAspect = contentWidthPx / contentHeightPx;
 
   const caps = { ...DEFAULT_STAGE3_ASPECT_FIT_CAPS, ...(params.caps ?? {}) };
   const decision = resolveStage3AspectFit({
@@ -114,7 +159,9 @@ export async function resolveStage3AutoGeometry(params: {
   });
 
   const patch: Stage3AutoGeometryPatch = { ...decision.patch };
-  if (detected.hasBars && detected.rect) {
+  // Only contribute a sourceCrop when the agent did NOT supply one (mergeAutoGeometry
+  // keeps the agent's anyway); cropdetect strips baked-in bars in that fallback case.
+  if (!agentCrop && detected.hasBars && detected.rect) {
     patch.sourceCrop = {
       enabled: true,
       x: detected.rect.x,

@@ -503,7 +503,8 @@ export async function prepareStage3Preview(
       resolveStage3AutoGeometry({
         sourcePath: source.sourcePath,
         slotWidthPx: mediaSlot.slotWidthPx,
-        slotHeightPx: mediaSlot.slotHeightPx
+        slotHeightPx: mediaSlot.slotHeightPx,
+        sourceCrop: rawPlan?.sourceCrop
       }),
     {
       signal: options?.signal,
