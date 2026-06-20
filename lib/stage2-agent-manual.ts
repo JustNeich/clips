@@ -1,5 +1,19 @@
 import type { Stage2Output } from "../app/components/types";
 import { captionContainsBannedWord, type Stage2HardConstraints } from "./stage2-channel-config";
+import {
+  cloneTemplateCaptionHighlights,
+  createEmptyTemplateCaptionHighlights,
+  type TemplateCaptionHighlights
+} from "./template-highlights";
+
+function isValidTemplateCaptionHighlights(value: unknown): value is TemplateCaptionHighlights {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    Array.isArray((value as { top?: unknown }).top) &&
+    Array.isArray((value as { bottom?: unknown }).bottom)
+  );
+}
 
 /**
  * Agent-supplied final caption text for the `agent_manual` Stage 2 mode. When a
@@ -92,15 +106,18 @@ export function applyAgentManualCaption(
   }
   targetOption.top = caption.top;
   targetOption.bottom = caption.bottom;
-  if (caption.topRu !== undefined) {
-    targetOption.topRu = caption.topRu;
-  }
-  if (caption.bottomRu !== undefined) {
-    targetOption.bottomRu = caption.bottomRu;
-  }
-  if (caption.highlights !== undefined) {
-    targetOption.highlights = caption.highlights;
-  }
+  // Keep the bilingual fields present and consistent with the NEW English text.
+  // The rollout audit hard-fails when a visible option is missing topRu/bottomRu,
+  // and a leftover RU from the old winner would describe different text — so mirror
+  // the English when the agent omits a translation.
+  targetOption.topRu = caption.topRu !== undefined ? caption.topRu : caption.top;
+  targetOption.bottomRu = caption.bottomRu !== undefined ? caption.bottomRu : caption.bottom;
+  // Highlights are character-position spans into the text. The old winner's spans
+  // point into the OLD text, so always replace them: use the agent's (validated)
+  // highlights, or clear to empty. Never carry stale spans onto the new text.
+  targetOption.highlights = isValidTemplateCaptionHighlights(caption.highlights)
+    ? cloneTemplateCaptionHighlights(caption.highlights)
+    : createEmptyTemplateCaptionHighlights();
   const passedCheck = {
     passed: true,
     repaired: false,

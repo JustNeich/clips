@@ -19,7 +19,10 @@ function makeOutput(): Stage2Output {
         option: 1,
         candidateId: "c1",
         top: "ORIGINAL TOP CAPTION TEXT",
-        bottom: "Original bottom caption text that is comfortably long enough."
+        bottom: "Original bottom caption text that is comfortably long enough.",
+        topRu: "СТАРЫЙ ВЕРХ ПОДПИСИ",
+        bottomRu: "Старый русский низ подписи.",
+        highlights: { top: [{ start: 0, end: 8 }], bottom: [{ start: 0, end: 4 }] }
       },
       {
         option: 2,
@@ -65,8 +68,23 @@ test("applyAgentManualCaption overwrites the winning option and marks constraint
   assert.equal(winningOption.topRu, "ПАМЯТЬ — СЛЕДУЮЩИЙ СКАЧОК");
   assert.equal(winningOption.constraintCheck?.passed, true);
   assert.equal(output.winner?.constraintCheck?.passed, true);
+  // stale highlight spans (positions into the OLD text) must be replaced, not kept.
+  assert.deepEqual(winningOption.highlights?.top, []);
+  assert.deepEqual(winningOption.highlights?.bottom, []);
   // the non-winning option is left untouched
   assert.equal(output.captionOptions[1].top, "SECOND OPTION TOP CAPTION");
+});
+
+test("applyAgentManualCaption mirrors English into RU when the agent omits translations", () => {
+  const output = makeOutput();
+  const top = "THE SMALL TOOL DID THE LIFTING";
+  const bottom = "A tiny utility quietly carried the entire workflow this week.";
+  const result = applyAgentManualCaption(output, { top, bottom }, constraints);
+  assert.equal(result.applied, true);
+  const winningOption = output.captionOptions.find((option) => option.option === output.finalPick.option)!;
+  // bilingual fields stay present (rollout audit requires them) and are NOT stale.
+  assert.equal(winningOption.topRu, top);
+  assert.equal(winningOption.bottomRu, bottom);
 });
 
 test("applyAgentManualCaption falls back (no mutation) when text violates hard constraints", () => {
