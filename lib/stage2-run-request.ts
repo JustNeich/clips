@@ -21,6 +21,7 @@ import {
 import {
   type Stage2EditorialMemorySource
 } from "./stage2-editorial-memory-resolution";
+import type { AgentManualCaption } from "./stage2-agent-manual";
 import type { Stage2RunMode, Stage2RunRequest } from "./stage2-progress-store";
 import type { Stage2TemplateSemanticsSnapshot } from "./stage2-template-contract";
 import type { Stage3TemplateFormatGroup } from "./stage3-template-semantics";
@@ -50,6 +51,7 @@ export function buildStage2RunRequestSnapshot(input: {
   sourceUrl: string;
   userInstruction: string | null;
   mode: Stage2RunMode;
+  agentCaption?: AgentManualCaption | null;
   baseRunId?: string | null;
   debugMode?: Stage2DebugMode;
   channel: Stage2RunChannelSnapshotInput;
@@ -64,6 +66,7 @@ export function buildStage2RunRequestSnapshot(input: {
     sourceUrl: input.sourceUrl,
     userInstruction: input.userInstruction,
     mode: input.mode,
+    ...(input.agentCaption ? { agentCaption: input.agentCaption } : {}),
     debugMode: input.debugMode === "raw" ? "raw" : "summary",
     ...(input.baseRunId !== undefined ? { baseRunId: input.baseRunId ?? null } : {}),
     channel: {

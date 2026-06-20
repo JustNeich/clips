@@ -16,7 +16,8 @@ import {
   buildQuickRegenerateResult,
   runQuickRegenerateModel
 } from "./stage2-quick-regenerate";
-import { validateStage2Output } from "./stage2-output-validation";
+import { applyAgentManualCaption } from "./stage2-agent-manual";
+import { validateStage2Output, type Stage2ValidationWarning } from "./stage2-output-validation";
 import {
   resolveEffectiveStage2HardConstraints,
   resolveStage2TemplateTextSemantics,
@@ -1076,13 +1077,31 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       }
     });
     const parsedOutput = pipelineResult.output;
+    // agent_manual mode: replace the winning caption with the agent's final text.
+    // Generation is bypassed but the hard-constraint validator below still runs;
+    // a constraint failure leaves the platform winner in place (fail-safe).
+    const agentManualWarnings: Stage2ValidationWarning[] = [];
+    if (run.request.agentCaption) {
+      const agentResult = applyAgentManualCaption(
+        parsedOutput,
+        run.request.agentCaption,
+        effectiveHardConstraints
+      );
+      if (!agentResult.applied) {
+        agentManualWarnings.push({
+          field: "agentCaption",
+          message: `agent_manual caption rejected; fell back to platform winner: ${agentResult.issues.join(" ")}`
+        });
+      }
+    }
     const rolloutAudit = auditStage2WorkerRollout(parsedOutput);
     if (!rolloutAudit.ok) {
       throw new Error(rolloutAudit.message);
     }
     const warnings = [
       ...pipelineResult.warnings,
-      ...validateStage2Output(parsedOutput, effectiveHardConstraints)
+      ...validateStage2Output(parsedOutput, effectiveHardConstraints),
+      ...agentManualWarnings
     ];
     const diagnostics = pipelineResult.diagnostics;
     const rawDebugArtifact =

@@ -47,6 +47,7 @@ import type { Stage2TemplateSemanticsSnapshot } from "./stage2-template-contract
 import type { Stage3TemplateFormatGroup } from "./stage3-template-semantics";
 import { normalizeTemplateHighlightConfig, type TemplateHighlightConfig } from "./template-highlights";
 import type { Stage2DebugMode } from "./viral-shorts-worker/types";
+import type { AgentManualCaption } from "./stage2-agent-manual";
 
 export type Stage2RunMode = "manual" | "auto" | "regenerate";
 
@@ -54,6 +55,8 @@ export type Stage2RunRequest = {
   sourceUrl: string;
   userInstruction: string | null;
   mode: Stage2RunMode;
+  /** When present, agent-supplied final caption text overrides Stage 2 generation (still validated). */
+  agentCaption?: AgentManualCaption | null;
   baseRunId?: string | null;
   debugMode?: Stage2DebugMode;
   channel: {

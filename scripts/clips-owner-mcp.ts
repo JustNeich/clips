@@ -418,7 +418,16 @@ server.registerTool(
       title: z.string().optional(),
       eventText: z.string().optional(),
       userInstruction: z.string().optional(),
-      mode: z.enum(["manual", "auto", "platform_v1"]).optional(),
+      mode: z.enum(["manual", "auto", "platform_v1", "agent_manual"]).optional(),
+      agentCaption: z
+        .object({
+          top: z.string(),
+          bottom: z.string(),
+          topRu: z.string().optional(),
+          bottomRu: z.string().optional(),
+          highlights: z.any().optional()
+        })
+        .optional(),
       categorySlug: z.string().optional(),
       limit: z.number().int().min(1).max(3).optional(),
       attemptBudget: z.number().int().min(1).max(12).optional(),

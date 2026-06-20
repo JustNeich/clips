@@ -43,6 +43,7 @@ import {
 } from "../../../../lib/managed-template-store";
 import { ensureCodexLoggedIn } from "../../../../lib/codex-runner";
 import { buildStage2RunChannelSnapshot } from "../../../../lib/stage2-run-channel-snapshot";
+import { parseAgentManualCaption } from "../../../../lib/stage2-agent-manual";
 import { buildStage2RunRequestSnapshot } from "../../../../lib/stage2-run-request";
 import {
   enqueueAndScheduleStage2Run,
@@ -1161,6 +1162,9 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     }
     const requestedMode = resolveString(input.mode);
     const mode: Stage2RunMode = requestedMode === "auto" ? "auto" : "manual";
+    // agent_manual mode: an external agent supplies the final caption text; the
+    // platform skips generation but still runs the hard-constraint validator.
+    const agentCaption = parseAgentManualCaption(input.agentCaption);
     const run = enqueueAndScheduleStage2Run({
       workspaceId: auth.workspace.id,
       creatorUserId: auth.user.id,
@@ -1169,6 +1173,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
         sourceUrl: normalizedUrl,
         userInstruction: resolveString(input.userInstruction) ?? null,
         mode,
+        agentCaption,
         baseRunId: null,
         debugMode: "summary",
         channel: buildStage2RunChannelSnapshot(channel, { workspaceId: auth.workspace.id })
@@ -1185,7 +1190,8 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       status: "queued",
       payload: {
         sourceUrl: normalizedUrl,
-        mode
+        mode,
+        captionSource: agentCaption ? "agent_manual" : "platform"
       }
     });
     return {
