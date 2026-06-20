@@ -16,6 +16,7 @@ const STAGE3_DRAFT_RENDER_PLAN_OVERRIDE_KEYS = [
   "cameraScaleKeyframes",
   "focusX",
   "videoZoom",
+  "mediaRegionHeightPx",
   "videoScaleY",
   "videoScaleX",
   "videoFit",

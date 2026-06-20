@@ -30,6 +30,7 @@ import {
   normalizeStage3VideoFit,
   type Stage3VideoFit
 } from "./stage3-video-fit";
+import { normalizeStage3MediaRegionHeightPx } from "./stage3-media-geometry";
 import {
   analyzeBestClipAndFocus,
   clampClipStart,
@@ -985,6 +986,7 @@ async function runRemotionRender(params: {
   cameraPositionKeyframes: Stage3RenderPlan["cameraPositionKeyframes"];
   cameraScaleKeyframes: Stage3RenderPlan["cameraScaleKeyframes"];
   videoZoom: number;
+  mediaRegionHeightPx?: number;
   videoScaleY: number;
   videoScaleX: number;
   videoFit: Stage3VideoFit;
@@ -1041,6 +1043,7 @@ async function runRemotionRender(params: {
     cameraPositionKeyframes: params.cameraPositionKeyframes,
     cameraScaleKeyframes: params.cameraScaleKeyframes,
     videoZoom: params.videoZoom,
+    mediaRegionHeightPx: params.mediaRegionHeightPx,
     videoScaleY: params.videoScaleY,
     videoScaleX: params.videoScaleX,
     videoFit: params.videoFit,
@@ -1309,6 +1312,7 @@ export function normalizeRenderPlan(
       : 1;
   const videoScaleY = normalizeStage3VideoScaleY(rawPlan?.videoScaleY);
   const videoScaleX = normalizeStage3VideoScaleX(rawPlan?.videoScaleX);
+  const mediaRegionHeightPx = normalizeStage3MediaRegionHeightPx(rawPlan?.mediaRegionHeightPx, 0) ?? undefined;
   const videoFit = normalizeStage3VideoFit(rawPlan?.videoFit, DEFAULT_STAGE3_VIDEO_FIT);
   const cameraTracks = resolveStage3EffectiveCameraTracks({
     cameraPositionKeyframes: rawPlan?.cameraPositionKeyframes,
@@ -1359,6 +1363,7 @@ export function normalizeRenderPlan(
         ? clampStage3FocusX(rawPlan.focusX)
         : 0.5,
     videoZoom,
+    mediaRegionHeightPx,
     videoScaleY,
     videoScaleX,
     videoFit,
@@ -1838,6 +1843,7 @@ export async function renderStage3Video(
             cameraPositionKeyframes: renderPlan.cameraPositionKeyframes,
             cameraScaleKeyframes: renderPlan.cameraScaleKeyframes,
             videoZoom: renderPlan.videoZoom,
+            mediaRegionHeightPx: renderPlan.mediaRegionHeightPx,
             videoScaleY: renderPlan.videoScaleY,
             videoScaleX: renderPlan.videoScaleX,
             videoFit: renderPlan.videoFit,
