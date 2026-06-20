@@ -16,6 +16,7 @@ import {
 } from "./stage3-video-adjustments";
 import type {
   Stage3TemplateLayoutKind,
+  Stage3TemplateLeadTextFormat,
   Stage3TemplateLeadMode
 } from "./stage3-template-semantics";
 
@@ -690,6 +691,8 @@ export const CHANNEL_STORY = {
     mediaBorderWidth: 0,
     mediaBorderColor: "rgba(255,255,255,0)",
     headerAlign: "left",
+    leadTextAlign: "center",
+    leadTextFormat: "short",
     bodyTextAlign: "center",
     accentTopLineWidth: 0,
     accentTopLineColor: "#20df49",
@@ -912,6 +915,8 @@ export type Stage3TemplateChannelStoryConfig = {
   mediaBorderWidth: number;
   mediaBorderColor: string;
   headerAlign?: "left" | "center";
+  leadTextAlign?: "left" | "center";
+  leadTextFormat?: Stage3TemplateLeadTextFormat;
   bodyTextAlign?: "left" | "center";
   accentTopLineWidth?: number;
   accentTopLineColor?: string;
@@ -1224,6 +1229,50 @@ export function resolveScaledMaxLines(baseMaxLines: number, scale: number, slot:
     }
   }
   return baseMaxLines;
+}
+
+function resolveChannelStoryLeadTextFormat(
+  channelStory: Stage3TemplateChannelStoryConfig | undefined
+): Stage3TemplateLeadTextFormat {
+  return channelStory?.leadTextFormat === "long" ? "long" : "short";
+}
+
+export function resolveChannelStoryLeadMaxLines(
+  templateConfig: Stage3TemplateConfig,
+  scale: number
+): number {
+  const baseMaxLines = resolveScaledMaxLines(templateConfig.typography.top.maxLines, scale, "top");
+  if (
+    templateConfig.layoutKind !== "channel_story" ||
+    resolveChannelStoryLeadTextFormat(templateConfig.channelStory) !== "long"
+  ) {
+    return baseMaxLines;
+  }
+  return Math.max(baseMaxLines, 6);
+}
+
+export function resolveChannelStoryLeadTypography(
+  templateConfig: Stage3TemplateConfig,
+  scale: number
+): TypographyConfig {
+  const base = templateConfig.typography.top;
+  if (
+    templateConfig.layoutKind !== "channel_story" ||
+    resolveChannelStoryLeadTextFormat(templateConfig.channelStory) !== "long"
+  ) {
+    return {
+      ...base,
+      maxLines: resolveChannelStoryLeadMaxLines(templateConfig, scale)
+    };
+  }
+  return {
+    ...base,
+    maxLines: resolveChannelStoryLeadMaxLines(templateConfig, scale),
+    maxChars: Math.max(base.maxChars, 220),
+    lineHeight: Math.min(base.lineHeight, 1),
+    fillTargetMin: Math.min(base.fillTargetMin ?? 0.84, 0.74),
+    fillTargetMax: Math.min(base.fillTargetMax ?? 0.95, 0.88)
+  };
 }
 
 function clampNumber(value: number, min: number, max: number): number {
@@ -1678,10 +1727,7 @@ export function getScienceCardComputed(
 ): Stage3TemplateComputed {
   const topScale = normalizeFontScale(fontOverrides?.topFontScale);
   const bottomScale = normalizeFontScale(fontOverrides?.bottomFontScale);
-  const topTypography = {
-    ...templateConfig.typography.top,
-    maxLines: resolveScaledMaxLines(templateConfig.typography.top.maxLines, topScale, "top")
-  };
+  const topTypography = resolveChannelStoryLeadTypography(templateConfig, topScale);
   const bottomTypography = {
     ...templateConfig.typography.bottom,
     maxLines: resolveScaledMaxLines(templateConfig.typography.bottom.maxLines, bottomScale, "bottom")

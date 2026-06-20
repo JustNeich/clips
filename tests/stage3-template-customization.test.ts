@@ -544,6 +544,82 @@ test("channel story markup renders highlight spans and media chrome", () => {
   assert.match(markup, /left:-230px;right:-230px/);
 });
 
+test("channel story long lead format keeps dense lead text in the lead slot", () => {
+  const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
+  templateConfig.channelStory!.leadMode = "clip_custom";
+  templateConfig.channelStory!.leadTextFormat = "long";
+  templateConfig.channelStory!.leadTextAlign = "left";
+  templateConfig.channelStory!.leadHeight = 220;
+  const longLead =
+    "The dispatcher heard the first call, then the room went quiet while officers searched the wrong hallway and missed the one door everyone kept pointing at.";
+
+  const snapshot = buildTemplateRenderSnapshot({
+    templateId: CHANNEL_STORY_TEMPLATE_ID,
+    content: {
+      topText: longLead,
+      bottomText: "The report looked routine until the timeline put every witness in the same impossible two-minute gap.",
+      channelName: "Human History",
+      channelHandle: "@HISTORY.",
+      highlights: { top: [], bottom: [] },
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    },
+    templateConfigOverride: templateConfig
+  });
+  const markup = renderToStaticMarkup(
+    Stage3TemplateRenderer({
+      templateId: CHANNEL_STORY_TEMPLATE_ID,
+      content: snapshot.content,
+      snapshot,
+      templateConfigOverride: templateConfig
+    })
+  );
+
+  assert.equal(snapshot.content.topText, longLead);
+  assert.equal(snapshot.computed.topCompacted, false);
+  assert.equal(snapshot.computed.topLines <= 6, true);
+  assert.match(markup, /justify-content:flex-start;text-align:left/);
+  assert.match(markup, /-webkit-line-clamp:6/);
+});
+
+test("channel story short lead format keeps the legacy two-line clamp", () => {
+  const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
+  templateConfig.channelStory!.leadMode = "clip_custom";
+  templateConfig.channelStory!.leadTextFormat = "short";
+
+  const snapshot = buildTemplateRenderSnapshot({
+    templateId: CHANNEL_STORY_TEMPLATE_ID,
+    content: {
+      topText: "Did they miss the only door?",
+      bottomText: "The report looked routine until the timeline put every witness in the same impossible two-minute gap.",
+      channelName: "Human History",
+      channelHandle: "@HISTORY.",
+      highlights: { top: [], bottom: [] },
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    },
+    templateConfigOverride: templateConfig
+  });
+  const markup = renderToStaticMarkup(
+    Stage3TemplateRenderer({
+      templateId: CHANNEL_STORY_TEMPLATE_ID,
+      content: snapshot.content,
+      snapshot,
+      templateConfigOverride: templateConfig
+    })
+  );
+
+  assert.match(markup, /-webkit-line-clamp:2/);
+});
+
 test("channel story snapshot measures inner content from the bordered card safe area", () => {
   const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
   templateConfig.card.x = 110;

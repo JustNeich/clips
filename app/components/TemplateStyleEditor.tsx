@@ -28,7 +28,8 @@ import {
 import {
   resolveTemplateFormatGroupLabel,
   resolveTemplateTextFieldSemantics,
-  type Stage3TemplateFormatGroup
+  type Stage3TemplateFormatGroup,
+  type Stage3TemplateLeadTextFormat
 } from "../../lib/stage3-template-semantics";
 import { resolveTemplateBackdropNode } from "../../lib/stage3-template-runtime";
 import {
@@ -1419,6 +1420,7 @@ export function TemplateStyleEditor({
   const isChannelStoryTemplate =
     activeTemplateSemantics.formatGroup === "channel_story" && Boolean(templateConfig.channelStory);
   const channelStoryLeadMode = templateConfig.channelStory?.leadMode ?? "clip_custom";
+  const channelStoryLeadTextFormat = templateConfig.channelStory?.leadTextFormat ?? "short";
   const showChannelStoryDemoLeadField =
     isChannelStoryTemplate && channelStoryLeadMode === "clip_custom";
   const showChannelStoryTemplateManagedLeadNote =
@@ -3165,6 +3167,9 @@ export function TemplateStyleEditor({
                   <>
                     <span className="meta-pill">Lead mode: {templateConfig.channelStory.leadMode}</span>
                     <span className="meta-pill">
+                      Lead: {channelStoryLeadTextFormat === "long" ? "long" : "short"}
+                    </span>
+                    <span className="meta-pill">
                       Header: {templateConfig.channelStory.headerAlign === "center" ? "center" : "left"}
                     </span>
                     <span className="meta-pill">
@@ -3219,6 +3224,20 @@ export function TemplateStyleEditor({
                         )
                       }
                     />
+                    <SelectControl
+                      label="Формат lead"
+                      hint="`Короткий` оставляет lead как kicker. `Длинный` разрешает плотный lead-текст и даёт Stage 2 более широкий лимит."
+                      value={channelStoryLeadTextFormat}
+                      options={[
+                        { label: "Короткий", value: "short" },
+                        { label: "Длинный", value: "long" }
+                      ]}
+                      onChange={(value) =>
+                        updateChannelStory("leadTextFormat", value as Stage3TemplateLeadTextFormat)
+                      }
+                    />
+                  </div>
+                  <div className="template-road-editor-grid two-up">
                     <label className="template-road-editor-field">
                       <span className="field-label">
                         {channelStoryLeadMode === "clip_custom" ? "Demo lead" : "Шаблонный lead"}
@@ -3237,6 +3256,18 @@ export function TemplateStyleEditor({
                             : "Lead сейчас скрыт из композиции, но этот текст можно сохранить как резервный пресет на будущее."}
                       </span>
                     </label>
+                    <SelectControl
+                      label="Выравнивание lead"
+                      hint="`Center` для постерного lead, `Left` для dense-story и длинных формулировок."
+                      value={templateConfig.channelStory.leadTextAlign ?? "center"}
+                      options={[
+                        { label: "Center", value: "center" },
+                        { label: "Left", value: "left" }
+                      ]}
+                      onChange={(value) =>
+                        updateChannelStory("leadTextAlign", value as "left" | "center")
+                      }
+                    />
                   </div>
                   <div className="template-road-editor-grid two-up">
                     <SelectControl
@@ -3339,12 +3370,14 @@ export function TemplateStyleEditor({
                   <span className="field-label">{activeTemplateSemantics.topLabel}</span>
                   <textarea
                     className="text-area template-road-editor-textarea"
-                    rows={4}
+                    rows={channelStoryLeadTextFormat === "long" ? 6 : 4}
                     value={content.topText}
                     onChange={(event) => updateContent("topText", event.target.value)}
                   />
                   <span className="template-road-editor-field-hint">
-                    Короткая строка под header row: например `Did you know?` или `Cried for life`.
+                    {channelStoryLeadTextFormat === "long"
+                      ? "Длинный lead над body: удобно для 2-6 строк, когда короткий kicker ломает размер."
+                      : "Короткая строка под header row: например `Did you know?` или `Cried for life`."}
                   </span>
                 </label>
               ) : !isChannelStoryTemplate ? (
@@ -4988,7 +5021,11 @@ export function TemplateStyleEditor({
                   />
                   <SliderControl
                     label="Высота lead"
-                    hint="Резерв под короткую строку `Did you know?` или похожий kicker."
+                    hint={
+                      channelStoryLeadTextFormat === "long"
+                        ? "Для длинного lead обычно нужен больший резерв, примерно 160-240px."
+                        : "Резерв под короткую строку `Did you know?` или похожий kicker."
+                    }
                     min={0}
                     max={240}
                     step={1}

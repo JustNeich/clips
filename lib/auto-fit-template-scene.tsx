@@ -15,6 +15,7 @@ import {
   isClassicScienceCardTemplateId,
   getTemplateById,
   getTemplateComputed,
+  resolveChannelStoryLeadMaxLines,
   resolveScaledMaxLines
 } from "./stage3-template";
 import { getTemplateFigmaSpec } from "./stage3-template-spec";
@@ -523,7 +524,9 @@ function buildMeasuredComputed(
       maxScaleBoost: getTopFontHeadroom(templateId) * (usesGhostfaceLayout ? 1.8 : usesWideHeadlineScaling ? 1.24 : 1.18)
     }),
     preferredFont: baseComputed.topFont,
-    maxLines: resolveScaledMaxLines(templateConfig.typography.top.maxLines, topScale, "top"),
+    maxLines: usesChannelStoryLayout
+      ? resolveChannelStoryLeadMaxLines(templateConfig, topScale)
+      : resolveScaledMaxLines(templateConfig.typography.top.maxLines, topScale, "top"),
     baseLineHeight: usesClassicScienceCardChrome ? scienceCardPreferredTopLineHeight : baseComputed.topLineHeight,
     fillTargetMin: fitPolicy.topFillTargetMin,
     fillTargetMax: fitPolicy.topFillTargetMax,
@@ -531,7 +534,7 @@ function buildMeasuredComputed(
     fontWeight: templateConfig.typography.top.weight ?? 800,
     fontStyle: templateConfig.typography.top.fontStyle ?? "normal",
     letterSpacing: templateConfig.typography.top.letterSpacing ?? "-0.015em",
-    textAlign: "center",
+    textAlign: usesChannelStoryLayout && templateConfig.channelStory?.leadTextAlign === "left" ? "left" : "center",
     scale: topScale,
     lineHeightFloor: Math.max(
       fitPolicy.topLineHeightFloor,

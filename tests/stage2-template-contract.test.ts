@@ -134,6 +134,29 @@ test("channel story clip custom mode narrows lead and widens body into family-sp
   assert.equal(constraints.bottomLengthMax > 110, true);
 });
 
+test("channel story long lead format widens the generated lead window", () => {
+  const shortLead = cloneStage3TemplateConfig(CHANNEL_STORY);
+  shortLead.channelStory!.leadMode = "clip_custom";
+  const longLead = cloneStage3TemplateConfig(CHANNEL_STORY);
+  longLead.channelStory!.leadMode = "clip_custom";
+  longLead.channelStory!.leadTextFormat = "long";
+
+  const baseConstraints = {
+    ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+    topLengthMin: 24,
+    topLengthMax: 110,
+    bottomLengthMin: 22,
+    bottomLengthMax: 110
+  };
+  const shortConstraints = resolveTemplateStage2HardConstraints(baseConstraints, shortLead);
+  const longConstraints = resolveTemplateStage2HardConstraints(baseConstraints, longLead);
+
+  assert.equal(shortConstraints.topLengthMax < 120, true);
+  assert.equal(longConstraints.topLengthMax >= 120, true);
+  assert.equal(longConstraints.topLengthMax > shortConstraints.topLengthMax, true);
+  assert.equal(longConstraints.topLengthMin >= 36, true);
+});
+
 test("channel story text semantics hide template-managed lead fields outside clip-custom mode", () => {
   const clipCustom = cloneStage3TemplateConfig(CHANNEL_STORY);
   clipCustom.channelStory!.leadMode = "clip_custom";

@@ -11,6 +11,7 @@ import {
 export type Stage3TemplateLayoutKind = "classic_top_bottom" | "channel_story";
 export type Stage3TemplateFormatGroup = Stage3TemplateLayoutKind;
 export type Stage3TemplateLeadMode = "off" | "template_default" | "clip_custom";
+export type Stage3TemplateLeadTextFormat = "short" | "long";
 
 export type Stage3TemplateResolvedText = {
   topText: string;
@@ -108,6 +109,29 @@ function resolveChannelStoryClipCustomLengthTargets(
       topLengthMax: 42,
       bottomLengthMin: 72,
       bottomLengthMax: 220
+    };
+  }
+
+  if (channelStory.leadTextFormat === "long") {
+    const longLeadMaxChars = Math.max(
+      120,
+      Math.min(
+        templateConfig.typography.top.maxChars ?? 220,
+        Math.round(Math.max(160, channelStory.leadHeight) * 1.15)
+      )
+    );
+    const topLengthMax = clampNumber(longLeadMaxChars, 120, 240);
+    return {
+      topLengthMin: clampNumber(Math.round(topLengthMax * 0.34), 36, 90),
+      topLengthMax,
+      bottomLengthMin: 40,
+      bottomLengthMax: Math.max(
+        120,
+        Math.min(
+          templateConfig.typography.bottom.maxChars ?? 240,
+          Math.round(Math.max(180, channelStory.bodyHeight) * 0.62)
+        )
+      )
     };
   }
 

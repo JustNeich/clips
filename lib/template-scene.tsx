@@ -17,6 +17,7 @@ import {
   Stage3TemplateConfig,
   getTemplateById,
   getTemplateComputed,
+  resolveChannelStoryLeadMaxLines,
   resolveScaledMaxLines,
   resolveTemplateDescenderSafetyPx
 } from "./stage3-template";
@@ -784,11 +785,14 @@ export function TemplateScene({
     templateConfig.typography.authorName.letterSpacing ?? (usesClassicScienceCardChrome ? "-0.03em" : "-0.01em");
   const authorHandleWeight = templateConfig.typography.authorHandle.weight ?? (usesClassicScienceCardChrome ? 300 : 600);
   const authorHandleLetterSpacing = templateConfig.typography.authorHandle.letterSpacing ?? "-0.02em";
-  const topMaxLines = resolveScaledMaxLines(
-    templateConfig.typography.top.maxLines,
-    effectiveContent.topFontScale ?? 1,
-    "top"
-  );
+  const topMaxLines =
+    templateConfig.layoutKind === "channel_story"
+      ? resolveChannelStoryLeadMaxLines(templateConfig, effectiveContent.topFontScale ?? 1)
+      : resolveScaledMaxLines(
+          templateConfig.typography.top.maxLines,
+          effectiveContent.topFontScale ?? 1,
+          "top"
+        );
   const bottomMaxLines = resolveScaledMaxLines(
     templateConfig.typography.bottom.maxLines,
     effectiveContent.bottomFontScale ?? 1,
@@ -822,6 +826,7 @@ export function TemplateScene({
     const channelStory = templateConfig.channelStory;
     const channelStoryBottomMaxLines = templateConfig.typography.bottom.maxLines;
     const leadVisible = Boolean(topText.trim()) && computed.leadVisible !== false && regions.top.height > 0;
+    const leadTextAlign = channelStory.leadTextAlign ?? "center";
     const bodyTextAlign = channelStory.bodyTextAlign ?? "center";
     const headerJustifyContent = channelStory.headerAlign === "center" ? "center" : "flex-start";
     const mediaRadius = computed.mediaRadius ?? channelStory.mediaRadius;
@@ -985,8 +990,8 @@ export function TemplateScene({
                 height: localizedTopRect.height,
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
-                textAlign: "center",
+                justifyContent: leadTextAlign === "center" ? "center" : "flex-start",
+                textAlign: leadTextAlign,
                 overflow: leadGlowEnabled ? "visible" : "hidden"
               }}
             >
