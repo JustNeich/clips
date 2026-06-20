@@ -599,6 +599,12 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
     ) {
       base.channelStory.leadMode = channelStory.leadMode;
     }
+    if (channelStory.leadTextFormat === "short" || channelStory.leadTextFormat === "long") {
+      base.channelStory.leadTextFormat = channelStory.leadTextFormat;
+    }
+    if (channelStory.leadTextAlign === "left" || channelStory.leadTextAlign === "center") {
+      base.channelStory.leadTextAlign = channelStory.leadTextAlign;
+    }
     if (typeof channelStory.defaultLeadText === "string") {
       base.channelStory.defaultLeadText = channelStory.defaultLeadText;
     }
