@@ -885,7 +885,6 @@ export type Stage3RenderPlan = {
   cameraScaleKeyframes: Stage3ScaleKeyframe[];
   focusX: number;
   videoZoom: number;
-  mediaRegionHeightPx?: number;
   videoScaleY: number;
   videoScaleX: number;
   videoFit: Stage3VideoFit;

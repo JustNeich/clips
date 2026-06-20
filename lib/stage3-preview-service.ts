@@ -25,7 +25,6 @@ import {
   DEFAULT_STAGE3_VIDEO_FIT,
   normalizeStage3VideoFit
 } from "./stage3-video-fit";
-import { normalizeStage3MediaRegionHeightPx } from "./stage3-media-geometry";
 import {
   DEFAULT_STAGE3_CLIP_DURATION_SEC,
   normalizeStage3DurationMode,
@@ -257,7 +256,6 @@ function normalizeRenderPlan(
       : 1;
   const videoScaleY = normalizeStage3VideoScaleY(rawPlan?.videoScaleY);
   const videoScaleX = normalizeStage3VideoScaleX(rawPlan?.videoScaleX);
-  const mediaRegionHeightPx = normalizeStage3MediaRegionHeightPx(rawPlan?.mediaRegionHeightPx, 0) ?? undefined;
   const videoFit = normalizeStage3VideoFit(rawPlan?.videoFit, DEFAULT_STAGE3_VIDEO_FIT);
   const cameraTracks = resolveStage3EffectiveCameraTracks({
     cameraPositionKeyframes: rawPlan?.cameraPositionKeyframes,
@@ -306,7 +304,6 @@ function normalizeRenderPlan(
         ? clampStage3FocusX(rawPlan.focusX)
         : 0.5,
     videoZoom,
-    mediaRegionHeightPx,
     videoScaleY,
     videoScaleX,
     videoFit,

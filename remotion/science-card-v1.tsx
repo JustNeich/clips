@@ -28,10 +28,6 @@ import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../lib/stage3-cons
 import { buildStage3VideoFilterCss } from "../lib/stage3-video-adjustments";
 import { buildStage3VideoPlacementStyle } from "../lib/stage3-video-placement";
 import {
-  applyStage3MediaGeometryToTemplateSnapshot,
-  normalizeStage3GeometryScale
-} from "../lib/stage3-media-geometry";
-import {
   DEFAULT_STAGE3_VIDEO_FIT,
   normalizeStage3VideoFit,
   type Stage3VideoFit
@@ -97,7 +93,6 @@ type ScienceCardV1Props = {
   cameraPositionKeyframes: Stage3PositionKeyframe[];
   cameraScaleKeyframes: Stage3ScaleKeyframe[];
   videoZoom: number;
-  mediaRegionHeightPx?: number | null;
   videoScaleY: number;
   videoScaleX: number;
   videoFit?: Stage3VideoFit;
@@ -339,7 +334,6 @@ export function ScienceCardV1({
   focusX,
   focusY,
   videoZoom,
-  mediaRegionHeightPx,
   videoScaleY = 1,
   videoScaleX = 1,
   videoFit = DEFAULT_STAGE3_VIDEO_FIT,
@@ -391,8 +385,6 @@ export function ScienceCardV1({
   const frameNumber = useCurrentFrame();
   const frame = templateConfig.frame;
   const sourceUrl = sourceVideoFileName ? staticFile(sourceVideoFileName) : "";
-  const geometryVideoScaleX = normalizeStage3GeometryScale(videoScaleX);
-  const geometryVideoScaleY = normalizeStage3GeometryScale(videoScaleY);
   const avatarSrc =
     avatarAssetFileName && (avatarAssetMimeType ?? "").toLowerCase().startsWith("image/")
       ? staticFile(avatarAssetFileName)
@@ -440,8 +432,8 @@ export function ScienceCardV1({
     focusX: segmentTransform.focusX,
     focusY: animatedFocus,
     videoZoom: normalizedZoom,
-    videoScaleY: geometryVideoScaleY,
-    videoScaleX: geometryVideoScaleX,
+    videoScaleY,
+    videoScaleX,
     videoFit,
     verticalAlign: templateConfig.layoutKind === "channel_story" ? "top" : "center",
     mirrorEnabled: segmentTransform.mirrorEnabled
@@ -460,25 +452,22 @@ export function ScienceCardV1({
   // count on the critical path. Memoize so it computes once per render.
   const renderSnapshot = React.useMemo(
     () =>
-      applyStage3MediaGeometryToTemplateSnapshot(
-        buildScienceCardRenderSnapshot({
-          templateId: resolvedTemplateId,
-          templateConfigOverride: templateConfig,
-          topText,
-          bottomText,
-          sourceOverlayText,
-          captionHighlights,
-          topFontScale,
-          bottomFontScale,
-          authorName,
-          authorHandle,
-          sourceVideoFileName,
-          backgroundAssetFileName,
-          avatarAssetFileName,
-          textFit
-        }),
-        mediaRegionHeightPx
-      ),
+      buildScienceCardRenderSnapshot({
+        templateId: resolvedTemplateId,
+        templateConfigOverride: templateConfig,
+        topText,
+        bottomText,
+        sourceOverlayText,
+        captionHighlights,
+        topFontScale,
+        bottomFontScale,
+        authorName,
+        authorHandle,
+        sourceVideoFileName,
+        backgroundAssetFileName,
+        avatarAssetFileName,
+        textFit
+      }),
     [
       resolvedTemplateId,
       templateConfig,
@@ -493,7 +482,6 @@ export function ScienceCardV1({
       sourceVideoFileName,
       backgroundAssetFileName,
       avatarAssetFileName,
-      mediaRegionHeightPx,
       textFit
     ]
   );

@@ -36,7 +36,6 @@ import {
   DEFAULT_STAGE3_VIDEO_FIT,
   normalizeStage3VideoFit
 } from "./stage3-video-fit";
-import { normalizeStage3MediaRegionHeightPx } from "./stage3-media-geometry";
 import {
   DEFAULT_STAGE3_CLIP_DURATION_SEC,
   normalizeStage3DurationMode,
@@ -70,7 +69,6 @@ function fallbackRenderPlan(): Stage3RenderPlan {
     cameraScaleKeyframes: [],
     focusX: 0.5,
     videoZoom: 1,
-    mediaRegionHeightPx: undefined,
     videoScaleY: DEFAULT_STAGE3_VIDEO_SCALE_Y,
     videoScaleX: DEFAULT_STAGE3_VIDEO_SCALE_X,
     videoFit: DEFAULT_STAGE3_VIDEO_FIT,
@@ -113,9 +111,6 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
       : fallback.videoZoom;
   const videoScaleY = normalizeStage3VideoScaleY(candidate?.videoScaleY, fallback.videoScaleY);
   const videoScaleX = normalizeStage3VideoScaleX(candidate?.videoScaleX, fallback.videoScaleX);
-  const mediaRegionHeightPx =
-    normalizeStage3MediaRegionHeightPx(candidate?.mediaRegionHeightPx, fallback.mediaRegionHeightPx ?? 0) ??
-    fallback.mediaRegionHeightPx;
   const videoFit = normalizeStage3VideoFit(candidate?.videoFit, fallback.videoFit);
   const cameraTracks = resolveStage3EffectiveCameraTracks({
     cameraPositionKeyframes: candidate?.cameraPositionKeyframes,
@@ -166,7 +161,6 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
         ? clampStage3FocusX(candidate.focusX)
         : fallback.focusX,
     videoZoom,
-    mediaRegionHeightPx,
     videoScaleY,
     videoScaleX,
     videoFit,

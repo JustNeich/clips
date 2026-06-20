@@ -14,7 +14,6 @@ import { sanitizeFileName } from "./ytdlp";
 import { buildStage3EditorSession } from "./stage3-editor-core";
 import { repairStage3BlankFlashFrames } from "./stage3-video-flash-guard";
 import { buildStage3SourceCropFfmpegFilter } from "./stage3-source-crop";
-import { resolveStage3EffectiveMediaGeometry } from "./stage3-media-geometry";
 import {
   buildStage3WatermarkBlurFfmpegArgs,
   normalizeStage3WatermarkBlurs
@@ -553,7 +552,7 @@ export async function probeVideoDimensions(videoPath: string): Promise<VideoDime
   }
 }
 
-export function computeViewportBox(
+function computeViewportBox(
   snapshot: Stage3StateSnapshot,
   sourceDimensions: VideoDimensions
 ): Stage3ViewportBox {
@@ -566,26 +565,18 @@ export function computeViewportBox(
     templateConfigOverride: snapshot.managedTemplateState?.templateConfig
   });
 
-  const geometry = resolveStage3EffectiveMediaGeometry({
-    regionWidthPx: computed.videoWidth,
-    regionHeightPx: computed.videoHeight,
-    mediaRegionHeightPx: snapshot.renderPlan.mediaRegionHeightPx,
-    videoScaleX: snapshot.renderPlan.videoScaleX,
-    videoScaleY: snapshot.renderPlan.videoScaleY
-  });
-  const slotAspect = geometry.slotAspect;
-  const cropAspect = geometry.cropAspect;
+  const slotAspect = computed.videoWidth / Math.max(1, computed.videoHeight);
   const sourceAspect = sourceDimensions.width / Math.max(1, sourceDimensions.height);
 
   let baseWidth = sourceDimensions.width;
   let baseHeight = sourceDimensions.height;
 
-  if (sourceAspect > cropAspect) {
+  if (sourceAspect > slotAspect) {
     baseHeight = sourceDimensions.height;
-    baseWidth = Math.min(sourceDimensions.width, baseHeight * cropAspect);
+    baseWidth = Math.min(sourceDimensions.width, baseHeight * slotAspect);
   } else {
     baseWidth = sourceDimensions.width;
-    baseHeight = Math.min(sourceDimensions.height, baseWidth / cropAspect);
+    baseHeight = Math.min(sourceDimensions.height, baseWidth / slotAspect);
   }
 
   const zoom = clampNumber(snapshot.renderPlan.videoZoom, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM);

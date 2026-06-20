@@ -823,9 +823,6 @@ export type ApprovedRenderExportMontage = {
     sourceCrop: unknown;
     videoFit: unknown;
     videoZoom: unknown;
-    mediaRegionHeightPx: unknown;
-    videoScaleX: unknown;
-    videoScaleY: unknown;
     focusX: unknown;
     focusY: unknown;
     clipStartSec: unknown;
@@ -907,9 +904,6 @@ export function listApprovedRenderExportsForChannel(input: {
         sourceCrop: renderPlan.sourceCrop ?? null,
         videoFit: renderPlan.videoFit ?? null,
         videoZoom: renderPlan.videoZoom ?? null,
-        mediaRegionHeightPx: renderPlan.mediaRegionHeightPx ?? null,
-        videoScaleX: renderPlan.videoScaleX ?? null,
-        videoScaleY: renderPlan.videoScaleY ?? null,
         focusX: snapshot.focusX ?? null,
         focusY: snapshot.focusY ?? null,
         clipStartSec: snapshot.clipStartSec ?? null,

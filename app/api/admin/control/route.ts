@@ -274,7 +274,6 @@ function pickMontageRenderPlanPatch(plan: Partial<Stage3RenderPlan>): Partial<St
     cameraScaleKeyframes: plan.cameraScaleKeyframes,
     focusX: plan.focusX,
     videoZoom: plan.videoZoom,
-    mediaRegionHeightPx: plan.mediaRegionHeightPx,
     videoScaleY: plan.videoScaleY,
     videoScaleX: plan.videoScaleX,
     videoFit: plan.videoFit,
