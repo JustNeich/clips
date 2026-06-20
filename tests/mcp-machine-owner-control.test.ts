@@ -284,6 +284,46 @@ test("clips_owner_list_render_exports returns only judge-approved montages, filt
   });
 });
 
+test("clips_owner_render_preview enqueues a headless preview job (or degrades when no worker)", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "preview-agent",
+      scopes: ["flow:read", "pipeline:run"]
+    });
+
+    // Missing sourceUrl -> 400
+    const badUrl = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_render_preview",
+      input: { channelId: channel.id }
+    });
+    assert.equal(badUrl.status, 400);
+
+    const preview = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_render_preview",
+      input: {
+        channelId: channel.id,
+        sourceUrl: chat.url,
+        snapshot: { renderPlan: { sourceCrop: { enabled: true, x: 0, y: 0.3, width: 1, height: 0.5 } } }
+      }
+    });
+    if (preview.status === 200 || preview.status === 202) {
+      // Enqueued as a preview job (202 while queued, 200 once it reaches a terminal state).
+      const body = (await preview.json()) as { job: { id: string; kind: string }; pollUrl: string };
+      assert.equal(body.job.kind, "preview");
+      assert.equal(body.pollUrl, `/api/stage3/preview/jobs/${body.job.id}`);
+      assert.equal(getStage3Job(body.job.id)?.kind, "preview");
+    } else {
+      // No local Stage 3 worker in the harness -> honest 503 degrade.
+      assert.equal(preview.status, 503);
+      const body = (await preview.json()) as { error: string };
+      assert.equal(body.error, "stage3_worker_unavailable");
+    }
+  });
+});
+
 test("owner control blocks channel-story render_video until an editor/judge snapshot is approved", async () => {
   await withIsolatedAppData(async (appDataDir) => {
     const { owner, channel, chat } = await seedOwnerControl(appDataDir);

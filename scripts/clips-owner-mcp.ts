@@ -318,6 +318,22 @@ server.registerTool(
 );
 
 server.registerTool(
+  "clips_owner_render_preview",
+  {
+    title: "Render Clips Stage 3 preview frames",
+    description:
+      "Enqueue a headless Stage 3 PREVIEW job (full-phone frames, not a final MP4) for the editor/judge loop in a routine. Pass sourceUrl and the editor's snapshot (renderPlan.sourceCrop/videoFit/segments/...). Returns a job id and a poll url; poll /api/stage3/preview/jobs/<id> for the frames. No vision logic runs server-side.",
+    inputSchema: z.object({
+      ...channelRefSchema,
+      sourceUrl: z.string(),
+      chatId: z.string().optional(),
+      snapshot: looseObjectSchema.optional()
+    })
+  },
+  async (input) => ownerControl("clips_owner_render_preview", input)
+);
+
+server.registerTool(
   "clips_owner_update_publication",
   {
     title: "Update Clips publication",

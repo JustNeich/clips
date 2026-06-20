@@ -84,6 +84,8 @@ import { runCopscopesDailyPool } from "../../../../lib/copscopes-daily-runner";
 import { getFlowObservabilityDetail, listFlowObservability } from "../../../../lib/flow-observability";
 import type { McpMachineCredentialScope } from "../../../../lib/mcp-machine-credential-store";
 import { resolveStage3Execution } from "../../../../lib/stage3-execution";
+import { buildStage3PreviewDedupeKey, type Stage3PreviewRequestBody } from "../../../../lib/stage3-preview-service";
+import { resolveStage3LocalWorkerReadiness } from "../../../../lib/stage3-worker-readiness";
 import { enqueueAndScheduleStage3Job } from "../../../../lib/stage3-job-runtime";
 import {
   listCompletedStage3RenderJobsForChat,
@@ -142,6 +144,7 @@ const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
   clips_owner_revoke_channel_access: "entity:write",
   clips_owner_list_publications: "flow:read",
   clips_owner_list_render_exports: "flow:read",
+  clips_owner_render_preview: "pipeline:run",
   clips_owner_get_flow: "flow:read",
   clips_owner_update_publication: "publication:write",
   clips_owner_schedule_publication: "publication:write",
@@ -819,6 +822,75 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     return {
       channel: summarizeChannel(channel),
       renderExports
+    };
+  }
+
+  if (tool === "clips_owner_render_preview") {
+    const channel = await requireChannel(auth.workspace.id, input);
+    const rawSourceUrl = resolveString(input.sourceUrl);
+    const sourceUrl = rawSourceUrl ? normalizeSupportedUrl(rawSourceUrl) : "";
+    if (!sourceUrl || !isSupportedUrl(sourceUrl)) {
+      throw new Response(JSON.stringify({ error: "A supported sourceUrl is required for a preview." }), {
+        status: 400,
+        headers: { "content-type": "application/json" }
+      });
+    }
+    const chatId = resolveString(input.chatId);
+    const snapshot =
+      input.snapshot && typeof input.snapshot === "object"
+        ? (input.snapshot as Partial<Stage3StateSnapshot>)
+        : undefined;
+    const normalizedBody = {
+      channelId: channel.id,
+      sourceUrl,
+      workspaceId: auth.workspace.id,
+      ...(chatId ? { chatId } : {}),
+      ...(snapshot ? { snapshot } : {})
+    } satisfies Stage3PreviewRequestBody;
+    const executionTarget = resolveStage3Execution(auth.workspace.stage3ExecutionTarget).resolvedTarget;
+    if (executionTarget === "local") {
+      const readiness = await resolveStage3LocalWorkerReadiness({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id
+      });
+      if (!readiness.ready) {
+        throw new Response(
+          JSON.stringify({
+            error: "stage3_worker_unavailable",
+            code: readiness.onlineWorkers > 0 ? "worker_runtime_outdated" : "worker_unavailable"
+          }),
+          {
+            status: 503,
+            headers: { "content-type": "application/json", "Retry-After": "6", "x-stage3-busy": "1" }
+          }
+        );
+      }
+    }
+    const job = enqueueAndScheduleStage3Job({
+      workspaceId: auth.workspace.id,
+      userId: auth.user.id,
+      kind: "preview",
+      executionTarget,
+      payloadJson: JSON.stringify(normalizedBody),
+      dedupeKey: await buildStage3PreviewDedupeKey(normalizedBody, {
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id
+      })
+    });
+    auditControl({
+      auth,
+      action: "owner_control.preview.queued",
+      entityType: "stage3_job",
+      entityId: job.id,
+      channelId: channel.id,
+      chatId: chatId ?? null,
+      status: job.status,
+      payload: { executionTarget }
+    });
+    return {
+      ...buildStage3JobEnvelope(job, job.artifact ? `/api/stage3/preview/jobs/${job.id}?download=1` : null),
+      channel: summarizeChannel(channel),
+      pollUrl: `/api/stage3/preview/jobs/${job.id}`
     };
   }
 
