@@ -811,6 +811,127 @@ export function getRenderExportById(renderExportId: string): RenderExportRecord 
   );
 }
 
+export type ApprovedRenderExportMontage = {
+  renderExportId: string;
+  stage3JobId: string;
+  channelId: string;
+  templateId: string | null;
+  sourceUrl: string;
+  renderTitle: string | null;
+  createdAt: string;
+  montage: {
+    sourceCrop: unknown;
+    videoFit: unknown;
+    videoZoom: unknown;
+    focusX: unknown;
+    focusY: unknown;
+    clipStartSec: unknown;
+    clipDurationSec: unknown;
+    durationMode: unknown;
+    segments: unknown;
+    watermarkBlurs: unknown;
+    mirrorEnabled: unknown;
+  };
+  approval: {
+    status: string;
+    judgeVerdict: string | null;
+    innerVideoOnly: boolean | null;
+    donorWrapperVisible: boolean | null;
+    previewFrames: string[] | null;
+    approvedAt: string | null;
+  };
+};
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+/**
+ * Read-only history-seeding source for the vision editor: the most recent APPROVED
+ * montage snapshots for a channel (optionally a single template family). Only rows
+ * whose snapshot carries a judge-approved `zoroKingApproval` marker are returned, so
+ * seeds are real approved montages, never drafts. Returns at most `limit` entries.
+ */
+export function listApprovedRenderExportsForChannel(input: {
+  workspaceId: string;
+  channelId: string;
+  templateId?: string | null;
+  limit?: number;
+}): ApprovedRenderExportMontage[] {
+  const db = getDb();
+  const limit = Math.max(1, Math.min(25, input.limit ?? 10));
+  // Scan a bounded window of recent exports, then keep only the approved ones.
+  const scanLimit = Math.max(limit * 4, 60);
+  const rows = db
+    .prepare(
+      `SELECT * FROM render_exports
+        WHERE workspace_id = ? AND channel_id = ?
+        ORDER BY created_at DESC
+        LIMIT ?`
+    )
+    .all(input.workspaceId, input.channelId, scanLimit) as RenderExportRow[];
+
+  const wantedTemplate = input.templateId?.trim() || null;
+  const out: ApprovedRenderExportMontage[] = [];
+  for (const row of rows) {
+    let snapshot: Record<string, unknown> | null = null;
+    try {
+      snapshot = asRecord(JSON.parse(row.snapshot_json));
+    } catch {
+      snapshot = null;
+    }
+    if (!snapshot) {
+      continue;
+    }
+    const renderPlan = asRecord(snapshot.renderPlan) ?? {};
+    const approval = asRecord(snapshot.zoroKingApproval);
+    if (!approval || approval.status !== "approved" || approval.judgeVerdict !== "approved") {
+      continue;
+    }
+    const templateId = typeof renderPlan.templateId === "string" ? renderPlan.templateId : null;
+    if (wantedTemplate && templateId !== wantedTemplate) {
+      continue;
+    }
+    out.push({
+      renderExportId: row.id,
+      stage3JobId: row.stage3_job_id,
+      channelId: row.channel_id,
+      templateId,
+      sourceUrl: row.source_url,
+      renderTitle: row.render_title ?? null,
+      createdAt: row.created_at,
+      montage: {
+        sourceCrop: renderPlan.sourceCrop ?? null,
+        videoFit: renderPlan.videoFit ?? null,
+        videoZoom: renderPlan.videoZoom ?? null,
+        focusX: snapshot.focusX ?? null,
+        focusY: snapshot.focusY ?? null,
+        clipStartSec: snapshot.clipStartSec ?? null,
+        clipDurationSec: snapshot.clipDurationSec ?? null,
+        durationMode: renderPlan.durationMode ?? null,
+        segments: renderPlan.segments ?? null,
+        watermarkBlurs: renderPlan.watermarkBlurs ?? null,
+        mirrorEnabled: renderPlan.mirrorEnabled ?? null
+      },
+      approval: {
+        status: String(approval.status),
+        judgeVerdict: typeof approval.judgeVerdict === "string" ? approval.judgeVerdict : null,
+        innerVideoOnly: typeof approval.innerVideoOnly === "boolean" ? approval.innerVideoOnly : null,
+        donorWrapperVisible:
+          typeof approval.donorWrapperVisible === "boolean" ? approval.donorWrapperVisible : null,
+        previewFrames: Array.isArray(approval.previewFrames)
+          ? (approval.previewFrames as unknown[]).filter((frame): frame is string => typeof frame === "string")
+          : null,
+        approvedAt: typeof approval.approvedAt === "string" ? approval.approvedAt : null
+      }
+    });
+    if (out.length >= limit) {
+      break;
+    }
+  }
+  return out;
+}
+
 export function createRenderExport(input: {
   workspaceId: string;
   channelId: string;

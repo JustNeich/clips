@@ -303,6 +303,21 @@ server.registerTool(
 );
 
 server.registerTool(
+  "clips_owner_list_render_exports",
+  {
+    title: "List approved Clips montage history",
+    description:
+      "List the most recent JUDGE-APPROVED montage snapshots for a channel (optionally one templateId), to seed the vision editor with worked examples. Read-only; returns montage geometry (sourceCrop, videoFit, focus, segments, watermarkBlurs, clip window) plus the approval marker. Returns an empty list when there is no approved history.",
+    inputSchema: z.object({
+      ...channelRefSchema,
+      templateId: z.string().optional(),
+      limit: z.number().int().min(1).max(25).optional()
+    })
+  },
+  async (input) => ownerControl("clips_owner_list_render_exports", input)
+);
+
+server.registerTool(
   "clips_owner_update_publication",
   {
     title: "Update Clips publication",

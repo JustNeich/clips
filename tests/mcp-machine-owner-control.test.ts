@@ -202,6 +202,88 @@ test("machine credential can read flows and owner status while short flow token 
   });
 });
 
+test("clips_owner_list_render_exports returns only judge-approved montages, filtered by template", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "macmini-agent"
+    });
+
+    const makeExport = (templateId: string, approved: boolean, title: string) => {
+      const job = enqueueStage3Job({
+        workspaceId: owner.workspace.id,
+        userId: owner.user.id,
+        kind: "render",
+        payloadJson: JSON.stringify({ chatId: chat.id, channelId: channel.id })
+      });
+      const snapshot = {
+        clipStartSec: 9.2,
+        clipDurationSec: 28.5,
+        focusX: 0.5,
+        focusY: 0.4,
+        renderPlan: {
+          templateId,
+          sourceCrop: { enabled: true, x: 0, y: 0.31, width: 1, height: 0.51, source: "editor-controlled" },
+          videoFit: "contain",
+          videoZoom: 1,
+          durationMode: "source_full",
+          segments: [{ startSec: 0, endSec: 28.5, speed: 1, focusY: 0.4 }],
+          watermarkBlurs: [],
+          mirrorEnabled: false
+        },
+        zoroKingApproval: approved
+          ? APPROVED_VISUAL_GATE
+          : { status: "needs_rework", judgeVerdict: "needs_rework" }
+      };
+      return createRenderExport({
+        workspaceId: owner.workspace.id,
+        channelId: channel.id,
+        chatId: chat.id,
+        stage3JobId: job.id,
+        artifactFileName: `${title}.mp4`,
+        artifactFilePath: path.join(appDataDir, `${title}.mp4`),
+        artifactMimeType: "video/mp4",
+        artifactSizeBytes: 5,
+        renderTitle: title,
+        sourceUrl: chat.url,
+        snapshotJson: JSON.stringify(snapshot),
+        createdByUserId: owner.user.id
+      });
+    };
+
+    makeExport("science-card-red-1cbf5e07", true, "approved-a");
+    makeExport("science-card-red-1cbf5e07", true, "approved-b");
+    makeExport("science-card-red-1cbf5e07", false, "needs-rework");
+    makeExport("cop-scopes-darkwall-glow-bb4319ef", true, "other-template");
+
+    const all = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_list_render_exports",
+      input: { channelId: channel.id, limit: 10 }
+    });
+    assert.equal(all.status, 200);
+    const allBody = (await all.json()) as { renderExports: Array<Record<string, any>> };
+    // 3 approved montages (2 science-card + 1 cop-scopes); the needs_rework export is excluded.
+    assert.equal(allBody.renderExports.length, 3);
+    for (const entry of allBody.renderExports) {
+      assert.equal(entry.approval.status, "approved");
+      assert.equal(entry.approval.judgeVerdict, "approved");
+      assert.ok(entry.montage.sourceCrop, "montage geometry is present");
+      assert.equal(entry.montage.durationMode, "source_full");
+    }
+
+    const filtered = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_list_render_exports",
+      input: { channelId: channel.id, templateId: "cop-scopes-darkwall-glow-bb4319ef" }
+    });
+    assert.equal(filtered.status, 200);
+    const filteredBody = (await filtered.json()) as { renderExports: Array<Record<string, any>> };
+    assert.equal(filteredBody.renderExports.length, 1);
+    assert.equal(filteredBody.renderExports[0].templateId, "cop-scopes-darkwall-glow-bb4319ef");
+  });
+});
+
 test("owner control blocks channel-story render_video until an editor/judge snapshot is approved", async () => {
   await withIsolatedAppData(async (appDataDir) => {
     const { owner, channel, chat } = await seedOwnerControl(appDataDir);

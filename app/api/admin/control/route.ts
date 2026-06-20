@@ -31,6 +31,7 @@ import {
   getChannelPublicationById,
   getChannelPublishIntegration,
   getChannelPublishSettings,
+  listApprovedRenderExportsForChannel,
   listChannelPublications
 } from "../../../../lib/publication-store";
 import { requireRuntimeTool } from "../../../../lib/runtime-capabilities";
@@ -139,6 +140,7 @@ const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
   clips_owner_set_channel_access: "entity:write",
   clips_owner_revoke_channel_access: "entity:write",
   clips_owner_list_publications: "flow:read",
+  clips_owner_list_render_exports: "flow:read",
   clips_owner_get_flow: "flow:read",
   clips_owner_update_publication: "publication:write",
   clips_owner_schedule_publication: "publication:write",
@@ -801,6 +803,22 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       chatId,
       selectedRunId: resolveString(input.selectedRunId)
     });
+  }
+
+  if (tool === "clips_owner_list_render_exports") {
+    const channel = await requireChannel(auth.workspace.id, input);
+    const templateId = resolveString(input.templateId);
+    const limit = Math.max(1, Math.min(25, resolveNumber(input.limit) ?? 10));
+    const renderExports = listApprovedRenderExportsForChannel({
+      workspaceId: auth.workspace.id,
+      channelId: channel.id,
+      templateId,
+      limit
+    });
+    return {
+      channel: summarizeChannel(channel),
+      renderExports
+    };
   }
 
   if (tool === "clips_owner_update_publication" || tool === "clips_owner_schedule_publication") {
