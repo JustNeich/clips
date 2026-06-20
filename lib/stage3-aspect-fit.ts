@@ -19,6 +19,7 @@ export type Stage3AspectFitDecision = {
     videoFit: "cover" | "contain";
     mediaRegionHeightPx?: number;
     videoScaleX?: number;
+    videoScaleY?: number;
   };
   // Diagnostics for logging / the judge.
   contentAspect: number;
@@ -40,7 +41,7 @@ export type Stage3AspectFitCaps = {
 export const DEFAULT_STAGE3_ASPECT_FIT_CAPS: Stage3AspectFitCaps = {
   tolerance: 0.03,
   maxCoverCrop: 0.22,
-  maxStretch: 1.1,
+  maxStretch: 1.08,
   minRegionHeightFraction: 0.45
 };
 

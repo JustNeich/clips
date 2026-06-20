@@ -174,6 +174,19 @@ test("normalizeRenderPlan preserves contain video fit and rejects invalid values
   assert.equal(invalid.videoFit, "cover");
 });
 
+test("normalizeRenderPlan preserves optional media region height", () => {
+  const base = fallbackRenderPlan();
+  const normalized = normalizeRenderPlan(
+    {
+      ...base,
+      mediaRegionHeightPx: 510
+    },
+    base
+  );
+
+  assert.equal(normalized.mediaRegionHeightPx, 510);
+});
+
 test("normalizeRenderPlan preserves and clamps Stage 3 vertical source scale", () => {
   const base = fallbackRenderPlan();
   const normalized = normalizeRenderPlan(

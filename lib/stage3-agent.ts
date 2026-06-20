@@ -53,6 +53,7 @@ import {
   DEFAULT_STAGE3_VIDEO_FIT,
   normalizeStage3VideoFit
 } from "./stage3-video-fit";
+import { normalizeStage3MediaRegionHeightPx } from "./stage3-media-geometry";
 import {
   DEFAULT_STAGE3_CLIP_DURATION_SEC,
   normalizeStage3DurationMode,
@@ -714,6 +715,7 @@ function createDefaultRenderPlan(
     cameraScaleKeyframes: [],
     focusX: 0.5,
     videoZoom: 1,
+    mediaRegionHeightPx: undefined,
     videoScaleY: DEFAULT_STAGE3_VIDEO_SCALE_Y,
     videoScaleX: DEFAULT_STAGE3_VIDEO_SCALE_X,
     videoFit: DEFAULT_STAGE3_VIDEO_FIT,
@@ -763,6 +765,9 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
       : defaultPlan.videoZoom;
   const videoScaleY = normalizeStage3VideoScaleY(input?.videoScaleY, defaultPlan.videoScaleY);
   const videoScaleX = normalizeStage3VideoScaleX(input?.videoScaleX, defaultPlan.videoScaleX);
+  const mediaRegionHeightPx =
+    normalizeStage3MediaRegionHeightPx(input?.mediaRegionHeightPx, defaultPlan.mediaRegionHeightPx ?? 0) ??
+    defaultPlan.mediaRegionHeightPx;
   const videoFit = normalizeStage3VideoFit(input?.videoFit, defaultPlan.videoFit);
   const cameraTracks = resolveStage3EffectiveCameraTracks({
     cameraPositionKeyframes: input?.cameraPositionKeyframes,
@@ -817,6 +822,7 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
         ? clampStage3FocusX(input.focusX)
         : defaultPlan.focusX,
     videoZoom,
+    mediaRegionHeightPx,
     videoScaleY,
     videoScaleX,
     videoFit,
