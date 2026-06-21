@@ -17,7 +17,8 @@ import {
 import type {
   Stage3TemplateLayoutKind,
   Stage3TemplateLeadTextFormat,
-  Stage3TemplateLeadMode
+  Stage3TemplateLeadMode,
+  Stage3TemplateLeadTextTransform
 } from "./stage3-template-semantics";
 
 export const SCIENCE_CARD_TEMPLATE_ID = "science-card-v1";
@@ -693,6 +694,7 @@ export const CHANNEL_STORY = {
     headerAlign: "left",
     leadTextAlign: "center",
     leadTextFormat: "short",
+    leadTextTransform: "none",
     bodyTextAlign: "center",
     accentTopLineWidth: 0,
     accentTopLineColor: "#20df49",
@@ -917,6 +919,7 @@ export type Stage3TemplateChannelStoryConfig = {
   headerAlign?: "left" | "center";
   leadTextAlign?: "left" | "center";
   leadTextFormat?: Stage3TemplateLeadTextFormat;
+  leadTextTransform?: Stage3TemplateLeadTextTransform;
   bodyTextAlign?: "left" | "center";
   accentTopLineWidth?: number;
   accentTopLineColor?: string;
@@ -1273,6 +1276,45 @@ export function resolveChannelStoryLeadTypography(
     fillTargetMin: Math.min(base.fillTargetMin ?? 0.84, 0.74),
     fillTargetMax: Math.min(base.fillTargetMax ?? 0.95, 0.88)
   };
+}
+
+export function resolveChannelStoryEffectiveLeadHeight(params: {
+  templateConfig: Stage3TemplateConfig;
+  text: string;
+  contentWidth: number;
+  scale: number;
+  leadVisible: boolean;
+}): number {
+  const channelStory = params.templateConfig.channelStory;
+  if (
+    params.templateConfig.layoutKind !== "channel_story" ||
+    !channelStory ||
+    !params.leadVisible
+  ) {
+    return 0;
+  }
+
+  const baseHeight = Math.max(1, channelStory.leadHeight);
+  if (resolveChannelStoryLeadTextFormat(channelStory) === "long") {
+    return baseHeight;
+  }
+
+  const typography = resolveChannelStoryLeadTypography(params.templateConfig, params.scale);
+  const normalizedScale = normalizeFontScale(params.scale);
+  const desiredFont = snapStage3TextFontPx(typography.max * Math.max(1, normalizedScale));
+  const desiredLines = Math.min(
+    typography.maxLines,
+    estimateLineCount(params.text, desiredFont, params.contentWidth, typography)
+  );
+  if (desiredLines <= 1) {
+    return baseHeight;
+  }
+
+  const desiredHeight = Math.ceil(
+    desiredLines * desiredFont * typography.lineHeight +
+      resolveTemplateDescenderSafetyPx(desiredFont, typography.lineHeight)
+  );
+  return Math.max(baseHeight, desiredHeight);
 }
 
 function clampNumber(value: number, min: number, max: number): number {
@@ -1821,7 +1863,15 @@ export function getChannelStoryComputed(
   };
   const leadSlot: SlotSize = {
     width: contentWidth,
-    height: leadVisible ? Math.max(1, channelStory.leadHeight) : 1
+    height: leadVisible
+      ? resolveChannelStoryEffectiveLeadHeight({
+          templateConfig,
+          text: topText,
+          contentWidth,
+          scale: topScale,
+          leadVisible
+        })
+      : 1
   };
   const bodySlot: SlotSize = {
     width: contentWidth,
@@ -1830,7 +1880,7 @@ export function getChannelStoryComputed(
   const headerY = cardInnerRect.y + channelStory.contentPaddingTop;
   const leadY = headerY + channelStory.headerHeight + channelStory.headerToLeadGap;
   const bodyY = leadVisible
-    ? leadY + channelStory.leadHeight + channelStory.leadToBodyGap
+    ? leadY + leadSlot.height + channelStory.leadToBodyGap
     : headerY + channelStory.headerHeight + Math.max(channelStory.headerToLeadGap, 12);
   const topFit = leadVisible
     ? optimizeTextForSlot(topText, leadSlot, topTypography, "Lead text")

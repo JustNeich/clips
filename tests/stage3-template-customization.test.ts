@@ -620,6 +620,81 @@ test("channel story short lead format keeps the legacy two-line clamp", () => {
   assert.match(markup, /-webkit-line-clamp:2/);
 });
 
+test("channel story short lead reserves enough height before shrinking matching typography", () => {
+  const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
+  templateConfig.channelStory!.leadMode = "clip_custom";
+  templateConfig.channelStory!.leadTextFormat = "short";
+  templateConfig.typography.top = {
+    ...templateConfig.typography.bottom,
+    maxLines: 2,
+    maxChars: 120
+  };
+  const matchingText = "Lead still looks small even though same font settings";
+
+  const snapshot = buildTemplateRenderSnapshot({
+    templateId: CHANNEL_STORY_TEMPLATE_ID,
+    content: {
+      topText: matchingText,
+      bottomText: matchingText,
+      channelName: "Human History",
+      channelHandle: "@HISTORY.",
+      highlights: { top: [], bottom: [] },
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    },
+    templateConfigOverride: templateConfig
+  });
+
+  assert.ok(
+    snapshot.computed.topFont >= snapshot.computed.bottomFont - 0.5,
+    `expected lead font to stay visually matched with body font, got ${snapshot.computed.topFont}px vs ${snapshot.computed.bottomFont}px`
+  );
+  assert.ok(
+    snapshot.layout.top.height > templateConfig.channelStory!.leadHeight,
+    `expected effective lead slot to grow beyond ${templateConfig.channelStory!.leadHeight}px, got ${snapshot.layout.top.height}px`
+  );
+});
+
+test("channel story lead ALL CAPS transforms snapshot text and rendered lead", () => {
+  const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
+  templateConfig.channelStory!.leadMode = "clip_custom";
+  templateConfig.channelStory!.leadTextTransform = "uppercase";
+
+  const snapshot = buildTemplateRenderSnapshot({
+    templateId: CHANNEL_STORY_TEMPLATE_ID,
+    content: {
+      topText: "Did you know?",
+      bottomText: "The report looked routine until the timeline put every witness in the same impossible two-minute gap.",
+      channelName: "Human History",
+      channelHandle: "@HISTORY.",
+      highlights: { top: [], bottom: [] },
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    },
+    templateConfigOverride: templateConfig
+  });
+  const markup = renderToStaticMarkup(
+    Stage3TemplateRenderer({
+      templateId: CHANNEL_STORY_TEMPLATE_ID,
+      content: snapshot.content,
+      snapshot,
+      templateConfigOverride: templateConfig
+    })
+  );
+
+  assert.equal(snapshot.content.topText, "DID YOU KNOW?");
+  assert.match(markup, /text-transform:uppercase/);
+  assert.match(markup, />DID YOU KNOW\?</);
+});
+
 test("channel story snapshot measures inner content from the bordered card safe area", () => {
   const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
   templateConfig.card.x = 110;

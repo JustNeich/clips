@@ -12,6 +12,7 @@ export type Stage3TemplateLayoutKind = "classic_top_bottom" | "channel_story";
 export type Stage3TemplateFormatGroup = Stage3TemplateLayoutKind;
 export type Stage3TemplateLeadMode = "off" | "template_default" | "clip_custom";
 export type Stage3TemplateLeadTextFormat = "short" | "long";
+export type Stage3TemplateLeadTextTransform = "none" | "uppercase";
 
 export type Stage3TemplateResolvedText = {
   topText: string;
@@ -191,6 +192,24 @@ export function resolveTemplateDefaultLeadText(
   return normalizeText(templateConfig?.channelStory?.defaultLeadText);
 }
 
+export function resolveTemplateLeadTextTransform(
+  templateConfig: Stage3TemplateConfig | null | undefined
+): Stage3TemplateLeadTextTransform {
+  if (resolveTemplateLayoutKind(templateConfig) !== "channel_story") {
+    return "none";
+  }
+  return templateConfig?.channelStory?.leadTextTransform === "uppercase" ? "uppercase" : "none";
+}
+
+function applyLeadTextTransform(
+  text: string,
+  templateConfig: Stage3TemplateConfig | null | undefined
+): string {
+  return resolveTemplateLeadTextTransform(templateConfig) === "uppercase"
+    ? text.toUpperCase()
+    : text;
+}
+
 export function resolveTemplateTextFieldSemantics(
   templateConfig: Stage3TemplateConfig | null | undefined
 ): Stage3TemplateTextFieldSemantics {
@@ -292,7 +311,10 @@ export function resolveTemplateRenderText(input: {
   if (leadMode === "template_default") {
     nextHighlights.top = [];
     return {
-      topText: resolveTemplateDefaultLeadText(input.templateConfig) || input.topText,
+      topText: applyLeadTextTransform(
+        resolveTemplateDefaultLeadText(input.templateConfig) || input.topText,
+        input.templateConfig
+      ),
       bottomText: input.bottomText,
       highlights: nextHighlights,
       leadMode
@@ -300,7 +322,7 @@ export function resolveTemplateRenderText(input: {
   }
 
   return {
-    topText: input.topText,
+    topText: applyLeadTextTransform(input.topText, input.templateConfig),
     bottomText: input.bottomText,
     highlights: nextHighlights,
     leadMode

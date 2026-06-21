@@ -5,6 +5,7 @@ import {
   isClassicScienceCardTemplateId,
   resolveChannelStoryBodyMaxHeight,
   resolveChannelStoryBodyContentHeight,
+  resolveChannelStoryEffectiveLeadHeight,
   SCIENCE_CARD_TEMPLATE_ID,
   STAGE3_TEMPLATE_ID,
   Stage3TemplateComputed,
@@ -184,12 +185,27 @@ function buildFallbackSectionRects(
         (computed.leadVisible === false
           ? Math.max(channelStory.headerToLeadGap, 12)
           : channelStory.headerToLeadGap + channelStory.leadHeight + channelStory.leadToBodyGap);
+    const effectiveLeadHeight =
+      computed.leadVisible === false
+        ? 0
+        : Math.max(
+            1,
+            computed.bottomTextY !== undefined
+              ? computed.bottomTextY - leadY - channelStory.leadToBodyGap
+              : resolveChannelStoryEffectiveLeadHeight({
+                  templateConfig,
+                  text: computed.top,
+                  contentWidth,
+                  scale: 1,
+                  leadVisible: true
+                })
+          );
     return {
       top: {
         x: contentX,
         y: leadY,
         width: contentWidth,
-        height: computed.leadVisible === false ? 0 : channelStory.leadHeight
+        height: effectiveLeadHeight
       },
       media: {
         x: channelComputed.videoX,

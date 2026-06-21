@@ -1050,6 +1050,7 @@ export function TemplateScene({
                   fontFamily: topTextFontFamily,
                   fontWeight: topTextWeight,
                   letterSpacing: topTextLetterSpacing,
+                  textTransform: channelStory.leadTextTransform === "uppercase" ? "uppercase" : undefined,
                   textShadow: topTextShadow,
                   fontSize: computed.topFont,
                   lineHeight: computed.topLineHeight,

@@ -29,7 +29,8 @@ import {
   resolveTemplateFormatGroupLabel,
   resolveTemplateTextFieldSemantics,
   type Stage3TemplateFormatGroup,
-  type Stage3TemplateLeadTextFormat
+  type Stage3TemplateLeadTextFormat,
+  type Stage3TemplateLeadTextTransform
 } from "../../lib/stage3-template-semantics";
 import { resolveTemplateBackdropNode } from "../../lib/stage3-template-runtime";
 import {
@@ -1421,6 +1422,7 @@ export function TemplateStyleEditor({
     activeTemplateSemantics.formatGroup === "channel_story" && Boolean(templateConfig.channelStory);
   const channelStoryLeadMode = templateConfig.channelStory?.leadMode ?? "clip_custom";
   const channelStoryLeadTextFormat = templateConfig.channelStory?.leadTextFormat ?? "short";
+  const channelStoryLeadTextTransform = templateConfig.channelStory?.leadTextTransform ?? "none";
   const showChannelStoryDemoLeadField =
     isChannelStoryTemplate && channelStoryLeadMode === "clip_custom";
   const showChannelStoryTemplateManagedLeadNote =
@@ -3170,6 +3172,9 @@ export function TemplateStyleEditor({
                       Lead: {channelStoryLeadTextFormat === "long" ? "long" : "short"}
                     </span>
                     <span className="meta-pill">
+                      Caps: {channelStoryLeadTextTransform === "uppercase" ? "on" : "off"}
+                    </span>
+                    <span className="meta-pill">
                       Header: {templateConfig.channelStory.headerAlign === "center" ? "center" : "left"}
                     </span>
                     <span className="meta-pill">
@@ -3266,6 +3271,18 @@ export function TemplateStyleEditor({
                       ]}
                       onChange={(value) =>
                         updateChannelStory("leadTextAlign", value as "left" | "center")
+                      }
+                    />
+                    <SelectControl
+                      label="Lead caps"
+                      hint="`ALL CAPS` визуально усиливает lead и применяется к превью, snapshot и render."
+                      value={channelStoryLeadTextTransform}
+                      options={[
+                        { label: "Original", value: "none" },
+                        { label: "ALL CAPS", value: "uppercase" }
+                      ]}
+                      onChange={(value) =>
+                        updateChannelStory("leadTextTransform", value as Stage3TemplateLeadTextTransform)
                       }
                     />
                   </div>

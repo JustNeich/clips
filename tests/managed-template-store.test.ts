@@ -937,6 +937,7 @@ test("channel story templates persist lead mode and sync default lead text from 
             leadMode: "template_default",
             leadTextFormat: "long",
             leadTextAlign: "left",
+            leadTextTransform: "uppercase",
             defaultLeadText: "stale lead",
             mediaRadius: 28,
             accentTopLineWidth: 4,
@@ -962,6 +963,7 @@ test("channel story templates persist lead mode and sync default lead text from 
     assert.equal(reloaded?.templateConfig.channelStory?.leadMode, "template_default");
     assert.equal(reloaded?.templateConfig.channelStory?.leadTextFormat, "long");
     assert.equal(reloaded?.templateConfig.channelStory?.leadTextAlign, "left");
+    assert.equal(reloaded?.templateConfig.channelStory?.leadTextTransform, "uppercase");
     assert.equal(reloaded?.templateConfig.channelStory?.defaultLeadText, "Did you know?");
     assert.equal(reloaded?.templateConfig.channelStory?.mediaRadius, 28);
     assert.equal(reloaded?.templateConfig.channelStory?.accentTopLineWidth, 4);

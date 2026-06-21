@@ -605,6 +605,9 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
     if (channelStory.leadTextAlign === "left" || channelStory.leadTextAlign === "center") {
       base.channelStory.leadTextAlign = channelStory.leadTextAlign;
     }
+    if (channelStory.leadTextTransform === "none" || channelStory.leadTextTransform === "uppercase") {
+      base.channelStory.leadTextTransform = channelStory.leadTextTransform;
+    }
     if (typeof channelStory.defaultLeadText === "string") {
       base.channelStory.defaultLeadText = channelStory.defaultLeadText;
     }

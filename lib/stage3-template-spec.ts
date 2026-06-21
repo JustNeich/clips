@@ -178,6 +178,15 @@ function buildGeneratedSpec(templateId: string): TemplateFigmaSpec {
       computed.bottomTextY ??
       leadY +
         (computed.leadVisible === false ? 0 : channelStory.leadHeight + channelStory.leadToBodyGap);
+    const leadHeight =
+      computed.leadVisible === false
+        ? 0
+        : Math.max(
+            1,
+            computed.bottomTextY !== undefined
+              ? computed.bottomTextY - leadY - channelStory.leadToBodyGap
+              : channelStory.leadHeight
+          );
     return {
       templateId,
       source: "generated",
@@ -200,7 +209,7 @@ function buildGeneratedSpec(templateId: string): TemplateFigmaSpec {
           x: cardInnerRect.x + channelStory.contentPaddingX,
           y: leadY,
           width: contentWidth,
-          height: computed.leadVisible === false ? 0 : channelStory.leadHeight
+          height: leadHeight
         },
         media: {
           x: computed.videoX,
