@@ -78,10 +78,18 @@ export function applyStage3MediaGeometryToTemplateSnapshot(
   }
 
   const delta = snapshot.layout.media.height - height;
-  const shiftUp = <T extends { y: number }>(rect: T): T => ({
-    ...rect,
-    y: rect.y - delta
-  });
+  // The owner's rule: the WHOLE CARD gets shorter (top & bottom panels move
+  // closer, media fits the source) — NOT "grow the bottom panel" and NOT "leave
+  // an empty white band". We shrink the card by the freed media height and
+  // RE-CENTER it: the top half of the card (card frame, top panel, media) slides
+  // DOWN by delta/2 and the bottom group (bottom panel, author, avatar, bottom
+  // text) slides UP by delta/2, so the shorter card stays balanced in frame.
+  const half = Math.round(delta / 2);
+  const shiftDown = <T extends { y: number }>(rect: T): T => ({ ...rect, y: rect.y + half });
+  const shiftUp = <T extends { y: number }>(rect: T): T => ({ ...rect, y: rect.y - half });
+  const card = snapshot.layout.card
+    ? { ...snapshot.layout.card, y: snapshot.layout.card.y + half, height: snapshot.layout.card.height - delta }
+    : snapshot.layout.card;
 
   return {
     ...snapshot,
@@ -92,8 +100,10 @@ export function applyStage3MediaGeometryToTemplateSnapshot(
     },
     layout: {
       ...snapshot.layout,
+      ...(card ? { card } : {}),
+      top: shiftDown(snapshot.layout.top),
       media: {
-        ...snapshot.layout.media,
+        ...shiftDown(snapshot.layout.media),
         height
       },
       bottom: shiftUp(snapshot.layout.bottom),
