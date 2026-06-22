@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import type { Stage2Output } from "../app/components/types";
@@ -7,7 +10,54 @@ import {
   applyAgentManualCaption,
   parseAgentManualCaption
 } from "../lib/stage2-agent-manual";
-import { DEFAULT_STAGE2_HARD_CONSTRAINTS } from "../lib/stage2-channel-config";
+import {
+  DEFAULT_STAGE2_EXAMPLES_CONFIG,
+  DEFAULT_STAGE2_HARD_CONSTRAINTS
+} from "../lib/stage2-channel-config";
+import { createStage2Run, getStage2Run } from "../lib/stage2-progress-store";
+import { buildStage2RunRequestSnapshot } from "../lib/stage2-run-request";
+import { bootstrapOwner } from "../lib/team-store";
+import { createChannel } from "../lib/chat-history";
+
+async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
+  const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-stage2-agent-manual-test-"));
+  const previousAppDataDir = process.env.APP_DATA_DIR;
+  process.env.APP_DATA_DIR = appDataDir;
+  delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
+
+  try {
+    return await run();
+  } finally {
+    delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
+    if (previousAppDataDir === undefined) {
+      delete process.env.APP_DATA_DIR;
+    } else {
+      process.env.APP_DATA_DIR = previousAppDataDir;
+    }
+    await rm(appDataDir, { recursive: true, force: true });
+  }
+}
+
+function buildRequestSnapshotWithCaption(
+  channelId: string,
+  channelUsername: string,
+  agentCaption: { top: string; bottom: string; topRu?: string; bottomRu?: string } | undefined
+) {
+  return buildStage2RunRequestSnapshot({
+    sourceUrl: "https://example.com/source-reel",
+    userInstruction: null,
+    mode: "manual",
+    agentCaption,
+    channel: {
+      id: channelId,
+      name: "Agent Manual Roundtrip",
+      username: channelUsername,
+      stage2WorkerProfileId: null,
+      stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+      stage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS
+    }
+  });
+}
 
 const constraints = DEFAULT_STAGE2_HARD_CONSTRAINTS;
 
@@ -100,4 +150,88 @@ test("agentManualCaptionIssues flags length violations", () => {
   const longBottom = "x".repeat(constraints.bottomLengthMax + 40);
   const issues = agentManualCaptionIssues({ top: "OK LENGTH TOP CAPTION HERE", bottom: longBottom }, constraints);
   assert.ok(issues.some((issue) => issue.includes("BOTTOM length")));
+});
+
+test("agentCaption survives the createStage2Run DB persist/read round-trip", async () => {
+  // Regression: normalizeRequest used to rebuild the request from the persisted
+  // JSON without re-reading agentCaption, so saveRecord's read-back silently
+  // stripped it and the stage2-runner never applied the agent text. The platform
+  // winner then always shipped, with no rejection warning.
+  await withIsolatedAppData(async () => {
+    const agentCaption = {
+      top: "AGENT TOP CAPTION THAT IS COMFORTABLY IN RANGE",
+      bottom: "Agent bottom caption text written by the external copywriter agent here.",
+      topRu: "ВЕРХ ОТ АГЕНТА",
+      bottomRu: "Низ от агента."
+    };
+    const owner = await bootstrapOwner({
+      workspaceName: "Agent Manual Roundtrip",
+      email: "owner-agent-manual-roundtrip@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const channel = await createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Agent Manual Roundtrip",
+      username: "agent_manual_roundtrip"
+    });
+    const request = buildRequestSnapshotWithCaption(channel.id, channel.username, agentCaption);
+    // The freshly built in-memory snapshot carries the caption...
+    assert.deepEqual(request.agentCaption, agentCaption);
+
+    const created = createStage2Run({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      chatId: null,
+      request
+    });
+    // ...and so must the record returned by createStage2Run (which is mapped
+    // back from the persisted row inside saveRecord).
+    assert.deepEqual(
+      created.request.agentCaption,
+      agentCaption,
+      "agentCaption must survive saveRecord's read-back"
+    );
+
+    // A fresh independent read from the DB must also carry it.
+    const reread = getStage2Run(created.runId);
+    assert.ok(reread);
+    assert.deepEqual(
+      reread?.request.agentCaption,
+      agentCaption,
+      "agentCaption must survive a fresh getStage2Run read"
+    );
+  });
+});
+
+test("requests without agentCaption stay agentCaption-free after the round-trip (human path unchanged)", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Human Manual Roundtrip",
+      email: "owner-human-manual-roundtrip@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const channel = await createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Human Manual Roundtrip",
+      username: "human_manual_roundtrip"
+    });
+    const request = buildRequestSnapshotWithCaption(channel.id, channel.username, undefined);
+    assert.equal("agentCaption" in request, false);
+
+    const created = createStage2Run({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      chatId: null,
+      request
+    });
+    assert.equal(created.request.agentCaption, undefined);
+
+    const reread = getStage2Run(created.runId);
+    assert.ok(reread);
+    assert.equal(reread?.request.agentCaption, undefined);
+  });
 });

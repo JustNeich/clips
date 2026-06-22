@@ -47,7 +47,7 @@ import type { Stage2TemplateSemanticsSnapshot } from "./stage2-template-contract
 import type { Stage3TemplateFormatGroup } from "./stage3-template-semantics";
 import { normalizeTemplateHighlightConfig, type TemplateHighlightConfig } from "./template-highlights";
 import type { Stage2DebugMode } from "./viral-shorts-worker/types";
-import type { AgentManualCaption } from "./stage2-agent-manual";
+import { parseAgentManualCaption, type AgentManualCaption } from "./stage2-agent-manual";
 
 export type Stage2RunMode = "manual" | "auto" | "regenerate";
 
@@ -153,6 +153,13 @@ function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
         ? String(record.user_instruction).trim() || null
         : null;
   const debugMode = parsed?.debugMode === "raw" ? "raw" : "summary";
+  // Carry the agent-supplied caption across the DB round-trip. Without this the
+  // first persist/read in saveRecord silently strips agentCaption (it was never
+  // re-read here), so the stage2-runner never applied the agent text and the
+  // platform-generated winner always shipped. Reuse the same strict parser the
+  // ingest path uses so malformed persisted data is treated as absent (fail-safe)
+  // and the field is only present when a valid caption was provided.
+  const agentCaption = parseAgentManualCaption(parsed?.agentCaption);
   const channelCandidate =
     parsed?.channel && typeof parsed.channel === "object"
       ? (parsed.channel as Partial<Stage2RunRequest["channel"]>)
@@ -162,6 +169,7 @@ function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
     sourceUrl,
     userInstruction,
     mode,
+    ...(agentCaption ? { agentCaption } : {}),
     baseRunId,
     debugMode,
     channel: {
