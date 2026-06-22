@@ -326,6 +326,23 @@ CREATE TABLE IF NOT EXISTS source_jobs (
   FOREIGN KEY (chat_id) REFERENCES chat_threads(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS source_decompositions (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  chat_id TEXT NOT NULL,
+  source_key TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  artifact_json TEXT NOT NULL,
+  frames_dir TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (chat_id) REFERENCES chat_threads(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS channel_editorial_feedback_events (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -685,6 +702,9 @@ CREATE INDEX IF NOT EXISTS idx_channel_publish_settings_channel
 
 CREATE INDEX IF NOT EXISTS idx_channel_youtube_oauth_states_expires
   ON channel_youtube_oauth_states(expires_at);
+
+CREATE INDEX IF NOT EXISTS idx_source_decompositions_chat
+  ON source_decompositions(workspace_id, chat_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_channel_editorial_feedback_channel
   ON channel_editorial_feedback_events(channel_id, created_at DESC);

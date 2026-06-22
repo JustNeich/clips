@@ -455,6 +455,36 @@ server.registerTool(
   async (input) => ownerControl("clips_owner_run_video_pipeline", input)
 );
 
+server.registerTool(
+  "clips_owner_run_agent_pipeline",
+  {
+    title: "Run Clips agent pipeline (decomposition)",
+    description:
+      "AGENT-ONLY. Create/get a chat for one source URL, download the source, and produce a reusable Stage-1 decomposition (comments + 1fps frames + subtitles + meta). Does NOT generate Stage 2 captions and does NOT alter the human manual flow. Poll the returned source job, then read clips_flow_get_source_decomposition.",
+    inputSchema: z.object({
+      ...channelRefSchema,
+      sourceUrl: z.string(),
+      title: z.string().optional(),
+      eventText: z.string().optional(),
+      dryRun: z.boolean().optional()
+    })
+  },
+  async (input) => ownerControl("clips_owner_run_agent_pipeline", input)
+);
+
+server.registerTool(
+  "clips_flow_get_source_decomposition",
+  {
+    title: "Get Clips source decomposition",
+    description:
+      "AGENT-ONLY. Read the Stage-1 decomposition artifact for a chat: comments, 1fps frames (each with a fetchable imageUrl and a description), subtitles, and meta (durationSec/width/height/frameCount/extractedAt).",
+    inputSchema: z.object({
+      chatId: z.string()
+    })
+  },
+  async (input) => ownerControl("clips_flow_get_source_decomposition", input)
+);
+
 async function main(): Promise<void> {
   await server.connect(new StdioServerTransport());
 }

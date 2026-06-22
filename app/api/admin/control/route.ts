@@ -54,7 +54,9 @@ import {
   findActiveStage2RunForChat,
   type Stage2RunMode
 } from "../../../../lib/stage2-progress-store";
-import { getActiveSourceJobForChat } from "../../../../lib/source-job-runtime";
+import { enqueueAndScheduleSourceJob, getActiveSourceJobForChat } from "../../../../lib/source-job-runtime";
+import { getSourceDecompositionForChat } from "../../../../lib/source-decomposition-store";
+import { resolvePublicAppOrigin } from "../../../../lib/public-app-origin";
 import {
   buildStage3WorkerCommands,
   buildStage3WorkerDesktopDeepLink,
@@ -153,7 +155,10 @@ const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
   clips_owner_list_stage3_workers: "worker:admin",
   clips_owner_pair_stage3_worker: "worker:admin",
   clips_owner_run_video_pipeline: "pipeline:run",
-  clips_owner_run_copscopes_daily_pool: "pipeline:run"
+  clips_owner_run_copscopes_daily_pool: "pipeline:run",
+  // AGENT-ONLY tools. Additive; the human manual flow does not use these.
+  clips_owner_run_agent_pipeline: "pipeline:run",
+  clips_flow_get_source_decomposition: "flow:read"
 };
 
 function resolveString(value: unknown): string | undefined {
@@ -1332,6 +1337,109 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       chat,
       run,
       nextStep: "Wait for Stage 2 completion, select/confirm an option, then enqueue Stage 3 render with publishAfterRender=true."
+    };
+  }
+
+  if (tool === "clips_owner_run_agent_pipeline") {
+    // AGENT-ONLY entry. Runs the existing source download + comments and ALSO
+    // the Stage-1 decomposition, but never auto-generates Stage 2 captions: the
+    // agent supplies its text later through the existing agentCaption path on
+    // clips_owner_run_video_pipeline. This does not touch the human manual
+    // pipeline.
+    const sourceUrl = resolveString(input.sourceUrl);
+    if (!sourceUrl) {
+      throw new Response(JSON.stringify({ error: "sourceUrl is required." }), { status: 400 });
+    }
+    const channel = await requireChannel(auth.workspace.id, input);
+    const normalizedUrl = normalizeSupportedUrl(sourceUrl);
+    if (!isSupportedUrl(normalizedUrl)) {
+      throw new Response(JSON.stringify({ error: SUPPORTED_SOURCE_ERROR_MESSAGE }), { status: 400 });
+    }
+    const dryRun = resolveBoolean(input.dryRun);
+    if (dryRun) {
+      return {
+        dryRun: true,
+        channel: summarizeChannel(channel),
+        sourceUrl: normalizedUrl,
+        planned: ["create_or_get_chat", "enqueue_source_job_with_decomposition"],
+        note: "Agent flow: source download + Stage-1 decomposition. No Stage 2 caption generation."
+      };
+    }
+    await Promise.all([requireRuntimeTool("ffmpeg"), requireRuntimeTool("ffprobe")]);
+    const chat = await createOrGetChatBySource({
+      rawUrl: normalizedUrl,
+      channelIdRaw: channel.id,
+      title: resolveString(input.title),
+      eventText: resolveString(input.eventText)
+    });
+    const activeSourceJob = getActiveSourceJobForChat(chat.id, auth.workspace.id);
+    if (activeSourceJob) {
+      throw new Response(JSON.stringify({ error: "source_job_already_active", job: activeSourceJob }), { status: 409 });
+    }
+    const job = enqueueAndScheduleSourceJob({
+      workspaceId: auth.workspace.id,
+      creatorUserId: auth.user.id,
+      request: {
+        sourceUrl: normalizedUrl,
+        autoRunStage2: false,
+        agentDecomposition: true,
+        trigger: "fetch",
+        chat: { id: chat.id, channelId: chat.channelId },
+        channel: { id: channel.id, name: channel.name, username: channel.username }
+      }
+    });
+    auditControl({
+      auth,
+      action: "owner_control.agent_pipeline.source_queued",
+      entityType: "source_job",
+      entityId: job.jobId,
+      channelId: channel.id,
+      chatId: chat.id,
+      status: "queued",
+      payload: { sourceUrl: normalizedUrl, agentDecomposition: true }
+    });
+    return {
+      channel: summarizeChannel(channel),
+      chat,
+      job,
+      nextStep:
+        "Poll the source job to completion, then read clips_flow_get_source_decomposition{chatId} for comments/frames/subtitles/meta."
+    };
+  }
+
+  if (tool === "clips_flow_get_source_decomposition") {
+    // AGENT-ONLY read tool. Returns the decomposition artifact plus fetchable
+    // frame image URLs scoped to this workspace.
+    const chatId = resolveString(input.chatId);
+    if (!chatId) {
+      throw new Response(JSON.stringify({ error: "chatId is required." }), { status: 400 });
+    }
+    const chat = await getChatById(chatId);
+    if (!chat || chat.workspaceId !== auth.workspace.id) {
+      throw new Response(JSON.stringify({ error: "Chat not found." }), { status: 404 });
+    }
+    const record = getSourceDecompositionForChat(auth.workspace.id, chatId);
+    if (!record) {
+      throw new Response(
+        JSON.stringify({ error: "source_decomposition_not_found", chatId }),
+        { status: 404 }
+      );
+    }
+    const origin = resolvePublicAppOrigin(request);
+    return {
+      sourceKey: record.artifact.sourceKey,
+      chatId: record.chatId,
+      comments: record.artifact.comments,
+      frames: record.artifact.frames.map((frame) => ({
+        timestampSec: frame.timestampSec,
+        imageUrl: `${origin}/api/admin/source-decomposition/${encodeURIComponent(record.chatId)}/frames/${frame.index}`,
+        description: frame.description
+      })),
+      subtitles: {
+        available: record.artifact.subtitles.available,
+        segments: record.artifact.subtitles.segments
+      },
+      meta: record.artifact.meta
     };
   }
 

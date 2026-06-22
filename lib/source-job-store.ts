@@ -14,6 +14,12 @@ export type SourceJobTrigger = "fetch" | "comments";
 export type SourceJobRequest = {
   sourceUrl: string;
   autoRunStage2: boolean;
+  // AGENT-ONLY additive flag. When true (only ever set by the agent entry
+  // `clips_owner_run_agent_pipeline`), the source job ALSO produces a reusable
+  // Stage-1 decomposition artifact after the normal download + comments. Absent
+  // / false for every human manual-flow source job, so their behavior is
+  // unchanged.
+  agentDecomposition?: boolean;
   trigger: SourceJobTrigger;
   chat: {
     id: string;

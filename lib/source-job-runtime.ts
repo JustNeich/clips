@@ -22,6 +22,7 @@ import {
 } from "./source-job-store";
 import { fetchCommentsForUrl } from "./source-comments";
 import { ensureSourceMediaCached } from "./source-media-cache";
+import { runSourceDecomposition } from "./source-decomposition-runtime";
 import { getSourceDownloadErrorContext } from "./source-acquisition";
 import { getWorkspaceCodexIntegration } from "./team-store";
 import { clampHostedConcurrencyLimit, isHostedRenderRuntime } from "./hosted-resource-budget";
@@ -213,6 +214,31 @@ export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobR
     commentsAvailable = true;
   } else {
     commentsError = commentsResolution.error ?? "Не удалось получить комментарии.";
+  }
+
+  // AGENT-ONLY: produce the reusable Stage-1 decomposition artifact. Guarded by
+  // the agentDecomposition flag, which is never set by the human manual flow, so
+  // this is a no-op for every human source job. Best-effort: a decomposition
+  // failure must not fail the source job or alter its result.
+  if (job.request.agentDecomposition) {
+    markSourceJobStageRunning(job.jobId, "comments", "Готовим агентскую декомпозицию источника.");
+    try {
+      await runSourceDecomposition({
+        workspaceId: job.workspaceId,
+        channelId: job.channelId,
+        chatId: job.chatId,
+        sourceKey: cachedSource.sourceKey,
+        sourceUrl: job.sourceUrl,
+        sourcePath: cachedSource.sourcePath,
+        commentsPayload
+      });
+    } catch (error) {
+      logSourceRuntime("agent_decomposition_failed", {
+        jobId: job.jobId,
+        chatId: job.chatId,
+        message: error instanceof Error ? error.message : "decomposition failed"
+      });
+    }
   }
 
   let autoStage2RunId: string | null = null;
