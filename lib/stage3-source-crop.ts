@@ -19,6 +19,14 @@ export function createChannelStoryLowerSourceStripCrop(): Stage3SourceCrop {
   };
 }
 
+export function isChannelStoryLowerSourceStripCrop(value: unknown): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<Stage3SourceCrop>;
+  return candidate.enabled !== false && candidate.source === CHANNEL_STORY_LOWER_SOURCE_STRIP_CROP_SOURCE;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }

@@ -5,6 +5,7 @@ import {
   mergeAutoGeometry,
   resolveStage3AutoGeometry,
   resolveTemplateMediaSlot,
+  selectStage3AutoGeometryPatch,
   shouldApplyStage3AutoGeometryBaseline
 } from "../lib/stage3-auto-geometry";
 import type { DetectedSourceContent } from "../lib/stage3-source-content-detect";
@@ -143,6 +144,39 @@ test("agent full-frame crop (0,0,1,1) falls back to cropdetect", async () => {
   assert.ok(Math.abs(result!.contentAspect - 960 / 720) < 0.001);
 });
 
+test("channel-story fallback crop still allows cropdetect to replace top/bottom bars", async () => {
+  let called = false;
+  const detected: DetectedSourceContent = {
+    hasBars: true,
+    rect: { x: 0, y: 0.16, width: 1, height: 0.68 },
+    pixelCrop: { w: 1080, h: 1306, x: 0, y: 307 }
+  };
+  const result = await resolveStage3AutoGeometry({
+    sourcePath: "/tmp/fake.mp4",
+    ...SLOT,
+    sourceCrop: {
+      enabled: true,
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 0.84,
+      confidence: 0.86,
+      source: "channel-story-lower-source-strip-v1"
+    },
+    probeDimensions: stubProbe(1080, 1920),
+    detectContentRect: async () => {
+      called = true;
+      return detected;
+    }
+  });
+
+  assert.ok(result);
+  assert.equal(called, true);
+  assert.equal(result!.patch.sourceCrop?.source, "auto-aspect-fit");
+  assert.equal(result!.patch.sourceCrop?.y, 0.16);
+  assert.equal(result!.patch.sourceCrop?.height, 0.68);
+});
+
 test("unprobeable source -> null (never blocks the render)", async () => {
   const result = await resolveStage3AutoGeometry({
     sourcePath: "/tmp/fake.mp4",
@@ -204,6 +238,50 @@ test("mergeAutoGeometry: agent sourceCrop kept, other baseline fields still fill
   assert.equal(merged.mediaRegionHeightPx, 510);
 });
 
+test("mergeAutoGeometry: channel-story fallback crop is replaced by detected crop", () => {
+  const merged = mergeAutoGeometry(
+    {
+      sourceCrop: {
+        enabled: true,
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 0.84,
+        confidence: 0.86,
+        source: "channel-story-lower-source-strip-v1"
+      }
+    },
+    {
+      sourceCrop: { enabled: true, x: 0, y: 0.18, width: 1, height: 0.66, confidence: null, source: "auto-aspect-fit" }
+    }
+  );
+  assert.deepEqual(merged.sourceCrop, {
+    enabled: true,
+    x: 0,
+    y: 0.18,
+    width: 1,
+    height: 0.66,
+    confidence: null,
+    source: "auto-aspect-fit"
+  });
+});
+
+test("selectStage3AutoGeometryPatch keeps authoritative fallback replacement crop-only", () => {
+  const selected = selectStage3AutoGeometryPatch({
+    hasAuthoritativeSnapshot: true,
+    sourceCrop: { enabled: true, x: 0, y: 0, width: 1, height: 0.84, source: "channel-story-lower-source-strip-v1" },
+    patch: {
+      mediaRegionHeightPx: 510,
+      videoFit: "cover",
+      sourceCrop: { enabled: true, x: 0, y: 0.18, width: 1, height: 0.66, confidence: null, source: "auto-aspect-fit" }
+    }
+  });
+
+  assert.deepEqual(selected, {
+    sourceCrop: { enabled: true, x: 0, y: 0.18, width: 1, height: 0.66, confidence: null, source: "auto-aspect-fit" }
+  });
+});
+
 test("mergeAutoGeometry: no patch returns a copy of the raw plan", () => {
   const raw = { videoFit: "contain" as const };
   const merged = mergeAutoGeometry(raw, null);
@@ -215,6 +293,13 @@ test("auto-geometry baseline does not override an authoritative live-preview sna
   assert.equal(
     shouldApplyStage3AutoGeometryBaseline({ hasAuthoritativeSnapshot: true }),
     false
+  );
+  assert.equal(
+    shouldApplyStage3AutoGeometryBaseline({
+      hasAuthoritativeSnapshot: true,
+      sourceCrop: { enabled: true, x: 0, y: 0, width: 1, height: 0.84, source: "channel-story-lower-source-strip-v1" }
+    }),
+    true
   );
   assert.equal(
     shouldApplyStage3AutoGeometryBaseline({ hasAuthoritativeSnapshot: false }),

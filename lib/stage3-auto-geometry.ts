@@ -34,6 +34,7 @@ import { computeManagedTemplateTextFit } from "./managed-template-runtime";
 import type { Stage3TemplateConfig } from "./stage3-template";
 import type { Stage3RenderPlan } from "./stage3-agent";
 import type { Stage3SourceCrop } from "../app/components/types";
+import { isChannelStoryLowerSourceStripCrop } from "./stage3-source-crop";
 
 export type Stage3AutoGeometryPatch = {
   mediaRegionHeightPx?: number;
@@ -62,8 +63,12 @@ export type Stage3AutoGeometryResult = {
 
 export function shouldApplyStage3AutoGeometryBaseline(params: {
   hasAuthoritativeSnapshot?: boolean;
+  sourceCrop?: unknown;
 }): boolean {
-  return params.hasAuthoritativeSnapshot !== true;
+  if (params.hasAuthoritativeSnapshot !== true) {
+    return true;
+  }
+  return isChannelStoryLowerSourceStripCrop(params.sourceCrop);
 }
 
 type ProbeDimensions = (sourcePath: string) => Promise<{ width: number; height: number } | null>;
@@ -77,6 +82,9 @@ type NormalizedCrop = { x: number; y: number; width: number; height: number };
 // authoritative; a full-frame crop (0,0,1,1) means "no wrapper crop", so we fall
 // back to cropdetect to catch baked-in letterbox/pillarbox.
 function normalizeAgentCrop(value: unknown): NormalizedCrop | null {
+  if (isChannelStoryLowerSourceStripCrop(value)) {
+    return null;
+  }
   if (!value || typeof value !== "object") {
     return null;
   }
@@ -240,10 +248,24 @@ export function mergeAutoGeometry(
   if (isUnset(base.videoFit) && patch.videoFit) {
     base.videoFit = patch.videoFit;
   }
-  if (isUnset(base.sourceCrop) && patch.sourceCrop) {
+  if ((isUnset(base.sourceCrop) || isChannelStoryLowerSourceStripCrop(base.sourceCrop)) && patch.sourceCrop) {
     base.sourceCrop = patch.sourceCrop;
   }
   return base;
+}
+
+export function selectStage3AutoGeometryPatch(params: {
+  patch: Stage3AutoGeometryPatch | null | undefined;
+  hasAuthoritativeSnapshot?: boolean;
+  sourceCrop?: unknown;
+}): Stage3AutoGeometryPatch | null {
+  if (!params.patch) {
+    return null;
+  }
+  if (params.hasAuthoritativeSnapshot === true && isChannelStoryLowerSourceStripCrop(params.sourceCrop)) {
+    return params.patch.sourceCrop ? { sourceCrop: params.patch.sourceCrop } : null;
+  }
+  return params.patch;
 }
 
 /** Template media-slot dimensions (the region the source video fills). */

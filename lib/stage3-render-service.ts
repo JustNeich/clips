@@ -35,6 +35,7 @@ import {
   mergeAutoGeometry,
   resolveStage3AutoGeometry,
   resolveTemplateMediaSlot,
+  selectStage3AutoGeometryPatch,
   shouldApplyStage3AutoGeometryBaseline
 } from "./stage3-auto-geometry";
 import {
@@ -1577,8 +1578,11 @@ export async function renderStage3Video(
       bottomFontScale: provisionalPlan.bottomFontScale,
       templateConfigOverride: provisionalRuntime.templateConfig
     });
+    const rawRenderPlan = snapshot?.renderPlan ?? body.renderPlan;
+    const hasAuthoritativeSnapshot = Boolean(snapshot?.templateSnapshot || snapshot?.textFit);
     const shouldApplyAutoGeometry = shouldApplyStage3AutoGeometryBaseline({
-      hasAuthoritativeSnapshot: Boolean(snapshot?.templateSnapshot || snapshot?.textFit)
+      hasAuthoritativeSnapshot,
+      sourceCrop: rawRenderPlan?.sourceCrop
     });
     const autoGeometryPayload: Record<string, unknown> = {
       slotWidthPx: mediaSlot.slotWidthPx,
@@ -1592,7 +1596,7 @@ export async function renderStage3Video(
                 sourcePath: source.sourcePath,
                 slotWidthPx: mediaSlot.slotWidthPx,
                 slotHeightPx: mediaSlot.slotHeightPx,
-                sourceCrop: (snapshot?.renderPlan ?? body.renderPlan)?.sourceCrop
+                sourceCrop: rawRenderPlan?.sourceCrop
               }),
             {
               signal: options?.signal,
@@ -1617,8 +1621,13 @@ export async function renderStage3Video(
         })
       : null;
     const templateState = await measureRenderStage(options, "template_snapshot", null, async () => {
+      const autoGeometryPatch = selectStage3AutoGeometryPatch({
+        patch: autoGeometry?.patch ?? null,
+        hasAuthoritativeSnapshot,
+        sourceCrop: rawRenderPlan?.sourceCrop
+      });
       const renderPlan = normalizeRenderPlan(
-        mergeAutoGeometry(snapshot?.renderPlan ?? body.renderPlan, autoGeometry?.patch ?? null),
+        mergeAutoGeometry(rawRenderPlan, autoGeometryPatch),
         sourceDurationSec,
         templateIdFromInput,
         body.agentPrompt,

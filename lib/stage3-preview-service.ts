@@ -30,6 +30,7 @@ import {
   mergeAutoGeometry,
   resolveStage3AutoGeometry,
   resolveTemplateMediaSlot,
+  selectStage3AutoGeometryPatch,
   shouldApplyStage3AutoGeometryBaseline
 } from "./stage3-auto-geometry";
 import {
@@ -499,8 +500,10 @@ export async function prepareStage3Preview(
     bottomFontScale: provisionalPlan.bottomFontScale,
     templateConfigOverride: provisionalRuntime.templateConfig
   });
+  const hasAuthoritativeSnapshot = Boolean(snapshot?.templateSnapshot || snapshot?.textFit);
   const shouldApplyAutoGeometry = shouldApplyStage3AutoGeometryBaseline({
-    hasAuthoritativeSnapshot: Boolean(snapshot?.templateSnapshot || snapshot?.textFit)
+    hasAuthoritativeSnapshot,
+    sourceCrop: rawPlan?.sourceCrop
   });
   const autoGeometry = shouldApplyAutoGeometry
     ? await runHostedStage3HeavyJob(
@@ -517,8 +520,13 @@ export async function prepareStage3Preview(
         }
       )
     : null;
+  const autoGeometryPatch = selectStage3AutoGeometryPatch({
+    patch: autoGeometry?.patch ?? null,
+    hasAuthoritativeSnapshot,
+    sourceCrop: rawPlan?.sourceCrop
+  });
   const renderPlan = normalizeRenderPlan(
-    mergeAutoGeometry(rawPlan, autoGeometry?.patch ?? null),
+    mergeAutoGeometry(rawPlan, autoGeometryPatch),
     source.sourceDurationSec,
     snapshot?.managedTemplateState,
     workspaceId
