@@ -688,6 +688,7 @@ export type Stage3EditorDraftOverrides = {
   videoScaleY: number;
   videoScaleX: number;
   videoFit?: Stage3VideoFit;
+  sourceCrop?: Stage3SourceCrop | null;
   videoBrightness: number;
   videoExposure: number;
   videoContrast: number;

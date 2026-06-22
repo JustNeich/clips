@@ -600,6 +600,29 @@ function toTextFitSnapshot(
   );
 }
 
+function toCanonicalTextFitSnapshot(templateSnapshot: TemplateRenderSnapshot): Stage3TextFitSnapshot {
+  return createStage3TextFitSnapshot(
+    {
+      templateId: templateSnapshot.templateId,
+      snapshotHash: templateSnapshot.snapshotHash,
+      topText: templateSnapshot.content.topText,
+      bottomText: templateSnapshot.content.bottomText,
+      topFontScale: templateSnapshot.content.topFontScale,
+      bottomFontScale: templateSnapshot.content.bottomFontScale
+    },
+    {
+      topFontPx: templateSnapshot.fit.topFontPx,
+      bottomFontPx: templateSnapshot.fit.bottomFontPx,
+      topLineHeight: templateSnapshot.fit.topLineHeight,
+      bottomLineHeight: templateSnapshot.fit.bottomLineHeight,
+      topLines: templateSnapshot.fit.topLines,
+      bottomLines: templateSnapshot.fit.bottomLines,
+      topCompacted: templateSnapshot.fit.topCompacted,
+      bottomCompacted: templateSnapshot.fit.bottomCompacted
+    }
+  );
+}
+
 function areTextFitSnapshotsEqual(
   left: Stage3TextFitSnapshot | null | undefined,
   right: Stage3TextFitSnapshot | null | undefined
@@ -2848,15 +2871,10 @@ export function Step3RenderTemplate({
     () => getTextFitHashForSnapshot(previewTemplateSnapshot),
     [previewTemplateSnapshot]
   );
-  const activePreviewTextFit = useMemo(() => {
-    if (
-      previewMeasuredFitState?.snapshotHash === previewTemplateSnapshot.snapshotHash &&
-      previewMeasuredFitState.fitHash === previewFitHash
-    ) {
-      return previewMeasuredFitState.fit;
-    }
-    return toTextFitSnapshot(previewTemplateSnapshot.computed, previewTemplateSnapshot);
-  }, [previewFitHash, previewMeasuredFitState, previewTemplateSnapshot]);
+  const canonicalPreviewTextFit = useMemo(
+    () => toCanonicalTextFitSnapshot(previewTemplateSnapshot),
+    [previewTemplateSnapshot]
+  );
   const isPreviewTextFitMeasured =
     previewMeasuredFitState?.snapshotHash === previewTemplateSnapshot.snapshotHash &&
     previewMeasuredFitState.fitHash === previewFitHash &&
@@ -3340,13 +3358,13 @@ export function Step3RenderTemplate({
     const timer = window.setTimeout(() => {
       const authoritativePreviewSnapshot: Step3AuthoritativePreviewSnapshot = {
         templateSnapshot: previewTemplateSnapshot,
-        textFit: activePreviewTextFit,
+        textFit: canonicalPreviewTextFit,
         managedTemplateState: toSnapshotManagedTemplateState(managedTemplateState, templateId)
       };
       if (pendingTextFitAction.kind === "optimize") {
-        onOptimize(pendingTextFitAction.overrides, activePreviewTextFit, authoritativePreviewSnapshot);
+        onOptimize(pendingTextFitAction.overrides, canonicalPreviewTextFit, authoritativePreviewSnapshot);
       } else {
-        onRender(pendingTextFitAction.overrides, activePreviewTextFit, authoritativePreviewSnapshot);
+        onRender(pendingTextFitAction.overrides, canonicalPreviewTextFit, authoritativePreviewSnapshot);
       }
       setPendingTextFitAction(null);
     }, 0);
@@ -3355,7 +3373,7 @@ export function Step3RenderTemplate({
       window.clearTimeout(timer);
     };
   }, [
-    activePreviewTextFit,
+    canonicalPreviewTextFit,
     isPreviewTextFitReady,
     managedTemplateState,
     onOptimize,
@@ -5288,13 +5306,13 @@ export function Step3RenderTemplate({
       window.setTimeout(() => {
         const authoritativePreviewSnapshot: Step3AuthoritativePreviewSnapshot = {
           templateSnapshot: previewTemplateSnapshot,
-          textFit: activePreviewTextFit,
+          textFit: canonicalPreviewTextFit,
           managedTemplateState: toSnapshotManagedTemplateState(managedTemplateState, templateId)
         };
         if (kind === "optimize") {
-          onOptimize(overrides, activePreviewTextFit, authoritativePreviewSnapshot);
+          onOptimize(overrides, canonicalPreviewTextFit, authoritativePreviewSnapshot);
         } else {
-          onRender(overrides, activePreviewTextFit, authoritativePreviewSnapshot);
+          onRender(overrides, canonicalPreviewTextFit, authoritativePreviewSnapshot);
         }
       }, 0);
       return;

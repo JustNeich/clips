@@ -401,6 +401,22 @@ test("channel_story source_full default snapshot crops the lower source strip in
   assert.equal(baseSnapshotHash, snapshot.templateSnapshot?.snapshotHash);
 });
 
+test("channel_story channel-default default snapshot carries crop without changing cover fit", () => {
+  const managedState = makeChannelStoryManagedTemplateState();
+  const snapshot = buildDefaultStage3RenderSnapshot({
+    stage2: makeStage2Response(),
+    channel: makeChannel(WISDOM_STORIES_TEMPLATE_ID),
+    templateId: WISDOM_STORIES_TEMPLATE_ID,
+    managedTemplateState: managedState,
+    sourceDurationSec: null
+  });
+
+  assert.equal(snapshot.renderPlan.durationMode, "channel_default");
+  assert.equal(snapshot.renderPlan.videoFit, "cover");
+  assert.equal(snapshot.renderPlan.sourceCrop?.source, CHANNEL_STORY_LOWER_SOURCE_STRIP_CROP_SOURCE);
+  assert.equal(snapshot.renderPlan.sourceCrop?.height, 0.84);
+});
+
 test("managed channel template: embedded state lets the worker resolve WITHOUT a FK failure", () => {
   const managedState = makeManagedTemplateState();
   const snapshot = buildDefaultStage3RenderSnapshot({

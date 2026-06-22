@@ -234,6 +234,7 @@ import {
   resolveStage3SnapshotManagedTemplateState,
   toSnapshotManagedTemplateState
 } from "../lib/stage3-snapshot-managed-template";
+import { applyChannelStorySourceCropDefault } from "../lib/stage3-channel-story-defaults";
 import {
   resolveStage3JobPollIntervalMs,
   resolveStage3JobStatusTransientRetryMs,
@@ -2678,6 +2679,10 @@ export default function HomePage() {
               ? draftOverrides.videoScaleX
               : stage3RenderPlan.videoScaleX,
           videoFit: draftOverrides?.videoFit ?? stage3RenderPlan.videoFit,
+          sourceCrop:
+            draftOverrides && Object.prototype.hasOwnProperty.call(draftOverrides, "sourceCrop")
+              ? draftOverrides.sourceCrop ?? null
+              : stage3RenderPlan.sourceCrop,
           videoBrightness:
             typeof draftOverrides?.videoBrightness === "number" &&
             Number.isFinite(draftOverrides.videoBrightness)
@@ -2745,7 +2750,7 @@ export default function HomePage() {
       const authoritativeTemplateSnapshot = authoritativePreviewSnapshot?.templateSnapshot ?? null;
       const authoritativeManagedTemplateState = authoritativePreviewSnapshot?.managedTemplateState ?? null;
       const effectiveTextFitOverride = authoritativePreviewSnapshot?.textFit ?? textFitOverride ?? null;
-      const effectiveRenderPlan = applyStage3AuthoritativePreviewContent(
+      const authoritativeRenderPlan = applyStage3AuthoritativePreviewContent(
         {
           ...normalizedRenderPlan,
           ...editorSession.renderPlanPatch
@@ -2755,13 +2760,17 @@ export default function HomePage() {
         }
       );
       const activeManagedTemplateState = resolveStage3SnapshotManagedTemplateState({
-        templateId: effectiveRenderPlan.templateId,
+        templateId: authoritativeRenderPlan.templateId,
         pageState: stage3ManagedTemplateState,
         previewState: authoritativeManagedTemplateState
       });
       const snapshotManagedTemplateState = toSnapshotManagedTemplateState(
         activeManagedTemplateState,
-        effectiveRenderPlan.templateId
+        authoritativeRenderPlan.templateId
+      );
+      const effectiveRenderPlan = applyChannelStorySourceCropDefault(
+        authoritativeRenderPlan,
+        snapshotManagedTemplateState
       );
       const templateSnapshot =
         authoritativeTemplateSnapshot ??

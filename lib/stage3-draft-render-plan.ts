@@ -20,6 +20,7 @@ const STAGE3_DRAFT_RENDER_PLAN_OVERRIDE_KEYS = [
   "videoScaleY",
   "videoScaleX",
   "videoFit",
+  "sourceCrop",
   "videoBrightness",
   "videoExposure",
   "videoContrast",

@@ -46,7 +46,16 @@ test("stage 3 draft render-plan override keeps per-draft duration and source gai
       ...base,
       targetDurationSec: 59,
       sourceAudioGain: 1.75,
-      videoFit: "contain"
+      videoFit: "contain",
+      sourceCrop: {
+        enabled: true,
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 0.84,
+        confidence: 0.86,
+        source: "channel-story-lower-source-strip-v1"
+      }
     },
     base
   );
@@ -54,7 +63,18 @@ test("stage 3 draft render-plan override keeps per-draft duration and source gai
   assert.deepEqual(buildStage3DraftRenderPlanOverride(current, base), {
     targetDurationSec: 59,
     sourceAudioGain: 1.75,
-    videoFit: "contain"
+    videoFit: "contain",
+    sourceCrop: {
+      enabled: true,
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 0.84,
+      confidence: 0.86,
+      source: "channel-story-lower-source-strip-v1",
+      reviewedAt: null,
+      notes: null
+    }
   });
 
   assert.deepEqual(
@@ -63,13 +83,31 @@ test("stage 3 draft render-plan override keeps per-draft duration and source gai
       durationMode: "channel_default",
       sourceAudioGain: 0.5,
       videoFit: "contain",
+      sourceCrop: {
+        enabled: true,
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 0.84,
+        confidence: 0.86,
+        source: "channel-story-lower-source-strip-v1"
+      },
       templateId: "template-owned-by-channel"
     }),
     {
       durationMode: "channel_default",
       targetDurationSec: 15,
       sourceAudioGain: 0.5,
-      videoFit: "contain"
+      videoFit: "contain",
+      sourceCrop: {
+        enabled: true,
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 0.84,
+        confidence: 0.86,
+        source: "channel-story-lower-source-strip-v1"
+      }
     }
   );
 });

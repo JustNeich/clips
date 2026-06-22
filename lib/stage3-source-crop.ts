@@ -15,7 +15,7 @@ export function createChannelStoryLowerSourceStripCrop(): Stage3SourceCrop {
     confidence: 0.86,
     source: CHANNEL_STORY_LOWER_SOURCE_STRIP_CROP_SOURCE,
     notes:
-      "Channel story full-source renders crop the lower source strip before fitting media, so donor handles and baked lower captions stay outside the visible viewport."
+      "Channel story renders crop the lower source strip before fitting media, so donor handles and baked lower captions stay outside the visible viewport."
   };
 }
 
