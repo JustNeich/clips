@@ -29,7 +29,8 @@ function canUseBearerForApi(pathname: string, request: NextRequest): boolean {
       pathname === "/api/admin/audit-events" ||
       pathname === "/api/admin/control" ||
       pathname === "/api/admin/control/copscopes" ||
-      pathname.startsWith("/api/admin/render-exports/"))
+      pathname.startsWith("/api/admin/render-exports/") ||
+      pathname.startsWith("/api/admin/source-decomposition/"))
   );
 }
 
