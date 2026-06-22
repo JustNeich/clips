@@ -29,7 +29,8 @@ import { normalizeStage3MediaRegionHeightPx } from "./stage3-media-geometry";
 import {
   mergeAutoGeometry,
   resolveStage3AutoGeometry,
-  resolveTemplateMediaSlot
+  resolveTemplateMediaSlot,
+  shouldApplyStage3AutoGeometryBaseline
 } from "./stage3-auto-geometry";
 import {
   DEFAULT_STAGE3_CLIP_DURATION_SEC,
@@ -476,9 +477,9 @@ export async function prepareStage3Preview(
   const clipStartCandidate = parseFiniteNumber(snapshot?.clipStartSec) ?? parseFiniteNumber(body.clipStartSec) ?? 0;
   const clipStartSec = clampClipStart(clipStartCandidate, source.sourceDurationSec, clipDurationSec);
   const rawPlan = snapshot?.renderPlan ?? body.renderPlan;
-  // Deterministic geometry baseline — the SAME resolver the final render uses, so
-  // the preview frames the judge approves match the final MP4 exactly. Agent
-  // overrides still win (mergeAutoGeometry only fills unset fields).
+  // Deterministic geometry baseline — the SAME resolver the final render uses.
+  // If the editor already sent an authoritative live-preview snapshot, do not
+  // add hidden geometry that the editor did not see.
   const provisionalPlan = normalizeRenderPlan(
     rawPlan,
     source.sourceDurationSec,
@@ -498,19 +499,24 @@ export async function prepareStage3Preview(
     bottomFontScale: provisionalPlan.bottomFontScale,
     templateConfigOverride: provisionalRuntime.templateConfig
   });
-  const autoGeometry = await runHostedStage3HeavyJob(
-    () =>
-      resolveStage3AutoGeometry({
-        sourcePath: source.sourcePath,
-        slotWidthPx: mediaSlot.slotWidthPx,
-        slotHeightPx: mediaSlot.slotHeightPx,
-        sourceCrop: rawPlan?.sourceCrop
-      }),
-    {
-      signal: options?.signal,
-      waitTimeoutMs
-    }
-  );
+  const shouldApplyAutoGeometry = shouldApplyStage3AutoGeometryBaseline({
+    hasAuthoritativeSnapshot: Boolean(snapshot?.templateSnapshot || snapshot?.textFit)
+  });
+  const autoGeometry = shouldApplyAutoGeometry
+    ? await runHostedStage3HeavyJob(
+        () =>
+          resolveStage3AutoGeometry({
+            sourcePath: source.sourcePath,
+            slotWidthPx: mediaSlot.slotWidthPx,
+            slotHeightPx: mediaSlot.slotHeightPx,
+            sourceCrop: rawPlan?.sourceCrop
+          }),
+        {
+          signal: options?.signal,
+          waitTimeoutMs
+        }
+      )
+    : null;
   const renderPlan = normalizeRenderPlan(
     mergeAutoGeometry(rawPlan, autoGeometry?.patch ?? null),
     source.sourceDurationSec,

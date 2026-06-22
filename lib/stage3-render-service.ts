@@ -34,7 +34,8 @@ import { normalizeStage3MediaRegionHeightPx } from "./stage3-media-geometry";
 import {
   mergeAutoGeometry,
   resolveStage3AutoGeometry,
-  resolveTemplateMediaSlot
+  resolveTemplateMediaSlot,
+  shouldApplyStage3AutoGeometryBaseline
 } from "./stage3-auto-geometry";
 import {
   analyzeBestClipAndFocus,
@@ -1551,9 +1552,10 @@ export async function renderStage3Video(
           ? body.renderPlan.templateId.trim()
           : body.templateId?.trim() || STAGE3_TEMPLATE_ID;
     // Deterministic geometry: resolve the media slot once, then compute the
-    // no-bars fit from the real source aspect. Merged as a BASELINE into the raw
-    // plan (an explicit agent/judge override still wins) before BOTH the preview
-    // and the final render, so preview == final by construction.
+    // no-bars fit from the real source aspect. Merged as a BASELINE into raw
+    // plans, unless the editor already supplied an authoritative live-preview
+    // snapshot; in that case render must match the editor instead of adding
+    // hidden geometry after the click.
     const provisionalPlan = normalizeRenderPlan(
       snapshot?.renderPlan ?? body.renderPlan,
       sourceDurationSec,
@@ -1575,40 +1577,45 @@ export async function renderStage3Video(
       bottomFontScale: provisionalPlan.bottomFontScale,
       templateConfigOverride: provisionalRuntime.templateConfig
     });
+    const shouldApplyAutoGeometry = shouldApplyStage3AutoGeometryBaseline({
+      hasAuthoritativeSnapshot: Boolean(snapshot?.templateSnapshot || snapshot?.textFit)
+    });
     const autoGeometryPayload: Record<string, unknown> = {
       slotWidthPx: mediaSlot.slotWidthPx,
       slotHeightPx: mediaSlot.slotHeightPx
     };
-    const autoGeometry = await measureRenderStage(options, "auto_geometry", autoGeometryPayload, async () => {
-      const result = await runHostedStage3HeavyJob(
-        () =>
-          resolveStage3AutoGeometry({
-            sourcePath: source.sourcePath,
-            slotWidthPx: mediaSlot.slotWidthPx,
-            slotHeightPx: mediaSlot.slotHeightPx,
-            sourceCrop: (snapshot?.renderPlan ?? body.renderPlan)?.sourceCrop
-          }),
-        {
-          signal: options?.signal,
-          waitTimeoutMs
-        }
-      );
-      if (result) {
-        Object.assign(autoGeometryPayload, {
-          mode: result.decision.mode,
-          contentAspect: Number(result.contentAspect.toFixed(3)),
-          mediaRegionHeightPx: result.patch.mediaRegionHeightPx ?? null,
-          videoFit: result.patch.videoFit ?? null,
-          videoScaleX: result.patch.videoScaleX ?? null,
-          sourceCropApplied: Boolean(result.patch.sourceCrop),
-          escalateToJudge: result.escalateToJudge,
-          escalationReason: result.escalationReason
-        });
-      } else {
-        Object.assign(autoGeometryPayload, { resolved: false });
-      }
-      return result;
-    });
+    const autoGeometry = shouldApplyAutoGeometry
+      ? await measureRenderStage(options, "auto_geometry", autoGeometryPayload, async () => {
+          const result = await runHostedStage3HeavyJob(
+            () =>
+              resolveStage3AutoGeometry({
+                sourcePath: source.sourcePath,
+                slotWidthPx: mediaSlot.slotWidthPx,
+                slotHeightPx: mediaSlot.slotHeightPx,
+                sourceCrop: (snapshot?.renderPlan ?? body.renderPlan)?.sourceCrop
+              }),
+            {
+              signal: options?.signal,
+              waitTimeoutMs
+            }
+          );
+          if (result) {
+            Object.assign(autoGeometryPayload, {
+              mode: result.decision.mode,
+              contentAspect: Number(result.contentAspect.toFixed(3)),
+              mediaRegionHeightPx: result.patch.mediaRegionHeightPx ?? null,
+              videoFit: result.patch.videoFit ?? null,
+              videoScaleX: result.patch.videoScaleX ?? null,
+              sourceCropApplied: Boolean(result.patch.sourceCrop),
+              escalateToJudge: result.escalateToJudge,
+              escalationReason: result.escalationReason
+            });
+          } else {
+            Object.assign(autoGeometryPayload, { resolved: false });
+          }
+          return result;
+        })
+      : null;
     const templateState = await measureRenderStage(options, "template_snapshot", null, async () => {
       const renderPlan = normalizeRenderPlan(
         mergeAutoGeometry(snapshot?.renderPlan ?? body.renderPlan, autoGeometry?.patch ?? null),

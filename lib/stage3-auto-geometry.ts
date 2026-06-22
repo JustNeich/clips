@@ -13,10 +13,12 @@
 //
 // This module composes those two engines plus source probing into ONE resolver
 // that returns a renderPlan patch. It is computed ONCE, cloud-side, from the
-// cached source, and merged into the render plan before BOTH the headless
-// preview and the final render — so preview == final by construction. The Stage
-// 3 worker stays a pure consumer of `mediaRegionHeightPx` / `videoScaleX` /
-// `sourceCrop` / `videoFit` (already plumbed), so nothing new is vendored to it.
+// cached source, and merged into non-authoritative render plans before BOTH the
+// headless preview and the final render. Once the editor has already supplied a
+// live-preview snapshot, that snapshot wins: render must not add hidden geometry
+// that the editor never showed. The Stage 3 worker stays a pure consumer of
+// `mediaRegionHeightPx` / `videoScaleX` / `sourceCrop` / `videoFit` (already
+// plumbed), so nothing new is vendored to it.
 
 import {
   DEFAULT_STAGE3_ASPECT_FIT_CAPS,
@@ -57,6 +59,12 @@ export type Stage3AutoGeometryResult = {
   escalationReason: string | null;
   source: "deterministic";
 };
+
+export function shouldApplyStage3AutoGeometryBaseline(params: {
+  hasAuthoritativeSnapshot?: boolean;
+}): boolean {
+  return params.hasAuthoritativeSnapshot !== true;
+}
 
 type ProbeDimensions = (sourcePath: string) => Promise<{ width: number; height: number } | null>;
 type DetectContentRect = typeof detectSourceContentRect;

@@ -4,7 +4,8 @@ import test from "node:test";
 import {
   mergeAutoGeometry,
   resolveStage3AutoGeometry,
-  resolveTemplateMediaSlot
+  resolveTemplateMediaSlot,
+  shouldApplyStage3AutoGeometryBaseline
 } from "../lib/stage3-auto-geometry";
 import type { DetectedSourceContent } from "../lib/stage3-source-content-detect";
 import { STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
@@ -208,6 +209,17 @@ test("mergeAutoGeometry: no patch returns a copy of the raw plan", () => {
   const merged = mergeAutoGeometry(raw, null);
   assert.deepEqual(merged, raw);
   assert.notEqual(merged, raw);
+});
+
+test("auto-geometry baseline does not override an authoritative live-preview snapshot", () => {
+  assert.equal(
+    shouldApplyStage3AutoGeometryBaseline({ hasAuthoritativeSnapshot: true }),
+    false
+  );
+  assert.equal(
+    shouldApplyStage3AutoGeometryBaseline({ hasAuthoritativeSnapshot: false }),
+    true
+  );
 });
 
 test("resolveTemplateMediaSlot returns positive slot dimensions for the default template", () => {
