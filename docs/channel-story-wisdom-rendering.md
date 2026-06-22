@@ -46,6 +46,14 @@ crop and must be validated against full-frame output. Do not compensate for a ba
 source crop by moving text, hiding the bottom area, or hand-editing the exported
 MP4.
 
+Some portrait reels wrap the real video in source UI: account chrome and sparse
+caption text can sit on black above the useful picture. Plain ffmpeg
+`cropdetect` may treat those letters as content and return the full frame. When
+the render plan still carries the protected channel-story fallback crop, Stage 3
+may run a sparse-overlay wrapper detector that looks for the dense inner video
+window and replaces the fallback with an inner-source crop. The crop must remove
+only the source wrapper, never the final card/template.
+
 ## Horizontal Sources Use Contain
 
 Horizontal and wide sources must use `contain` in the media slot. The renderer

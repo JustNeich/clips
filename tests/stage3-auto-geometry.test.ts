@@ -177,6 +177,57 @@ test("channel-story fallback crop still allows cropdetect to replace top/bottom 
   assert.equal(result!.patch.sourceCrop?.height, 0.68);
 });
 
+test("channel-story fallback crop enables sparse overlay wrapper detection", async () => {
+  let receivedParams: { detectSparseOverlayWrapper?: boolean } | null = null;
+  const detected: DetectedSourceContent = {
+    hasBars: true,
+    rect: { x: 0.083333, y: 0.252336, width: 0.833333, height: 0.733645 },
+    pixelCrop: { w: 600, h: 939, x: 60, y: 323 }
+  };
+  const result = await resolveStage3AutoGeometry({
+    sourcePath: "/tmp/fake.mp4",
+    ...SLOT,
+    sourceCrop: {
+      enabled: true,
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 0.84,
+      confidence: 0.86,
+      source: "channel-story-lower-source-strip-v1"
+    },
+    probeDimensions: stubProbe(720, 1280),
+    detectContentRect: async (params) => {
+      receivedParams = params;
+      return detected;
+    }
+  });
+
+  assert.ok(result);
+  assert.ok(receivedParams);
+  assert.equal((receivedParams as { detectSparseOverlayWrapper?: boolean }).detectSparseOverlayWrapper, true);
+  assert.equal(result!.patch.sourceCrop?.source, "auto-aspect-fit");
+  assert.equal(result!.patch.sourceCrop?.y, 0.252336);
+  assert.equal(result!.patch.sourceCrop?.height, 0.733645);
+});
+
+test("non-fallback crop does not enable sparse overlay wrapper detection", async () => {
+  let receivedParams: { detectSparseOverlayWrapper?: boolean } | null = null;
+  const result = await resolveStage3AutoGeometry({
+    sourcePath: "/tmp/fake.mp4",
+    ...SLOT,
+    probeDimensions: stubProbe(720, 1280),
+    detectContentRect: async (params) => {
+      receivedParams = params;
+      return NO_BARS;
+    }
+  });
+
+  assert.ok(result);
+  assert.ok(receivedParams);
+  assert.equal((receivedParams as { detectSparseOverlayWrapper?: boolean }).detectSparseOverlayWrapper, false);
+});
+
 test("unprobeable source -> null (never blocks the render)", async () => {
   const result = await resolveStage3AutoGeometry({
     sourcePath: "/tmp/fake.mp4",

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   parseCropdetectCrop,
+  resolveDenseContentRect,
   resolveDetectedContent
 } from "../lib/stage3-source-content-detect";
 
@@ -50,4 +51,34 @@ test("resolveDetectedContent: tiny 1-2px inset is ignored as noise", () => {
 test("resolveDetectedContent: invalid dims -> null", () => {
   assert.equal(resolveDetectedContent({ w: 100, h: 100, x: 0, y: 0 }, 0, 0).rect, null);
   assert.equal(resolveDetectedContent(null, 720, 720).rect, null);
+});
+
+test("resolveDenseContentRect ignores sparse top source captions and keeps the dense video window", () => {
+  const rows = Array.from({ length: 214 }, (_, index) => {
+    if (index >= 54 && index <= 210) {
+      return 0.83;
+    }
+    if (index >= 30 && index <= 34) {
+      return 0.23;
+    }
+    return 0.02;
+  });
+  const cols = Array.from({ length: 120 }, (_, index) => (
+    index >= 10 && index <= 109 ? 0.77 : 0.03
+  ));
+  const res = resolveDenseContentRect(rows, cols, 720, 1280);
+  assert.equal(res.hasBars, true);
+  assert.ok(res.rect);
+  assert.ok(Math.abs(res.rect!.x - 10 / 120) < 1e-6);
+  assert.ok(Math.abs(res.rect!.y - 54 / 214) < 1e-6);
+  assert.ok(Math.abs(res.rect!.width - 100 / 120) < 1e-6);
+  assert.ok(Math.abs(res.rect!.height - 157 / 214) < 1e-6);
+});
+
+test("resolveDenseContentRect leaves full-frame dense sources alone", () => {
+  const rows = Array.from({ length: 214 }, () => 0.82);
+  const cols = Array.from({ length: 120 }, () => 0.78);
+  const res = resolveDenseContentRect(rows, cols, 720, 1280);
+  assert.equal(res.hasBars, false);
+  assert.equal(res.rect, null);
 });

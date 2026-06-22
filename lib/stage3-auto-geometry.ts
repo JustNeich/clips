@@ -141,6 +141,7 @@ export async function resolveStage3AutoGeometry(params: {
 
   // The effective content region = the agent's wrapper crop when it supplied one;
   // otherwise cropdetect's baked-in-bar rectangle; otherwise the full frame.
+  const replaceableChannelStoryFallbackCrop = isChannelStoryLowerSourceStripCrop(params.sourceCrop);
   const agentCrop = normalizeAgentCrop(params.sourceCrop);
   let detected: DetectedSourceContent = { rect: null, hasBars: false, pixelCrop: null };
   let cropWidthFrac = 1;
@@ -153,7 +154,8 @@ export async function resolveStage3AutoGeometry(params: {
     detected = await detect({
       sourcePath: params.sourcePath,
       sourceWidth: dims.width,
-      sourceHeight: dims.height
+      sourceHeight: dims.height,
+      detectSparseOverlayWrapper: replaceableChannelStoryFallbackCrop
     });
     if (detected.hasBars && detected.rect) {
       cropWidthFrac = detected.rect.width;
