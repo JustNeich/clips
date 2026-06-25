@@ -36,11 +36,6 @@ const DENSE_COL_THRESHOLD = 0.5;
 const MIN_DENSE_HEIGHT_FRACTION = 0.3;
 const MIN_DENSE_WIDTH_FRACTION = 0.55;
 const MAX_OUTSIDE_DENSITY = 0.28;
-const MAX_DENSE_ROW_GAP_FRACTION = 0.05;
-const MIN_DENSE_ROW_START_RUN_FRACTION = 0.05;
-const BROAD_SPLIT_COL_THRESHOLD = DENSE_COL_THRESHOLD * 0.8;
-const MIN_BROAD_SPLIT_COL_FRACTION = 0.82;
-const MIN_BROAD_SPLIT_COL_AVERAGE = 0.45;
 
 function clampUnit(value: number): number {
   return Math.min(1, Math.max(0, value));
@@ -158,96 +153,6 @@ function findLargestDenseBand(
   return best;
 }
 
-function findDenseRuns(values: number[], threshold: number): DensityBand[] {
-  const runs: DensityBand[] = [];
-  let start = -1;
-  for (let i = 0; i <= values.length; i += 1) {
-    if (i < values.length && (values[i] ?? 0) >= threshold) {
-      if (start < 0) {
-        start = i;
-      }
-      continue;
-    }
-    if (start >= 0) {
-      const end = i - 1;
-      runs.push({ start, end, score: average(values, start, i) ?? 0 });
-      start = -1;
-    }
-  }
-  return runs;
-}
-
-function bandLength(band: DensityBand): number {
-  return band.end - band.start + 1;
-}
-
-function findMergedDenseRowBand(
-  values: number[],
-  threshold: number,
-  minLength: number
-): DensityBand | null {
-  const runs = findDenseRuns(values, threshold);
-  if (!runs.length) {
-    return null;
-  }
-
-  const maxGap = Math.max(1, Math.round(values.length * MAX_DENSE_ROW_GAP_FRACTION));
-  const minStartRunLength = Math.max(
-    1,
-    Math.round(values.length * MIN_DENSE_ROW_START_RUN_FRACTION)
-  );
-  let best: DensityBand | null = null;
-
-  for (let i = 0; i < runs.length; i += 1) {
-    const firstRun = runs[i]!;
-    if (bandLength(firstRun) < minStartRunLength) {
-      continue;
-    }
-    let end = firstRun.end;
-    for (let j = i + 1; j < runs.length; j += 1) {
-      const nextRun = runs[j]!;
-      const gap = nextRun.start - end - 1;
-      if (gap > maxGap) {
-        break;
-      }
-      end = nextRun.end;
-    }
-    const merged: DensityBand = {
-      start: firstRun.start,
-      end,
-      score: average(values, firstRun.start, end + 1) ?? 0
-    };
-    const length = bandLength(merged);
-    if (
-      length >= minLength &&
-      (!best ||
-        length > bandLength(best) ||
-        (length === bandLength(best) && merged.score > best.score))
-    ) {
-      best = merged;
-    }
-  }
-  return best;
-}
-
-function resolveDenseColumnBand(values: number[], minLength: number): DensityBand | null {
-  const largest = findLargestDenseBand(values, DENSE_COL_THRESHOLD, minLength);
-  if (largest) {
-    return largest;
-  }
-
-  const broadDenseColumns = values.filter((value) => value >= BROAD_SPLIT_COL_THRESHOLD).length;
-  const broadFraction = values.length > 0 ? broadDenseColumns / values.length : 0;
-  const fullAverage = average(values, 0, values.length) ?? 0;
-  if (
-    broadFraction >= MIN_BROAD_SPLIT_COL_FRACTION &&
-    fullAverage >= MIN_BROAD_SPLIT_COL_AVERAGE
-  ) {
-    return { start: 0, end: values.length - 1, score: fullAverage };
-  }
-  return null;
-}
-
 function densityBandOutsideAverage(values: number[], band: DensityBand): number {
   const before = average(values, 0, band.start);
   const after = average(values, band.end + 1, values.length);
@@ -277,10 +182,8 @@ export function resolveDenseContentRect(
 
   const minRowLength = Math.max(1, Math.round(rowDensity.length * MIN_DENSE_HEIGHT_FRACTION));
   const minColLength = Math.max(1, Math.round(colDensity.length * MIN_DENSE_WIDTH_FRACTION));
-  const rowBand =
-    findMergedDenseRowBand(rowDensity, DENSE_ROW_THRESHOLD, minRowLength) ??
-    findLargestDenseBand(rowDensity, DENSE_ROW_THRESHOLD, minRowLength);
-  const colBand = resolveDenseColumnBand(colDensity, minColLength);
+  const rowBand = findLargestDenseBand(rowDensity, DENSE_ROW_THRESHOLD, minRowLength);
+  const colBand = findLargestDenseBand(colDensity, DENSE_COL_THRESHOLD, minColLength);
   if (!rowBand || !colBand) {
     return { rect: null, hasBars: false, pixelCrop: null };
   }

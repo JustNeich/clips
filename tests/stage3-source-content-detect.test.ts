@@ -75,47 +75,6 @@ test("resolveDenseContentRect ignores sparse top source captions and keeps the d
   assert.ok(Math.abs(res.rect!.height - 157 / 214) < 1e-6);
 });
 
-test("resolveDenseContentRect crops a top source wrapper around split full-width video", () => {
-  const rows = Array.from({ length: 214 }, (_, index) => {
-    if (index >= 43 && index <= 47) {
-      return 0.71;
-    }
-    if (index >= 51 && index <= 55) {
-      return 0.76;
-    }
-    if (index >= 58 && index <= 70) {
-      return 0.81;
-    }
-    if (index >= 73 && index <= 79) {
-      return 0.68;
-    }
-    if (index >= 89 && index <= 199) {
-      return 0.8;
-    }
-    return 0.02;
-  });
-  const cols = Array.from({ length: 120 }, (_, index) => {
-    if (index <= 53) {
-      return 0.56;
-    }
-    if (index >= 55 && index <= 63) {
-      return 0.56;
-    }
-    if (index >= 69) {
-      return 0.6;
-    }
-    return 0.12;
-  });
-
-  const res = resolveDenseContentRect(rows, cols, 960, 1706);
-  assert.equal(res.hasBars, true);
-  assert.ok(res.rect);
-  assert.equal(res.rect!.x, 0);
-  assert.equal(res.rect!.width, 1);
-  assert.ok(Math.abs(res.rect!.y - 58 / 214) < 1e-6);
-  assert.ok(Math.abs(res.rect!.height - 142 / 214) < 1e-6);
-});
-
 test("resolveDenseContentRect leaves full-frame dense sources alone", () => {
   const rows = Array.from({ length: 214 }, () => 0.82);
   const cols = Array.from({ length: 120 }, () => 0.78);
