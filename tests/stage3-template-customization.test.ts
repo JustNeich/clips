@@ -180,6 +180,53 @@ test("template snapshot hash includes source overlay text and watermark config",
   assert.notEqual(baseSnapshot.snapshotHash, watermarkSnapshot.snapshotHash);
 });
 
+test("template snapshot hash includes top and bottom font identity", () => {
+  const content = buildDemoContent();
+  const baseConfig = cloneStage3TemplateConfig(SCIENCE_CARD);
+  const baseSnapshot = buildTemplateRenderSnapshot({
+    templateId: "science-card-v1",
+    content,
+    templateConfigOverride: baseConfig
+  });
+
+  const selectedFontConfig = cloneStage3TemplateConfig(SCIENCE_CARD);
+  selectedFontConfig.typography.top.fontFamily = '"Courier New",monospace';
+  selectedFontConfig.typography.bottom.fontFamily = '"Georgia",serif';
+  const selectedFontSnapshot = buildTemplateRenderSnapshot({
+    templateId: "science-card-v1",
+    content,
+    templateConfigOverride: selectedFontConfig
+  });
+
+  const uploadedFontConfig = cloneStage3TemplateConfig(SCIENCE_CARD);
+  uploadedFontConfig.typography.top.fontAsset = {
+    id: "fonttop123456",
+    family: "Stage3TemplateFont_fonttop123456",
+    url: "/api/design/template-assets/fonttop123456",
+    originalName: "LeadDisplay.woff2",
+    mimeType: "font/woff2",
+    sizeBytes: 32100
+  };
+  uploadedFontConfig.typography.top.fontFamily = '"Stage3TemplateFont_fonttop123456",sans-serif';
+  uploadedFontConfig.typography.bottom.fontAsset = {
+    id: "fontbody123456",
+    family: "Stage3TemplateFont_fontbody123456",
+    url: "/api/design/template-assets/fontbody123456",
+    originalName: "MainText.otf",
+    mimeType: "font/otf",
+    sizeBytes: 45600
+  };
+  uploadedFontConfig.typography.bottom.fontFamily = '"Stage3TemplateFont_fontbody123456",sans-serif';
+  const uploadedFontSnapshot = buildTemplateRenderSnapshot({
+    templateId: "science-card-v1",
+    content,
+    templateConfigOverride: uploadedFontConfig
+  });
+
+  assert.notEqual(baseSnapshot.snapshotHash, selectedFontSnapshot.snapshotHash);
+  assert.notEqual(baseSnapshot.snapshotHash, uploadedFontSnapshot.snapshotHash);
+});
+
 test("template scene markup wires uploaded top and bottom fonts into the rendered text", () => {
   const templateConfig = cloneStage3TemplateConfig(SCIENCE_CARD);
   templateConfig.typography.top.fontAsset = {

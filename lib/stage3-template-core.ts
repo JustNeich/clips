@@ -104,6 +104,29 @@ function stableHash(value: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
+function buildTemplateSnapshotStyleIdentity(templateConfig: Stage3TemplateConfig) {
+  return {
+    topTypography: {
+      fontFamily: templateConfig.typography.top.fontFamily ?? null,
+      fontAsset: templateConfig.typography.top.fontAsset ?? null,
+      weight: templateConfig.typography.top.weight ?? null,
+      fontStyle: templateConfig.typography.top.fontStyle ?? null,
+      lineHeight: templateConfig.typography.top.lineHeight,
+      letterSpacing: templateConfig.typography.top.letterSpacing ?? null,
+      textShadow: templateConfig.typography.top.textShadow ?? null
+    },
+    bottomTypography: {
+      fontFamily: templateConfig.typography.bottom.fontFamily ?? null,
+      fontAsset: templateConfig.typography.bottom.fontAsset ?? null,
+      weight: templateConfig.typography.bottom.weight ?? null,
+      fontStyle: templateConfig.typography.bottom.fontStyle ?? null,
+      lineHeight: templateConfig.typography.bottom.lineHeight,
+      letterSpacing: templateConfig.typography.bottom.letterSpacing ?? null,
+      textShadow: templateConfig.typography.bottom.textShadow ?? null
+    }
+  };
+}
+
 function getBottomTextPaddingTop(template: Stage3TemplateConfig): number {
   return template.slot.bottomTextPaddingTop ?? template.slot.bottomTextPaddingY;
 }
@@ -492,6 +515,7 @@ export function buildTemplateRenderSnapshot(input: TemplateLayoutInput): Templat
         topFontScale: content.topFontScale,
         bottomFontScale: content.bottomFontScale
       },
+      templateStyle: buildTemplateSnapshotStyleIdentity(effectiveTemplateConfig),
       sourceOverlay: effectiveTemplateConfig.sourceOverlay ?? null,
       sourceWatermark: effectiveTemplateConfig.sourceWatermark ?? null,
       fit,
