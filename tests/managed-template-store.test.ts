@@ -413,6 +413,80 @@ test("managed templates preserve uploaded top and bottom font assets", async () 
   });
 });
 
+test("managed template font family changes clear stale uploaded font assets", async () => {
+  await withIsolatedTemplateWorkspace(async ({ owner }) => {
+    const topFontAsset = {
+      id: "fonttop654321",
+      family: "Stage3TemplateFont_fonttop654321",
+      url: "/api/design/template-assets/fonttop654321",
+      originalName: "OldLead.woff2",
+      mimeType: "font/woff2",
+      sizeBytes: 32100,
+      weight: 400,
+      style: "normal" as const,
+      createdAt: "2026-05-01T09:00:00.000Z"
+    };
+    const bottomFontAsset = {
+      id: "fontbody654321",
+      family: "Stage3TemplateFont_fontbody654321",
+      url: "/api/design/template-assets/fontbody654321",
+      originalName: "OldBottom.otf",
+      mimeType: "font/otf",
+      sizeBytes: 45600,
+      weight: 400,
+      style: "normal" as const,
+      createdAt: "2026-05-01T09:05:00.000Z"
+    };
+    const template = await createManagedTemplate(
+      {
+        name: "Uploaded Font Clear",
+        baseTemplateId: "science-card-v1",
+        templateConfig: {
+          typography: {
+            top: {
+              fontFamily: '"Stage3TemplateFont_fonttop654321",sans-serif',
+              fontAsset: topFontAsset
+            },
+            bottom: {
+              fontFamily: '"Stage3TemplateFont_fontbody654321",sans-serif',
+              fontAsset: bottomFontAsset
+            }
+          }
+        }
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id
+      }
+    );
+
+    const updated = await updateManagedTemplate(
+      template.id,
+      {
+        templateConfig: {
+          typography: {
+            top: {
+              fontFamily: '"Georgia",serif'
+            },
+            bottom: {
+              fontFamily: '"Arial","Helvetica Neue",sans-serif'
+            }
+          }
+        }
+      },
+      { workspaceId: owner.workspace.id }
+    );
+
+    assert.equal(updated?.templateConfig.typography.top.fontFamily, '"Georgia",serif');
+    assert.equal(updated?.templateConfig.typography.top.fontAsset, undefined);
+    assert.equal(
+      updated?.templateConfig.typography.bottom.fontFamily,
+      '"Arial","Helvetica Neue",sans-serif'
+    );
+    assert.equal(updated?.templateConfig.typography.bottom.fontAsset, undefined);
+  });
+});
+
 test("managed template backup import restores a downloaded template into the workspace library", async () => {
   await withIsolatedTemplateWorkspace(async ({ owner }) => {
     const original = await createManagedTemplate(

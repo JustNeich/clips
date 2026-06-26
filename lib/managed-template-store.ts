@@ -97,6 +97,45 @@ function mergeRecordPatch(base: unknown, patch: unknown): unknown {
   return merged;
 }
 
+function hasOwnKey(record: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+
+function clearStaleFontAssetsForFontFamilyPatch(merged: unknown, patch: unknown): unknown {
+  if (!isRecord(merged) || !isRecord(patch)) {
+    return merged;
+  }
+  const patchTypography = isRecord(patch.typography) ? patch.typography : null;
+  const mergedTypography = isRecord(merged.typography) ? merged.typography : null;
+  if (!patchTypography || !mergedTypography) {
+    return merged;
+  }
+
+  const nextTypography: Record<string, unknown> = { ...mergedTypography };
+  let changed = false;
+  for (const slot of ["top", "bottom"] as const) {
+    const patchSlot = isRecord(patchTypography[slot]) ? patchTypography[slot] : null;
+    const mergedSlot = isRecord(nextTypography[slot]) ? nextTypography[slot] : null;
+    if (!patchSlot || !mergedSlot) {
+      continue;
+    }
+    if (!hasOwnKey(patchSlot, "fontFamily") || hasOwnKey(patchSlot, "fontAsset")) {
+      continue;
+    }
+    const nextSlot = { ...mergedSlot };
+    delete nextSlot.fontAsset;
+    nextTypography[slot] = nextSlot;
+    changed = true;
+  }
+
+  return changed
+    ? {
+        ...merged,
+        typography: nextTypography
+      }
+    : merged;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -691,7 +730,10 @@ function normalizeSnapshot(
     input.templateConfig === undefined
       ? fallback?.templateConfig
       : fallback?.templateConfig
-        ? mergeRecordPatch(fallback.templateConfig, input.templateConfig)
+        ? clearStaleFontAssetsForFontFamilyPatch(
+            mergeRecordPatch(fallback.templateConfig, input.templateConfig),
+            input.templateConfig
+          )
         : input.templateConfig;
   const templateConfig = normalizeTemplateConfig(
     rawTemplateConfig,
