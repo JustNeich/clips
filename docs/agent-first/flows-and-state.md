@@ -241,8 +241,9 @@
 
 1. Source можно загрузить как mp4 вместо external URL.
 2. Если выбрано несколько mp4, Step 1 сначала собирает composite uploaded source и затем запускает обычный source job.
-3. Комментарии могут быть недоступны, но Step 1 всё равно завершится.
-4. Активный chat может быть переиспользован вместо создания нового.
+3. Если mp4 уже полностью смонтирован, пользователь может нажать `В очередь YouTube`: система сохраняет один готовый mp4 как render export, создаёт queued publication и не запускает Stage 2 / Stage 3 монтаж.
+4. Комментарии могут быть недоступны, но Step 1 всё равно завершится.
+5. Активный chat может быть переиспользован вместо создания нового.
 
 ### Blocked path
 
@@ -266,6 +267,7 @@
 - source_ready
 - comments_partial
 - source_failed
+- ready_upload_queued
 
 ## 9. Step 2: full run
 
@@ -461,13 +463,20 @@
 4. Пользователь при необходимости редактирует метаданные публикации.
 5. Publication доходит до queued/scheduled/published.
 
+### Alternate path
+
+1. В Step 1 пользователь выбирает готовый mp4 через `В очередь YouTube`.
+2. Система требует подключённый YouTube destination.
+3. Готовый mp4 сохраняется как uploaded source и publishable render export.
+4. Publication создаётся в той же очереди, без Stage 2 и Stage 3 монтажа.
+
 ### Duplicate guard
 
 1. Перед созданием queued-публикации система проверяет channel-level дубли по normalized source URL и normalized title.
 2. Ручное изменение title, retry/resume/publish-now и pre-upload processing повторяют тот же guard.
 3. При дубле новая запись fail-closed уходит в `failed` или mutation возвращает typed error; upload в YouTube не начинается.
 
-### Alternate path
+### Queue management path
 
 1. Публикацию можно перевести в `Точное время`.
 2. Можно двигать queued item по слотам и дням.

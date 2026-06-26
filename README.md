@@ -266,6 +266,7 @@ npm run stage3-worker -- start
   - `instagram.com/reel/...`
   - `facebook.com/reel/...`
 - Дополнительно редактор может загрузить один или несколько готовых `mp4` прямо в Stage 1.
+- Если ролик уже полностью смонтирован, Step 1 даёт отдельное действие `В очередь YouTube`: один готовый `mp4` сохраняется как publishable export и ставится в обычную YouTube publication queue без Stage 2 и Stage 3 монтажа.
 - В Step 1 есть чекбокс автозапуска Stage 2:
   - по умолчанию включён
   - если выключить, Step 2 стартует только вручную по кнопке `Генерировать варианты`
@@ -423,6 +424,7 @@ Publishing / YouTube queue:
 - в Step 3 рядом с render доступен чекбокс `Опубликовать`: только при включённом флаге render ставится в publish queue, а UI заранее показывает ожидаемое время публикации.
 - новые queued-публикации по умолчанию стартуют с выключенным `notify subscribers`; оператор включает уведомление подписчиков только явно для нужного канала или ролика.
 - один chat/source clip не создаёт вторую активную публикацию: повторный render обновляет queued/paused/failed запись или возвращает уже uploading/scheduled/published запись без нового upload.
+- готовый `mp4`, отправленный из Step 1 через `В очередь YouTube`, использует тот же planner, duplicate guard, slot settings, upload lease и retry/resume path, что и publication после Stage 3 render.
 - channel-level duplicate guard fail-closed блокирует второй upload того же source URL или того же normalized title: проверка срабатывает при queue creation, ручном edit/retry/resume/publish-now и прямо перед YouTube upload.
 - во время `uploading` planner блокирует конфликтующие действия, а сервер не принимает мутации, которые могли бы сбросить lease и породить второй YouTube upload.
 - YouTube metadata sync для уже загруженных роликов теперь сохраняет валидный `snippet.categoryId`, поэтому простое редактирование title/description не ломает `videos.update`.

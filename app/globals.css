@@ -3062,7 +3062,7 @@ select.text-input:focus {
 
 .source-upload-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto auto minmax(0, 1fr);
   gap: 10px;
   align-items: stretch;
 }

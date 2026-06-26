@@ -408,6 +408,7 @@ type BusyAction =
   | ""
   | "fetch"
   | "source-upload"
+  | "ready-upload"
   | "download"
   | "comments"
   | "stage2"
@@ -715,6 +716,11 @@ export default function HomePage() {
     () => channels.find((channel) => channel.id === activeChannelId) ?? null,
     [channels, activeChannelId]
   );
+  const readyUploadBlockedReason = !activeChannelId
+    ? "Сначала создайте/выберите канал."
+    : !isChannelPublishIntegrationReady(activeChannel?.publishIntegration)
+      ? "Подключите YouTube и выберите канал назначения в Channel Manager → Publishing."
+      : null;
   const latestPublicationSummaryByChatId = useMemo(() => {
     const map = new Map<string, NonNullable<ChatListItem["publication"]>>();
     const updatedAtMap = new Map<string, number>();
@@ -3149,6 +3155,36 @@ export default function HomePage() {
     return uploadSourceBatchToChannel(input);
   };
 
+  const uploadReadyVideoToChannel = async (input: {
+    channelId: string;
+    file: File;
+  }): Promise<{
+    chat: ChatThread;
+    publication: ChannelPublication | null;
+  }> => {
+    const formData = new FormData();
+    formData.set("file", input.file, input.file.name || "ready-upload.mp4");
+    formData.set("title", input.file.name ? input.file.name.replace(/\.[^.]+$/, "") : "Готовый ролик");
+
+    const response = await fetch(`/api/channels/${input.channelId}/publications/ready-upload`, {
+      method: "POST",
+      body: formData
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Не удалось поставить готовый mp4 в очередь YouTube."));
+    }
+    const body = (await response.json()) as {
+      chat: ChatThread;
+      publication: ChannelPublication | null;
+    };
+    await Promise.allSettled([
+      refreshActiveChat(body.chat.id),
+      refreshChannelPublications(input.channelId),
+      refreshChats()
+    ]);
+    return body;
+  };
+
   const runStage2ForChat = async (
     chat: Pick<ChatThread, "id" | "url">,
     instruction: string,
@@ -3374,6 +3410,75 @@ export default function HomePage() {
       );
     } catch (error) {
       const message = getUiErrorMessage(error, "Не удалось загрузить mp4.");
+      setCurrentStep(1);
+      setStatusType("error");
+      setStatus(message);
+    } finally {
+      setIsSourceEnqueueing(false);
+      setIsBusy(false);
+      setBusyAction("");
+    }
+  };
+
+  const handleUploadReadyVideo = async (file: File): Promise<void> => {
+    if (!activeChannelId) {
+      setStatusType("error");
+      setStatus("Сначала создайте/выберите канал.");
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith(".mp4")) {
+      setStatusType("error");
+      setStatus("Загрузить можно только готовый mp4 файл.");
+      return;
+    }
+    if (readyUploadBlockedReason) {
+      setStatusType("error");
+      setStatus(readyUploadBlockedReason);
+      return;
+    }
+
+    await flushActiveDraftSave();
+    setBusyAction("ready-upload");
+    setIsBusy(true);
+    setIsSourceEnqueueing(true);
+    setStatus("");
+    setStatusType("");
+
+    try {
+      const { chat, publication } = await uploadReadyVideoToChannel({
+        channelId: activeChannelId,
+        file
+      });
+      let hydrateFailed = false;
+      setDraftUrl("");
+      try {
+        await hydrateChatLiveState(chat.id, {
+          preferredStep: 1
+        });
+      } catch {
+        hydrateFailed = true;
+        desiredActiveChatIdRef.current = chat.id;
+        activeChatIdRef.current = chat.id;
+        activeChatRef.current = chat;
+        activeDraftRef.current = null;
+        setActiveChat(chat);
+        setActiveDraft(null);
+        patchChatListItem(applyPublicationSummary(buildChatListItem(chat, null)));
+        await refreshChats().catch(() => undefined);
+      }
+      setCurrentStep(1);
+      setStatusType(publication?.status === "failed" ? "error" : "ok");
+      const baseStatus =
+        publication?.status === "failed"
+          ? publication.lastError ?? "Готовый mp4 сохранён, но публикация требует проверки."
+          : "Готовый mp4 поставлен в очередь YouTube без Stage 2 и монтажа.";
+      setStatus(
+        hydrateFailed
+          ? `${baseStatus} Чат обновился не сразу: если он не открылся автоматически, выберите его в истории.`
+          : baseStatus
+      );
+    } catch (error) {
+      const message = getUiErrorMessage(error, "Не удалось поставить готовый mp4 в очередь YouTube.");
       setCurrentStep(1);
       setStatusType("error");
       setStatus(message);
@@ -4573,6 +4678,10 @@ export default function HomePage() {
   const canUploadSourceForChannel = useMemo(
     () => Boolean(activeChannelId) && !uploadSourceBlockedReason && !isSourceEnqueueing,
     [activeChannelId, isSourceEnqueueing, uploadSourceBlockedReason]
+  );
+  const canUploadReadyVideoForChannel = useMemo(
+    () => Boolean(activeChannelId) && !readyUploadBlockedReason && !isSourceEnqueueing,
+    [activeChannelId, isSourceEnqueueing, readyUploadBlockedReason]
   );
   const canRunStage2ForActiveChat = useMemo(() => {
     if (!activeChat || !codexLoggedIn || !stage2RuntimeAvailable) {
@@ -7425,6 +7534,9 @@ export default function HomePage() {
           uploadBusy={busyAction === "source-upload"}
           uploadAvailable={Boolean(canUploadSourceForChannel)}
           uploadBlockedReason={uploadSourceBlockedReason}
+          readyUploadBusy={busyAction === "ready-upload"}
+          readyUploadAvailable={Boolean(canUploadReadyVideoForChannel)}
+          readyUploadBlockedReason={readyUploadBlockedReason}
           autoRunStage2Enabled={autoRunStage2AfterSource}
           downloadAvailable={effectiveDownloadSourceAvailable}
           downloadBlockedReason={effectiveDownloadSourceBlockedReason}
@@ -7437,6 +7549,9 @@ export default function HomePage() {
           }}
           onUploadFiles={(files) => {
             void handleUploadSourceFiles(files);
+          }}
+          onUploadReadyFile={(file) => {
+            void handleUploadReadyVideo(file);
           }}
           onAutoRunStage2Change={setAutoRunStage2AfterSource}
           onDownloadSource={() => {

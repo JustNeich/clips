@@ -11407,6 +11407,9 @@ test("step 1 shows attached source job as neutral live state instead of repeatin
       uploadBusy: false,
       uploadAvailable: true,
       uploadBlockedReason: null,
+      readyUploadBusy: false,
+      readyUploadAvailable: true,
+      readyUploadBlockedReason: null,
       autoRunStage2Enabled: true,
       downloadAvailable: true,
       downloadBlockedReason: null,
@@ -11414,6 +11417,7 @@ test("step 1 shows attached source job as neutral live state instead of repeatin
       onPaste: () => undefined,
       onFetch: () => undefined,
       onUploadFiles: () => undefined,
+      onUploadReadyFile: () => undefined,
       onAutoRunStage2Change: () => undefined,
       onDownloadSource: () => undefined
     })
@@ -11476,6 +11480,9 @@ test("step 1 renders hosted retry countdown and provider diagnostics while retry
       uploadBusy: false,
       uploadAvailable: true,
       uploadBlockedReason: null,
+      readyUploadBusy: false,
+      readyUploadAvailable: true,
+      readyUploadBlockedReason: null,
       autoRunStage2Enabled: true,
       downloadAvailable: true,
       downloadBlockedReason: null,
@@ -11483,6 +11490,7 @@ test("step 1 renders hosted retry countdown and provider diagnostics while retry
       onPaste: () => undefined,
       onFetch: () => undefined,
       onUploadFiles: () => undefined,
+      onUploadReadyFile: () => undefined,
       onAutoRunStage2Change: () => undefined,
       onDownloadSource: () => undefined
     })
@@ -11508,6 +11516,9 @@ test("step 1 keeps an attached stage 2 run informational instead of rendering it
       uploadBusy: false,
       uploadAvailable: true,
       uploadBlockedReason: null,
+      readyUploadBusy: false,
+      readyUploadAvailable: true,
+      readyUploadBlockedReason: null,
       autoRunStage2Enabled: true,
       downloadAvailable: true,
       downloadBlockedReason: null,
@@ -11515,6 +11526,7 @@ test("step 1 keeps an attached stage 2 run informational instead of rendering it
       onPaste: () => undefined,
       onFetch: () => undefined,
       onUploadFiles: () => undefined,
+      onUploadReadyFile: () => undefined,
       onAutoRunStage2Change: () => undefined,
       onDownloadSource: () => undefined
     })
@@ -11539,6 +11551,9 @@ test("step 1 preview makes the source link clickable and embeds a YouTube player
       uploadBusy: false,
       uploadAvailable: true,
       uploadBlockedReason: null,
+      readyUploadBusy: false,
+      readyUploadAvailable: true,
+      readyUploadBlockedReason: null,
       autoRunStage2Enabled: true,
       downloadAvailable: true,
       downloadBlockedReason: null,
@@ -11546,6 +11561,7 @@ test("step 1 preview makes the source link clickable and embeds a YouTube player
       onPaste: () => undefined,
       onFetch: () => undefined,
       onUploadFiles: () => undefined,
+      onUploadReadyFile: () => undefined,
       onAutoRunStage2Change: () => undefined,
       onDownloadSource: () => undefined
     })
@@ -11572,6 +11588,9 @@ test("step 1 renders a custom mp4 upload panel and auto-stage2 checkbox", () => 
       uploadBusy: false,
       uploadAvailable: true,
       uploadBlockedReason: null,
+      readyUploadBusy: false,
+      readyUploadAvailable: true,
+      readyUploadBlockedReason: null,
       autoRunStage2Enabled: true,
       downloadAvailable: true,
       downloadBlockedReason: null,
@@ -11579,12 +11598,14 @@ test("step 1 renders a custom mp4 upload panel and auto-stage2 checkbox", () => 
       onPaste: () => undefined,
       onFetch: () => undefined,
       onUploadFiles: () => undefined,
+      onUploadReadyFile: () => undefined,
       onAutoRunStage2Change: () => undefined,
       onDownloadSource: () => undefined
     })
   );
 
   assert.match(html, /Выбрать mp4/);
+  assert.match(html, /В очередь YouTube/);
   assert.match(html, /Готовый mp4 не выбран/);
   assert.match(html, /Автоматически запускать Stage 2 после завершения Step 1/);
   assert.match(html, /checked=""/);
@@ -11638,6 +11659,9 @@ test("step 1 no longer renders an inline next-chat shortcut card inside the work
       uploadBusy: false,
       uploadAvailable: true,
       uploadBlockedReason: null,
+      readyUploadBusy: false,
+      readyUploadAvailable: true,
+      readyUploadBlockedReason: null,
       autoRunStage2Enabled: true,
       downloadAvailable: true,
       downloadBlockedReason: null,
@@ -11646,6 +11670,7 @@ test("step 1 no longer renders an inline next-chat shortcut card inside the work
       onPaste: () => undefined,
       onFetch: () => undefined,
       onUploadFiles: () => undefined,
+      onUploadReadyFile: () => undefined,
       onAutoRunStage2Change: () => undefined,
       onDownloadSource: () => undefined,
       onCreateNextChat: () => undefined

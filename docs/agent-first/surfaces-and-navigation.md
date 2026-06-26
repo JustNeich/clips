@@ -284,6 +284,7 @@
   - кнопка `Вставить`
   - file input `Choose File` с `multiple`
   - кнопка `Выбрать mp4`
+  - кнопка `В очередь YouTube`
   - кнопка `Получить источник`
   - checkbox `Автоматически запускать Stage 2 после завершения Step 1`
   - collapsible `Дополнительно`
@@ -291,6 +292,7 @@
 - `resulting actions`:
   - `POST /api/pipeline/source`
   - `POST /api/pipeline/source-upload`
+  - `POST /api/channels/[id]/publications/ready-upload`
   - `GET /api/source-media`
   - `POST /api/comments`
   - optional auto-trigger `POST /api/pipeline/stage2`
@@ -298,6 +300,7 @@
 - `success states`:
   - источник прикреплён к chat
   - несколько uploaded mp4 могут быть собраны в один composite upload:// source перед Step 3
+  - готовый mp4 поставлен в YouTube publication queue без Stage 2 / Stage 3 монтажа
   - preview/context справа показывает source metadata
 - `failure states`:
   - invalid link

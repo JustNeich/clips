@@ -19,6 +19,9 @@ type Step1PasteLinkProps = {
   uploadBusy: boolean;
   uploadAvailable: boolean;
   uploadBlockedReason?: string | null;
+  readyUploadBusy: boolean;
+  readyUploadAvailable: boolean;
+  readyUploadBlockedReason?: string | null;
   autoRunStage2Enabled: boolean;
   downloadAvailable: boolean;
   downloadBlockedReason?: string | null;
@@ -27,6 +30,7 @@ type Step1PasteLinkProps = {
   onPaste: () => void;
   onFetch: () => void;
   onUploadFiles: (files: File[]) => void;
+  onUploadReadyFile: (file: File) => void;
   onAutoRunStage2Change: (value: boolean) => void;
   onDownloadSource: () => void;
   onCreateNextChat?: () => void;
@@ -139,6 +143,9 @@ export function Step1PasteLink({
   uploadBusy,
   uploadAvailable,
   uploadBlockedReason,
+  readyUploadBusy,
+  readyUploadAvailable,
+  readyUploadBlockedReason,
   autoRunStage2Enabled,
   downloadAvailable,
   downloadBlockedReason,
@@ -146,11 +153,13 @@ export function Step1PasteLink({
   onPaste,
   onFetch,
   onUploadFiles,
+  onUploadReadyFile,
   onAutoRunStage2Change,
   onDownloadSource
 }: Step1PasteLinkProps) {
   const sourcePreview = resolveSourcePreview(activeUrl, activeChannelId);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const readyUploadInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedUploadFileNames, setSelectedUploadFileNames] = useState<string[] | null>(null);
   const isAttachedSourceJob =
     Boolean(sourceJob) &&
@@ -180,7 +189,18 @@ export function Step1PasteLink({
     fileInputRef.current?.click();
   };
 
+  const handleChooseReadyUploadFile = (): void => {
+    readyUploadInputRef.current?.click();
+  };
+
   const uploadSummary = useMemo(() => {
+    if (readyUploadBusy) {
+      const uploadLabel = selectedUploadFileNames?.[0] ?? "Готовим загрузку";
+      return {
+        title: uploadLabel,
+        detail: "MP4 загружается и будет поставлен в очередь YouTube без Stage 2 и монтажа."
+      };
+    }
     if (uploadBusy) {
       const uploadLabel =
         selectedUploadFileNames && selectedUploadFileNames.length > 1
@@ -212,9 +232,9 @@ export function Step1PasteLink({
     }
     return {
       title: "Готовый mp4 не выбран",
-      detail: "Можно загрузить один или несколько готовых mp4 вместо ссылки на Shorts или Reels."
+      detail: "Можно загрузить mp4 как исходник или поставить готовый ролик в очередь YouTube."
     };
-  }, [activeUrl, selectedUploadFileNames, sourcePreview, uploadBusy]);
+  }, [activeUrl, readyUploadBusy, selectedUploadFileNames, sourcePreview, uploadBusy]);
 
   return (
     <StepWorkspace
@@ -271,16 +291,43 @@ export function Step1PasteLink({
                     }
                   }}
                 />
+                <input
+                  ref={readyUploadInputRef}
+                  type="file"
+                  accept="video/mp4,.mp4"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    event.currentTarget.value = "";
+                    if (file) {
+                      setSelectedUploadFileNames([file.name]);
+                      onUploadReadyFile(file);
+                    }
+                  }}
+                />
                 <button
                   type="button"
                   className="btn btn-secondary source-upload-trigger"
                   onClick={handleChooseFile}
-                  disabled={uploadBusy || !uploadAvailable}
+                  disabled={uploadBusy || readyUploadBusy || !uploadAvailable}
                   title={!uploadAvailable ? uploadBlockedReason ?? undefined : undefined}
                 >
                   {uploadBusy ? "Загружаем..." : "Выбрать mp4"}
                 </button>
-                <div className={`source-upload-summary${selectedUploadFileNames?.length || uploadBusy ? " is-active" : ""}`}>
+                <button
+                  type="button"
+                  className="btn btn-secondary source-upload-trigger"
+                  onClick={handleChooseReadyUploadFile}
+                  disabled={uploadBusy || readyUploadBusy || !readyUploadAvailable}
+                  title={!readyUploadAvailable ? readyUploadBlockedReason ?? undefined : undefined}
+                >
+                  {readyUploadBusy ? "Ставим..." : "В очередь YouTube"}
+                </button>
+                <div
+                  className={`source-upload-summary${
+                    selectedUploadFileNames?.length || uploadBusy || readyUploadBusy ? " is-active" : ""
+                  }`}
+                >
                   <p className="source-upload-summary-title">{uploadSummary.title}</p>
                   <p className="source-upload-summary-detail">{uploadSummary.detail}</p>
                 </div>
@@ -322,6 +369,9 @@ export function Step1PasteLink({
               ) : null}
               {!uploadAvailable && uploadBlockedReason ? (
                 <p className="subtle-text danger-text">{uploadBlockedReason}</p>
+              ) : null}
+              {!readyUploadAvailable && readyUploadBlockedReason ? (
+                <p className="subtle-text danger-text">{readyUploadBlockedReason}</p>
               ) : null}
               {commentsFallbackActive ? (
                 <p className="subtle-text">
