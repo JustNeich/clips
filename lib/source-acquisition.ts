@@ -463,6 +463,29 @@ type SafeRemoteUrl = {
   addresses: string[];
 };
 
+export function createPinnedHttpsLookup(pinnedAddress: string) {
+  const family = isIP(pinnedAddress);
+  if (family !== 4 && family !== 6) {
+    throw new Error("Remote URL did not resolve to a valid IP address.");
+  }
+
+  return (
+    _hostname: string,
+    options: { all?: boolean } | undefined,
+    callback: (
+      error: NodeJS.ErrnoException | null,
+      address: string | Array<{ address: string; family: 4 | 6 }>,
+      family?: 4 | 6
+    ) => void
+  ) => {
+    if (options?.all) {
+      callback(null, [{ address: pinnedAddress, family }]);
+      return;
+    }
+    callback(null, pinnedAddress, family);
+  };
+}
+
 async function resolveSafeRemoteUrl(rawUrl: string, label: string): Promise<SafeRemoteUrl> {
   let parsed: URL;
   try {
@@ -551,9 +574,7 @@ async function fetchPinnedHttpsUrl(safe: SafeRemoteUrl, init: RequestInit): Prom
       {
         method: init.method ?? "GET",
         headers: headersToRecord(init.headers),
-        lookup: (_hostname, _options, callback) => {
-          callback(null, pinnedAddress, isIP(pinnedAddress));
-        }
+        lookup: createPinnedHttpsLookup(pinnedAddress)
       },
       (incoming) => {
         resolve(

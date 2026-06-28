@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 import {
+  createPinnedHttpsLookup,
   downloadSourceMedia,
   fetchSourceMetadata,
   fetchOptionalYtDlpInfo,
@@ -81,6 +82,22 @@ test("summarizeProviderTextResponse compresses HTML gateway pages into a concise
 test("summarizeProviderTextResponse preserves plain text responses", () => {
   const message = summarizeProviderTextResponse(" YouTube отклонил запрос на этом сервере (anti-bot/auth). ");
   assert.equal(message, "YouTube отклонил запрос на этом сервере (anti-bot/auth).");
+});
+
+test("createPinnedHttpsLookup supports Node all-address lookup shape", () => {
+  const lookup = createPinnedHttpsLookup("93.184.216.34");
+
+  lookup("downloads.visolix.test", { all: true }, (error, addresses, family) => {
+    assert.equal(error, null);
+    assert.deepEqual(addresses, [{ address: "93.184.216.34", family: 4 }]);
+    assert.equal(family, undefined);
+  });
+
+  lookup("downloads.visolix.test", {}, (error, address, family) => {
+    assert.equal(error, null);
+    assert.equal(address, "93.184.216.34");
+    assert.equal(family, 4);
+  });
 });
 
 test("downloadSourceMedia keeps the primary provider error when yt-dlp fallback succeeds", { concurrency: false }, async () => {
