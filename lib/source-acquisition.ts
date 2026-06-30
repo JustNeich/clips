@@ -438,7 +438,7 @@ function getVisolixRecordCandidates(payload: unknown): Array<Record<string, unkn
   }
 
   const candidates = [root];
-  for (const key of ["data", "result", "download", "job", "info"]) {
+  for (const key of ["data", "result", "download", "job", "info", "additional_info"]) {
     const nested = asRecord(root[key]);
     if (nested) {
       candidates.push(nested);
@@ -504,7 +504,7 @@ function getVisolixProgressUrl(payload: VisolixInitResponse): string | null {
     return explicitProgressUrl;
   }
 
-  const downloadId = pickVisolixScalar(payload, ["id", "download_id", "downloadId", "job_id", "jobId"]);
+  const downloadId = pickVisolixScalar(payload, ["id", "download_id", "downloadId", "job_id", "jobId", "cachehash"]);
   return downloadId ? buildVisolixProgressUrl(downloadId) : null;
 }
 
