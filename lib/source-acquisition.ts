@@ -413,6 +413,22 @@ function getVisolixYoutubeFormat(): string {
   return asTrimmedString(process.env.VISOLIX_YOUTUBE_FORMAT) ?? DEFAULT_VISOLIX_YOUTUBE_FORMAT;
 }
 
+function buildVisolixProgressUrl(downloadId: string): string {
+  const progressUrl = new URL("/api/progress", `${getVisolixBaseUrl()}/`);
+  progressUrl.searchParams.set("id", downloadId);
+  return progressUrl.toString();
+}
+
+function getVisolixProgressUrl(payload: VisolixInitResponse): string | null {
+  const explicitProgressUrl = asTrimmedString(payload.progress_url);
+  if (explicitProgressUrl) {
+    return explicitProgressUrl;
+  }
+
+  const downloadId = asTrimmedString(payload.id);
+  return downloadId ? buildVisolixProgressUrl(downloadId) : null;
+}
+
 function isPrivateIpv4(ip: string): boolean {
   const parts = ip.split(".").map((part) => Number.parseInt(part, 10));
   if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part))) {
@@ -855,10 +871,10 @@ async function visolixDownloadInit(rawUrl: string): Promise<VisolixInitResponse>
         asTrimmedString(payload.download_url) ??
         asTrimmedString((payload as Record<string, unknown>).url) ??
         asTrimmedString((payload as Record<string, unknown>).downloadUrl);
-      const progressUrl = asTrimmedString(payload.progress_url);
+      const progressUrl = getVisolixProgressUrl(payload);
 
       if (!directDownloadUrl && !progressUrl) {
-        lastError = new Error("Visolix не вернул download_url или progress_url для download job.");
+        lastError = new Error("Visolix не вернул download_url, progress_url или id для download job.");
         continue;
       }
 
@@ -959,10 +975,10 @@ async function tryVisolixDownload(rawUrl: string, tmpDir: string): Promise<Sourc
     asTrimmedString(initPayload.download_url) ??
     asTrimmedString((initPayload as Record<string, unknown>).url) ??
     asTrimmedString((initPayload as Record<string, unknown>).downloadUrl);
-  const progressUrl = asTrimmedString(initPayload.progress_url);
+  const progressUrl = getVisolixProgressUrl(initPayload);
 
   if (!directDownloadUrl && !progressUrl) {
-    throw new Error("Visolix не вернул download_url или progress_url для download job.");
+    throw new Error("Visolix не вернул download_url, progress_url или id для download job.");
   }
 
   const downloadUrl = directDownloadUrl ?? (await pollVisolixDownload(progressUrl as string));
