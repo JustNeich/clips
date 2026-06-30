@@ -102,7 +102,9 @@ test("createPinnedHttpsLookup supports Node all-address lookup shape", () => {
 
 test("downloadSourceMedia keeps the primary provider error when yt-dlp fallback succeeds", { concurrency: false }, async () => {
   const previousVisolixApiKey = process.env.VISOLIX_API_KEY;
+  const previousRetryDelay = process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS;
   process.env.VISOLIX_API_KEY = "test-visolix-key";
+  process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS = "10";
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-acquisition-test-"));
 
   setSourceAcquisitionDownloadersForTests({
@@ -131,7 +133,7 @@ test("downloadSourceMedia keeps the primary provider error when yt-dlp fallback 
     assert.deepEqual(result.providerErrorSummary, {
       primaryProvider: "visolix",
       primaryProviderError: "upstream вернул HTTP 502 (Bad gateway).",
-      primaryRetryEligible: false,
+      primaryRetryEligible: true,
       fallbackProvider: "ytDlp",
       fallbackProviderError: null,
       hostedFallbackSkippedReason: null
@@ -142,6 +144,11 @@ test("downloadSourceMedia keeps the primary provider error when yt-dlp fallback 
       delete process.env.VISOLIX_API_KEY;
     } else {
       process.env.VISOLIX_API_KEY = previousVisolixApiKey;
+    }
+    if (previousRetryDelay === undefined) {
+      delete process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS;
+    } else {
+      process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS = previousRetryDelay;
     }
     await fs.rm(tmpDir, { recursive: true, force: true });
   }
@@ -692,6 +699,141 @@ test("downloadSourceMedia polls Visolix progress when download init returns only
       delete process.env.VISOLIX_BASE_URL;
     } else {
       process.env.VISOLIX_BASE_URL = previousVisolixBaseUrl;
+    }
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("downloadSourceMedia polls Visolix progress when download init returns a nested numeric id", { concurrency: false }, async () => {
+  const previousVisolixApiKey = process.env.VISOLIX_API_KEY;
+  const previousVisolixBaseUrl = process.env.VISOLIX_BASE_URL;
+  const originalFetch = globalThis.fetch;
+  process.env.VISOLIX_API_KEY = "test-visolix-key";
+  process.env.VISOLIX_BASE_URL = "https://visolix.test";
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-acquisition-visolix-nested-id-test-"));
+  const seenUrls: string[] = [];
+
+  globalThis.fetch = (async (input, init) => {
+    const requestUrl =
+      typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    seenUrls.push(requestUrl);
+
+    if (requestUrl === "https://visolix.test/api/download") {
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get("X-PLATFORM"), "instagram");
+      return jsonResponse({
+        success: true,
+        data: {
+          id: 12345,
+          title: "Instagram source"
+        }
+      });
+    }
+
+    if (requestUrl === "https://visolix.test/api/progress?id=12345") {
+      return jsonResponse({
+        success: 1,
+        progress: 1000,
+        alternative_download_urls: [{ type: "mp4", url: "https://downloads.visolix.test/source.mp4" }]
+      });
+    }
+
+    if (requestUrl === "https://downloads.visolix.test/source.mp4") {
+      return new Response(Buffer.from("video"), {
+        status: 200,
+        headers: { "content-type": "video/mp4" }
+      });
+    }
+
+    throw new Error(`Unexpected fetch call during nested Visolix progress test: ${requestUrl}`);
+  }) as typeof fetch;
+  setSourceAcquisitionNetworkForTests({
+    lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    fetch: async (url, init) => globalThis.fetch(url, init)
+  });
+
+  try {
+    const result = await downloadSourceMedia("https://www.instagram.com/reel/DaLZyUfqEai/", tmpDir);
+
+    assert.equal(result.provider, "visolix");
+    assert.equal(result.downloadFallbackUsed, false);
+    assert.equal(result.primaryProviderError, null);
+    assert.deepEqual(seenUrls, [
+      "https://visolix.test/api/download",
+      "https://visolix.test/api/progress?id=12345",
+      "https://downloads.visolix.test/source.mp4"
+    ]);
+  } finally {
+    setSourceAcquisitionNetworkForTests(null);
+    globalThis.fetch = originalFetch;
+    if (previousVisolixApiKey === undefined) {
+      delete process.env.VISOLIX_API_KEY;
+    } else {
+      process.env.VISOLIX_API_KEY = previousVisolixApiKey;
+    }
+    if (previousVisolixBaseUrl === undefined) {
+      delete process.env.VISOLIX_BASE_URL;
+    } else {
+      process.env.VISOLIX_BASE_URL = previousVisolixBaseUrl;
+    }
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("downloadSourceMedia retries an incomplete Instagram Visolix download job before fallback", { concurrency: false }, async () => {
+  const previousVisolixApiKey = process.env.VISOLIX_API_KEY;
+  const previousRetryDelay = process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS;
+  process.env.VISOLIX_API_KEY = "test-visolix-key";
+  process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS = "10";
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-acquisition-instagram-retry-test-"));
+  let visolixCalls = 0;
+  const retryNotices: unknown[] = [];
+
+  setSourceAcquisitionDownloadersForTests({
+    visolix: async (_rawUrl, dir) => {
+      visolixCalls += 1;
+      if (visolixCalls === 1) {
+        throw new Error("Visolix не вернул download_url, progress_url или id для download job.");
+      }
+      const filePath = path.join(dir, "source.mp4");
+      await fs.writeFile(filePath, "video");
+      return {
+        provider: "visolix",
+        filePath,
+        fileName: "source",
+        title: "Recovered Visolix source",
+        durationSec: 12,
+        videoSizeBytes: 5
+      };
+    },
+    ytDlp: async () => {
+      throw new Error("yt-dlp should not run when Visolix retry succeeds");
+    }
+  });
+
+  try {
+    const result = await downloadSourceMedia("https://www.instagram.com/reel/DaLZyUfqEai/", tmpDir, {
+      onRetryScheduled: (notice) => {
+        retryNotices.push(notice);
+      }
+    });
+
+    assert.equal(result.provider, "visolix");
+    assert.equal(result.downloadFallbackUsed, false);
+    assert.equal(result.primaryProviderError, null);
+    assert.equal(visolixCalls, 2);
+    assert.equal(retryNotices.length, 1);
+  } finally {
+    setSourceAcquisitionDownloadersForTests(null);
+    if (previousVisolixApiKey === undefined) {
+      delete process.env.VISOLIX_API_KEY;
+    } else {
+      process.env.VISOLIX_API_KEY = previousVisolixApiKey;
+    }
+    if (previousRetryDelay === undefined) {
+      delete process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS;
+    } else {
+      process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS = previousRetryDelay;
     }
     await fs.rm(tmpDir, { recursive: true, force: true });
   }

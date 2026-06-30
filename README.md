@@ -100,7 +100,7 @@ npm run dev
 - Каждый URL создает отдельный чат (или открывает уже существующий).
 - UI отправляет ссылку на `POST /api/download`.
 - API выбирает provider-specific source path, получает видео и возвращает клиенту `mp4` как attachment.
-  - для hosted `YouTube` media path использует `Visolix` и один автоматический retry на transient infra error;
+  - для hosted source download использует `Visolix` и один автоматический retry на transient/неполный provider response;
   - hosted `YouTube` source download не уходит в `yt-dlp` fallback;
   - local/dev path по-прежнему может использовать `yt-dlp`, если это допустимо для конкретного runtime.
 - UI может отправить ссылку на `POST /api/comments`.
@@ -490,9 +490,9 @@ Publishing / YouTube queue:
 
 Для Stage 3 local worker YouTube source сначала пробуется локально, но при user-specific anti-bot/IP отказе worker может сделать защищенный fallback через хост. Если Step 1/2 у всех проходит, а Stage 3 ломается только у одного редактора, сначала проверьте personal worker status текущего пользователя и runtime compatibility, затем локальный runtime/IP конкретной машины.
 
-Hosted Step 1 YouTube media path:
+Hosted Step 1 source download:
 - primary path: `Visolix`
-- если Visolix вернул transient/infra error, backend автоматически ждёт 5 секунд и делает ровно один повторный запрос
+- если Visolix вернул transient/infra error или неполный download job без `download_url`/`progress_url`/`id`, backend автоматически ждёт 5 секунд и делает ровно один повторный запрос
 - если обе попытки не сработали, job падает с честной провайдерной причиной `Visolix`
 - hosted runtime сознательно не запускает `yt-dlp` fallback для YouTube source download; `yt-dlp` остаётся для comments/metadata путей и local/dev сценариев
 

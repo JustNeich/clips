@@ -306,6 +306,7 @@ function isRetryableVisolixErrorMessage(message: string): boolean {
     "gateway timeout",
     "service unavailable",
     "provider unavailable",
+    "не вернул download_url",
     "database connection unavailable",
     "temporarily unavailable",
     "temporary",
@@ -413,19 +414,97 @@ function getVisolixYoutubeFormat(): string {
   return asTrimmedString(process.env.VISOLIX_YOUTUBE_FORMAT) ?? DEFAULT_VISOLIX_YOUTUBE_FORMAT;
 }
 
+function asTrimmedScalarString(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return asTrimmedString(value);
+}
+
 function buildVisolixProgressUrl(downloadId: string): string {
   const progressUrl = new URL("/api/progress", `${getVisolixBaseUrl()}/`);
   progressUrl.searchParams.set("id", downloadId);
   return progressUrl.toString();
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function getVisolixRecordCandidates(payload: unknown): Array<Record<string, unknown>> {
+  const root = asRecord(payload);
+  if (!root) {
+    return [];
+  }
+
+  const candidates = [root];
+  for (const key of ["data", "result", "download", "job", "info"]) {
+    const nested = asRecord(root[key]);
+    if (nested) {
+      candidates.push(nested);
+    }
+  }
+  return candidates;
+}
+
+function pickVisolixString(payload: unknown, keys: string[]): string | null {
+  for (const candidate of getVisolixRecordCandidates(payload)) {
+    for (const key of keys) {
+      const value = asTrimmedString(candidate[key]);
+      if (value) {
+        return value;
+      }
+    }
+  }
+  return null;
+}
+
+function pickVisolixScalar(payload: unknown, keys: string[]): string | null {
+  for (const candidate of getVisolixRecordCandidates(payload)) {
+    for (const key of keys) {
+      const value = asTrimmedScalarString(candidate[key]);
+      if (value) {
+        return value;
+      }
+    }
+  }
+  return null;
+}
+
+function getVisolixAlternativeDownloadUrl(payload: unknown): string | null {
+  for (const candidate of getVisolixRecordCandidates(payload)) {
+    const alternatives = candidate.alternative_download_urls;
+    if (!Array.isArray(alternatives)) {
+      continue;
+    }
+    for (const alternative of alternatives) {
+      const url = asTrimmedString(asRecord(alternative)?.url);
+      if (url) {
+        return url;
+      }
+    }
+  }
+  return null;
+}
+
+function getVisolixDownloadUrl(payload: unknown): string | null {
+  return (
+    pickVisolixString(payload, ["download_url", "downloadUrl", "url"]) ??
+    getVisolixAlternativeDownloadUrl(payload)
+  );
+}
+
+function getVisolixTitle(payload: unknown): string | null {
+  return pickVisolixString(payload, ["title"]);
+}
+
 function getVisolixProgressUrl(payload: VisolixInitResponse): string | null {
-  const explicitProgressUrl = asTrimmedString(payload.progress_url);
+  const explicitProgressUrl = pickVisolixString(payload, ["progress_url", "progressUrl"]);
   if (explicitProgressUrl) {
     return explicitProgressUrl;
   }
 
-  const downloadId = asTrimmedString(payload.id);
+  const downloadId = pickVisolixScalar(payload, ["id", "download_id", "downloadId", "job_id", "jobId"]);
   return downloadId ? buildVisolixProgressUrl(downloadId) : null;
 }
 
@@ -867,10 +946,7 @@ async function visolixDownloadInit(rawUrl: string): Promise<VisolixInitResponse>
       }
 
       const payload = (body ?? {}) as VisolixInitResponse;
-      const directDownloadUrl =
-        asTrimmedString(payload.download_url) ??
-        asTrimmedString((payload as Record<string, unknown>).url) ??
-        asTrimmedString((payload as Record<string, unknown>).downloadUrl);
+      const directDownloadUrl = getVisolixDownloadUrl(payload);
       const progressUrl = getVisolixProgressUrl(payload);
 
       if (!directDownloadUrl && !progressUrl) {
@@ -910,10 +986,7 @@ async function pollVisolixDownload(progressUrl: string): Promise<string> {
       );
     }
 
-    const downloadUrl =
-      asTrimmedString(body?.download_url) ??
-      asTrimmedString(body?.url) ??
-      asTrimmedString(body?.downloadUrl);
+    const downloadUrl = getVisolixDownloadUrl(body);
     if (downloadUrl) {
       return downloadUrl;
     }
@@ -971,10 +1044,7 @@ function sanitizeOutputName(rawName: string | null, fallback: string): string {
 async function tryVisolixDownload(rawUrl: string, tmpDir: string): Promise<SourceDownloadCoreResult> {
   const targetPath = path.join(tmpDir, "source.mp4");
   const initPayload = await visolixDownloadInit(rawUrl);
-  const directDownloadUrl =
-    asTrimmedString(initPayload.download_url) ??
-    asTrimmedString((initPayload as Record<string, unknown>).url) ??
-    asTrimmedString((initPayload as Record<string, unknown>).downloadUrl);
+  const directDownloadUrl = getVisolixDownloadUrl(initPayload);
   const progressUrl = getVisolixProgressUrl(initPayload);
 
   if (!directDownloadUrl && !progressUrl) {
@@ -983,7 +1053,7 @@ async function tryVisolixDownload(rawUrl: string, tmpDir: string): Promise<Sourc
 
   const downloadUrl = directDownloadUrl ?? (await pollVisolixDownload(progressUrl as string));
   const videoSizeBytes = await downloadRemoteFile(downloadUrl, targetPath, "Visolix");
-  const title = asTrimmedString(initPayload.title) ?? asTrimmedString(initPayload.info?.title);
+  const title = getVisolixTitle(initPayload);
 
   return {
     provider: "visolix",
@@ -1196,8 +1266,7 @@ export async function downloadSourceMedia(
       }
       const primaryErrorMessage =
         error instanceof Error ? error.message.trim() || "source fetch failed." : "source fetch failed.";
-      const retryEligible =
-        shouldSkipHostedFallback && isRetryableVisolixErrorMessage(primaryErrorMessage);
+      const retryEligible = isRetryableVisolixErrorMessage(primaryErrorMessage);
       summary = createProviderErrorSummary({
         primaryProvider: "visolix",
         primaryProviderError: primaryErrorMessage,
@@ -1232,13 +1301,17 @@ export async function downloadSourceMedia(
             ...summary,
             primaryProviderError: retryErrorMessage
           });
-          throw new SourceDownloadError(
-            formatLegacyPrimaryProviderError("visolix", retryErrorMessage) ?? "Source fetch failed.",
-            buildSourceDownloadErrorContext(summary, {
-              attempt: 2,
-              maxAttempts: 2
-            })
-          );
+          primaryProviderError = formatLegacyPrimaryProviderError("visolix", retryErrorMessage);
+
+          if (shouldSkipHostedFallback) {
+            throw new SourceDownloadError(
+              primaryProviderError ?? "Source fetch failed.",
+              buildSourceDownloadErrorContext(summary, {
+                attempt: 2,
+                maxAttempts: 2
+              })
+            );
+          }
         }
       }
 
