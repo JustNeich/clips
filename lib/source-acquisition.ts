@@ -880,6 +880,15 @@ async function readJsonOrText(response: Response): Promise<Record<string, unknow
   if (!text) {
     return null;
   }
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    const record = asRecord(parsed);
+    if (record) {
+      return record;
+    }
+  } catch {
+    // Fall through to a concise text summary for non-JSON provider responses.
+  }
 
   return { message: summarizeProviderTextResponse(text) };
 }

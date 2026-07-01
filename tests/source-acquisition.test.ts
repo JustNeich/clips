@@ -704,6 +704,86 @@ test("downloadSourceMedia polls Visolix progress when download init returns only
   }
 });
 
+test("downloadSourceMedia parses Visolix JSON body even when content-type is text/plain", { concurrency: false }, async () => {
+  const previousVisolixApiKey = process.env.VISOLIX_API_KEY;
+  const previousVisolixBaseUrl = process.env.VISOLIX_BASE_URL;
+  const originalFetch = globalThis.fetch;
+  process.env.VISOLIX_API_KEY = "test-visolix-key";
+  process.env.VISOLIX_BASE_URL = "https://visolix.test";
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-acquisition-visolix-text-json-test-"));
+  const seenUrls: string[] = [];
+
+  globalThis.fetch = (async (input, init) => {
+    const requestUrl =
+      typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    seenUrls.push(requestUrl);
+
+    if (requestUrl === "https://visolix.test/api/download") {
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get("X-PLATFORM"), "instagram");
+      return new Response(
+        JSON.stringify({
+          success: true,
+          id: "text-json-download-123",
+          info: { title: "Instagram source" }
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "text/plain; charset=utf-8" }
+        }
+      );
+    }
+
+    if (requestUrl === "https://visolix.test/api/progress?id=text-json-download-123") {
+      return jsonResponse({
+        success: 1,
+        progress: 1000,
+        download_url: "https://downloads.visolix.test/source.mp4"
+      });
+    }
+
+    if (requestUrl === "https://downloads.visolix.test/source.mp4") {
+      return new Response(Buffer.from("video"), {
+        status: 200,
+        headers: { "content-type": "video/mp4" }
+      });
+    }
+
+    throw new Error(`Unexpected fetch call during Visolix text-json test: ${requestUrl}`);
+  }) as typeof fetch;
+  setSourceAcquisitionNetworkForTests({
+    lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    fetch: async (url, init) => globalThis.fetch(url, init)
+  });
+
+  try {
+    const result = await downloadSourceMedia("https://www.instagram.com/reel/DUn8EAfjOzP/", tmpDir);
+
+    assert.equal(result.provider, "visolix");
+    assert.equal(result.downloadFallbackUsed, false);
+    assert.equal(result.primaryProviderError, null);
+    assert.deepEqual(seenUrls, [
+      "https://visolix.test/api/download",
+      "https://visolix.test/api/progress?id=text-json-download-123",
+      "https://downloads.visolix.test/source.mp4"
+    ]);
+  } finally {
+    setSourceAcquisitionNetworkForTests(null);
+    globalThis.fetch = originalFetch;
+    if (previousVisolixApiKey === undefined) {
+      delete process.env.VISOLIX_API_KEY;
+    } else {
+      process.env.VISOLIX_API_KEY = previousVisolixApiKey;
+    }
+    if (previousVisolixBaseUrl === undefined) {
+      delete process.env.VISOLIX_BASE_URL;
+    } else {
+      process.env.VISOLIX_BASE_URL = previousVisolixBaseUrl;
+    }
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test("downloadSourceMedia polls Visolix progress when download init returns a nested numeric id", { concurrency: false }, async () => {
   const previousVisolixApiKey = process.env.VISOLIX_API_KEY;
   const previousVisolixBaseUrl = process.env.VISOLIX_BASE_URL;
