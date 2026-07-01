@@ -10,6 +10,8 @@ import {
   publishStage3VideoArtifact,
   STAGE3_ARTIFACT_STORAGE_FULL_MESSAGE
 } from "../../../../../../../lib/stage3-job-artifacts";
+import { storeDownloadedSourceMediaCacheArtifact } from "../../../../../../../lib/source-media-cache";
+import type { SourceProviderErrorSummary } from "../../../../../../../app/components/types";
 import { buildStage3JobEnvelope } from "../../../../../../../lib/stage3-job-http";
 import {
   DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS,
@@ -282,8 +284,53 @@ function decodeResultJsonHeader(value: string | null): string | null {
   }
 }
 
+function parseJsonObject(raw: string | null): Record<string, unknown> {
+  if (!raw) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function parseSourceDownloadPayload(raw: string): {
+  sourceUrl: string;
+  primaryProviderError: string | null;
+  providerErrorSummary: SourceProviderErrorSummary | null;
+} {
+  const payload = parseJsonObject(raw);
+  const sourceUrl = typeof payload.sourceUrl === "string" ? payload.sourceUrl.trim() : "";
+  const fallback =
+    payload.sourceMediaFallback && typeof payload.sourceMediaFallback === "object"
+      ? (payload.sourceMediaFallback as {
+          primaryProviderError?: unknown;
+          providerErrorSummary?: unknown;
+        })
+      : null;
+  const providerErrorSummary =
+    fallback?.providerErrorSummary &&
+    typeof fallback.providerErrorSummary === "object" &&
+    !Array.isArray(fallback.providerErrorSummary)
+      ? (fallback.providerErrorSummary as SourceProviderErrorSummary)
+      : null;
+  return {
+    sourceUrl,
+    primaryProviderError:
+      typeof fallback?.primaryProviderError === "string" && fallback.primaryProviderError.trim()
+        ? fallback.primaryProviderError.trim()
+        : null,
+    providerErrorSummary
+  };
+}
+
 function buildCompletedArtifactUrl(job: Stage3JobRecord): string | null {
   if (!job.artifact) {
+    return null;
+  }
+  if (job.kind === "source-download" || job.kind === "agent-media-step") {
     return null;
   }
   return job.kind === "editing-proxy"
@@ -396,17 +443,44 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
 
     if (artifactFile) {
       try {
-        if (current.kind !== "preview" && current.kind !== "render" && current.kind !== "editing-proxy") {
-          return Response.json({ error: "Artifacts are only supported for preview/render/proxy jobs." }, { status: 400 });
+        if (current.kind === "source-download") {
+          const sourcePayload = parseSourceDownloadPayload(current.payloadJson);
+          if (!sourcePayload.sourceUrl) {
+            return Response.json({ error: "Source download job is missing sourceUrl." }, { status: 400 });
+          }
+          const cached = await storeDownloadedSourceMediaCacheArtifact({
+            sourceUrl: sourcePayload.sourceUrl,
+            filePath: artifactFile.filePath,
+            fileName: artifactFile.name || `${current.id}.mp4`,
+            downloadProvider: "ytDlp",
+            primaryProviderError: sourcePayload.primaryProviderError,
+            downloadFallbackUsed: Boolean(sourcePayload.primaryProviderError),
+            providerErrorSummary: sourcePayload.providerErrorSummary
+          });
+          resultJson = JSON.stringify({
+            ...parseJsonObject(resultJson),
+            sourceKey: cached.sourceKey,
+            fileName: cached.fileName,
+            videoSizeBytes: cached.videoSizeBytes,
+            downloadProvider: cached.downloadProvider,
+            sourceMediaCache: true
+          });
+        } else {
+          if (current.kind !== "preview" && current.kind !== "render" && current.kind !== "editing-proxy") {
+            return Response.json(
+              { error: "Artifacts are only supported for preview/render/proxy jobs." },
+              { status: 400 }
+            );
+          }
+          const published = await publishStage3VideoArtifact(current.kind, current.id, artifactFile.filePath);
+          artifactInput = {
+            kind: "video",
+            fileName: artifactFile.name || `${current.id}.mp4`,
+            mimeType: artifactFile.mimeType || "video/mp4",
+            filePath: published.filePath,
+            sizeBytes: published.sizeBytes
+          };
         }
-        const published = await publishStage3VideoArtifact(current.kind, current.id, artifactFile.filePath);
-        artifactInput = {
-          kind: "video",
-          fileName: artifactFile.name || `${current.id}.mp4`,
-          mimeType: artifactFile.mimeType || "video/mp4",
-          filePath: published.filePath,
-          sizeBytes: published.sizeBytes
-        };
       } finally {
         await fs.rm(artifactFile.cleanupDir, { recursive: true, force: true }).catch(() => undefined);
       }

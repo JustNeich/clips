@@ -8,10 +8,21 @@ import test from "node:test";
 import { promisify } from "node:util";
 import {
   ensureSourceMediaCached,
+  getCachedSourceMedia,
   getSourceMediaCacheKey,
-  pruneSourceMediaCacheForTests
+  pruneSourceMediaCacheForTests,
+  storeDownloadedSourceMediaCacheArtifact
 } from "../lib/source-media-cache";
+import { POST as completeWorkerStage3Job } from "../app/api/stage3/worker/jobs/[id]/complete/route";
+import { getDb, newId, nowIso } from "../lib/db/client";
 import { setSourceAcquisitionDownloadersForTests } from "../lib/source-acquisition";
+import {
+  claimNextQueuedStage3JobForWorker,
+  completeStage3Job,
+  enqueueStage3Job,
+  getStage3Job
+} from "../lib/stage3-job-store";
+import { exchangeStage3WorkerPairingToken, issueStage3WorkerPairingToken } from "../lib/stage3-worker-store";
 
 const execFileAsync = promisify(execFile);
 
@@ -38,6 +49,51 @@ async function writeVideoWithAudio(filePath: string, durationSec: number, audioD
     "aac",
     filePath
   ]);
+}
+
+function resetDbAndStage3Globals(): void {
+  delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
+  delete (globalThis as { __clipsStage3JobRuntimeState__?: unknown }).__clipsStage3JobRuntimeState__;
+}
+
+function seedWorkspaceUser(workspaceId = "w1", userId = "u1"): void {
+  const db = getDb();
+  const stamp = nowIso();
+  db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+    workspaceId,
+    "Source Cache Workspace",
+    `source-cache-${workspaceId}`,
+    stamp,
+    stamp
+  );
+  db.prepare(
+    "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(userId, `${userId}@example.com`, "hash", "Source User", "active", stamp, stamp);
+  db.prepare(
+    "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+  ).run(newId(), workspaceId, userId, "owner", stamp, stamp);
+}
+
+async function waitForWorkerClaim(input: {
+  workspaceId: string;
+  userId: string;
+  workerId: string;
+  timeoutMs?: number;
+}) {
+  const deadline = Date.now() + (input.timeoutMs ?? 2_000);
+  while (Date.now() <= deadline) {
+    const claimed = claimNextQueuedStage3JobForWorker({
+      workerId: input.workerId,
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      supportedKinds: ["source-download"]
+    });
+    if (claimed) {
+      return claimed;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("Timed out waiting for source-download worker job.");
 }
 
 test("ensureSourceMediaCached reuses the cached source artifact instead of redownloading", { concurrency: false }, async () => {
@@ -278,6 +334,211 @@ test("ensureSourceMediaCached prunes before writing and retries once after ENOSP
       delete process.env.RENDER;
     } else {
       process.env.RENDER = previousRender;
+    }
+    await fs.rm(appDataDir, { recursive: true, force: true });
+  }
+});
+
+test("ensureSourceMediaCached falls back to a local source-download job after hosted source failure", { concurrency: false }, async () => {
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-media-local-worker-fallback-"));
+  const previousAppDataDir = process.env.APP_DATA_DIR;
+  const previousRender = process.env.RENDER;
+  const previousVisolixApiKey = process.env.VISOLIX_API_KEY;
+  const previousRetryDelay = process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS;
+  const workspaceId = "w1";
+  const userId = "u1";
+  const workerId = "worker-1";
+  const url = "https://www.instagram.com/reel/local-worker-fallback/";
+
+  resetDbAndStage3Globals();
+  process.env.APP_DATA_DIR = appDataDir;
+  process.env.RENDER = "true";
+  process.env.VISOLIX_API_KEY = "test-visolix-key";
+  process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS = "1";
+  seedWorkspaceUser(workspaceId, userId);
+
+  setSourceAcquisitionDownloadersForTests({
+    visolix: async () => {
+      throw new Error("Visolix не вернул download_url, progress_url или id для download job.");
+    },
+    ytDlp: async () => {
+      throw new Error("Instagram отклонил запрос на этом сервере (anti-bot/auth).");
+    }
+  });
+
+  try {
+    const workerCompletion = (async () => {
+      const claimed = await waitForWorkerClaim({ workspaceId, userId, workerId });
+      assert.equal(claimed.kind, "source-download");
+      const payload = JSON.parse(claimed.payloadJson) as {
+        sourceUrl?: string;
+        sourceMediaFallback?: {
+          primaryProviderError?: string;
+          providerErrorSummary?: { fallbackProviderError?: string };
+        };
+      };
+      assert.equal(payload.sourceUrl, url);
+      assert.match(payload.sourceMediaFallback?.primaryProviderError ?? "", /Visolix/);
+      assert.match(payload.sourceMediaFallback?.providerErrorSummary?.fallbackProviderError ?? "", /Instagram/);
+
+      const workerSourcePath = path.join(appDataDir, "worker-source.mp4");
+      await writeVideoWithAudio(workerSourcePath, 2);
+      const cached = await storeDownloadedSourceMediaCacheArtifact({
+        sourceUrl: url,
+        filePath: workerSourcePath,
+        fileName: "worker-source.mp4",
+        downloadProvider: "ytDlp",
+        primaryProviderError: payload.sourceMediaFallback?.primaryProviderError ?? null,
+        downloadFallbackUsed: true,
+        providerErrorSummary: {
+          primaryProvider: "visolix",
+          primaryProviderError: "Visolix не вернул download_url, progress_url или id для download job.",
+          primaryRetryEligible: true,
+          fallbackProvider: "ytDlp",
+          fallbackProviderError: "Instagram отклонил запрос на этом сервере (anti-bot/auth).",
+          hostedFallbackSkippedReason: null
+        }
+      });
+      completeStage3Job(claimed.id, {
+        resultJson: JSON.stringify({
+          sourceKey: cached.sourceKey,
+          fileName: cached.fileName,
+          sourceMediaCache: true
+        }),
+        artifact: null
+      });
+    })();
+
+    const keepAlive = setInterval(() => undefined, 50);
+    try {
+      const [cached] = await Promise.all([
+        ensureSourceMediaCached(url, {
+          localWorkerFallback: {
+            workspaceId,
+            userId,
+            waitTimeoutMs: 3_000
+          }
+        }),
+        workerCompletion
+      ]);
+
+      assert.equal(cached.cacheState, "miss");
+      assert.equal(cached.fileName, "worker-source.mp4");
+      assert.equal(cached.downloadProvider, "ytDlp");
+      assert.equal(cached.downloadFallbackUsed, true);
+      assert.match(cached.primaryProviderError ?? "", /Visolix/);
+      assert.equal(await fs.readFile(cached.sourcePath).then((buffer) => buffer.length > 0), true);
+    } finally {
+      clearInterval(keepAlive);
+    }
+  } finally {
+    setSourceAcquisitionDownloadersForTests(null);
+    resetDbAndStage3Globals();
+    if (previousAppDataDir === undefined) {
+      delete process.env.APP_DATA_DIR;
+    } else {
+      process.env.APP_DATA_DIR = previousAppDataDir;
+    }
+    if (previousRender === undefined) {
+      delete process.env.RENDER;
+    } else {
+      process.env.RENDER = previousRender;
+    }
+    if (previousVisolixApiKey === undefined) {
+      delete process.env.VISOLIX_API_KEY;
+    } else {
+      process.env.VISOLIX_API_KEY = previousVisolixApiKey;
+    }
+    if (previousRetryDelay === undefined) {
+      delete process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS;
+    } else {
+      process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS = previousRetryDelay;
+    }
+    await fs.rm(appDataDir, { recursive: true, force: true });
+  }
+});
+
+test("source-download worker completion stores the uploaded artifact in source media cache", { concurrency: false }, async () => {
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-media-worker-complete-"));
+  const previousAppDataDir = process.env.APP_DATA_DIR;
+  const workspaceId = "w1";
+  const userId = "u1";
+  const url = "https://www.instagram.com/reel/source-download-complete/";
+
+  resetDbAndStage3Globals();
+  process.env.APP_DATA_DIR = appDataDir;
+  seedWorkspaceUser(workspaceId, userId);
+
+  try {
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "worker",
+      platform: "darwin-arm64"
+    });
+    const job = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "source-download",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        sourceUrl: url,
+        sourceMediaFallback: {
+          primaryProviderError: "Visolix: incomplete response",
+          providerErrorSummary: {
+            primaryProvider: "visolix",
+            primaryProviderError: "incomplete response",
+            primaryRetryEligible: true,
+            fallbackProvider: "ytDlp",
+            fallbackProviderError: "anti-bot",
+            hostedFallbackSkippedReason: null
+          }
+        }
+      })
+    });
+    const claimed = claimNextQueuedStage3JobForWorker({
+      workerId: exchanged.worker.id,
+      workspaceId,
+      userId,
+      supportedKinds: ["source-download"]
+    });
+    assert.equal(claimed?.id, job.id);
+
+    const workerSourcePath = path.join(appDataDir, "completed-worker-source.mp4");
+    await writeVideoWithAudio(workerSourcePath, 2);
+    const response = await completeWorkerStage3Job(
+      new Request(`http://localhost/api/stage3/worker/jobs/${job.id}/complete`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${exchanged.sessionToken}`,
+          "Content-Type": "video/mp4",
+          "x-stage3-artifact-name": encodeURIComponent("completed-worker-source.mp4"),
+          "x-stage3-artifact-mime-type": encodeURIComponent("video/mp4"),
+          "x-stage3-result-json": Buffer.from(JSON.stringify({ workerCache: true }), "utf-8").toString("base64url")
+        },
+        body: await fs.readFile(workerSourcePath)
+      }),
+      { params: Promise.resolve({ id: job.id }) }
+    );
+    const body = (await response.json()) as { job?: { status?: string; resultJson?: string | null } };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.job?.status, "completed");
+    const cached = await getCachedSourceMedia(url);
+    assert.ok(cached);
+    assert.equal(cached.fileName, "completed-worker-source.mp4");
+    assert.equal(cached.downloadProvider, "ytDlp");
+    assert.equal(cached.downloadFallbackUsed, true);
+    assert.match(cached.primaryProviderError ?? "", /Visolix/);
+    const completed = getStage3Job(job.id);
+    assert.equal(completed?.artifact, null);
+    assert.equal(JSON.parse(completed?.resultJson ?? "{}").sourceMediaCache, true);
+  } finally {
+    resetDbAndStage3Globals();
+    if (previousAppDataDir === undefined) {
+      delete process.env.APP_DATA_DIR;
+    } else {
+      process.env.APP_DATA_DIR = previousAppDataDir;
     }
     await fs.rm(appDataDir, { recursive: true, force: true });
   }

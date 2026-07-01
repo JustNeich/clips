@@ -169,9 +169,14 @@ export async function executeStage3HeavyJobPayload(
       resultJson: JSON.stringify({
         sourceKey: cached.sourceKey,
         sourceDurationSec: cached.sourceDurationSec,
-        fileName: cached.fileName
+        fileName: cached.fileName,
+        cacheMode: cached.cacheMode
       }),
-      artifact: null,
+      artifact: {
+        filePath: cached.sourcePath,
+        fileName: cached.fileName,
+        mimeType: "video/mp4"
+      },
       cleanup: null
     };
   }

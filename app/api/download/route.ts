@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    await requireAuth(request);
+    const auth = await requireAuth(request);
     const body = (await request.json().catch(() => null)) as { url?: string } | null;
     const rawUrl = body?.url?.trim();
 
@@ -27,7 +27,12 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const cached = await ensureSourceMediaCached(sourceUrl);
+    const cached = await ensureSourceMediaCached(sourceUrl, {
+      localWorkerFallback: {
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id
+      }
+    });
     const fileStat = await fs.stat(cached.sourcePath);
     const fileName = cached.fileName.toLowerCase().endsWith(".mp4") ? cached.fileName : `${cached.fileName}.mp4`;
     const stream = createReadStream(cached.sourcePath);

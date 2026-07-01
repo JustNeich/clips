@@ -13,6 +13,7 @@ import { isHostedRenderRuntime } from "./hosted-subprocess";
 import {
   downloadSourceMedia,
   findDownloadedMediaAudioIssue,
+  getSourceDownloadErrorContext,
   type SourceDownloadOptions
 } from "./source-acquisition";
 import { isUploadedSourceUrl } from "./uploaded-source";
@@ -55,6 +56,7 @@ const HOSTED_SOURCE_MEDIA_CACHE_MAX_AGE_MS = 6 * 60 * 60_000;
 const HOSTED_SOURCE_MEDIA_CACHE_MAX_BYTES = 512 * 1024 * 1024;
 const execFileAsync = promisify(execFile);
 const sourceMediaInflight = new Map<string, Promise<CachedSourceMediaCore>>();
+const DEFAULT_LOCAL_WORKER_SOURCE_DOWNLOAD_WAIT_MS = 6 * 60_000;
 
 export const SOURCE_MEDIA_CACHE_STORAGE_FULL_MESSAGE =
   "На сервере не хватило места, чтобы сохранить исходное видео Stage 1. Старый source cache уже очищен; повторите действие. Если ошибка повторится, нужно освободить persistent disk Render.";
@@ -69,7 +71,15 @@ export class SourceMediaCacheStorageError extends Error {
   }
 }
 
-type EnsureSourceMediaCachedOptions = SourceDownloadOptions;
+type SourceMediaLocalWorkerFallbackOptions = {
+  workspaceId: string;
+  userId: string;
+  waitTimeoutMs?: number | null;
+};
+
+type EnsureSourceMediaCachedOptions = SourceDownloadOptions & {
+  localWorkerFallback?: SourceMediaLocalWorkerFallbackOptions | null;
+};
 
 type SourceMediaCacheLimits = {
   maxEntries: number;
@@ -411,6 +421,116 @@ async function writeDownloadedSourceToCache(input: {
   }
 }
 
+export async function storeDownloadedSourceMediaCacheArtifact(input: {
+  sourceUrl: string;
+  filePath: string;
+  fileName: string;
+  title?: string | null;
+  downloadProvider?: "visolix" | "ytDlp";
+  primaryProviderError?: string | null;
+  downloadFallbackUsed?: boolean;
+  providerErrorSummary?: SourceProviderErrorSummary | null;
+}): Promise<CachedSourceMedia> {
+  const sourceUrl = normalizeSupportedUrl(input.sourceUrl);
+  if (isUploadedSourceUrl(sourceUrl)) {
+    throw new Error("Загруженный mp4 уже хранится локально и не должен скачиваться повторно.");
+  }
+
+  const sourceKey = getSourceMediaCacheKey(sourceUrl);
+  const sourcePath = buildSourcePath(sourceKey);
+  await fs.mkdir(getSourceMediaCacheDir(), { recursive: true });
+  const sourceStat = await fs.stat(input.filePath);
+  const meta: CachedSourceMediaMeta = {
+    fileName: input.fileName.trim() || `${sourceKey}.mp4`,
+    title: input.title?.trim() || path.parse(input.fileName).name || null,
+    videoSizeBytes: sourceStat.size,
+    downloadProvider: input.downloadProvider ?? "ytDlp",
+    primaryProviderError: input.primaryProviderError?.trim() || null,
+    downloadFallbackUsed: input.downloadFallbackUsed === true,
+    providerErrorSummary: input.providerErrorSummary ?? createDefaultProviderErrorSummary()
+  };
+  await writeDownloadedSourceToCache({
+    downloaded: {
+      provider: meta.downloadProvider,
+      filePath: input.filePath,
+      fileName: meta.fileName,
+      title: meta.title,
+      durationSec: null,
+      videoSizeBytes: sourceStat.size,
+      primaryProviderError: meta.primaryProviderError,
+      downloadFallbackUsed: meta.downloadFallbackUsed,
+      providerErrorSummary: meta.providerErrorSummary
+    },
+    sourcePath,
+    sourceKey,
+    meta,
+    incomingBytes: sourceStat.size
+  });
+  void pruneSourceMediaCache().catch(() => undefined);
+  return {
+    sourcePath,
+    sourceKey,
+    ...meta,
+    cacheState: "miss"
+  };
+}
+
+function getLocalWorkerFallbackWaitMs(options: SourceMediaLocalWorkerFallbackOptions): number {
+  const value = options.waitTimeoutMs;
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.max(1_000, Math.floor(value));
+  }
+  return DEFAULT_LOCAL_WORKER_SOURCE_DOWNLOAD_WAIT_MS;
+}
+
+async function trySourceMediaLocalWorkerFallback(input: {
+  sourceUrl: string;
+  sourceKey: string;
+  error: unknown;
+  options: EnsureSourceMediaCachedOptions;
+}): Promise<CachedSourceMediaCore | null> {
+  const fallback = input.options.localWorkerFallback;
+  if (!isHostedRenderRuntime() || !fallback?.workspaceId?.trim() || !fallback.userId?.trim()) {
+    return null;
+  }
+  const errorContext = getSourceDownloadErrorContext(input.error);
+  if (!errorContext) {
+    return null;
+  }
+
+  const { enqueueAndScheduleStage3Job, waitForStage3Job } = await import("./stage3-job-runtime");
+  const primaryProviderError = input.error instanceof Error ? input.error.message : "Source fetch failed.";
+  const job = enqueueAndScheduleStage3Job({
+    workspaceId: fallback.workspaceId,
+    userId: fallback.userId,
+    kind: "source-download",
+    executionTarget: "local",
+    dedupeKey: `source-media:${input.sourceKey}`,
+    attemptLimit: 2,
+    payloadJson: JSON.stringify({
+      sourceUrl: input.sourceUrl,
+      sourceMediaFallback: {
+        primaryProviderError,
+        providerErrorSummary: errorContext.providerErrorSummary
+      }
+    })
+  });
+
+  const completed = await waitForStage3Job(job.id, {
+    timeoutMs: getLocalWorkerFallbackWaitMs(fallback)
+  });
+  if (completed.status !== "completed") {
+    throw new Error(completed.errorMessage || "Локальный executor не смог скачать исходник.");
+  }
+
+  const cached = await getCachedSourceMedia(input.sourceUrl);
+  if (!cached) {
+    throw new Error("Локальный executor завершил загрузку, но source cache не получил mp4.");
+  }
+  const { cacheState: _cacheState, ...core } = cached;
+  return core;
+}
+
 export const pruneSourceMediaCacheForTests = pruneSourceMediaCache;
 
 type UploadedSourceMediaInfo = {
@@ -726,7 +846,21 @@ export async function ensureSourceMediaCached(
     await fs.mkdir(getSourceMediaCacheDir(), { recursive: true });
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-source-cache-build-"));
     try {
-      const downloaded = await downloadSourceMedia(sourceUrl, tmpDir, options);
+      let downloaded: Awaited<ReturnType<typeof downloadSourceMedia>>;
+      try {
+        downloaded = await downloadSourceMedia(sourceUrl, tmpDir, options);
+      } catch (error) {
+        const fallback = await trySourceMediaLocalWorkerFallback({
+          sourceUrl,
+          sourceKey,
+          error,
+          options
+        });
+        if (fallback) {
+          return fallback;
+        }
+        throw error;
+      }
       const sourceStat = await fs.stat(downloaded.filePath);
       const meta: CachedSourceMediaMeta = {
         fileName: downloaded.fileName,

@@ -101,6 +101,7 @@ npm run dev
 - UI отправляет ссылку на `POST /api/download`.
 - API выбирает provider-specific source path, получает видео и возвращает клиенту `mp4` как attachment.
   - для hosted source download использует `Visolix` и один автоматический retry на transient/неполный provider response;
+  - если hosted provider path не смог получить Instagram source, а paired local Stage 3 worker доступен, Step 1 ставит локальный `source-download` job и сохраняет возвращённый mp4 в обычный source cache;
   - hosted `YouTube` source download не уходит в `yt-dlp` fallback;
   - local/dev path по-прежнему может использовать `yt-dlp`, если это допустимо для конкретного runtime.
 - UI может отправить ссылку на `POST /api/comments`.

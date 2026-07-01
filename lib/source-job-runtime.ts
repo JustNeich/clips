@@ -191,6 +191,12 @@ export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobR
       : "Скачиваем и кэшируем исходное видео."
   );
   const cachedSource = await ensureSourceMediaCached(job.sourceUrl, {
+    localWorkerFallback: job.creatorUserId
+      ? {
+          workspaceId: job.workspaceId,
+          userId: job.creatorUserId
+        }
+      : null,
     onRetryScheduled: ({ attempt, maxAttempts, retryAt, providerErrorSummary }) => {
       markSourceJobRetryScheduled(job.jobId, {
         detail: "Visolix временно недоступен. Повторяем через 5 с.",
