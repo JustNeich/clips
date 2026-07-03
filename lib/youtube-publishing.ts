@@ -14,6 +14,7 @@ const DEFAULT_YOUTUBE_VIDEO_CATEGORY_ID = "22";
 
 export const YOUTUBE_PUBLISH_SCOPES = [
   "https://www.googleapis.com/auth/youtube.force-ssl",
+  "https://www.googleapis.com/auth/yt-analytics.readonly",
   "openid",
   "email"
 ] as const;
