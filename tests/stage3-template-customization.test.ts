@@ -10,6 +10,7 @@ import {
   CHANNEL_STORY_TEMPLATE_ID,
   SCIENCE_CARD,
   cloneStage3TemplateConfig,
+  getStage3CardInnerRect,
   resolveChannelStoryBodyContentHeight
 } from "../lib/stage3-template";
 import {
@@ -802,6 +803,42 @@ test("channel story snapshot measures inner content from the bordered card safe 
   assert.equal(snapshot.layout.author.width, 712);
   assert.equal(snapshot.layout.media.x, 146);
   assert.equal(snapshot.layout.media.width, 788);
+});
+
+test("channel story snapshot respects large vertical shell padding", () => {
+  const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
+  templateConfig.channelStory!.contentPaddingTop = 260;
+  templateConfig.channelStory!.contentPaddingBottom = 300;
+  templateConfig.channelStory!.bodyHeight = 220;
+  templateConfig.channelStory!.bodyToMediaGap = 24;
+  templateConfig.channelStory!.footerHeight = 120;
+
+  const snapshot = buildTemplateRenderSnapshot({
+    templateId: CHANNEL_STORY_TEMPLATE_ID,
+    content: {
+      topText: "Did you know?",
+      bottomText: "The shell keeps the requested breathing room while preserving a visible source slot.",
+      channelName: "History Explained",
+      channelHandle: "@HistoryExplained13",
+      highlights: { top: [], bottom: [] },
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    },
+    templateConfigOverride: templateConfig
+  });
+
+  const cardInnerRect = getStage3CardInnerRect(templateConfig);
+
+  assert.equal(snapshot.layout.author.y, cardInnerRect.y + 260);
+  assert.equal(
+    snapshot.layout.media.y + snapshot.layout.media.height,
+    cardInnerRect.y + cardInnerRect.height - 300 - 120
+  );
+  assert.ok(snapshot.layout.media.height >= 120);
 });
 
 test("channel story body-to-video gap reaches zero without changing separate media frame controls", () => {

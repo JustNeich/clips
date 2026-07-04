@@ -515,6 +515,7 @@ function snapToStep(value: number, step: number): number {
 const CLASSIC_MAX_TEXT_VERTICAL_PADDING_PX = 160;
 const CLASSIC_MIN_TEXT_CONTENT_HEIGHT_PX = 80;
 const CLASSIC_MIN_MEDIA_HEIGHT_PX = 240;
+const CHANNEL_STORY_MAX_CONTENT_VERTICAL_PADDING_PX = 360;
 
 function getClassicTopPaddingTop(templateConfig: Stage3TemplateConfig): number {
   return templateConfig.slot.topPaddingTop ?? templateConfig.slot.topPaddingY;
@@ -5124,7 +5125,7 @@ export function TemplateStyleEditor({
                     label="Верхний внутренний отступ"
                     hint="Сколько воздуха оставить над channel row."
                     min={0}
-                    max={180}
+                    max={CHANNEL_STORY_MAX_CONTENT_VERTICAL_PADDING_PX}
                     step={1}
                     value={templateConfig.channelStory.contentPaddingTop}
                     formatValue={formatPxValue}
@@ -5134,7 +5135,7 @@ export function TemplateStyleEditor({
                     label="Нижний внутренний отступ"
                     hint="Воздух под видео внутри shell."
                     min={0}
-                    max={220}
+                    max={CHANNEL_STORY_MAX_CONTENT_VERTICAL_PADDING_PX}
                     step={1}
                     value={templateConfig.channelStory.contentPaddingBottom}
                     formatValue={formatPxValue}
