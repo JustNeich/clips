@@ -213,6 +213,21 @@ test("step 3 preview applies contain fit to the source slot inline", () => {
   assert.match(html, /object-fit:contain/);
 });
 
+test("step 3 template customization link opens the selected channel managed template", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      Step3RenderTemplate,
+      makeStep3RenderTemplateProps({
+        templateId: "channel-story-v1",
+        channelTemplateId: "the-legacy-journal-template"
+      })
+    )
+  );
+
+  assert.match(html, /href="\/design\/template-road\?template=the-legacy-journal-template"/);
+  assert.doesNotMatch(html, /href="\/design\/template-road\?template=channel-story-v1"/);
+});
+
 test("workspace render tab warns when configured host mode is currently forced back to local", () => {
   const html = renderToStaticMarkup(
     React.createElement(ChannelManagerWorkspaceRenderTab, {

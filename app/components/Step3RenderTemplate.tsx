@@ -173,6 +173,7 @@ import {
   normalizeStage3VideoFit,
   type Stage3VideoFit
 } from "../../lib/stage3-video-fit";
+import { buildTemplateRoadHref } from "./template-road-link";
 
 export type Step3ManagedTemplateState = Stage3SnapshotManagedTemplateState & {
   name: string;
@@ -199,6 +200,7 @@ const MANAGED_TEMPLATE_REFRESH_COOLDOWN_MS = 15_000;
 type Step3RenderTemplateProps = {
   sourceUrl: string | null;
   templateId: string;
+  channelTemplateId?: string | null;
   channelName: string;
   channelUsername: string;
   avatarUrl: string | null;
@@ -2427,6 +2429,7 @@ function Stage3LivePreviewPanel({
 export function Step3RenderTemplate({
   sourceUrl,
   templateId,
+  channelTemplateId = null,
   channelName,
   channelUsername,
   avatarUrl,
@@ -2862,7 +2865,9 @@ export function Step3RenderTemplate({
       suggestedHighlightedSource.option !== selectedCaptionSource?.option &&
       currentCaptionHighlightCount === 0
   );
-  const templateCustomizationHref = `/design/template-road?template=${encodeURIComponent(templateId)}`;
+  const templateCustomizationHref = buildTemplateRoadHref(
+    channelTemplateId ?? managedTemplateState.managedId ?? templateId
+  );
   const topTextSourceLabel = formatCaptionSourceLabel(handoffSummary?.topTextSource ?? "empty");
   const bottomTextSourceLabel = formatCaptionSourceLabel(handoffSummary?.bottomTextSource ?? "empty");
   const hasManualCaptionOverride = Boolean(handoffSummary?.hasManualTextOverride);

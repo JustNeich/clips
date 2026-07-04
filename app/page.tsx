@@ -7614,6 +7614,7 @@ export default function HomePage() {
         <Step3RenderTemplate
           sourceUrl={activeChat?.url ?? null}
           templateId={stage3RenderPlan.templateId}
+          channelTemplateId={activeChannel?.templateId ?? null}
           channelName={activeChannel?.name ?? stage3RenderPlan.authorName ?? "Channel"}
           channelUsername={
             (activeChannel?.username?.trim() || "").replace(/^@/, "") ||

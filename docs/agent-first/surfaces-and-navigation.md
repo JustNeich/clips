@@ -415,7 +415,7 @@
       - count of caption options that already contain highlight-spans
       - manual buttons `Выделить TOP/Lead` and `Выделить BOTTOM/Main Caption` for selected text
       - recovery CTA to apply the first option with color spans when the selected option has none
-      - link `Открыть template customization`
+      - link `Открыть template customization` opens the managed template for the currently selected channel
   - details `Источники и быстрый mix`
     - per-option highlight count pills
   - toggle for background/source modes
