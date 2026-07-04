@@ -1,9 +1,13 @@
 import path from "node:path";
 import type { ChannelPublication } from "../app/components/types";
-import { completeRenderExportAndMaybeQueue } from "./channel-publication-service";
+import {
+  buildValidatedCustomPublicationSchedule,
+  completeRenderExportAndMaybeQueue,
+  updateChannelPublicationFromEditor
+} from "./channel-publication-service";
 import { appendChatEvent, createOrGetChatBySource, type ChatThread } from "./chat-history";
 import { scheduleChannelPublicationProcessing } from "./channel-publication-runtime";
-import { updateChannelPublicationDraft, type RenderExportRecord } from "./publication-store";
+import type { RenderExportRecord } from "./publication-store";
 import { publishStage3VideoArtifact } from "./stage3-job-artifacts";
 import { completeStage3Job, enqueueStage3Job, type Stage3JobRecord } from "./stage3-job-store";
 
@@ -43,11 +47,19 @@ export async function createReadyVideoPublication(input: {
   sourcePath: string;
   description?: string;
   tags?: string[];
+  scheduledAtLocal?: string;
 }): Promise<ReadyVideoPublicationResult> {
   const fileName = path.basename(input.fileName.trim() || "ready-upload.mp4");
   const title = input.title.trim() || path.parse(fileName).name || "Готовый ролик";
   const manualDescription = input.description?.trim() ?? "";
   const manualTags = normalizeReadyUploadTags(input.tags);
+  const manualScheduledAtLocal = input.scheduledAtLocal?.trim() ?? "";
+  if (manualScheduledAtLocal) {
+    buildValidatedCustomPublicationSchedule({
+      channelId: input.channelId,
+      scheduledAtLocal: manualScheduledAtLocal
+    });
+  }
   const chat = await createOrGetChatBySource({
     rawUrl: input.sourceUrl,
     channelIdRaw: input.channelId,
@@ -109,14 +121,15 @@ export async function createReadyVideoPublication(input: {
     publishAfterRender: true
   });
   const queuedPublication =
-    publication && (manualDescription || manualTags.length > 0)
-      ? updateChannelPublicationDraft({
+    publication && (manualDescription || manualTags.length > 0 || manualScheduledAtLocal)
+      ? await updateChannelPublicationFromEditor({
           publicationId: publication.id,
-          description: manualDescription || undefined,
-          tags: manualTags.length > 0 ? manualTags : undefined,
-          descriptionManual: Boolean(manualDescription),
-          tagsManual: manualTags.length > 0,
-          clearLastError: true
+          patch: {
+            description: manualDescription || undefined,
+            tags: manualTags.length > 0 ? manualTags : undefined,
+            scheduleMode: manualScheduledAtLocal ? "custom" : undefined,
+            scheduledAtLocal: manualScheduledAtLocal || undefined
+          }
         })
       : publication;
 

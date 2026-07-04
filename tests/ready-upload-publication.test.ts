@@ -8,8 +8,13 @@ import { promisify } from "node:util";
 
 import { POST as uploadReadyVideoRoute } from "../app/api/channels/[id]/publications/ready-upload/route";
 import { APP_SESSION_COOKIE } from "../lib/auth/cookies";
+import {
+  buildCustomPublicationCandidateFromLocalDateTime,
+  DEFAULT_CHANNEL_PUBLISH_SETTINGS
+} from "../lib/channel-publishing";
 import { createChannel } from "../lib/chat-history";
 import {
+  getChannelPublishSettings,
   getRenderExportById,
   listChannelPublications,
   saveChannelPublishIntegration,
@@ -127,12 +132,17 @@ test("ready-upload route queues a finished mp4 for YouTube without creating a so
     formData.set("title", "Ready Final");
     formData.set("description", "Custom ready description\nLine 2");
     formData.set("tags", "alpha, beta\n#gamma");
+    formData.set("scheduledAtLocal", "2040-05-05T21:07");
     formData.set(
       "file",
       new File([fileBytes], "ready-final.mp4", {
         type: "video/mp4"
       })
     );
+    const customSchedule = buildCustomPublicationCandidateFromLocalDateTime({
+      settings: getChannelPublishSettings(channel.id),
+      localDateTime: "2040-05-05T21:07"
+    });
 
     const response = await uploadReadyVideoRoute(
       new Request(`http://localhost/api/channels/${channel.id}/publications/ready-upload`, {
@@ -154,6 +164,12 @@ test("ready-upload route queues a finished mp4 for YouTube without creating a so
         tags?: string[];
         descriptionManual?: boolean;
         tagsManual?: boolean;
+        scheduleMode?: string;
+        scheduledAt?: string;
+        uploadReadyAt?: string;
+        slotDate?: string;
+        slotIndex?: number;
+        scheduleManual?: boolean;
       };
       error?: string;
     };
@@ -169,6 +185,12 @@ test("ready-upload route queues a finished mp4 for YouTube without creating a so
     assert.deepEqual(body.publication?.tags, ["alpha", "beta", "#gamma"]);
     assert.equal(body.publication?.descriptionManual, true);
     assert.equal(body.publication?.tagsManual, true);
+    assert.equal(body.publication?.scheduleMode, "custom");
+    assert.equal(body.publication?.scheduledAt, customSchedule.scheduledAt);
+    assert.equal(body.publication?.uploadReadyAt, customSchedule.uploadReadyAt);
+    assert.equal(body.publication?.slotDate, "2040-05-05");
+    assert.equal(body.publication?.slotIndex, -1);
+    assert.equal(body.publication?.scheduleManual, true);
     assert.equal(body.publication?.renderExportId, body.renderExport?.id);
 
     const publications = listChannelPublications(channel.id);
@@ -181,6 +203,12 @@ test("ready-upload route queues a finished mp4 for YouTube without creating a so
     assert.deepEqual(publications[0]?.tags, ["alpha", "beta", "#gamma"]);
     assert.equal(publications[0]?.descriptionManual, true);
     assert.equal(publications[0]?.tagsManual, true);
+    assert.equal(publications[0]?.scheduleMode, "custom");
+    assert.equal(publications[0]?.scheduledAt, customSchedule.scheduledAt);
+    assert.equal(publications[0]?.uploadReadyAt, customSchedule.uploadReadyAt);
+    assert.equal(publications[0]?.slotDate, "2040-05-05");
+    assert.equal(publications[0]?.slotIndex, -1);
+    assert.equal(publications[0]?.scheduleManual, true);
 
     const renderExport = getRenderExportById(body.renderExport?.id ?? "");
     assert.ok(renderExport);
@@ -193,6 +221,72 @@ test("ready-upload route queues a finished mp4 for YouTube without creating a so
 
     const sourceJobs = listSourceJobsForChat(body.chat?.id ?? "", owner.workspace.id, 10);
     assert.equal(sourceJobs.length, 0);
+  });
+});
+
+test("ready-upload route rejects a custom publication time in the past before queueing", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel } = await seedReadyUploadChannel();
+    saveChannelPublishIntegration({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      userId: owner.user.id,
+      status: "connected",
+      credential: null,
+      googleAccountEmail: "owner@example.com",
+      selectedYoutubeChannelId: "youtube-channel-1",
+      selectedYoutubeChannelTitle: "Ready Upload Channel",
+      selectedYoutubeChannelCustomUrl: "@readyupload",
+      availableChannels: [
+        {
+          id: "youtube-channel-1",
+          title: "Ready Upload Channel",
+          customUrl: "@readyupload"
+        }
+      ],
+      scopes: ["youtube.upload"],
+      lastError: null
+    });
+
+    const pastSchedule = buildCustomPublicationCandidateFromLocalDateTime({
+      settings: {
+        ...DEFAULT_CHANNEL_PUBLISH_SETTINGS,
+        uploadLeadMinutes: 0,
+        notifySubscribersByDefault: false
+      },
+      localDateTime: "2000-01-01T10:00"
+    });
+    assert.ok(new Date(pastSchedule.scheduledAt).getTime() < Date.now());
+
+    const mediaDir = await mkdtemp(path.join(appDataDir, "media-"));
+    const mp4Path = path.join(mediaDir, "ready-final.mp4");
+    await createTinyMp4File(mp4Path);
+    const fileBytes = await readFile(mp4Path);
+
+    const formData = new FormData();
+    formData.set("scheduledAtLocal", "2000-01-01T10:00");
+    formData.set(
+      "file",
+      new File([fileBytes], "ready-final.mp4", {
+        type: "video/mp4"
+      })
+    );
+
+    const response = await uploadReadyVideoRoute(
+      new Request(`http://localhost/api/channels/${channel.id}/publications/ready-upload`, {
+        method: "POST",
+        headers: buildAuthedHeaders(owner.sessionToken),
+        body: formData
+      }),
+      { params: Promise.resolve({ id: channel.id }) }
+    );
+    const body = (await response.json()) as { error?: string; code?: string; field?: string };
+
+    assert.equal(response.status, 400);
+    assert.equal(body.code, "CUSTOM_TIME_IN_PAST", JSON.stringify(body));
+    assert.equal(body.field, "scheduledAtLocal");
+    assert.match(body.error ?? "", /уже в прошлом/i);
+    assert.equal(listChannelPublications(channel.id).length, 0);
   });
 });
 

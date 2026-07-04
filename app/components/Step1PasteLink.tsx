@@ -39,6 +39,7 @@ type Step1PasteLinkProps = {
 export type ReadyUploadMetadata = {
   description: string;
   tagsText: string;
+  scheduledAtLocal: string;
 };
 
 type SourcePreview =
@@ -168,6 +169,7 @@ export function Step1PasteLink({
   const [selectedUploadFileNames, setSelectedUploadFileNames] = useState<string[] | null>(null);
   const [readyUploadDescription, setReadyUploadDescription] = useState("");
   const [readyUploadTagsText, setReadyUploadTagsText] = useState("");
+  const [readyUploadScheduledAtLocal, setReadyUploadScheduledAtLocal] = useState("");
   const isAttachedSourceJob =
     Boolean(sourceJob) &&
     (sourceJob?.status === "queued" || sourceJob?.status === "running") &&
@@ -310,7 +312,8 @@ export function Step1PasteLink({
                       setSelectedUploadFileNames([file.name]);
                       onUploadReadyFile(file, {
                         description: readyUploadDescription,
-                        tagsText: readyUploadTagsText
+                        tagsText: readyUploadTagsText,
+                        scheduledAtLocal: readyUploadScheduledAtLocal
                       });
                     }
                   }}
@@ -367,6 +370,20 @@ export function Step1PasteLink({
                     placeholder="tag1, tag2, tag3"
                   />
                   <span className="subtle-text">Можно через запятую или с новой строки.</span>
+                </label>
+                <label className="field-stack" htmlFor="ready-upload-scheduled-at">
+                  <span className="field-label">Время публикации YouTube</span>
+                  <input
+                    id="ready-upload-scheduled-at"
+                    type="datetime-local"
+                    className="text-input"
+                    value={readyUploadScheduledAtLocal}
+                    disabled={uploadBusy || readyUploadBusy || !readyUploadAvailable}
+                    onChange={(event) => setReadyUploadScheduledAtLocal(event.target.value)}
+                  />
+                  <span className="subtle-text">
+                    Если оставить пустым, софт выберет ближайший свободный слот автоматически.
+                  </span>
                 </label>
               </div>
 

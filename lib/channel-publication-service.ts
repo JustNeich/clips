@@ -179,6 +179,57 @@ function findFuturePublicationTimeConflict(input: {
   );
 }
 
+export function buildValidatedCustomPublicationSchedule(input: {
+  channelId: string;
+  scheduledAtLocal: string;
+  excludePublicationId?: string | null;
+}): {
+  scheduleMode: ChannelPublicationScheduleMode;
+  scheduledAt: string;
+  uploadReadyAt: string;
+  slotDate: string;
+  slotIndex: number;
+} {
+  const localDateTime = input.scheduledAtLocal.trim();
+  if (!localDateTime) {
+    throw new PublicationMutationError("Для кастомной публикации укажите дату и время.", {
+      code: "CUSTOM_TIME_REQUIRED",
+      field: "scheduledAtLocal"
+    });
+  }
+  const settings = getChannelPublishSettings(input.channelId);
+  let scheduledPatch: ReturnType<typeof buildCustomPublicationCandidateFromLocalDateTime>;
+  try {
+    scheduledPatch = buildCustomPublicationCandidateFromLocalDateTime({
+      settings,
+      localDateTime
+    });
+  } catch {
+    throw new PublicationMutationError("Некорректная дата и время публикации.", {
+      code: "CUSTOM_TIME_REQUIRED",
+      field: "scheduledAtLocal"
+    });
+  }
+  if (new Date(scheduledPatch.scheduledAt).getTime() <= Date.now()) {
+    throw new PublicationMutationError("Кастомное время уже в прошлом. Выберите будущее время или нажмите Publish now.", {
+      code: "CUSTOM_TIME_IN_PAST",
+      field: "scheduledAtLocal"
+    });
+  }
+  const timeConflict = findFuturePublicationTimeConflict({
+    channelId: input.channelId,
+    excludePublicationId: input.excludePublicationId ?? "",
+    scheduledAt: scheduledPatch.scheduledAt
+  });
+  if (timeConflict) {
+    throw new PublicationMutationError("Это время уже занято другой публикацией.", {
+      code: "TIME_OCCUPIED",
+      field: "scheduledAtLocal"
+    });
+  }
+  return scheduledPatch;
+}
+
 async function moveChannelPublicationIntoSlot(input: {
   publication: ChannelPublication;
   targetSlot: PublicationSlotTarget;
@@ -792,26 +843,11 @@ export async function updateChannelPublicationFromEditor(input: {
       }
     | undefined;
   if (input.patch.scheduleMode === "custom") {
-    if (!input.patch.scheduledAtLocal?.trim()) {
-      throw new PublicationMutationError("Для кастомной публикации укажите дату и время.", {
-        code: "CUSTOM_TIME_REQUIRED",
-        field: "scheduledAtLocal"
-      });
-    }
-    const settings = getChannelPublishSettings(current.channelId);
-    scheduledPatch = buildCustomPublicationCandidateFromLocalDateTime({
-      settings,
-      localDateTime: input.patch.scheduledAtLocal
+    scheduledPatch = buildValidatedCustomPublicationSchedule({
+      channelId: current.channelId,
+      scheduledAtLocal: input.patch.scheduledAtLocal ?? "",
+      excludePublicationId: current.id
     });
-    if (new Date(scheduledPatch.scheduledAt).getTime() <= Date.now()) {
-      throw new PublicationMutationError(
-        "Кастомное время уже в прошлом. Выберите будущее время или нажмите Publish now.",
-        {
-          code: "CUSTOM_TIME_IN_PAST",
-          field: "scheduledAtLocal"
-        }
-      );
-    }
   } else if (
     input.patch.scheduleMode === "slot" ||
     (input.patch.slotDate && typeof input.patch.slotIndex === "number")

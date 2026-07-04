@@ -3174,6 +3174,7 @@ export default function HomePage() {
     file: File;
     description?: string;
     tagsText?: string;
+    scheduledAtLocal?: string;
   }): Promise<{
     chat: ChatThread;
     publication: ChannelPublication | null;
@@ -3183,11 +3184,15 @@ export default function HomePage() {
     formData.set("title", input.file.name ? input.file.name.replace(/\.[^.]+$/, "") : "Готовый ролик");
     const description = input.description?.trim() ?? "";
     const tagsText = input.tagsText?.trim() ?? "";
+    const scheduledAtLocal = input.scheduledAtLocal?.trim() ?? "";
     if (description) {
       formData.set("description", description);
     }
     if (tagsText) {
       formData.set("tags", tagsText);
+    }
+    if (scheduledAtLocal) {
+      formData.set("scheduledAtLocal", scheduledAtLocal);
     }
 
     const response = await fetch(`/api/channels/${input.channelId}/publications/ready-upload`, {
@@ -3473,7 +3478,8 @@ export default function HomePage() {
         channelId: activeChannelId,
         file,
         description: metadata?.description,
-        tagsText: metadata?.tagsText
+        tagsText: metadata?.tagsText,
+        scheduledAtLocal: metadata?.scheduledAtLocal
       });
       let hydrateFailed = false;
       setDraftUrl("");

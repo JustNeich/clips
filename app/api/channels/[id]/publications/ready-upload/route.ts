@@ -8,6 +8,7 @@ import { newId } from "../../../../../../lib/db/client";
 import { buildUploadedSourceUrl } from "../../../../../../lib/uploaded-source";
 import { storeUploadedSourceMedia } from "../../../../../../lib/source-media-cache";
 import { splitChannelPublicationTags } from "../../../../../../lib/channel-publishing";
+import { toPublicationMutationErrorPayload } from "../../../../../../lib/publication-mutation-errors";
 
 export const runtime = "nodejs";
 
@@ -82,6 +83,7 @@ export async function POST(request: Request, context: Context): Promise<Response
     const title = parsed.fields.title?.trim() || path.parse(fileName).name || "Готовый ролик";
     const description = normalizeReadyUploadTextField(parsed.fields.description);
     const tags = splitChannelPublicationTags(parsed.fields.tags);
+    const scheduledAtLocal = normalizeReadyUploadTextField(parsed.fields.scheduledAtLocal);
     const sourceUrl = buildUploadedSourceUrl(newId(), fileName);
     const cached = await storeUploadedSourceMedia({
       sourceUrl,
@@ -100,7 +102,8 @@ export async function POST(request: Request, context: Context): Promise<Response
       fileName,
       sourcePath: cached.sourcePath,
       description,
-      tags
+      tags,
+      scheduledAtLocal
     });
 
     return Response.json(
@@ -133,6 +136,10 @@ export async function POST(request: Request, context: Context): Promise<Response
     }
     if (message === "Загружать можно только готовый mp4 файл.") {
       return Response.json({ error: "Загружать можно только готовые mp4 файлы." }, { status: 400 });
+    }
+    const mutation = toPublicationMutationErrorPayload(error, message);
+    if (mutation.body.code !== "UNKNOWN") {
+      return Response.json(mutation.body, { status: mutation.status });
     }
     return Response.json({ error: message }, { status: 500 });
   }

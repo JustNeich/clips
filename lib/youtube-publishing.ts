@@ -87,7 +87,7 @@ async function runWithRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
       return await fn();
     } catch (error) {
       lastError = error;
-      if (attempt === attempts - 1) {
+      if (attempt === attempts - 1 || !shouldRetryUploadError(error)) {
         throw error;
       }
       await new Promise<void>((resolve) => {

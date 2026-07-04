@@ -11608,7 +11608,10 @@ test("step 1 renders a custom mp4 upload panel and auto-stage2 checkbox", () => 
   assert.match(html, /В очередь YouTube/);
   assert.match(html, /Описание для YouTube/);
   assert.match(html, /Теги для YouTube/);
+  assert.match(html, /Время публикации YouTube/);
+  assert.match(html, /type="datetime-local"/);
   assert.match(html, /tag1, tag2, tag3/);
+  assert.match(html, /ближайший свободный слот автоматически/);
   assert.match(html, /Готовый mp4 не выбран/);
   assert.match(html, /Автоматически запускать Stage 2 после завершения Step 1/);
   assert.match(html, /checked=""/);
