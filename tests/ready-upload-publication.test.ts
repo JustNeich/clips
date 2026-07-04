@@ -125,6 +125,8 @@ test("ready-upload route queues a finished mp4 for YouTube without creating a so
 
     const formData = new FormData();
     formData.set("title", "Ready Final");
+    formData.set("description", "Custom ready description\nLine 2");
+    formData.set("tags", "alpha, beta\n#gamma");
     formData.set(
       "file",
       new File([fileBytes], "ready-final.mp4", {
@@ -143,7 +145,16 @@ test("ready-upload route queues a finished mp4 for YouTube without creating a so
     const body = (await response.json()) as {
       chat?: { id?: string; title?: string; url?: string };
       renderExport?: { id?: string; fileName?: string };
-      publication?: { id?: string; status?: string; renderExportId?: string; title?: string };
+      publication?: {
+        id?: string;
+        status?: string;
+        renderExportId?: string;
+        title?: string;
+        description?: string;
+        tags?: string[];
+        descriptionManual?: boolean;
+        tagsManual?: boolean;
+      };
       error?: string;
     };
 
@@ -154,6 +165,10 @@ test("ready-upload route queues a finished mp4 for YouTube without creating a so
     assert.equal(body.renderExport?.fileName, "ready-final.mp4");
     assert.equal(body.publication?.status, "queued");
     assert.equal(body.publication?.title, "Ready Final");
+    assert.equal(body.publication?.description, "Custom ready description\nLine 2");
+    assert.deepEqual(body.publication?.tags, ["alpha", "beta", "#gamma"]);
+    assert.equal(body.publication?.descriptionManual, true);
+    assert.equal(body.publication?.tagsManual, true);
     assert.equal(body.publication?.renderExportId, body.renderExport?.id);
 
     const publications = listChannelPublications(channel.id);
@@ -162,6 +177,10 @@ test("ready-upload route queues a finished mp4 for YouTube without creating a so
     assert.equal(publications[0]?.renderFileName, "ready-final.mp4");
     assert.equal(publications[0]?.sourceUrl, body.chat?.url);
     assert.equal(publications[0]?.notifySubscribers, false);
+    assert.equal(publications[0]?.description, "Custom ready description\nLine 2");
+    assert.deepEqual(publications[0]?.tags, ["alpha", "beta", "#gamma"]);
+    assert.equal(publications[0]?.descriptionManual, true);
+    assert.equal(publications[0]?.tagsManual, true);
 
     const renderExport = getRenderExportById(body.renderExport?.id ?? "");
     assert.ok(renderExport);

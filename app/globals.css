@@ -3110,6 +3110,17 @@ select.text-input:focus {
   color: var(--text-muted);
 }
 
+.ready-upload-metadata {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.ready-upload-metadata .subtle-text {
+  margin: 0;
+}
+
 .source-stage-toggle {
   display: grid;
   gap: 8px;
@@ -8211,6 +8222,10 @@ select.text-input:focus {
   }
 
   .source-upload-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ready-upload-metadata {
     grid-template-columns: 1fr;
   }
 

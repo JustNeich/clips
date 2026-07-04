@@ -30,10 +30,15 @@ type Step1PasteLinkProps = {
   onPaste: () => void;
   onFetch: () => void;
   onUploadFiles: (files: File[]) => void;
-  onUploadReadyFile: (file: File) => void;
+  onUploadReadyFile: (file: File, metadata: ReadyUploadMetadata) => void;
   onAutoRunStage2Change: (value: boolean) => void;
   onDownloadSource: () => void;
   onCreateNextChat?: () => void;
+};
+
+export type ReadyUploadMetadata = {
+  description: string;
+  tagsText: string;
 };
 
 type SourcePreview =
@@ -161,6 +166,8 @@ export function Step1PasteLink({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const readyUploadInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedUploadFileNames, setSelectedUploadFileNames] = useState<string[] | null>(null);
+  const [readyUploadDescription, setReadyUploadDescription] = useState("");
+  const [readyUploadTagsText, setReadyUploadTagsText] = useState("");
   const isAttachedSourceJob =
     Boolean(sourceJob) &&
     (sourceJob?.status === "queued" || sourceJob?.status === "running") &&
@@ -301,7 +308,10 @@ export function Step1PasteLink({
                     event.currentTarget.value = "";
                     if (file) {
                       setSelectedUploadFileNames([file.name]);
-                      onUploadReadyFile(file);
+                      onUploadReadyFile(file, {
+                        description: readyUploadDescription,
+                        tagsText: readyUploadTagsText
+                      });
                     }
                   }}
                 />
@@ -331,6 +341,33 @@ export function Step1PasteLink({
                   <p className="source-upload-summary-title">{uploadSummary.title}</p>
                   <p className="source-upload-summary-detail">{uploadSummary.detail}</p>
                 </div>
+              </div>
+
+              <div className="ready-upload-metadata" aria-label="Метаданные готового mp4 для YouTube">
+                <label className="field-stack" htmlFor="ready-upload-description">
+                  <span className="field-label">Описание для YouTube</span>
+                  <textarea
+                    id="ready-upload-description"
+                    className="text-area"
+                    rows={4}
+                    value={readyUploadDescription}
+                    disabled={uploadBusy || readyUploadBusy || !readyUploadAvailable}
+                    onChange={(event) => setReadyUploadDescription(event.target.value)}
+                    placeholder="Описание, которое попадёт в YouTube при загрузке готового ролика"
+                  />
+                </label>
+                <label className="field-stack" htmlFor="ready-upload-tags">
+                  <span className="field-label">Теги для YouTube</span>
+                  <input
+                    id="ready-upload-tags"
+                    className="text-input"
+                    value={readyUploadTagsText}
+                    disabled={uploadBusy || readyUploadBusy || !readyUploadAvailable}
+                    onChange={(event) => setReadyUploadTagsText(event.target.value)}
+                    placeholder="tag1, tag2, tag3"
+                  />
+                  <span className="subtle-text">Можно через запятую или с новой строки.</span>
+                </label>
               </div>
 
               <div className="control-actions">

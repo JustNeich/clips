@@ -7,6 +7,7 @@ import { MultipartUploadError, parseMultipartSingleFileRequest } from "../../../
 import { newId } from "../../../../../../lib/db/client";
 import { buildUploadedSourceUrl } from "../../../../../../lib/uploaded-source";
 import { storeUploadedSourceMedia } from "../../../../../../lib/source-media-cache";
+import { splitChannelPublicationTags } from "../../../../../../lib/channel-publishing";
 
 export const runtime = "nodejs";
 
@@ -38,6 +39,10 @@ function createReadableStreamFromBytes(bytes: Uint8Array): ReadableStream<Uint8A
       controller.close();
     }
   });
+}
+
+function normalizeReadyUploadTextField(value: string | undefined): string {
+  return (value ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
 }
 
 export async function POST(request: Request, context: Context): Promise<Response> {
@@ -75,6 +80,8 @@ export async function POST(request: Request, context: Context): Promise<Response
 
     const fileName = sanitizeUploadedFileName(file.name);
     const title = parsed.fields.title?.trim() || path.parse(fileName).name || "Готовый ролик";
+    const description = normalizeReadyUploadTextField(parsed.fields.description);
+    const tags = splitChannelPublicationTags(parsed.fields.tags);
     const sourceUrl = buildUploadedSourceUrl(newId(), fileName);
     const cached = await storeUploadedSourceMedia({
       sourceUrl,
@@ -91,7 +98,9 @@ export async function POST(request: Request, context: Context): Promise<Response
       sourceUrl,
       title,
       fileName,
-      sourcePath: cached.sourcePath
+      sourcePath: cached.sourcePath,
+      description,
+      tags
     });
 
     return Response.json(

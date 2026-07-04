@@ -6,6 +6,7 @@ import { flushSync } from "react-dom";
 import { AppShell, FlowStep } from "./components/AppShell";
 import { PublishingPlanner } from "./components/PublishingPlanner";
 import { mergePublicationMutationResult } from "./components/publishing-workspace-support";
+import type { ReadyUploadMetadata } from "./components/Step1PasteLink";
 import type {
   Step3AuthoritativePreviewSnapshot,
   Step3ManagedTemplateState
@@ -3171,6 +3172,8 @@ export default function HomePage() {
   const uploadReadyVideoToChannel = async (input: {
     channelId: string;
     file: File;
+    description?: string;
+    tagsText?: string;
   }): Promise<{
     chat: ChatThread;
     publication: ChannelPublication | null;
@@ -3178,6 +3181,14 @@ export default function HomePage() {
     const formData = new FormData();
     formData.set("file", input.file, input.file.name || "ready-upload.mp4");
     formData.set("title", input.file.name ? input.file.name.replace(/\.[^.]+$/, "") : "Готовый ролик");
+    const description = input.description?.trim() ?? "";
+    const tagsText = input.tagsText?.trim() ?? "";
+    if (description) {
+      formData.set("description", description);
+    }
+    if (tagsText) {
+      formData.set("tags", tagsText);
+    }
 
     const response = await fetch(`/api/channels/${input.channelId}/publications/ready-upload`, {
       method: "POST",
@@ -3433,7 +3444,7 @@ export default function HomePage() {
     }
   };
 
-  const handleUploadReadyVideo = async (file: File): Promise<void> => {
+  const handleUploadReadyVideo = async (file: File, metadata?: ReadyUploadMetadata): Promise<void> => {
     if (!activeChannelId) {
       setStatusType("error");
       setStatus("Сначала создайте/выберите канал.");
@@ -3460,7 +3471,9 @@ export default function HomePage() {
     try {
       const { chat, publication } = await uploadReadyVideoToChannel({
         channelId: activeChannelId,
-        file
+        file,
+        description: metadata?.description,
+        tagsText: metadata?.tagsText
       });
       let hydrateFailed = false;
       setDraftUrl("");
@@ -7565,8 +7578,8 @@ export default function HomePage() {
           onUploadFiles={(files) => {
             void handleUploadSourceFiles(files);
           }}
-          onUploadReadyFile={(file) => {
-            void handleUploadReadyVideo(file);
+          onUploadReadyFile={(file, metadata) => {
+            void handleUploadReadyVideo(file, metadata);
           }}
           onAutoRunStage2Change={setAutoRunStage2AfterSource}
           onDownloadSource={() => {

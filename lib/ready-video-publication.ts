@@ -3,7 +3,7 @@ import type { ChannelPublication } from "../app/components/types";
 import { completeRenderExportAndMaybeQueue } from "./channel-publication-service";
 import { appendChatEvent, createOrGetChatBySource, type ChatThread } from "./chat-history";
 import { scheduleChannelPublicationProcessing } from "./channel-publication-runtime";
-import type { RenderExportRecord } from "./publication-store";
+import { updateChannelPublicationDraft, type RenderExportRecord } from "./publication-store";
 import { publishStage3VideoArtifact } from "./stage3-job-artifacts";
 import { completeStage3Job, enqueueStage3Job, type Stage3JobRecord } from "./stage3-job-store";
 
@@ -26,6 +26,13 @@ function buildReadyUploadResultJson(input: {
   });
 }
 
+function normalizeReadyUploadTags(tags: string[] | undefined): string[] {
+  return (tags ?? [])
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .slice(0, 30);
+}
+
 export async function createReadyVideoPublication(input: {
   workspaceId: string;
   userId: string;
@@ -34,9 +41,13 @@ export async function createReadyVideoPublication(input: {
   title: string;
   fileName: string;
   sourcePath: string;
+  description?: string;
+  tags?: string[];
 }): Promise<ReadyVideoPublicationResult> {
   const fileName = path.basename(input.fileName.trim() || "ready-upload.mp4");
   const title = input.title.trim() || path.parse(fileName).name || "Готовый ролик";
+  const manualDescription = input.description?.trim() ?? "";
+  const manualTags = normalizeReadyUploadTags(input.tags);
   const chat = await createOrGetChatBySource({
     rawUrl: input.sourceUrl,
     channelIdRaw: input.channelId,
@@ -97,15 +108,26 @@ export async function createReadyVideoPublication(input: {
     stage2Result: null,
     publishAfterRender: true
   });
+  const queuedPublication =
+    publication && (manualDescription || manualTags.length > 0)
+      ? updateChannelPublicationDraft({
+          publicationId: publication.id,
+          description: manualDescription || undefined,
+          tags: manualTags.length > 0 ? manualTags : undefined,
+          descriptionManual: Boolean(manualDescription),
+          tagsManual: manualTags.length > 0,
+          clearLastError: true
+        })
+      : publication;
 
-  if (publication?.status === "queued" || publication?.status === "uploading") {
+  if (queuedPublication?.status === "queued" || queuedPublication?.status === "uploading") {
     scheduleChannelPublicationProcessing();
   }
   await appendChatEvent(chat.id, {
     role: "assistant",
     type: "note",
-    text: publication
-      ? `Готовый mp4 поставлен в очередь публикации: ${publication.title}`
+    text: queuedPublication
+      ? `Готовый mp4 поставлен в очередь публикации: ${queuedPublication.title}`
       : "Готовый mp4 сохранён как publishable export."
   }).catch(() => undefined);
 
@@ -113,6 +135,6 @@ export async function createReadyVideoPublication(input: {
     chat,
     job: completedJob,
     renderExport,
-    publication
+    publication: queuedPublication
   };
 }
