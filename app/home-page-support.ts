@@ -77,7 +77,10 @@ import {
   buildStage3EditorSession,
   normalizeStage3EditorFragments
 } from "../lib/stage3-editor-core";
-import { buildStage3DraftRenderPlanOverride } from "../lib/stage3-draft-render-plan";
+import {
+  buildStage3DraftRenderPlanOverride,
+  sanitizeStage3DraftRenderPlanOverride
+} from "../lib/stage3-draft-render-plan";
 
 const DEFAULT_TEXT_SCALE = 1.25;
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
@@ -933,7 +936,10 @@ export function hydrateStage3RenderPlanOverride(
   if (!value || typeof value !== "object") {
     return normalizeRenderPlan(base, base);
   }
-  const override = value as Record<string, unknown>;
+  const override = sanitizeStage3DraftRenderPlanOverride(value);
+  if (!override) {
+    return normalizeRenderPlan(base, base);
+  }
   const merged: Record<string, unknown> = {
     ...base,
     ...override

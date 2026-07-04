@@ -9,6 +9,7 @@ import {
 import { buildStage3SourceCropFfmpegFilter } from "../lib/stage3-source-crop";
 import {
   fallbackRenderPlan,
+  hydrateStage3RenderPlanOverride,
   normalizeRenderPlan,
   rebaseStage3RenderPlanOnChannelBase
 } from "../app/home-page-support";
@@ -154,6 +155,46 @@ test("saved Stage 3 version rebases channel template identity onto current chann
   assert.equal(rebased.targetDurationSec, 12);
   assert.equal(rebased.videoZoom, 1.36);
   assert.equal(rebased.topFontScale, 1.42);
+});
+
+test("legacy full draft render plan cannot override active channel template identity", () => {
+  const base = fallbackRenderPlan();
+  const currentChannelBase = normalizeRenderPlan(
+    {
+      ...base,
+      templateId: "the-legacy-journal-template",
+      authorName: "The Legacy Journal",
+      authorHandle: "@TheLegacyJournal",
+      avatarAssetId: "legacy-avatar",
+      avatarAssetMimeType: "image/jpeg"
+    },
+    base
+  );
+  const legacyFullDraftPlan = normalizeRenderPlan(
+    {
+      ...base,
+      templateId: "barracks-chronicles-template",
+      authorName: "Barracks Chronicles",
+      authorHandle: "@BarracksChronicles",
+      avatarAssetId: "barracks-avatar",
+      avatarAssetMimeType: "image/png",
+      targetDurationSec: 12,
+      videoZoom: 1.36,
+      topFontScale: 1.42
+    },
+    base
+  );
+
+  const hydrated = hydrateStage3RenderPlanOverride(legacyFullDraftPlan, currentChannelBase);
+
+  assert.equal(hydrated.templateId, "the-legacy-journal-template");
+  assert.equal(hydrated.authorName, "The Legacy Journal");
+  assert.equal(hydrated.authorHandle, "@TheLegacyJournal");
+  assert.equal(hydrated.avatarAssetId, "legacy-avatar");
+  assert.equal(hydrated.avatarAssetMimeType, "image/jpeg");
+  assert.equal(hydrated.targetDurationSec, 12);
+  assert.equal(hydrated.videoZoom, 1.36);
+  assert.equal(hydrated.topFontScale, 1.42);
 });
 
 test("resolveCanonicalStage3RenderPolicy forces fixed_segments when fragments exist", () => {
