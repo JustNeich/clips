@@ -669,6 +669,7 @@
     - warning text при configured/effective mismatch
   - в канале:
     - template picker
+    - link `открыть Template Road` opens `/design/template-road?template=<selected template id>` for the selected channel template
     - background/music default selects
     - asset-dependent render defaults, including `Хронометраж по умолчанию` in the `3..59s` range
 - `redactor_limited`: может редактировать только channel render defaults: template backup/import selection, default background/music and default duration.

@@ -7,6 +7,7 @@ import { AvatarUploadButton } from "./AvatarUploadButton";
 import { ChannelManagerPublishingTab } from "./ChannelManagerPublishingTab";
 import { ChannelManagerStage2Tab } from "./ChannelManagerStage2Tab";
 import { ChannelManagerWorkspaceRenderTab } from "./ChannelManagerWorkspaceRenderTab";
+import { buildTemplateRoadHref } from "./template-road-link";
 import {
   AppRole,
   Channel,
@@ -585,6 +586,10 @@ export function ChannelManager({
   const activeTemplateSummary = useMemo(
     () => managedTemplates.find((template) => template.id === templateId) ?? null,
     [managedTemplates, templateId]
+  );
+  const templateRoadHref = useMemo(
+    () => buildTemplateRoadHref(activeTemplateSummary?.id ?? templateId),
+    [activeTemplateSummary?.id, templateId]
   );
   const updateChannelTemplateFormat = useCallback(
     (formatGroup: Stage3TemplateFormatGroup) => {
@@ -2439,7 +2444,7 @@ export function ChannelManager({
                       ? "Новый шаблон из `Template Road` появится здесь автоматически."
                       : "Пока у тебя нет доступных шаблонов. Сначала создай свой шаблон в `Template Road`, и он сразу появится здесь."}{" "}
                     Редактор:{" "}
-                    <a href="/design/template-road" target="_blank" rel="noreferrer">
+                    <a href={templateRoadHref} target="_blank" rel="noreferrer">
                       открыть Template Road
                     </a>
                   </p>
