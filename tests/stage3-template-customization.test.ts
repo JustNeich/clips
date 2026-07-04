@@ -64,6 +64,36 @@ test("template snapshot layout respects managed card geometry overrides", () => 
   );
 });
 
+test("classic top-bottom snapshot respects text slot heights when enlarging media", () => {
+  const templateConfig = cloneStage3TemplateConfig(SCIENCE_CARD);
+  templateConfig.slot.topHeight = 320;
+  templateConfig.slot.bottomHeight = 340;
+  templateConfig.slot.topPaddingTop = 96;
+  templateConfig.slot.topPaddingBottom = 72;
+  templateConfig.slot.bottomTextPaddingTop = 88;
+  templateConfig.slot.bottomTextPaddingBottom = 40;
+
+  const snapshot = buildTemplateRenderSnapshot({
+    templateId: "science-card-v1",
+    content: buildDemoContent(),
+    templateConfigOverride: templateConfig
+  });
+
+  assert.equal(snapshot.computed.topBlockHeight, 320);
+  assert.equal(snapshot.computed.bottomBlockHeight, 340);
+  assert.equal(snapshot.layout.top.height, 320);
+  assert.equal(snapshot.layout.media.y, templateConfig.card.y + 320);
+  assert.equal(snapshot.layout.media.height, templateConfig.card.height - 320 - 340);
+  assert.equal(
+    snapshot.layout.media.height > SCIENCE_CARD.card.height - SCIENCE_CARD.slot.topHeight - SCIENCE_CARD.slot.bottomHeight,
+    true
+  );
+  assert.equal(
+    snapshot.layout.bottomText.y,
+    templateConfig.card.y + templateConfig.card.height - 340 + templateConfig.slot.bottomMetaHeight + 88
+  );
+});
+
 test("template scene markup uses managed card geometry instead of locked spec geometry", () => {
   const templateConfig = cloneStage3TemplateConfig(SCIENCE_CARD);
   templateConfig.card.x = 110;

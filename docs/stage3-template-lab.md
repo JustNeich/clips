@@ -49,6 +49,7 @@
 1. Для style-прохода открыть `template-road` и выбрать базовый шаблон.
 2. В самом верху выбрать семейство `Top & Bottom` или `Channel + Story`, чтобы редактор и библиотека работали только внутри нужного формата.
 3. Справа через inspector крутить radius, border, fill, shadow, font stacks, weights, colors и внутренние отступы.
+   Для `Top & Bottom` inspector разрешает большие вертикальные отступы у верхнего/нижнего текста и отдельную `Высоту видео`: она меняет размер media slot через перераспределение высоты между top/media/bottom, а не через zoom исходника.
 4. В секции `Демо-контент` при необходимости настроить `Highlighting`: включить top/bottom, выбрать до 3 слотов, задать `label/guidance` и demo phrases для проверки палитры.
 4. Слева смотреть только на live canvas и оценивать hierarchy / breathing room без reference diff.
 5. Для `Channel + Story` сначала пройти сверху вниз секцию `Канал и lead-политика`: channel row, бейдж, `leadMode`, template/default lead и alignment header/body.

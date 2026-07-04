@@ -318,6 +318,14 @@ test("managed templates preserve custom card geometry and author font stacks", a
             width: 760,
             height: 1360
           },
+          slot: {
+            topHeight: 300,
+            bottomHeight: 330,
+            topPaddingTop: 96,
+            topPaddingBottom: 72,
+            bottomTextPaddingTop: 88,
+            bottomTextPaddingBottom: 40
+          },
           typography: {
             authorName: {
               fontFamily: '"Aptos","Segoe UI","Helvetica Neue",Arial,sans-serif'
@@ -340,6 +348,12 @@ test("managed templates preserve custom card geometry and author font stacks", a
     assert.equal(reloaded?.templateConfig.card.y, 220);
     assert.equal(reloaded?.templateConfig.card.width, 760);
     assert.equal(reloaded?.templateConfig.card.height, 1360);
+    assert.equal(reloaded?.templateConfig.slot.topHeight, 300);
+    assert.equal(reloaded?.templateConfig.slot.bottomHeight, 330);
+    assert.equal(reloaded?.templateConfig.slot.topPaddingTop, 96);
+    assert.equal(reloaded?.templateConfig.slot.topPaddingBottom, 72);
+    assert.equal(reloaded?.templateConfig.slot.bottomTextPaddingTop, 88);
+    assert.equal(reloaded?.templateConfig.slot.bottomTextPaddingBottom, 40);
     assert.equal(
       reloaded?.templateConfig.typography.authorName.fontFamily,
       '"Aptos","Segoe UI","Helvetica Neue",Arial,sans-serif'

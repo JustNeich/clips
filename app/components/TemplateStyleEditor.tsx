@@ -512,6 +512,102 @@ function snapToStep(value: number, step: number): number {
   return Number(snapped.toFixed(precision));
 }
 
+const CLASSIC_MAX_TEXT_VERTICAL_PADDING_PX = 160;
+const CLASSIC_MIN_TEXT_CONTENT_HEIGHT_PX = 80;
+const CLASSIC_MIN_MEDIA_HEIGHT_PX = 240;
+
+function getClassicTopPaddingTop(templateConfig: Stage3TemplateConfig): number {
+  return templateConfig.slot.topPaddingTop ?? templateConfig.slot.topPaddingY;
+}
+
+function getClassicTopPaddingBottom(templateConfig: Stage3TemplateConfig): number {
+  return templateConfig.slot.topPaddingBottom ?? templateConfig.slot.topPaddingY;
+}
+
+function getClassicBottomTextPaddingTop(templateConfig: Stage3TemplateConfig): number {
+  return templateConfig.slot.bottomTextPaddingTop ?? templateConfig.slot.bottomTextPaddingY;
+}
+
+function getClassicBottomTextPaddingBottom(templateConfig: Stage3TemplateConfig): number {
+  return templateConfig.slot.bottomTextPaddingBottom ?? templateConfig.slot.bottomTextPaddingY;
+}
+
+function getClassicMinTopSectionHeight(templateConfig: Stage3TemplateConfig): number {
+  return Math.max(
+    96,
+    getClassicTopPaddingTop(templateConfig) +
+      getClassicTopPaddingBottom(templateConfig) +
+      CLASSIC_MIN_TEXT_CONTENT_HEIGHT_PX
+  );
+}
+
+function getClassicMinBottomSectionHeight(templateConfig: Stage3TemplateConfig): number {
+  return Math.max(
+    160,
+    templateConfig.slot.bottomMetaHeight +
+      getClassicBottomTextPaddingTop(templateConfig) +
+      getClassicBottomTextPaddingBottom(templateConfig) +
+      CLASSIC_MIN_TEXT_CONTENT_HEIGHT_PX
+  );
+}
+
+function getClassicTemplateMediaHeight(templateConfig: Stage3TemplateConfig): number {
+  return Math.max(
+    CLASSIC_MIN_MEDIA_HEIGHT_PX,
+    Math.round(templateConfig.card.height - templateConfig.slot.topHeight - templateConfig.slot.bottomHeight)
+  );
+}
+
+function getClassicTemplateMaxMediaHeight(templateConfig: Stage3TemplateConfig): number {
+  return Math.max(
+    CLASSIC_MIN_MEDIA_HEIGHT_PX,
+    Math.round(
+      templateConfig.card.height -
+        getClassicMinTopSectionHeight(templateConfig) -
+        getClassicMinBottomSectionHeight(templateConfig)
+    )
+  );
+}
+
+function resizeClassicTemplateMediaSlot(
+  templateConfig: Stage3TemplateConfig,
+  requestedMediaHeight: number
+): Stage3TemplateConfig {
+  if (templateConfig.layoutKind !== "classic_top_bottom") {
+    return templateConfig;
+  }
+
+  const maxMediaHeight = getClassicTemplateMaxMediaHeight(templateConfig);
+  const mediaHeight = Math.round(
+    clamp(requestedMediaHeight, CLASSIC_MIN_MEDIA_HEIGHT_PX, maxMediaHeight)
+  );
+  const minTopHeight = getClassicMinTopSectionHeight(templateConfig);
+  const minBottomHeight = getClassicMinBottomSectionHeight(templateConfig);
+  const remainingTextHeight = Math.max(
+    minTopHeight + minBottomHeight,
+    Math.round(templateConfig.card.height - mediaHeight)
+  );
+  const currentTextHeight = Math.max(1, templateConfig.slot.topHeight + templateConfig.slot.bottomHeight);
+  const topShare = templateConfig.slot.topHeight / currentTextHeight;
+  const nextTopHeight = Math.round(
+    clamp(
+      Math.round(remainingTextHeight * topShare),
+      minTopHeight,
+      remainingTextHeight - minBottomHeight
+    )
+  );
+  const nextBottomHeight = Math.round(Math.max(minBottomHeight, remainingTextHeight - nextTopHeight));
+
+  return {
+    ...templateConfig,
+    slot: {
+      ...templateConfig.slot,
+      topHeight: nextTopHeight,
+      bottomHeight: nextBottomHeight
+    }
+  };
+}
+
 function resolveTemplateId(value: string | null | undefined): string {
   const candidate = value?.trim();
   if (!candidate) {
@@ -1423,6 +1519,8 @@ export function TemplateStyleEditor({
   const channelStoryLeadMode = templateConfig.channelStory?.leadMode ?? "clip_custom";
   const channelStoryLeadTextFormat = templateConfig.channelStory?.leadTextFormat ?? "short";
   const channelStoryLeadTextTransform = templateConfig.channelStory?.leadTextTransform ?? "none";
+  const classicMediaHeight = getClassicTemplateMediaHeight(templateConfig);
+  const classicMaxMediaHeight = getClassicTemplateMaxMediaHeight(templateConfig);
   const showChannelStoryDemoLeadField =
     isChannelStoryTemplate && channelStoryLeadMode === "clip_custom";
   const showChannelStoryTemplateManagedLeadNote =
@@ -2268,6 +2366,10 @@ export function TemplateStyleEditor({
         [key]: value
       }
     }));
+  }
+
+  function updateClassicMediaHeight(value: number) {
+    setTemplateConfig((current) => resizeClassicTemplateMediaSlot(current, value));
   }
 
   function updateChannelStory<K extends keyof NonNullable<Stage3TemplateConfig["channelStory"]>>(
@@ -4540,6 +4642,20 @@ export function TemplateStyleEditor({
                 />
               </div>
             </div>
+            {!isChannelStoryTemplate ? (
+              <div className="template-road-editor-grid two-up">
+                <SliderControl
+                  label="Высота видео"
+                  hint="Увеличивает окно исходника внутри Top/Bottom, автоматически забирая высоту у верхнего и нижнего текстовых блоков."
+                  min={CLASSIC_MIN_MEDIA_HEIGHT_PX}
+                  max={classicMaxMediaHeight}
+                  step={1}
+                  value={clamp(classicMediaHeight, CLASSIC_MIN_MEDIA_HEIGHT_PX, classicMaxMediaHeight)}
+                  formatValue={formatPxValue}
+                  onChange={updateClassicMediaHeight}
+                />
+              </div>
+            ) : null}
             {isChannelStoryTemplate && templateConfig.channelStory ? (
               <>
                 <div className="template-road-editor-grid three-up">
@@ -5143,7 +5259,7 @@ export function TemplateStyleEditor({
                     label="Отступ сверху у верхнего текста"
                     hint="Воздух над заголовком."
                     min={0}
-                    max={48}
+                    max={CLASSIC_MAX_TEXT_VERTICAL_PADDING_PX}
                     step={1}
                     value={templateConfig.slot.topPaddingTop ?? templateConfig.slot.topPaddingY}
                     formatValue={formatPxValue}
@@ -5153,7 +5269,7 @@ export function TemplateStyleEditor({
                     label="Отступ снизу у верхнего текста"
                     hint="Воздух под заголовком перед границей секции."
                     min={0}
-                    max={48}
+                    max={CLASSIC_MAX_TEXT_VERTICAL_PADDING_PX}
                     step={1}
                     value={templateConfig.slot.topPaddingBottom ?? templateConfig.slot.topPaddingY}
                     formatValue={formatPxValue}
@@ -5201,7 +5317,7 @@ export function TemplateStyleEditor({
                     label="Отступ сверху у нижнего текста"
                     hint="Воздух над абзацем нижнего блока."
                     min={0}
-                    max={36}
+                    max={CLASSIC_MAX_TEXT_VERTICAL_PADDING_PX}
                     step={1}
                     value={
                       templateConfig.slot.bottomTextPaddingTop ?? templateConfig.slot.bottomTextPaddingY
@@ -5213,7 +5329,7 @@ export function TemplateStyleEditor({
                     label="Отступ снизу у нижнего текста"
                     hint="Воздух между нижним текстом и строкой автора."
                     min={0}
-                    max={36}
+                    max={CLASSIC_MAX_TEXT_VERTICAL_PADDING_PX}
                     step={1}
                     value={
                       templateConfig.slot.bottomTextPaddingBottom ??
