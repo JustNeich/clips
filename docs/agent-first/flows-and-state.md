@@ -357,8 +357,9 @@
 4. Если нужны цветные слова, Step 3 показывает текущий highlight-status шаблона, позволяет вручную добавить spans к выбранным словам финального текста и ведёт в template customization для profile-level настроек.
 5. При ручной правке TOP/BOTTOM highlight-spans ремапятся к новому тексту и нормализуются, чтобы preview/render не использовали stale offsets.
 6. Step 3 allows importing a managed-template backup into the workspace template library and immediately applying it to the current draft render plan without changing channel setup.
-7. Preview обновляется.
-8. Пользователь экспортирует или запускает render.
+7. Saved Stage 3 versions restore montage edits onto the currently selected channel template identity, so an old version cannot reopen preview/render with another channel's managed template.
+8. Preview обновляется.
+9. Пользователь экспортирует или запускает render.
 
 ### Alternate path
 

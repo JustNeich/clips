@@ -77,6 +77,7 @@ import {
   buildStage3EditorSession,
   normalizeStage3EditorFragments
 } from "../lib/stage3-editor-core";
+import { buildStage3DraftRenderPlanOverride } from "../lib/stage3-draft-render-plan";
 
 const DEFAULT_TEXT_SCALE = 1.25;
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
@@ -947,6 +948,17 @@ export function hydrateStage3RenderPlanOverride(
   return normalizeRenderPlan(
     merged,
     base
+  );
+}
+
+export function rebaseStage3RenderPlanOnChannelBase(
+  value: unknown,
+  channelBase: Stage3RenderPlan
+): Stage3RenderPlan {
+  const normalizedValue = normalizeRenderPlan(value, channelBase);
+  return hydrateStage3RenderPlanOverride(
+    buildStage3DraftRenderPlanOverride(normalizedValue, channelBase),
+    channelBase
   );
 }
 

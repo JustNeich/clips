@@ -205,6 +205,7 @@ import {
   parseDownloadFileName,
   parseRetryAfterMs,
   PersistedFlowShellState,
+  rebaseStage3RenderPlanOnChannelBase,
   resolveHydratedWorkflowStep,
   resolveLiveHydratedWorkflowStep,
   responseLooksLikeHtml,
@@ -1201,6 +1202,16 @@ export default function HomePage() {
     },
     []
   );
+  const rebaseStage3SnapshotOnActiveChannel = useCallback(
+    (snapshot: Stage3StateSnapshot): Stage3StateSnapshot => {
+      const channelBase = applyChannelToRenderPlan(activeChannel, channelAssets);
+      return {
+        ...snapshot,
+        renderPlan: rebaseStage3RenderPlanOnChannelBase(snapshot.renderPlan, channelBase)
+      };
+    },
+    [activeChannel, applyChannelToRenderPlan, channelAssets]
+  );
   const resolvedStage3ClipDurationSec = resolveStage3OutputDurationSec({
     mode: stage3RenderPlan.durationMode,
     targetDurationSec: stage3RenderPlan.targetDurationSec,
@@ -1288,9 +1299,10 @@ export default function HomePage() {
       );
       const latestVersion = legacyVersions[legacyVersions.length - 1] ?? null;
       const defaults = getDefaultDraftState(chat);
+      const channelBaseRenderPlan = applyChannelToRenderPlan(activeChannel, channelAssets);
       const baseRenderPlan = latestVersion
-        ? normalizeRenderPlan(latestVersion.final.renderPlan, fallbackRenderPlan())
-        : applyChannelToRenderPlan(activeChannel, channelAssets);
+        ? rebaseStage3RenderPlanOnChannelBase(latestVersion.final.renderPlan, channelBaseRenderPlan)
+        : channelBaseRenderPlan;
       const nextRenderPlan = draft?.stage3.renderPlan
         ? hydrateStage3RenderPlanOverride(draft.stage3.renderPlan, baseRenderPlan)
         : baseRenderPlan;
@@ -2910,8 +2922,9 @@ export default function HomePage() {
       ...prev,
       [targetVersion.runId]: 0
     }));
-    applyStage3Snapshot(targetVersion.final);
-    setSourceDurationSec(targetVersion.final.sourceDurationSec);
+    const rebasedSnapshot = rebaseStage3SnapshotOnActiveChannel(targetVersion.final);
+    applyStage3Snapshot(rebasedSnapshot);
+    setSourceDurationSec(rebasedSnapshot.sourceDurationSec);
     return targetVersion;
   };
 
@@ -5140,9 +5153,10 @@ export default function HomePage() {
 
     const defaults = getDefaultDraftState(activeChat);
     const latestVersion = stage3Versions[stage3Versions.length - 1] ?? null;
+    const channelBaseRenderPlan = applyChannelToRenderPlan(activeChannel, channelAssets);
     const baseRenderPlan = latestVersion
-      ? normalizeRenderPlan(latestVersion.final.renderPlan, fallbackRenderPlan())
-      : applyChannelToRenderPlan(activeChannel, channelAssets);
+      ? rebaseStage3RenderPlanOnChannelBase(latestVersion.final.renderPlan, channelBaseRenderPlan)
+      : channelBaseRenderPlan;
     const normalizedCurrentRenderPlan = normalizedStage3RenderPlan;
     const renderPlanOverride = buildStage3DraftRenderPlanOverride(
       normalizedCurrentRenderPlan,
@@ -5518,11 +5532,12 @@ export default function HomePage() {
     } else if (activeStage3AgentTimeline?.session.goalText.trim()) {
       setStage3AgentPrompt(activeStage3AgentTimeline.session.goalText);
     }
-    applyStage3Snapshot(latestVersion.final);
+    applyStage3Snapshot(rebaseStage3SnapshotOnActiveChannel(latestVersion.final));
   }, [
     activeChat?.id,
     activeStage3AgentTimeline,
     hasWorkingStage3Draft,
+    rebaseStage3SnapshotOnActiveChannel,
     stage3Versions,
     applyStage3Snapshot
   ]);

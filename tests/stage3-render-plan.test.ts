@@ -7,7 +7,11 @@ import {
   resolveCanonicalStage3RenderPolicy
 } from "../lib/stage3-render-plan";
 import { buildStage3SourceCropFfmpegFilter } from "../lib/stage3-source-crop";
-import { fallbackRenderPlan, normalizeRenderPlan } from "../app/home-page-support";
+import {
+  fallbackRenderPlan,
+  normalizeRenderPlan,
+  rebaseStage3RenderPlanOnChannelBase
+} from "../app/home-page-support";
 import {
   buildStage3DraftRenderPlanOverride,
   sanitizeStage3DraftRenderPlanOverride
@@ -110,6 +114,46 @@ test("stage 3 draft render-plan override keeps per-draft duration and source gai
       }
     }
   );
+});
+
+test("saved Stage 3 version rebases channel template identity onto current channel", () => {
+  const base = fallbackRenderPlan();
+  const currentChannelBase = normalizeRenderPlan(
+    {
+      ...base,
+      templateId: "the-legacy-journal-template",
+      authorName: "The Legacy Journal",
+      authorHandle: "@TheLegacyJournal",
+      avatarAssetId: "legacy-avatar",
+      avatarAssetMimeType: "image/jpeg"
+    },
+    base
+  );
+  const staleVersionPlan = normalizeRenderPlan(
+    {
+      ...currentChannelBase,
+      templateId: "barracks-chronicles-template",
+      authorName: "Barracks Chronicles",
+      authorHandle: "@BarracksChronicles",
+      avatarAssetId: "barracks-avatar",
+      avatarAssetMimeType: "image/png",
+      targetDurationSec: 12,
+      videoZoom: 1.36,
+      topFontScale: 1.42
+    },
+    base
+  );
+
+  const rebased = rebaseStage3RenderPlanOnChannelBase(staleVersionPlan, currentChannelBase);
+
+  assert.equal(rebased.templateId, "the-legacy-journal-template");
+  assert.equal(rebased.authorName, "The Legacy Journal");
+  assert.equal(rebased.authorHandle, "@TheLegacyJournal");
+  assert.equal(rebased.avatarAssetId, "legacy-avatar");
+  assert.equal(rebased.avatarAssetMimeType, "image/jpeg");
+  assert.equal(rebased.targetDurationSec, 12);
+  assert.equal(rebased.videoZoom, 1.36);
+  assert.equal(rebased.topFontScale, 1.42);
 });
 
 test("resolveCanonicalStage3RenderPolicy forces fixed_segments when fragments exist", () => {
