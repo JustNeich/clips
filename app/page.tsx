@@ -172,6 +172,7 @@ import { sanitizeDisplayText, summarizeUserFacingError } from "../lib/ui-error";
 import {
   buildChannelAssetUrl,
   buildCachedSourcePreviewUrl,
+  buildChannelRenderIdentityKey,
   buildScopedStorageKey,
   buildSharedCodexStatus,
   buildStage3AgentConversation,
@@ -625,7 +626,7 @@ export default function HomePage() {
     highlightsSignature: string;
   } | null>(null);
   const initializedStage3ChatRef = useRef<string | null>(null);
-  const previousChannelIdRef = useRef<string | null>(null);
+  const previousChannelRenderIdentityRef = useRef<string | null>(null);
   const previousPublishToggleChannelIdRef = useRef<string | null>(null);
   const stage3PreviewCacheRef = useRef<Map<string, { url: string; createdAt: number }>>(new Map());
   const stage3PreviewRequestKeyRef = useRef<string>("");
@@ -1244,7 +1245,13 @@ export default function HomePage() {
   }, []);
 
   const hydrateChatEditorState = useCallback(
-    (chat: ChatThread | null, draft: ChatDraft | null): void => {
+    (
+      chat: ChatThread | null,
+      draft: ChatDraft | null,
+      hydrationContext?: { channel: Channel | null; assets: ChannelAsset[] }
+    ): void => {
+      const hydrationChannel = hydrationContext?.channel ?? activeChannel;
+      const hydrationAssets = hydrationContext?.assets ?? channelAssets;
       if (!chat) {
         initializedStage3ChatRef.current = null;
         setCurrentStep(1);
@@ -1258,7 +1265,7 @@ export default function HomePage() {
         setStage3CaptionHighlights(createEmptyTemplateCaptionHighlights());
         setStage3ClipStartSec(0);
         setStage3FocusY(0.5);
-        setStage3RenderPlan(applyChannelToRenderPlan(activeChannel, channelAssets));
+        setStage3RenderPlan(applyChannelToRenderPlan(hydrationChannel, hydrationAssets));
         setSourceDurationSec(null);
         setStage3AgentPrompt("");
         setStage3AgentSessionId(null);
@@ -1300,7 +1307,7 @@ export default function HomePage() {
       );
       const latestVersion = legacyVersions[legacyVersions.length - 1] ?? null;
       const defaults = getDefaultDraftState(chat);
-      const channelBaseRenderPlan = applyChannelToRenderPlan(activeChannel, channelAssets);
+      const channelBaseRenderPlan = applyChannelToRenderPlan(hydrationChannel, hydrationAssets);
       const baseRenderPlan = latestVersion
         ? rebaseStage3RenderPlanOnChannelBase(latestVersion.final.renderPlan, channelBaseRenderPlan)
         : channelBaseRenderPlan;
@@ -1574,12 +1581,30 @@ export default function HomePage() {
     return nextChats;
   }, [activeChannelId, parseError]);
 
-  const refreshActiveChat = useCallback(async (chatId: string): Promise<{ chat: ChatThread; draft: ChatDraft | null }> => {
+  const refreshActiveChat = useCallback(async (
+    chatId: string,
+    options?: { syncChannel?: boolean }
+  ): Promise<{ chat: ChatThread; draft: ChatDraft | null }> => {
     const response = await fetch(`/api/chats/${chatId}`);
     if (!response.ok) {
       throw new Error(await parseError(response, "Не удалось загрузить элемент."));
     }
     const body = (await response.json()) as { chat: ChatThread; draft: ChatDraft | null };
+    let hydrationChannel = body.chat.channelId
+      ? channels.find((channel) => channel.id === body.chat.channelId) ?? activeChannel
+      : activeChannel;
+    let hydrationAssets =
+      body.chat.channelId && body.chat.channelId === activeChannelId ? channelAssets : [];
+    if (options?.syncChannel && body.chat.channelId) {
+      const refreshedChannels = await refreshChannels(body.chat.channelId).catch(() => null);
+      hydrationChannel =
+        refreshedChannels?.find((channel) => channel.id === body.chat.channelId) ??
+        hydrationChannel;
+      if (body.chat.channelId !== activeChannelId) {
+        setActiveChannelId(body.chat.channelId);
+        hydrationAssets = await refreshChannelAssets(body.chat.channelId).catch(() => []);
+      }
+    }
     const localDraft = readLocalDraftCache(chatId);
     const serverDraft = body.draft ? normalizeChatDraft(body.draft) : null;
     const resolvedDraft =
@@ -1593,6 +1618,7 @@ export default function HomePage() {
       return { chat: body.chat, draft: resolvedDraft };
     }
     const shouldHydrate =
+      options?.syncChannel === true ||
       !equalChatThread(activeChatRef.current, body.chat) ||
       !equalChatDraft(activeDraftRef.current, resolvedDraft);
 
@@ -1610,10 +1636,25 @@ export default function HomePage() {
         })
       : "";
     if (shouldHydrate) {
-      hydrateChatEditorState(body.chat, resolvedDraft);
+      hydrateChatEditorState(body.chat, resolvedDraft, {
+        channel: hydrationChannel,
+        assets: hydrationAssets
+      });
     }
     return { chat: body.chat, draft: resolvedDraft };
-  }, [applyPublicationSummary, hydrateChatEditorState, parseError, patchChatListItem, readLocalDraftCache]);
+  }, [
+    activeChannel,
+    activeChannelId,
+    applyPublicationSummary,
+    channelAssets,
+    channels,
+    hydrateChatEditorState,
+    parseError,
+    patchChatListItem,
+    readLocalDraftCache,
+    refreshChannelAssets,
+    refreshChannels
+  ]);
 
   const refreshSourceJobsForChat = useCallback(async (
     chatId: string,
@@ -1697,12 +1738,14 @@ export default function HomePage() {
 
   const hydrateChatLiveState = useCallback(async (
     chatId: string,
-    options?: { preferredStep?: 1 | 2 | 3 }
+    options?: { preferredStep?: 1 | 2 | 3; syncChannel?: boolean }
   ): Promise<{ chat: ChatThread; draft: ChatDraft | null }> => {
     const preserveCurrentStep = activeChatRef.current?.id === chatId;
     desiredActiveChatIdRef.current = chatId;
     activeChatIdRef.current = chatId;
-    const { chat, draft } = await refreshActiveChat(chatId);
+    const { chat, draft } = await refreshActiveChat(chatId, {
+      syncChannel: options?.syncChannel ?? false
+    });
     const [nextSourceJobs, nextStage2Runs] = await Promise.all([
       refreshSourceJobsForChat(chatId).catch(() => []),
       refreshStage2RunsForChat(chatId).catch(() => [])
@@ -2001,7 +2044,7 @@ export default function HomePage() {
     restoringFlowShellStateRef.current = null;
     void (async () => {
       try {
-        await hydrateChatLiveState(shell.chatId!, { preferredStep: shell.step });
+        await hydrateChatLiveState(shell.chatId!, { preferredStep: shell.step, syncChannel: true });
       } catch {
         // Ignore restore failures and leave current selection untouched.
       }
@@ -2421,13 +2464,14 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!activeChannel) {
-      previousChannelIdRef.current = null;
+      previousChannelRenderIdentityRef.current = null;
       return;
     }
-    if (previousChannelIdRef.current === activeChannel.id) {
+    const renderIdentityKey = buildChannelRenderIdentityKey(activeChannel);
+    if (previousChannelRenderIdentityRef.current === renderIdentityKey) {
       return;
     }
-    previousChannelIdRef.current = activeChannel.id;
+    previousChannelRenderIdentityRef.current = renderIdentityKey;
 
     const resolvedTemplateId = activeChannel.templateId || STAGE3_TEMPLATE_ID;
     setStage3RenderPlan((prev) =>
@@ -6288,7 +6332,10 @@ export default function HomePage() {
 
     try {
       await flushActiveDraftSave();
-      await hydrateChatLiveState(id, step ? { preferredStep: step } : undefined);
+      await hydrateChatLiveState(id, {
+        ...(step ? { preferredStep: step } : {}),
+        syncChannel: true
+      });
     } catch (error) {
       setStatusType("error");
       setStatus(getUiErrorMessage(error, "Не удалось открыть элемент истории."));

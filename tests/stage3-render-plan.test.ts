@@ -8,6 +8,7 @@ import {
 } from "../lib/stage3-render-plan";
 import { buildStage3SourceCropFfmpegFilter } from "../lib/stage3-source-crop";
 import {
+  buildChannelRenderIdentityKey,
   fallbackRenderPlan,
   hydrateStage3RenderPlanOverride,
   normalizeRenderPlan,
@@ -17,6 +18,27 @@ import {
   buildStage3DraftRenderPlanOverride,
   sanitizeStage3DraftRenderPlanOverride
 } from "../lib/stage3-draft-render-plan";
+
+test("channel render identity changes when same channel gets a new template", () => {
+  const baseChannel = {
+    id: "legacy-channel",
+    name: "The Legacy Journal",
+    username: "LegacyJournal",
+    templateId: "barracks-chronicles-template",
+    avatarAssetId: "legacy-avatar",
+    defaultBackgroundAssetId: null,
+    defaultMusicAssetId: null,
+    defaultClipDurationSec: 12
+  };
+
+  const staleKey = buildChannelRenderIdentityKey(baseChannel);
+  const refreshedKey = buildChannelRenderIdentityKey({
+    ...baseChannel,
+    templateId: "legacyj-vexorlike-template"
+  });
+
+  assert.notEqual(refreshedKey, staleKey);
+});
 
 test("normalizeStage3RenderPlanSegments sorts fragments by source timing", () => {
   const normalized = normalizeStage3RenderPlanSegments([

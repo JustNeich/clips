@@ -151,6 +151,36 @@ export function findAssetById(
   return assets.find((asset) => asset.id === assetId) ?? null;
 }
 
+type ChannelRenderIdentityInput = Pick<
+  Channel,
+  | "id"
+  | "name"
+  | "username"
+  | "templateId"
+  | "avatarAssetId"
+  | "defaultBackgroundAssetId"
+  | "defaultMusicAssetId"
+  | "defaultClipDurationSec"
+>;
+
+export function buildChannelRenderIdentityKey(
+  channel: ChannelRenderIdentityInput | null | undefined
+): string | null {
+  if (!channel) {
+    return null;
+  }
+  return JSON.stringify({
+    id: channel.id,
+    name: channel.name,
+    username: channel.username,
+    templateId: channel.templateId,
+    avatarAssetId: channel.avatarAssetId,
+    defaultBackgroundAssetId: channel.defaultBackgroundAssetId,
+    defaultMusicAssetId: channel.defaultMusicAssetId,
+    defaultClipDurationSec: channel.defaultClipDurationSec
+  });
+}
+
 export function toJsonDownload(fileName: string, data: unknown): void {
   const blob = new Blob([JSON.stringify(data, null, 2)], {
     type: "application/json;charset=utf-8"
