@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import { POST as fetchComments } from "../app/api/comments/route";
+import { POST as createMachineSessionRoute } from "../app/api/auth/machine-session/route";
 import { POST as registerRoute } from "../app/api/auth/register/route";
 import { GET as getChatTrace } from "../app/api/chat-trace/[id]/route";
 import { GET as getChatRoute } from "../app/api/chats/[id]/route";
@@ -12,7 +13,10 @@ import { GET as listChannelsRoute } from "../app/api/channels/route";
 import { GET as getChannelRoute, PATCH as patchChannelRoute } from "../app/api/channels/[id]/route";
 import { POST as uploadChannelAssetRoute } from "../app/api/channels/[id]/assets/route";
 import { GET as readChannelAssetRoute } from "../app/api/channels/[id]/assets/[assetId]/route";
-import { GET as getYoutubeConnectOptions } from "../app/api/channels/[id]/publishing/youtube/connect/route";
+import {
+  GET as getYoutubeConnectOptions,
+  POST as startYoutubeConnect
+} from "../app/api/channels/[id]/publishing/youtube/connect/route";
 import { GET as getYoutubeConnection } from "../app/api/channels/[id]/publishing/youtube/connection/route";
 import { GET as getStage2DebugArtifact } from "../app/api/pipeline/stage2/debug/route";
 import { GET as getStage2RunRoute } from "../app/api/pipeline/stage2/route";
@@ -50,6 +54,7 @@ import {
   getWorkspaceDefaultTemplateId
 } from "../lib/managed-template-store";
 import { createChannelPublication, createRenderExport } from "../lib/publication-store";
+import { createMcpMachineCredential } from "../lib/mcp-machine-credential-store";
 import { STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
 import { saveChannelPublishIntegration } from "../lib/publication-store";
 import { DEFAULT_STAGE2_HARD_CONSTRAINTS } from "../lib/stage2-channel-config";
@@ -88,6 +93,44 @@ async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
       process.env.APP_DATA_DIR = previousAppDataDir;
     }
     await rm(appDataDir, { recursive: true, force: true });
+  }
+}
+
+async function withTestYouTubeOAuthClient<T>(run: () => Promise<T>): Promise<T> {
+  const previousClients = process.env.YOUTUBE_OAUTH_CLIENTS_JSON;
+  const previousDefault = process.env.YOUTUBE_OAUTH_DEFAULT_CLIENT_KEY;
+  const previousPublicOrigin = process.env.PUBLIC_APP_ORIGIN;
+  process.env.YOUTUBE_OAUTH_CLIENTS_JSON = JSON.stringify([
+    {
+      key: "primary",
+      label: "Primary test project",
+      clientId: "test-client-id.apps.googleusercontent.com",
+      clientSecret: "test-client-secret",
+      projectNumber: "123456789012",
+      dailyUploadBudget: 8
+    }
+  ]);
+  process.env.YOUTUBE_OAUTH_DEFAULT_CLIENT_KEY = "primary";
+  process.env.PUBLIC_APP_ORIGIN = "https://clips.example.test";
+
+  try {
+    return await run();
+  } finally {
+    if (previousClients === undefined) {
+      delete process.env.YOUTUBE_OAUTH_CLIENTS_JSON;
+    } else {
+      process.env.YOUTUBE_OAUTH_CLIENTS_JSON = previousClients;
+    }
+    if (previousDefault === undefined) {
+      delete process.env.YOUTUBE_OAUTH_DEFAULT_CLIENT_KEY;
+    } else {
+      process.env.YOUTUBE_OAUTH_DEFAULT_CLIENT_KEY = previousDefault;
+    }
+    if (previousPublicOrigin === undefined) {
+      delete process.env.PUBLIC_APP_ORIGIN;
+    } else {
+      process.env.PUBLIC_APP_ORIGIN = previousPublicOrigin;
+    }
   }
 }
 
@@ -248,6 +291,178 @@ test("private API routes reject fake app-session cookies instead of trusting coo
       assert.equal(response.status, 401);
       assert.equal(body.error, "Требуется авторизация.");
     }
+  });
+});
+
+test("machine session route mints an app session for a control-write machine credential", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Machine Session Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "zoro-agent"
+    });
+
+    const response = await createMachineSessionRoute(
+      new Request("http://localhost/api/auth/machine-session", {
+        method: "POST",
+        headers: { authorization: `Bearer ${machine.secret}` }
+      })
+    );
+    const body = (await response.json()) as {
+      user?: { id?: string; email?: string };
+      membership?: { role?: string };
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.user?.id, owner.user.id);
+    assert.equal(body.user?.email, owner.user.email);
+    assert.equal(body.membership?.role, "owner");
+    const setCookie = response.headers.get("set-cookie") ?? "";
+    assert.match(setCookie, new RegExp(`^${APP_SESSION_COOKIE}=`));
+    assert.match(setCookie, /HttpOnly/);
+    assert.match(setCookie, /SameSite=Lax/);
+    const sessionCount = getDb()
+      .prepare("SELECT COUNT(*) as count FROM auth_sessions WHERE workspace_id = ? AND user_id = ?")
+      .get(owner.workspace.id, owner.user.id) as { count?: number };
+    assert.equal(sessionCount.count, 2);
+  });
+});
+
+test("machine session route rejects machine credentials without control-write", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Machine Session Scope Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "read-only-agent",
+      scopes: ["flow:read"]
+    });
+
+    const response = await createMachineSessionRoute(
+      new Request("http://localhost/api/auth/machine-session", {
+        method: "POST",
+        headers: { authorization: `Bearer ${machine.secret}` }
+      })
+    );
+
+    assert.equal(response.status, 401);
+  });
+});
+
+test("YouTube OAuth connect can be started by a control-write machine credential", async () => {
+  await withIsolatedAppData(async () => {
+    await withTestYouTubeOAuthClient(async () => {
+      const owner = await bootstrapOwner({
+        workspaceName: "Machine OAuth Workspace",
+        email: "owner@example.com",
+        password: "Password123!",
+        displayName: "Owner"
+      });
+      const chatHistory = await import("../lib/chat-history");
+      const channel = await chatHistory.createChannel({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        name: "Machine OAuth Channel",
+        username: "machine_oauth"
+      });
+      const machine = createMcpMachineCredential({
+        workspaceId: owner.workspace.id,
+        ownerUserId: owner.user.id,
+        machineId: "zoro-agent"
+      });
+
+      const response = await startYoutubeConnect(
+        new Request(`http://localhost/api/channels/${channel.id}/publishing/youtube/connect`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${machine.secret}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ oauthClientKey: "primary" })
+        }),
+        { params: Promise.resolve({ id: channel.id }) }
+      );
+      const body = (await response.json()) as { url?: string; expiresAt?: string };
+
+      assert.equal(response.status, 200);
+      assert.ok(body.expiresAt);
+      assert.ok(body.url);
+      const oauthUrl = new URL(body.url);
+      assert.equal(oauthUrl.origin, "https://accounts.google.com");
+      assert.equal(oauthUrl.searchParams.get("client_id"), "test-client-id.apps.googleusercontent.com");
+      assert.equal(
+        oauthUrl.searchParams.get("redirect_uri"),
+        "https://clips.example.test/api/integrations/youtube/callback"
+      );
+
+      const state = oauthUrl.searchParams.get("state");
+      assert.ok(state);
+      const stateRow = getDb()
+        .prepare("SELECT workspace_id, channel_id, user_id, oauth_client_key FROM channel_youtube_oauth_states")
+        .get() as
+        | {
+            workspace_id?: string;
+            channel_id?: string;
+            user_id?: string;
+            oauth_client_key?: string;
+          }
+        | undefined;
+      assert.equal(stateRow?.workspace_id, owner.workspace.id);
+      assert.equal(stateRow?.channel_id, channel.id);
+      assert.equal(stateRow?.user_id, owner.user.id);
+      assert.equal(stateRow?.oauth_client_key, "primary");
+    });
+  });
+});
+
+test("YouTube OAuth connect rejects machine credentials without control-write", async () => {
+  await withIsolatedAppData(async () => {
+    await withTestYouTubeOAuthClient(async () => {
+      const owner = await bootstrapOwner({
+        workspaceName: "Machine OAuth Scope Workspace",
+        email: "owner@example.com",
+        password: "Password123!",
+        displayName: "Owner"
+      });
+      const chatHistory = await import("../lib/chat-history");
+      const channel = await chatHistory.createChannel({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        name: "Machine OAuth Scope Channel",
+        username: "machine_oauth_scope"
+      });
+      const machine = createMcpMachineCredential({
+        workspaceId: owner.workspace.id,
+        ownerUserId: owner.user.id,
+        machineId: "read-only-agent",
+        scopes: ["flow:read"]
+      });
+
+      const response = await startYoutubeConnect(
+        new Request(`http://localhost/api/channels/${channel.id}/publishing/youtube/connect`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${machine.secret}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ oauthClientKey: "primary" })
+        }),
+        { params: Promise.resolve({ id: channel.id }) }
+      );
+
+      assert.equal(response.status, 401);
+    });
   });
 });
 

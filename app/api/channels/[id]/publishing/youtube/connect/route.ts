@@ -1,4 +1,9 @@
-import { requireAuth, requireChannelSetupEdit, requireChannelVisibility } from "../../../../../../../lib/auth/guards";
+import {
+  requireAuth,
+  requireChannelSetupEdit,
+  requireChannelVisibility,
+  requireOwnerOrMcpControlWrite
+} from "../../../../../../../lib/auth/guards";
 import { requireSensitiveArtifactAccess } from "../../../../../../../lib/sensitive-access";
 import { createChannelYoutubeOAuthState } from "../../../../../../../lib/publication-store";
 import {
@@ -6,6 +11,7 @@ import {
   buildYouTubeOAuthUrl
 } from "../../../../../../../lib/youtube-publishing";
 import { getDefaultYouTubeOAuthClientKey, listPublicYouTubeOAuthClients } from "../../../../../../../lib/youtube-oauth-clients";
+import { getChannelById } from "../../../../../../../lib/chat-history";
 
 export const runtime = "nodejs";
 
@@ -15,12 +21,48 @@ type ConnectBody = {
   oauthClientKey?: string;
 };
 
+function hasBearerToken(request: Request): boolean {
+  return /^Bearer\s+.+$/i.test(request.headers.get("authorization") ?? "");
+}
+
+async function requireMcpControlChannel(request: Request, channelId: string) {
+  const auth = await requireOwnerOrMcpControlWrite(request);
+  const channel = await getChannelById(channelId);
+  if (!channel || channel.workspaceId !== auth.workspace.id) {
+    throw new Response(JSON.stringify({ error: "Канал не найден." }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+  return auth;
+}
+
+async function authorizeConnectOptions(request: Request, channelId: string) {
+  if (hasBearerToken(request)) {
+    return requireMcpControlChannel(request, channelId);
+  }
+
+  const auth = await requireAuth(request);
+  requireSensitiveArtifactAccess(auth);
+  await requireChannelVisibility(auth, channelId);
+  return auth;
+}
+
+async function authorizeConnectStart(request: Request, channelId: string) {
+  if (hasBearerToken(request)) {
+    return requireMcpControlChannel(request, channelId);
+  }
+
+  const auth = await requireAuth(request);
+  requireSensitiveArtifactAccess(auth);
+  await requireChannelSetupEdit(auth, channelId);
+  return auth;
+}
+
 export async function GET(request: Request, context: Context): Promise<Response> {
   const { id } = await context.params;
   try {
-    const auth = await requireAuth(request);
-    requireSensitiveArtifactAccess(auth);
-    await requireChannelVisibility(auth, id);
+    await authorizeConnectOptions(request, id);
     return Response.json(
       {
         oauthClients: listPublicYouTubeOAuthClients(),
@@ -44,9 +86,7 @@ export async function POST(request: Request, context: Context): Promise<Response
   const body = (await request.json().catch(() => null)) as ConnectBody | null;
   try {
     const oauthClientKey = body?.oauthClientKey?.trim() || getDefaultYouTubeOAuthClientKey();
-    const auth = await requireAuth(request);
-    requireSensitiveArtifactAccess(auth);
-    await requireChannelSetupEdit(auth, id);
+    const auth = await authorizeConnectStart(request, id);
     assertYouTubePublishingConnectReady(oauthClientKey);
     const state = createChannelYoutubeOAuthState({
       workspaceId: auth.workspace.id,

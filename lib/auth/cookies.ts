@@ -17,6 +17,20 @@ function decodeCookieValue(value: string): string {
   }
 }
 
+export function buildAppSessionSetCookieHeader(token: string, expiresAt: Date): string {
+  const parts = [
+    `${APP_SESSION_COOKIE}=${encodeURIComponent(token)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    `Expires=${expiresAt.toUTCString()}`
+  ];
+  if (cookieSecure()) {
+    parts.push("Secure");
+  }
+  return parts.join("; ");
+}
+
 export function readAppSessionCookieFromHeader(cookieHeader: string | null | undefined): string | null {
   if (!cookieHeader) {
     return null;
