@@ -663,6 +663,30 @@ test("middleware lets MCP bearer tokens reach route-level scoped APIs only", () 
   );
   assert.notEqual(controlResponse.status, 401);
 
+  const machineSessionResponse = middleware(
+    new NextRequest("http://localhost/api/auth/machine-session", {
+      method: "POST",
+      headers: { authorization: "Bearer clips_machine_test" }
+    })
+  );
+  assert.notEqual(machineSessionResponse.status, 401);
+
+  const youtubeConnectResponse = middleware(
+    new NextRequest("http://localhost/api/channels/channel_1/publishing/youtube/connect", {
+      method: "POST",
+      headers: { authorization: "Bearer clips_machine_test" }
+    })
+  );
+  assert.notEqual(youtubeConnectResponse.status, 401);
+
+  const channelMutationResponse = middleware(
+    new NextRequest("http://localhost/api/channels/channel_1", {
+      method: "PATCH",
+      headers: { authorization: "Bearer clips_machine_test" }
+    })
+  );
+  assert.equal(channelMutationResponse.status, 401);
+
   const tokenMutationResponse = middleware(
     new NextRequest("http://localhost/api/admin/mcp-tokens", {
       headers: { authorization: "Bearer clips_mcp_test" }
