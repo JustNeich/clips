@@ -40,7 +40,8 @@ import {
   getWorkspaceStage2PromptConfig
 } from "./team-store";
 import {
-  fetchOptionalYtDlpInfo
+  fetchOptionalYtDlpInfo,
+  SourceDownloadError
 } from "./source-acquisition";
 import { ensureSourceMediaCached } from "./source-media-cache";
 import {
@@ -1195,8 +1196,16 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       tokenUsage
     } as Stage2Response;
   } catch (error) {
-    const ytdlpMessage = extractYtDlpErrorFromUnknown(error);
-    const errorMessage = ytdlpMessage ?? getPipelineErrorMessage(error);
+    // SourceDownloadError already carries the per-provider failure summary
+    // («Visolix: … Fallback yt-dlp: …»). Re-running extractYtDlpErrorFromUnknown
+    // over it would match the "yt-dlp" substring and collapse the whole summary
+    // into a generic descriptor, hiding the real cause from run_fail/receipts.
+    const sourceDownloadMessage =
+      error instanceof SourceDownloadError ? error.message.trim() : "";
+    const errorMessage =
+      sourceDownloadMessage ||
+      extractYtDlpErrorFromUnknown(error) ||
+      getPipelineErrorMessage(error);
     const activeStageId =
       getStage2Run(run.runId)?.snapshot.activeStageId ??
       getStage2ProgressStartStageId(
