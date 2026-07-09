@@ -431,6 +431,9 @@ export async function downloadVideoAndMetadata(
   deps?: {
     ensureCached?: typeof ensureSourceMediaCached;
     fetchOptionalInfo?: typeof fetchOptionalYtDlpInfo;
+  },
+  options?: {
+    localWorkerFallback?: { workspaceId: string; userId: string } | null;
   }
 ): Promise<{
   videoPath: string;
@@ -452,7 +455,9 @@ export async function downloadVideoAndMetadata(
     error: string | null;
   };
 }> {
-  const cachedSource = await (deps?.ensureCached ?? ensureSourceMediaCached)(url);
+  const cachedSource = await (deps?.ensureCached ?? ensureSourceMediaCached)(url, {
+    localWorkerFallback: options?.localWorkerFallback ?? null
+  });
   const optionalInfo = await (deps?.fetchOptionalInfo ?? fetchOptionalYtDlpInfo)(url, tmpDir);
   const title = optionalInfo.infoJson?.title?.trim() || cachedSource.title?.trim() || "video";
   const infoJson: VideoInfoJson = {
@@ -997,7 +1002,14 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       }
     );
 
-    const downloaded = await downloadVideoAndMetadata(run.sourceUrl, tmpDir);
+    const downloaded = await downloadVideoAndMetadata(run.sourceUrl, tmpDir, undefined, {
+      localWorkerFallback: run.creatorUserId
+        ? {
+            workspaceId: run.workspaceId,
+            userId: run.creatorUserId
+          }
+        : null
+    });
     const allComments = sortCommentsByPopularity(normalizeComments(downloaded.infoJson.comments)).slice(0, 300);
     const promptComments = prepareCommentsForPrompt(allComments, {
       maxComments: 300,
