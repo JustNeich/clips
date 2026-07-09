@@ -106,7 +106,29 @@ const MEMORY_CONSTRAINED_REMOTION_CONCURRENCY = 1;
 // crashing mid-render with "Target closed". Once a clip crosses this duration we bound
 // concurrency and enable the memory-safe render options; short clips keep the fast path.
 const LONG_RENDER_MEMORY_SAFE_THRESHOLD_SEC = 18;
-const LONG_RENDER_REMOTION_CONCURRENCY = 2;
+const DEFAULT_LONG_RENDER_REMOTION_CONCURRENCY = 2;
+const MIN_LONG_RENDER_REMOTION_CONCURRENCY = 1;
+const MAX_LONG_RENDER_REMOTION_CONCURRENCY = 4;
+
+// Frame-level Remotion concurrency for long local renders. Higher = faster but more
+// Chrome memory pressure (OOM risk); 2 is the safe default that protected the Mini
+// worker from "Target closed" crashes. STAGE3_LONG_RENDER_CONCURRENCY (integer,
+// clamped to [1..4]) tunes it on the worker plist without a rebuild; unset/invalid
+// keeps the default 2 (unchanged behavior). This module runs in the worker runtime.
+function resolveLongRenderRemotionConcurrency(): number {
+  const raw = process.env.STAGE3_LONG_RENDER_CONCURRENCY?.trim();
+  if (!raw) {
+    return DEFAULT_LONG_RENDER_REMOTION_CONCURRENCY;
+  }
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed)) {
+    return DEFAULT_LONG_RENDER_REMOTION_CONCURRENCY;
+  }
+  return Math.max(
+    MIN_LONG_RENDER_REMOTION_CONCURRENCY,
+    Math.min(MAX_LONG_RENDER_REMOTION_CONCURRENCY, parsed)
+  );
+}
 const SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
 let remotionServeUrlPromise: Promise<string> | null = null;
 let remotionRuntimePromise: Promise<RemotionModule> | null = null;
@@ -470,7 +492,7 @@ export function resolveRemotionRenderConcurrency(clipDurationSec: number): numbe
     return MEMORY_CONSTRAINED_REMOTION_CONCURRENCY;
   }
   if (isLongLocalRender(clipDurationSec)) {
-    return LONG_RENDER_REMOTION_CONCURRENCY;
+    return resolveLongRenderRemotionConcurrency();
   }
   return null;
 }

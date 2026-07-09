@@ -30,7 +30,7 @@ import {
   DEFAULT_STAGE3_CLIP_DURATION_SEC,
   normalizeStage3SourceFullDurationSec
 } from "./stage3-duration";
-import { resolveStage3Execution } from "./stage3-execution";
+import { normalizeStage3ExecutionTarget, resolveStage3Execution } from "./stage3-execution";
 import { enqueueAndScheduleStage3Job } from "./stage3-job-runtime";
 import { buildStage3RenderRequestDedupeKey } from "./stage3-render-request";
 import { normalizeRenderPlan, type Stage3RenderRequestBody } from "./stage3-render-service";
@@ -41,6 +41,19 @@ import { findCopscopesDuplicateStory } from "./copscopes-story-dedupe";
 import type { Stage3Segment, Stage3SourceCrop, Stage3StateSnapshot } from "../app/components/types";
 import type { Stage2Response } from "../app/components/types";
 import type { TemplateCaptionHighlights } from "./template-highlights";
+
+// The Render starter host is 502-unstable; the Mini worker is the strong Stage 3
+// node. Route CopScopes Stage 3 execution (optimization loop + render enqueue)
+// off the host by default. COPSCOPES_STAGE3_EXECUTION_TARGET ("host" | "local")
+// overrides; anything else falls back to "local". The value still passes through
+// resolveStage3Execution so host/local availability gating (STAGE3_ALLOW_HOST_EXECUTION,
+// local-executor enablement) is applied — e.g. a "host" request downgrades to
+// "local" where host execution is not permitted.
+function resolveCopscopesStage3ExecutionTarget() {
+  const configured =
+    normalizeStage3ExecutionTarget(process.env.COPSCOPES_STAGE3_EXECUTION_TARGET?.trim()) ?? "local";
+  return resolveStage3Execution(configured).resolvedTarget;
+}
 
 export type CopscopesStage3Review = {
   qualityGatePassed: boolean;
@@ -533,7 +546,7 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
       mediaId: input.reel.shortcode,
       workspaceId: input.workspaceId,
       userId: input.userId,
-      executionTarget: resolveStage3Execution("host").resolvedTarget,
+      executionTarget: resolveCopscopesStage3ExecutionTarget(),
       sourceUrl: input.reel.canonicalUrl,
       sourceDurationSec: targetDurationSec,
       goalText,
@@ -681,7 +694,7 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
       categorySlug: input.reel.categorySlug
     }
   } satisfies Stage3RenderRequestBody;
-  const executionTarget = resolveStage3Execution("host").resolvedTarget;
+  const executionTarget = resolveCopscopesStage3ExecutionTarget();
   const renderJob = enqueueAndScheduleStage3Job({
     workspaceId: input.workspaceId,
     userId: input.userId,

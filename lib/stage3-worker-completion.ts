@@ -15,7 +15,37 @@ type CompleteRemoteStage3ArtifactResult = {
   mode: "multipart" | "raw";
 };
 
-const DEFAULT_COMPLETION_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000];
+// Extended tail (…60s, 120s, 240s) so a finished artifact survives a multi-minute
+// host 502 window (real incident: render 452a792e) instead of burning out in ~60s
+// and losing the render after cleanup. ~8.5 min total delay budget across attempts.
+const DEFAULT_COMPLETION_RETRY_DELAYS_MS = [
+  1_000, 2_000, 4_000, 8_000, 15_000, 30_000, 60_000, 120_000, 240_000
+];
+
+// STAGE3_WORKER_COMPLETION_RETRY_DELAYS_MS: comma-separated millisecond delays that
+// override the default backoff (e.g. "1000,5000,30000"). Invalid/empty entries are
+// dropped; if nothing valid remains the default schedule is used. Read at call time
+// so the Mini worker plist can tune it without a rebuild.
+function parseCompletionRetryDelaysEnv(value: string | undefined): number[] | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = value
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .map((part) => Number(part))
+    .filter((ms) => Number.isFinite(ms) && ms >= 0)
+    .map((ms) => Math.round(ms));
+  return parsed.length > 0 ? parsed : null;
+}
+
+function resolveCompletionRetryDelaysMs(): number[] {
+  return (
+    parseCompletionRetryDelaysEnv(process.env.STAGE3_WORKER_COMPLETION_RETRY_DELAYS_MS) ??
+    DEFAULT_COMPLETION_RETRY_DELAYS_MS
+  );
+}
 
 function delay(ms: number): Promise<void> {
   if (ms <= 0) {
@@ -60,7 +90,7 @@ export async function completeRemoteStage3Artifact(
   input: CompleteRemoteStage3ArtifactInput
 ): Promise<CompleteRemoteStage3ArtifactResult> {
   const fetchImpl = input.fetchImpl ?? fetch;
-  const retryDelaysMs = input.retryDelaysMs ?? DEFAULT_COMPLETION_RETRY_DELAYS_MS;
+  const retryDelaysMs = input.retryDelaysMs ?? resolveCompletionRetryDelaysMs();
 
   const uploadRawArtifact = async (primaryError: string): Promise<CompleteRemoteStage3ArtifactResult> => {
     let lastError = primaryError;
