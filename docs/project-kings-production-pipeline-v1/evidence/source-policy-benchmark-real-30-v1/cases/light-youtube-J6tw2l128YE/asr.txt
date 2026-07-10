@@ -1,0 +1,13 @@
+status=speech_detected
+tool=openai-whisper-cli
+model=tiny
+language=en
+transcript=Yeah In Jay Bay, you're the footballer I brought up to this story, you're only another song Wait, you like what I'm supposed to watch You gaze all along, blaze, all the back For the parts of its life, all the life And don't burn my mind fake I'm a demon in the stars, I'm a soul tanker
+segment_01={"start":0,"end":3,"text":"Yeah","noSpeechProbability":0.4136073887348175,"averageLogProbability":-0.714225098326966}
+segment_02={"start":3,"end":6,"text":"In Jay Bay, you're the footballer","noSpeechProbability":0.4136073887348175,"averageLogProbability":-0.714225098326966}
+segment_03={"start":6,"end":10,"text":"I brought up to this story, you're only another song","noSpeechProbability":0.4136073887348175,"averageLogProbability":-0.714225098326966}
+segment_04={"start":10,"end":13,"text":"Wait, you like what I'm supposed to watch","noSpeechProbability":0.4136073887348175,"averageLogProbability":-0.714225098326966}
+segment_05={"start":13,"end":16,"text":"You gaze all along, blaze, all the back","noSpeechProbability":0.4136073887348175,"averageLogProbability":-0.714225098326966}
+segment_06={"start":16,"end":19,"text":"For the parts of its life, all the life","noSpeechProbability":0.4136073887348175,"averageLogProbability":-0.714225098326966}
+segment_07={"start":19,"end":21,"text":"And don't burn my mind fake","noSpeechProbability":0.4136073887348175,"averageLogProbability":-0.714225098326966}
+segment_08={"start":21,"end":24,"text":"I'm a demon in the stars, I'm a soul tanker","noSpeechProbability":0.4136073887348175,"averageLogProbability":-0.714225098326966}

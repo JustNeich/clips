@@ -11,14 +11,43 @@ import {
 } from "../../../../../../lib/stage3-worker-runtime-manifest";
 import { resolveStage3LocalWorkerReadiness } from "../../../../../../lib/stage3-worker-readiness";
 import { touchStage3WorkerHeartbeat } from "../../../../../../lib/stage3-worker-store";
+import type { Stage3JobKind } from "../../../../../../app/components/types";
+import { isProductionSemanticExecutorReadiness } from "../../../../../../lib/project-kings/production-semantic-job-contract";
 
 export const runtime = "nodejs";
 
 type ClaimBody = {
-  supportedKinds?: Array<"preview" | "render" | "editing-proxy" | "source-download" | "agent-media-step">;
+  supportedKinds?: Stage3JobKind[];
   appVersion?: string | null;
   capabilities?: Record<string, unknown> | null;
 };
+
+const KNOWN_STAGE3_WORKER_KINDS: readonly Stage3JobKind[] = [
+  "preview",
+  "render",
+  "editing-proxy",
+  "source-download",
+  "agent-media-step",
+  "production-semantic"
+];
+
+export function resolveClaimableStage3WorkerKinds(
+  supportedKinds: readonly Stage3JobKind[] | null | undefined,
+  capabilities: Record<string, unknown> | null | undefined
+): Stage3JobKind[] | null {
+  if (!supportedKinds) return null;
+  const unique = [...new Set(supportedKinds)].filter((kind) =>
+    KNOWN_STAGE3_WORKER_KINDS.includes(kind)
+  );
+  const semanticReadiness = capabilities?.productionSemantic;
+  return unique.filter(
+    (kind) =>
+      kind !== "production-semantic" ||
+      (isProductionSemanticExecutorReadiness(semanticReadiness) &&
+        semanticReadiness.ready &&
+        semanticReadiness.code === "ready")
+  );
+}
 
 export async function POST(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => null)) as ClaimBody | null;
@@ -74,11 +103,18 @@ export async function POST(request: Request): Promise<Response> {
         }
       );
     }
+    const supportedKinds = resolveClaimableStage3WorkerKinds(
+      body?.supportedKinds,
+      body?.capabilities
+    );
+    if (body?.supportedKinds && supportedKinds?.length === 0) {
+      return new Response(null, { status: 204 });
+    }
     const job = claimNextQueuedStage3JobForWorker({
       workerId: auth.worker.id,
       workspaceId: auth.workspaceId,
       userId: auth.userId,
-      supportedKinds: body?.supportedKinds,
+      supportedKinds: supportedKinds ?? undefined,
       leaseDurationMs: DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS
     });
     if (!job) {

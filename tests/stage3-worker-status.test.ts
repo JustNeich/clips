@@ -797,6 +797,33 @@ test("render dedupe can requeue completed or failed jobs without keeping stale a
   });
 });
 
+test("result-only agent media jobs reuse a completed structured result", async () => {
+  await withIsolatedAppData(async () => {
+    const workspaceId = "w1";
+    const userId = "u1";
+    seedWorkspace(workspaceId, userId);
+    const input = {
+      workspaceId,
+      userId,
+      kind: "agent-media-step" as const,
+      executionTarget: "local" as const,
+      dedupeKey: "agent-media:w1:u1:stable",
+      payloadJson: JSON.stringify({ operation: "analyze-best-clip-focus", sourceUrl: "upload:test" })
+    };
+    const first = enqueueStage3Job(input);
+    completeStage3Job(first.id, {
+      resultJson: JSON.stringify({ operation: "analyze-best-clip-focus", clipStartSec: 1, focusY: 0.5 }),
+      artifact: null
+    });
+
+    const reused = enqueueStage3Job(input);
+    assert.equal(reused.id, first.id);
+    assert.equal(reused.status, "completed");
+    assert.match(reused.resultJson ?? "", /clipStartSec/);
+    assert.equal(reused.attempts, 0);
+  });
+});
+
 test("automatic failed job retry preserves attempts and stops after limit", async () => {
   await withIsolatedAppData(async () => {
     const workspaceId = "w1";

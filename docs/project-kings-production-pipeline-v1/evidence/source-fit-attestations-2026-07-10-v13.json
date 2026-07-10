@@ -1,0 +1,184 @@
+[
+  {
+    "candidateId": "light-donor-DYctdBjpD5y",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.instagram.com/reel/DYctdBjpD5y/",
+    "contentSha256": "3367e5a7518d08f1e71b12d5e727ac2bbad4cf2b744ed6b3e3b636d7505a4b23",
+    "profileHash": "09c07d78a3cf415edf4997da96cdbc40514b2a8b56c7b5e19adeb3d4d273c9bc",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-b9b33868f1f6ff5910a1e8389b387d9f",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "e6d6879946dcdfb10c9384f8b85a397036824bed9d0178ba21cd01cb2b1ac3a4",
+    "artifactSetSha256": "6268837681ff513095c4c35c8218070a9059c07c942f8c285104bde486a39a35",
+    "rawOutputSha256": "5cc626a35db75020af49a8b3e228e91281d12494856926e93f75926f3df6fd15",
+    "outputSha256": "15498af12a6a24838ccd384bbc812b2fafbec829d16ad9ef95b0f49f538ec4cc",
+    "finishedAt": "2026-07-10T14:23:00.440Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-donor-DYctdBjpD5y",
+      "storyEventId": "event-ai-spider-man-fat-remake",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source is a recognizable Spider-Man AI remake with a visible comedic transformation, which matches the channel boundary. It is not listed in the known duplicate source hashes or known story event IDs.",
+      "factualClaims": [
+        {
+          "claim": "The candidate shows a recognizable Spider-Man fiction scene with a visible AI-style comedic remake rather than a talking-head or audio-only clip.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source hash is not present in the task's knownSourceSha256 duplicate ledger.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event is not present in the task's knownStoryEventIds duplicate ledger.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source metadata indicates a decoded vertical reel with donor discovery describing Spider-Man rebuilt through a visible comedic AI transformation.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-donor-DYejZ-RxFEJ",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.instagram.com/reel/DYejZ-RxFEJ/",
+    "contentSha256": "a1d0409c6da3b6dd30d04df3d69e1b6728aa5e0691cf60a141e6bf7f12c1c885",
+    "profileHash": "09c07d78a3cf415edf4997da96cdbc40514b2a8b56c7b5e19adeb3d4d273c9bc",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-61cb4b467ee0c72143d13ffeeef93b3a",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "53afab086bf26d76f053f8fa0a589148f1bcd32510ab613538a9eb484a1963bf",
+    "artifactSetSha256": "8510fe8b1d3a79ecbcf76286da3e169d1eb8f92a9dab6f9dacdb7834bb21f48c",
+    "rawOutputSha256": "98f5e91a33c3efc6501299586660324e11882ef7061782601a67f4ebc6733472",
+    "outputSha256": "02301e5f07260b929148a78517551278953722e8e7d4ec46242f1e3221f6a8e4",
+    "finishedAt": "2026-07-10T14:23:05.053Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-donor-DYejZ-RxFEJ",
+      "storyEventId": "event-ai-euphoria-fat-remake",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "Matches the concept: a recognizable fiction remake with a visible AI/comedic twist. It is not listed in the known source hash ledger or known story-event ledger, so it is not a duplicate by the explicit rules.",
+      "factualClaims": [
+        {
+          "claim": "The source is an Instagram Reel from @learnaifaster with claimed story event event-ai-euphoria-fat-remake.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The concept requires recognizable fiction rebuilt with a visible AI twist, and the source metadata describes Euphoria rebuilt through one visible comedic AI transformation.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source hash is not present in task.knownSourceSha256.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event is not present in task.knownStoryEventIds.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source is usable because decoding completed successfully and no decode error is reported.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-donor-DYl89L5Ry_n",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.instagram.com/reel/DYl89L5Ry_n/",
+    "contentSha256": "1e907ec8dbf8362521611b622ff0e003d75360d1b1f9244ba84c30ca6ea46590",
+    "profileHash": "09c07d78a3cf415edf4997da96cdbc40514b2a8b56c7b5e19adeb3d4d273c9bc",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-6f065fc61d626a4d83a077c4f336dd66",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "354be0135d36dfbd19c35e433ce7c580bb6713e5a2b2c09e942eebd9b6df7204",
+    "artifactSetSha256": "02d79381895e5c984a180b711f789c4202cfb45e5f55ba4009c280e158d33092",
+    "rawOutputSha256": "cc575af23fa651e44eee471d136973f41a40178771904904bb19756cea59b471",
+    "outputSha256": "b1bd6322378a22d882064a78e95ccf4de4d817a127580f8f3405aab3a7bc3821",
+    "finishedAt": "2026-07-10T14:22:59.019Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-donor-DYl89L5Ry_n",
+      "storyEventId": "event-ai-star-wars-fat-remake",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The frames clearly show a comedic Star Wars remake with overweight versions of recognizable Star Wars characters, which matches the claimed event and fits the channel concept. The source hash and story event do not appear in the task's known duplicate ledgers.",
+      "factualClaims": [
+        {
+          "claim": "The source is a Star Wars parody or remake centered on heavier versions of Star Wars characters.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The footage includes recognizable Star Wars characters such as Luke Skywalker and R2-D2.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The candidate matches the 'fat version of Star Wars' concept described in the packet.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  }
+]

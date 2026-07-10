@@ -1,0 +1,22 @@
+{
+  "status": "speech_detected",
+  "model": "tiny",
+  "language": "en",
+  "text": "Stop it. This is trying to be a car captain",
+  "segments": [
+    {
+      "start": 0,
+      "end": 7.62,
+      "text": "Stop it.",
+      "noSpeechProbability": 0.1339084506034851,
+      "averageLogProbability": -2.9667376349954044
+    },
+    {
+      "start": 7.62,
+      "end": 29.94,
+      "text": "This is trying to be a car captain",
+      "noSpeechProbability": 0.1339084506034851,
+      "averageLogProbability": -2.9667376349954044
+    }
+  ]
+}

@@ -1,0 +1,194 @@
+{
+  "schemaVersion": "project-kings-model-benchmark-evidence-v1",
+  "benchmarkVersion": "project-kings-stage-models-2026-07-10-v1",
+  "stageRole": "source_search",
+  "createdAt": "2026-07-10T10:32:48.209Z",
+  "bounds": {
+    "maxCases": 120,
+    "maxCandidates": 12,
+    "maxExecutions": 240,
+    "actualExecutions": 6
+  },
+  "dataset": {
+    "datasetId": "project-kings-source-search",
+    "datasetVersion": "v1",
+    "datasetSha256": "e1b91deb3726256a320636cca55c15efdc53a3c560c41a952ff993af4a412472",
+    "promptSetSha256": "ecb023794679654b6bb26078531d9b27c379c70eb916adbdc0d16fc103a1410e",
+    "outputSchemaSha256": "0f54a440b7a72bcff7795027cc8b0e7ec82fc46abe048e5d1af847700f569b67",
+    "sampleSize": 3
+  },
+  "qualityEvaluator": {
+    "evaluatorId": "project-kings-stage-quality",
+    "evaluatorVersion": "v1",
+    "implementationSha256": "4bd0e6da7dcb0628acfd8b9aa1214b0ebdf40d405eec246192edc81379ee882b",
+    "configSha256": "9d8f31faf4b28846f6b02e32f57cdbc66652e28f9e9edaedbce5bfbd38beee57"
+  },
+  "executionContract": {
+    "registrySha256": "4bd1cb98b553b54cb856f9841c358ea02e8c05e8c00284c8ad9cfa3af55ef1a7",
+    "policySha256": "6e6fa61fa9f4e4b31b3dcebbba51f0d3381d2416802d539f9a2a0ff5084b72e9",
+    "schemaValidationMethod": "strict-production-agent-output-v1",
+    "qualityAggregationMethod": "mean-passed-evaluator-score-v1",
+    "p95Method": "nearest-rank-p95-v1",
+    "costMethod": "uncached-input-plus-cached-input-plus-total-output-v1",
+    "reasoningTokensDoubleCounted": false
+  },
+  "pricing": [
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 18.75,
+      "cachedInputPerMillionTokens": 1.875,
+      "outputPerMillionTokens": 113,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10.json",
+      "verifiedAt": "2026-07-10T10:25:00.000Z",
+      "sourceSha256": "8eecae97c60246ccdfe6acc3c3b17071131ca2a2ef3104d866d427933a11638c"
+    },
+    {
+      "routeId": "codex:gpt-5.4",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 62.5,
+      "cachedInputPerMillionTokens": 6.25,
+      "outputPerMillionTokens": 375,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10.json",
+      "verifiedAt": "2026-07-10T10:25:00.000Z",
+      "sourceSha256": "8eecae97c60246ccdfe6acc3c3b17071131ca2a2ef3104d866d427933a11638c"
+    }
+  ],
+  "candidates": [
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "provider": "codex",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "low",
+      "samples": [
+        {
+          "caseId": "source-search-dark-found",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "b313bdc7d1a61264438eb8d4d5485d4ff311c8afa3b270e91b45326d6ef63bef",
+          "startedAt": "2026-07-10T10:32:48.202Z",
+          "durationMs": 4.035208,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "ENOENT: no such file or directory, copyfile '/var/folders/cs/1tfzglqn1xb3zhqrc48wm2pw0000gn/T/project-kings-model-benchmark-WJig4d/dark-concept.json' -> '/var/folders/cs/1tfzglqn1xb3zhqrc48wm2pw0000gn/T/project-kings-agent-iR10qb/artifacts/01-dark-concept.json'"
+        },
+        {
+          "caseId": "source-search-cop-found",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "51453dbb7c2fa5b70595ba5794ec67ebcfb17c88a7f4355801e1076e626b11ea",
+          "startedAt": "2026-07-10T10:32:48.207Z",
+          "durationMs": 0.237042,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "Artifact source-pool is not a readable file."
+        },
+        {
+          "caseId": "source-search-exhausted",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "6c12b4e89f2b081d40145f7e7dd22b821b93d14566932bb5673630b23cf1e55f",
+          "startedAt": "2026-07-10T10:32:48.207Z",
+          "durationMs": 0.263875,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "Artifact light-concept is not a readable file."
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 3,
+        "schemaSuccessRate": 0,
+        "qualityScore": 0,
+        "qualityPassRate": 0,
+        "p95LatencyMs": 4.035208,
+        "meanCost": null,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": false,
+        "selectorBenchmark": null
+      }
+    },
+    {
+      "routeId": "codex:gpt-5.4",
+      "provider": "codex",
+      "model": "gpt-5.4",
+      "reasoningEffort": "low",
+      "samples": [
+        {
+          "caseId": "source-search-dark-found",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "b313bdc7d1a61264438eb8d4d5485d4ff311c8afa3b270e91b45326d6ef63bef",
+          "startedAt": "2026-07-10T10:32:48.207Z",
+          "durationMs": 0.3165,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "Artifact source-pool is not a readable file."
+        },
+        {
+          "caseId": "source-search-cop-found",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "51453dbb7c2fa5b70595ba5794ec67ebcfb17c88a7f4355801e1076e626b11ea",
+          "startedAt": "2026-07-10T10:32:48.208Z",
+          "durationMs": 0.569791,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "Artifact cop-concept is not a readable file."
+        },
+        {
+          "caseId": "source-search-exhausted",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "6c12b4e89f2b081d40145f7e7dd22b821b93d14566932bb5673630b23cf1e55f",
+          "startedAt": "2026-07-10T10:32:48.208Z",
+          "durationMs": 0.438709,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "Artifact light-concept is not a readable file."
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 3,
+        "schemaSuccessRate": 0,
+        "qualityScore": 0,
+        "qualityPassRate": 0,
+        "p95LatencyMs": 0.569791,
+        "meanCost": null,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": false,
+        "selectorBenchmark": null
+      }
+    }
+  ],
+  "selection": null,
+  "selectionError": "No model route passed the benchmark policy.",
+  "selectionRejections": [
+    {
+      "routeId": "codex:gpt-5.4",
+      "reason": "no benchmark result"
+    },
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "reason": "no benchmark result"
+    }
+  ],
+  "evidenceSha256": "70d2212f3776a3a4ff23af6e1ff4cd42e1c5e78b7e5e61dbe56e3184e6461dea"
+}

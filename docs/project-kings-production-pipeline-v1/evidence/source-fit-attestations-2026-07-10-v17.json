@@ -1,0 +1,72 @@
+[
+  {
+    "candidateId": "cop-donor-DXHx529DVb0",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DXHx529DVb0/",
+    "contentSha256": "b687a8fcf77ebfb7d44e88239a652acebd22f92f9f2a49d82e9385eb989b5dbf",
+    "profileHash": "2d4c0437cbf71dfb40263d6ffabda7aa82910b11b7ca686bd7df4fe405b99080",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-9848f753f82629361b4671486333c236",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "ca933817ac82b3fd536b83cc4223c8b4d206fe8e67b6f86212acbd9f11d849d4",
+    "artifactSetSha256": "805c82224b38cf19cbbf3b12a5be6dc9c5d431d3bf0d9846b8b4f356ac5a8a64",
+    "rawOutputSha256": "93a52ab1ae37a319728a583bc813a50bac9aa8da9c69a9384ee819104442e2ba",
+    "outputSha256": "66cca099556637e009302832ca56da7c768d9e37e25f89f3d80dfe6e87210657",
+    "finishedAt": "2026-07-10T14:35:58.612Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "cop-donor-DXHx529DVb0",
+      "storyEventId": "event-south-carolina-trooper-stops-wrong-way-driver",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The Reel fits the channel boundary: it is real US police dashcam footage with a visible law-enforcement incident and a clear outcome. The source metadata matches the claimed story event, and the task does not mark this source or event as already used.",
+      "factualClaims": [
+        {
+          "claim": "The source is an Instagram Reel from the approved cop donor pool.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The clip shows a trooper stopping a wrong-way driver.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The footage contains a visible incident turn and outcome consistent with the concept boundary.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "This candidate is not a duplicate video under the task's known source ledger.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "This candidate is not a duplicate event under the task's known story event ledger.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  }
+]

@@ -435,6 +435,9 @@ function formatWorkerCurrentJobLabel(kind: Stage3JobKind | null): string | null 
   if (kind === "agent-media-step") {
     return "обработка media";
   }
+  if (kind === "production-semantic") {
+    return "semantic QA";
+  }
   return null;
 }
 

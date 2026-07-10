@@ -1,0 +1,7 @@
+status=speech_detected
+tool=openai-whisper-cli
+model=tiny
+language=en
+transcript=Council meeting today, a lot of wisdom in this room, and this guy definitely doesn't have any bad influence on me.
+segment_01={"start":0,"end":7.48,"text":"Council meeting today, a lot of wisdom in this room, and this guy definitely doesn't have any","noSpeechProbability":0.06042192131280899,"averageLogProbability":-0.35104239781697594}
+segment_02={"start":7.48,"end":8.52,"text":"bad influence on me.","noSpeechProbability":0.06042192131280899,"averageLogProbability":-0.35104239781697594}

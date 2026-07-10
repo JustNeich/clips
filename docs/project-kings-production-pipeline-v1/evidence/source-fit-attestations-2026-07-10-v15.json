@@ -1,0 +1,202 @@
+[
+  {
+    "candidateId": "dark-positive-Cw_QTMmA69_",
+    "profileKey": "dark-joy-boy",
+    "sourceUrl": "https://www.instagram.com/reel/Cw_QTMmA69_/",
+    "contentSha256": "b9afa27653b60ad2364551beb83b0a76dbc9af5a5d3eefd27a58a2d19e96939b",
+    "profileHash": "4ab92f87f51b7f5bf8636bfd0b52511a4665ffec05c37b260070ae7acb7238d5",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-712e161621fc4c8ea6b9c9905809ec5c",
+    "model": "gpt-5.4",
+    "reasoningLevel": "low",
+    "promptSha256": "ff2df8736cb1a20a21eafcff68e1da7f2bfed4be43293a975ac3e0b37e78d363",
+    "artifactSetSha256": "1d188df3738f308bd90ceecc26ee2ea4bc7d7b873a9f964b7dc3545bce5d528c",
+    "rawOutputSha256": "867cec0a78c4dc5b0e735e8adaa36aa096768b6bbc72ac041aa87f8f8329dd11",
+    "outputSha256": "4304e493d0490e37e6b57818037d2d62995251ddab76cec310f438474c91b242",
+    "finishedAt": "2026-07-10T14:28:26.955Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "dark-positive-Cw_QTMmA69_",
+      "storyEventId": "event-woman-bottle-feeds-liger",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source shows one continuous close human interaction with an exotic animal: a woman bottle-feeds a large liger at close range. This matches the channel concept and the claimed story event. The source SHA and story event ID do not appear in the task duplicate ledgers, so neither duplicate gate is triggered.",
+      "factualClaims": [
+        {
+          "claim": "The candidate source is the Instagram Reel https://www.instagram.com/reel/Cw_QTMmA69_/ with source SHA-256 b9afa27653b60ad2364551beb83b0a76dbc9af5a5d3eefd27a58a2d19e96939b.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event ID is event-woman-bottle-feeds-liger.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source depicts a woman bottle-feeding a large liger in a sustained close-range interaction.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "This interaction fits the concept boundary of close human contact with exotic animals.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The candidate source SHA-256 does not appear in packet.task.knownSourceSha256.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event ID does not appear in packet.task.knownStoryEventIds.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "dark-positive-Cxb0DmpJ7oM",
+    "profileKey": "dark-joy-boy",
+    "sourceUrl": "https://www.instagram.com/reel/Cxb0DmpJ7oM/",
+    "contentSha256": "0438717607aad46859cd008d49276a8e0e93d0a1d2fe21e7073f4c5ad734f0b7",
+    "profileHash": "4ab92f87f51b7f5bf8636bfd0b52511a4665ffec05c37b260070ae7acb7238d5",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-fb77e3df99e22e59072d09fe3cf7b921",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "26faf50add04706f14ab07c42e43ae53ca7d9aaaed143b3dee6db2cac2c0a70c",
+    "artifactSetSha256": "6544774722b9915e130e3a309acc2eb81847271084fa592ee07cb523984e281b",
+    "rawOutputSha256": "f63f54d220cd5280caa1d066c760f17b7ceba90368096ecbeefcf4cd6bf9d53d",
+    "outputSha256": "548e81260478fb0d5de5b41287a5b8b9216e398eb132eed15fb8f3c2c4a014c2",
+    "finishedAt": "2026-07-10T14:28:07.603Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "dark-positive-Cxb0DmpJ7oM",
+      "storyEventId": "event-towel-wrapped-spider-monkey-held-close",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source matches the concept tightly: one continuous warm human-animal contact moment with a baby spider monkey held close to a man’s face. The supplied source metadata confirms the same event, and there is no duplicate evidence under the task’s authoritative known-source or known-event lists.",
+      "factualClaims": [
+        {
+          "claim": "A man holds a towel-wrapped baby spider monkey close to his face in one warm interaction.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The candidate corresponds to story event event-towel-wrapped-spider-monkey-held-close.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source video hash is not listed in knownSourceSha256, so it is not a duplicate video by task rules.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event is not listed in knownStoryEventIds, so it is not a duplicate event by task rules.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "dark-positive-DIUYX9QStl3",
+    "profileKey": "dark-joy-boy",
+    "sourceUrl": "https://www.instagram.com/reel/DIUYX9QStl3/",
+    "contentSha256": "373c5ac04ca129f3bee910245be74cdcb56f6c291af09994a8376f6e7d4ede41",
+    "profileHash": "4ab92f87f51b7f5bf8636bfd0b52511a4665ffec05c37b260070ae7acb7238d5",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-cf2eb1d44fb4602b92e48f73452bc743",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "4c57729b7d0d1c2f12088253806d63cf6f427061fcf93bda812de7a5b0d67410",
+    "artifactSetSha256": "40e76b74c44a9dac8f7d063f4604adc1dc91659ce03e2a65777163f2b1432131",
+    "rawOutputSha256": "c444080c676f8675313ac5b8ecd2bfe5123929aaab451c596bcaac599b18be92",
+    "outputSha256": "179c0f58312745afdba2afe02ded07a43450d1011c7946d81a465be0b5d304cc",
+    "finishedAt": "2026-07-10T14:28:05.086Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "dark-positive-DIUYX9QStl3",
+      "storyEventId": "event-man-swims-embracing-chimpanzee",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source shows one continuous close human-animal interaction: a man swimming while holding a chimpanzee. This fits the concept of warm, readable exotic-animal contact. It is not marked as a duplicate by the authoritative known-source or known-event lists.",
+      "factualClaims": [
+        {
+          "claim": "The candidate shows a man swimming while holding a chimpanzee in one continuous interaction.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The interaction matches the channel concept of close human contact with an exotic animal.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source hash is not present in packet.task.knownSourceSha256.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event is not present in packet.task.knownStoryEventIds.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        }
+      ]
+    }
+  }
+]

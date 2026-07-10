@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "project-kings-zoro-runtime-preflight-v1",
+  "capturedAt": "2026-07-10T15:21:20Z",
+  "host": "Mac-mini-Neich.local",
+  "connection": {
+    "route": "existing SSH alias macmini-agent-ip",
+    "authentication": "existing scoped SSH key",
+    "result": "pass",
+    "credentialsChanged": false
+  },
+  "runtime": {
+    "user": "neichyabazhi",
+    "node": "v24.14.0",
+    "codexCli": "0.131.0-alpha.22",
+    "codexLogin": "Logged in using ChatGPT",
+    "stage3LaunchdLabel": "com.clips.stage3-worker",
+    "stage3State": "running",
+    "stage3BundleSha256": "5e73db6a9be170d104e2bf5779868e07e9dbc86a009e8994a41eab3c17795c3c",
+    "stage3BundleBytes": 1053295
+  },
+  "observations": [
+    "Existing Stage3 worker completed recent source-download jobs.",
+    "Historical stderr contains a bounded source-download timeout followed by launchd restart.",
+    "No Project Kings semantic worker or portfolio launchd unit was installed during this preflight."
+  ],
+  "acceptanceEligible": false,
+  "reason": "Pre-deployment connectivity and authentication evidence only; it does not prove the new frozen worker runtime."
+}

@@ -1,0 +1,129 @@
+{
+  "schemaVersion": "project-kings-source-policy-case-metadata-v1",
+  "caseId": "light-youtube-J6tw2l128YE",
+  "profileKey": "light-kingdom",
+  "sourceUrl": "https://www.youtube.com/shorts/J6tw2l128YE",
+  "mediaRelativePath": ".data/project-kings/source-candidates/light/ask-v3/J6tw2l128YE.mp4",
+  "contentSha256": "0add34915f9235de87c6d9d3426fb03b2d0461b3e80dd0b488080af337531750",
+  "durationSec": 24.514,
+  "container": "mov,mp4,m4a,3gp,3g2,mj2",
+  "audioStreams": [
+    {
+      "index": 1,
+      "codec_name": "opus",
+      "codec_long_name": "Opus (Opus Interactive Audio Codec)",
+      "codec_type": "audio",
+      "codec_tag_string": "Opus",
+      "codec_tag": "0x7375704f",
+      "mime_codec_string": "opus",
+      "sample_fmt": "fltp",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "bits_per_sample": 0,
+      "initial_padding": 312,
+      "id": "0x2",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "time_base": "1/48000",
+      "start_pts": 0,
+      "start_time": "0.000000",
+      "duration_ts": 1176672,
+      "duration": "24.514000",
+      "bit_rate": "127068",
+      "nb_frames": "1226",
+      "extradata_size": 19,
+      "disposition": {
+        "default": 1,
+        "dub": 0,
+        "original": 0,
+        "comment": 0,
+        "lyrics": 0,
+        "karaoke": 0,
+        "forced": 0,
+        "hearing_impaired": 0,
+        "visual_impaired": 0,
+        "clean_effects": 0,
+        "attached_pic": 0,
+        "timed_thumbnails": 0,
+        "non_diegetic": 0,
+        "captions": 0,
+        "descriptions": 0,
+        "metadata": 0,
+        "dependent": 0,
+        "still_image": 0,
+        "multilayer": 0
+      },
+      "tags": {
+        "language": "eng",
+        "handler_name": "SoundHandler"
+      }
+    }
+  ],
+  "policyVersion": "project-kings-source-rights-sensitive-policy-v2",
+  "policySha256": "b6664c4364c4a3b172a1f1d653e3d100604e98f5ef1b33857324691fa894eb39",
+  "extraction": {
+    "ffmpegVersion": "ffmpeg version 8.1 Copyright (c) 2000-2026 the FFmpeg developers",
+    "ffprobeVersion": "ffprobe version 8.1 Copyright (c) 2007-2026 the FFmpeg developers",
+    "frameRatios": [
+      0.06,
+      0.235,
+      0.41,
+      0.59,
+      0.765,
+      0.94
+    ],
+    "orderedFrames": [
+      {
+        "artifactId": "source-key-frame-01",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/frames/source-key-frame-01.jpg",
+        "timestampMs": 1471,
+        "sha256": "00a213c4f687217175f1f2d66ec2254244c0289146aa088f91a4d6166c6d465f"
+      },
+      {
+        "artifactId": "source-key-frame-02",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/frames/source-key-frame-02.jpg",
+        "timestampMs": 5761,
+        "sha256": "881685c098fa69836f6cea61b5811549b125ca9c8bab56c95f0a113c2a806729"
+      },
+      {
+        "artifactId": "source-key-frame-03",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/frames/source-key-frame-03.jpg",
+        "timestampMs": 10051,
+        "sha256": "572753b9954895535cd9b0a64b548d9c06ef6eea0a8968bcba43c596fcbb4748"
+      },
+      {
+        "artifactId": "source-key-frame-04",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/frames/source-key-frame-04.jpg",
+        "timestampMs": 14463,
+        "sha256": "1c0246ca31180efc97317b8cd6261e9456dbcac33e643a55a394dfcdeb31a8f4"
+      },
+      {
+        "artifactId": "source-key-frame-05",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/frames/source-key-frame-05.jpg",
+        "timestampMs": 18753,
+        "sha256": "961e55483dcb0e90f1cf4b95c7a19cd59aa4c223401111628db2d07a4e59c75c"
+      },
+      {
+        "artifactId": "source-key-frame-06",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/frames/source-key-frame-06.jpg",
+        "timestampMs": 23043,
+        "sha256": "eabd09c239f97d99b41b0438556498567a641b2c64c89d5ac592bbaba9eb5b21"
+      }
+    ]
+  },
+  "ocr": {
+    "tool": "tesseract 5.5.2",
+    "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/ocr.txt",
+    "sha256": "e5bb227ab2fa4ee52e2db46f66d869c4e1ca8fa113fa7a1f3213681b2de2bb70"
+  },
+  "asr": {
+    "tool": "openai-whisper-cli",
+    "model": "tiny",
+    "status": "speech_detected",
+    "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/asr.txt",
+    "sha256": "b9b85082fdf2d8093a546f60f2517f9b14fb9ae0464b14f72f7bf8b9b3ad98d1",
+    "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/asr.raw.json",
+    "rawSha256": "d856c17794e24611c07ff83e756c63a261ba586feabf76e351cc0d9a35e8b5b5"
+  }
+}

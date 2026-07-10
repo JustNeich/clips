@@ -1,0 +1,8 @@
+status=speech_detected
+tool=openai-whisper-cli
+model=tiny
+language=en
+transcript=Hello world, where you're been? I've been waiting for you and your friends One love begins
+segment_01={"start":0,"end":3,"text":"Hello world, where you're been?","noSpeechProbability":0.6436628103256226,"averageLogProbability":-0.5257092581854926}
+segment_02={"start":3,"end":5,"text":"I've been waiting for you and your friends","noSpeechProbability":0.6436628103256226,"averageLogProbability":-0.5257092581854926}
+segment_03={"start":5,"end":7,"text":"One love begins","noSpeechProbability":0.6436628103256226,"averageLogProbability":-0.5257092581854926}

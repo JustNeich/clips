@@ -1,0 +1,631 @@
+{
+  "schemaVersion": "project-kings-production-profile-snapshots-v2",
+  "executionApproval": "not_granted_by_this_snapshot",
+  "approvalMechanism": "clips_owner_approve_production_profile binds one stored profile id, version and profileHash to shadow or live scope",
+  "mutableSecretsIncluded": false,
+  "profiles": [
+    {
+      "key": "dark-joy-boy",
+      "profileHash": "0f5e561b4db400a862fac8edeb666610d44450e876acbaac5136ae3b5ab7f9aa",
+      "channelProfile": {
+        "profileVersion": "project-kings-profile-v1",
+        "profileId": "4b59c5cf412e4c07b192f3312361c2eb",
+        "youtube": {
+          "channelId": "UCwO37rtHMhHX8caUr5Rc0Bw",
+          "titleAdvisory": "Tiger the Apex"
+        },
+        "templateIdentity": {
+          "channelId": "4b59c5cf412e4c07b192f3312361c2eb",
+          "templateSha": "b491e55267c73bd1315f26b2a7641b0865b7bcef8ca428c88df12baaa1a4c904"
+        },
+        "concept": {
+          "contractVersion": "concept-v2",
+          "conceptId": "human-exotic-animal-contact",
+          "label": "Close human contact with exotic animals",
+          "conceptShape": "channel",
+          "instagramCoherence": "pass",
+          "channelPromise": "One close, emotionally readable human interaction with an exotic animal in every Short.",
+          "axes": {
+            "audience": "English-speaking viewers drawn to warm, surprising, or awe-filled contact with exotic animals.",
+            "source": {
+              "platform": "instagram",
+              "mediaType": "reel",
+              "description": "Instagram Reels from reviewed keepers and wildlife parks showing a human and an exotic animal together."
+            },
+            "event": "One continuous visible interaction such as feeding, bathing, swimming, embracing, grooming, or playful contact.",
+            "emotion": "Warmth, trust, delight, or respectful awe created by the animal's visible response to a person.",
+            "reasonToWatch": "See how an exotic animal reacts at close range and receive a clear emotional payoff without invented danger.",
+            "format": "One clean vertical or crop-safe interaction clip under a top-and-bottom card; never a multi-animal compilation."
+          },
+          "inclusions": [
+            "A keeper feeds or bathes a primate, big cat, or other exotic animal.",
+            "A person and an exotic animal visibly embrace, play, swim, or move together.",
+            "A wildlife-park encounter where the human-animal contact is the main visible event.",
+            "A calm close-range bond with a visible response from both the person and the animal."
+          ],
+          "exclusions": [
+            "Ordinary pets, farm animals, or wildlife footage without a person in frame.",
+            "Animal distress, cruelty, staged danger, or unsupported threat claims.",
+            "Compilations containing unrelated animals, visitors, or locations.",
+            "Police incidents, AI fiction mashups, talking heads, and product advertising.",
+            "Large burned-in captions or donor branding over the interaction."
+          ],
+          "adjacentCategories": [
+            {
+              "categoryId": "ordinary-pet-moments",
+              "difference": "Dogs, cats, and farm animals are outside the exotic-animal promise even when the interaction is warm."
+            },
+            {
+              "categoryId": "wildlife-observation",
+              "difference": "An exotic animal alone is insufficient; a visible human-animal interaction must drive the event."
+            },
+            {
+              "categoryId": "animal-danger-footage",
+              "difference": "The channel supplies readable contact and emotion, not distress, attack spectacle, or invented danger."
+            }
+          ],
+          "positiveExamples": [
+            {
+              "id": "dark-positive-Cxb0DmpJ7oM",
+              "url": "https://www.instagram.com/reel/Cxb0DmpJ7oM/",
+              "storyEventId": "event-towel-wrapped-spider-monkey-held-close",
+              "reason": "A man holds a towel-wrapped baby spider monkey close to his face in one warm interaction."
+            },
+            {
+              "id": "dark-positive-C9gLu79MklN",
+              "url": "https://www.instagram.com/reel/C9gLu79MklN/",
+              "storyEventId": "event-owner-feeds-and-plays-with-spider-monkey",
+              "reason": "The owner feeds and plays with a hand-raised spider monkey throughout one continuous clip."
+            },
+            {
+              "id": "dark-positive-BtDnmx6HRr_",
+              "url": "https://www.instagram.com/reel/BtDnmx6HRr_/",
+              "storyEventId": "event-man-wrestles-and-hugs-tiger",
+              "reason": "A man and a large tiger chase, embrace, and roll together with a clear affectionate payoff."
+            },
+            {
+              "id": "dark-positive-DIUYX9QStl3",
+              "url": "https://www.instagram.com/reel/DIUYX9QStl3/",
+              "storyEventId": "event-man-swims-embracing-chimpanzee",
+              "reason": "A man swims while holding a chimpanzee and both remain visibly engaged in the interaction."
+            },
+            {
+              "id": "dark-positive-CsYa4skNBjP",
+              "url": "https://www.instagram.com/reel/CsYa4skNBjP/",
+              "storyEventId": "event-man-bottle-feeds-lion",
+              "reason": "A man bottle-feeds a large lion and holds its paw in a close, readable encounter."
+            },
+            {
+              "id": "dark-positive-DKM66d2tamf",
+              "url": "https://www.instagram.com/reel/DKM66d2tamf/",
+              "storyEventId": "event-young-tiger-belly-rub",
+              "reason": "A young tiger rests on a man's lap, receives a belly rub, and licks his hand."
+            },
+            {
+              "id": "dark-positive-Cw_QTMmA69_",
+              "url": "https://www.instagram.com/reel/Cw_QTMmA69_/",
+              "storyEventId": "event-woman-bottle-feeds-liger",
+              "reason": "A woman bottle-feeds and strokes a giant liger in one sustained close-range moment."
+            },
+            {
+              "id": "dark-positive-C-0YpsCAODv",
+              "url": "https://www.instagram.com/reel/C-0YpsCAODv/",
+              "storyEventId": "event-chimpanzee-waves-from-womans-shoulders",
+              "reason": "A chimpanzee hangs from a woman's shoulders while both smile and wave at the camera."
+            }
+          ],
+          "negativeExamples": [
+            {
+              "id": "dark-negative-C9d0ALvstDH",
+              "url": "https://www.instagram.com/reel/C9d0ALvstDH/",
+              "storyEventId": "reject-spider-monkey-alone",
+              "reason": "The monkey runs alone and no person appears, so the required contact event is absent."
+            },
+            {
+              "id": "dark-negative-C6weULIg7GK",
+              "url": "https://www.instagram.com/reel/C6weULIg7GK/",
+              "storyEventId": "reject-wildlife-park-compilation",
+              "reason": "Several unrelated animals and visitor encounters are cut together as a compilation."
+            },
+            {
+              "id": "dark-negative-CyWztiXACoC",
+              "url": "https://www.instagram.com/reel/CyWztiXACoC/",
+              "storyEventId": "reject-animal-to-animal-grooming",
+              "reason": "The clip shows one primate grooming another and contains no human interaction."
+            },
+            {
+              "id": "dark-negative-C_LN7npAcI4",
+              "url": "https://www.instagram.com/reel/C_LN7npAcI4/",
+              "storyEventId": "reject-safari-promotional-montage",
+              "reason": "The Reel is a promotional photo montage rather than one continuous encounter."
+            },
+            {
+              "id": "dark-negative-C5dfo8igsFA",
+              "url": "https://www.instagram.com/reel/C5dfo8igsFA/",
+              "storyEventId": "reject-animal-hug-with-large-hardsub",
+              "reason": "Large donor text covers the interaction area and makes the source unsuitable for the card."
+            }
+          ],
+          "evidenceBoundary": {
+            "categoryAuthority": "instagram",
+            "youtubeRole": "market-validation-only",
+            "youtubeCanWidenCategory": false
+          },
+          "continuityBuffer": {
+            "uniqueStoryEventIds": [
+              "event-towel-wrapped-spider-monkey-held-close",
+              "event-owner-feeds-and-plays-with-spider-monkey",
+              "event-man-wrestles-and-hugs-tiger",
+              "event-man-swims-embracing-chimpanzee",
+              "event-man-bottle-feeds-lion",
+              "event-young-tiger-belly-rub",
+              "event-woman-bottle-feeds-liger",
+              "event-chimpanzee-waves-from-womans-shoulders"
+            ]
+          }
+        },
+        "publication": {
+          "timezone": "Europe/Moscow",
+          "slots": [
+            {
+              "slotId": "daily-1",
+              "localTime": "21:00"
+            },
+            {
+              "slotId": "daily-2",
+              "localTime": "21:15"
+            },
+            {
+              "slotId": "daily-3",
+              "localTime": "21:30"
+            },
+            {
+              "slotId": "daily-4",
+              "localTime": "21:45"
+            }
+          ],
+          "limits": {
+            "dailyPublicationLimit": 3,
+            "maxCandidatesPerRun": 9,
+            "maxConcurrentSourceJobs": 1,
+            "maxConcurrentModelCalls": 3,
+            "maxConcurrentRenders": 1
+          },
+          "retryPolicy": {
+            "strategy": "exponential",
+            "maxAttempts": 3,
+            "initialDelayMs": 1000,
+            "maxDelayMs": 30000,
+            "retryableErrorCodes": [
+              "network_error",
+              "provider_5xx",
+              "rate_limit",
+              "lease_lost"
+            ],
+            "nonRetryableErrorCodes": [
+              "invalid_credentials",
+              "concept_mismatch",
+              "visual_quality_rejected",
+              "copyright_block"
+            ]
+          }
+        },
+        "credentialRefs": {
+          "youtubePublishing": "credential-ref://clips/channel/4b59c5cf412e4c07b192f3312361c2eb/youtube-publishing",
+          "instagramSource": "credential-ref://clips/workspace/instagram-source"
+        }
+      },
+      "templateId": "science-card-red-1cbf5e07",
+      "publishPolicyId": "project-kings-daily-3x3-v1",
+      "qualityPolicyId": "project-kings-quality-v1",
+      "modelRouteManifestId": "project-kings-model-routes-v2",
+      "modelRouteManifestSha256": "f29362a09c0e1a3c98c24a9585759259455703ab8c1c879bc36f8643f2a411de"
+    },
+    {
+      "key": "light-kingdom",
+      "profileHash": "a482c7d99a79012d33758a29d65036df31a84e7e437a20d6cbd481c3150c561d",
+      "channelProfile": {
+        "profileVersion": "project-kings-profile-v1",
+        "profileId": "43923d42c1c0495282f29d4c6e09b0b4",
+        "youtube": {
+          "channelId": "UC0LWZYpYuYAWK55WmvDqxbg",
+          "titleAdvisory": "THE LIGHT KINGDOM"
+        },
+        "templateIdentity": {
+          "channelId": "43923d42c1c0495282f29d4c6e09b0b4",
+          "templateSha": "b491e55267c73bd1315f26b2a7641b0865b7bcef8ca428c88df12baaa1a4c904"
+        },
+        "concept": {
+          "contractVersion": "concept-v2",
+          "conceptId": "recognizable-fiction-with-visible-ai-twist",
+          "label": "Recognizable fiction rebuilt with a visible AI twist",
+          "conceptShape": "channel",
+          "instagramCoherence": "pass",
+          "channelPromise": "One recognizable film or television scene transformed by a visible AI idea in every Short.",
+          "axes": {
+            "audience": "English-speaking viewers who recognize mainstream film and television and enjoy visual AI remixes.",
+            "source": {
+              "platform": "instagram",
+              "mediaType": "reel",
+              "description": "Instagram Reels establishing the fixed fiction-times-AI boundary through visible remakes, generated characters, or AI tools inside known scenes."
+            },
+            "event": "A recognizable fictional scene develops into a visible AI-generated anomaly, character, remake, or changed payoff.",
+            "emotion": "Recognition followed by curiosity, surprise, or comedy when the AI alteration becomes visually clear.",
+            "reasonToWatch": "Identify the familiar scene and see the exact visual change created by the AI premise or remake.",
+            "format": "One short vertical or crop-safe scene with a readable visual AI payoff; never a talking-head explanation or audio-only parody."
+          },
+          "inclusions": [
+            "A known film or television scene visibly remade in another AI-generated style.",
+            "A visible AI tool, AI persona, or generated character placed inside recognizable fiction.",
+            "An AI-generated replacement ending or scene payoff that is understandable without sound.",
+            "A short generated skit using recognizable fictional characters and a clear visual turn."
+          ],
+          "exclusions": [
+            "Unmodified film footage whose AI element exists only in voice or subtitles.",
+            "Talking-head AI news, interviews, tutorials, and product demonstrations.",
+            "Pure pop-culture mashups with no visible AI alteration.",
+            "Police incidents, animal encounters, and unrelated viral footage.",
+            "Dense burned-in subtitles, aggregator branding, or multi-scene compilations."
+          ],
+          "adjacentCategories": [
+            {
+              "categoryId": "ai-news-and-tutorials",
+              "difference": "AI discussion is not enough; the source must show a visible AI transformation inside recognizable fiction."
+            },
+            {
+              "categoryId": "ordinary-pop-culture-mashups",
+              "difference": "Combining two fictional properties without a visible AI premise does not satisfy the channel boundary."
+            },
+            {
+              "categoryId": "audio-only-ai-parody",
+              "difference": "AI voices over untouched film footage are rejected because the twist must remain readable without sound."
+            }
+          ],
+          "positiveExamples": [
+            {
+              "id": "light-positive-DYWIdjSxbb7",
+              "url": "https://www.instagram.com/reel/DYWIdjSxbb7/",
+              "storyEventId": "event-claude-inside-the-office",
+              "reason": "The Office scene visibly contains the Claude identity and turns an AI tool into the fictional premise."
+            },
+            {
+              "id": "light-positive-DYpHeq4pM-R",
+              "url": "https://www.instagram.com/reel/DYpHeq4pM-R/",
+              "storyEventId": "event-ai-remakes-the-boys-ending",
+              "reason": "A recognizable The Boys ending is visibly regenerated into a different action payoff."
+            },
+            {
+              "id": "light-positive-DYuu2CVJc3G",
+              "url": "https://www.instagram.com/reel/DYuu2CVJc3G/",
+              "storyEventId": "event-michael-scott-onboards-karpathy",
+              "reason": "A generated Karpathy double appears inside The Office and makes the AI-fiction premise visible."
+            }
+          ],
+          "negativeExamples": [
+            {
+              "id": "light-negative-DYvtDJEp24H",
+              "url": "https://www.instagram.com/reel/DYvtDJEp24H/",
+              "storyEventId": "reject-ai-news-talking-head",
+              "reason": "The source is a talking-head AI news clip with dense hard subtitles and no fiction remake."
+            },
+            {
+              "id": "light-negative-DW5oCZGjPCs",
+              "url": "https://www.instagram.com/reel/DW5oCZGjPCs/",
+              "storyEventId": "reject-police-firefight",
+              "reason": "Police bodycam footage has no recognizable fictional scene or visible AI transformation."
+            },
+            {
+              "id": "light-negative-DDR2PcXRP4j",
+              "url": "https://www.instagram.com/reel/DDR2PcXRP4j/",
+              "storyEventId": "reject-baby-monkey-bath",
+              "reason": "A real animal-care moment is outside both the fiction and AI axes."
+            },
+            {
+              "id": "light-negative-DXOzkCdjMue",
+              "url": "https://www.instagram.com/reel/DXOzkCdjMue/",
+              "storyEventId": "reject-police-suspect-on-car",
+              "reason": "A real pursuit event belongs to police footage and has no visible AI-fiction premise."
+            },
+            {
+              "id": "light-negative-DKVNp4JS57c",
+              "url": "https://www.instagram.com/reel/DKVNp4JS57c/",
+              "storyEventId": "reject-human-animal-pool-encounter",
+              "reason": "A real human-animal encounter is outside the recognizable-fiction AI-remake boundary."
+            }
+          ],
+          "evidenceBoundary": {
+            "categoryAuthority": "instagram",
+            "youtubeRole": "market-validation-only",
+            "youtubeCanWidenCategory": false
+          },
+          "continuityBuffer": {
+            "uniqueStoryEventIds": [
+              "event-claude-inside-the-office",
+              "event-ai-remakes-the-boys-ending",
+              "event-michael-scott-onboards-karpathy",
+              "event-ai-remakes-shining-as-90s-sitcom",
+              "event-ai-reimagines-terminator-mirror-scene",
+              "event-ai-star-wars-jedi-council-vlog"
+            ]
+          }
+        },
+        "publication": {
+          "timezone": "Europe/Moscow",
+          "slots": [
+            {
+              "slotId": "daily-1",
+              "localTime": "21:00"
+            },
+            {
+              "slotId": "daily-2",
+              "localTime": "21:15"
+            },
+            {
+              "slotId": "daily-3",
+              "localTime": "21:30"
+            },
+            {
+              "slotId": "daily-4",
+              "localTime": "21:45"
+            }
+          ],
+          "limits": {
+            "dailyPublicationLimit": 3,
+            "maxCandidatesPerRun": 9,
+            "maxConcurrentSourceJobs": 1,
+            "maxConcurrentModelCalls": 3,
+            "maxConcurrentRenders": 1
+          },
+          "retryPolicy": {
+            "strategy": "exponential",
+            "maxAttempts": 3,
+            "initialDelayMs": 1000,
+            "maxDelayMs": 30000,
+            "retryableErrorCodes": [
+              "network_error",
+              "provider_5xx",
+              "rate_limit",
+              "lease_lost"
+            ],
+            "nonRetryableErrorCodes": [
+              "invalid_credentials",
+              "concept_mismatch",
+              "visual_quality_rejected",
+              "copyright_block"
+            ]
+          }
+        },
+        "credentialRefs": {
+          "youtubePublishing": "credential-ref://clips/channel/43923d42c1c0495282f29d4c6e09b0b4/youtube-publishing",
+          "instagramSource": "credential-ref://clips/workspace/instagram-source"
+        }
+      },
+      "templateId": "science-card-red-1cbf5e07",
+      "publishPolicyId": "project-kings-daily-3x3-v1",
+      "qualityPolicyId": "project-kings-quality-v1",
+      "modelRouteManifestId": "project-kings-model-routes-v2",
+      "modelRouteManifestSha256": "f29362a09c0e1a3c98c24a9585759259455703ab8c1c879bc36f8643f2a411de"
+    },
+    {
+      "key": "copscopes-x2e",
+      "profileHash": "1c739eabba5644871fa6332325b84a49d3a86126996ed4a471b01d3e613473c3",
+      "channelProfile": {
+        "profileVersion": "project-kings-profile-v1",
+        "profileId": "6187aeeea7bd47188e08089c5916edc1",
+        "youtube": {
+          "channelId": "UCJhBMXXQ5GrTbrhqjwT1leg",
+          "titleAdvisory": "lessie potirl"
+        },
+        "templateIdentity": {
+          "channelId": "6187aeeea7bd47188e08089c5916edc1",
+          "templateSha": "4b29faab9bc424f8c7aa2e5e863c073e4a7720effe96508b2bd76a0cb0e9ecc8"
+        },
+        "concept": {
+          "contractVersion": "concept-v2",
+          "conceptId": "copscopes-visible-us-police-incidents",
+          "label": "Visible US police bodycam and dashcam incidents",
+          "conceptShape": "channel",
+          "instagramCoherence": "pass",
+          "channelPromise": "One real US police bodycam or dashcam incident with a visible turn and outcome in every Short.",
+          "axes": {
+            "audience": "English-speaking US viewers who want concise, visually provable police incident stories.",
+            "source": {
+              "platform": "instagram",
+              "mediaType": "reel",
+              "description": "Instagram Reels containing real police bodycam or dashcam footage from approved donor accounts."
+            },
+            "event": "One visible law-enforcement incident with a hook, an action, and a concrete outcome in the footage.",
+            "emotion": "Tension followed by consequence, relief, or a clearly visible reversal without sensational invention.",
+            "reasonToWatch": "See the decisive turn and understand why the stop, pursuit, arrest, firefight, or rescue ended that way.",
+            "format": "One continuous vertical or vertically crop-safe source clip in a branded story card; never an unrelated compilation."
+          },
+          "inclusions": [
+            "Vehicle pursuits with a visible stop, crash, escape, or arrest outcome.",
+            "Traffic stops that visibly escalate or reverse.",
+            "Arrest struggles and foot pursuits with a visible resolution.",
+            "Officer-involved rescues, fires, and urgent medical intervention.",
+            "Bodycam or dashcam incidents where the decisive action remains readable in a vertical crop."
+          ],
+          "exclusions": [
+            "Military footage, military equipment, or battlefield history.",
+            "Civilian street fights without visible law-enforcement participation.",
+            "Talking heads, studio reactions, or news commentary as the main footage.",
+            "Fiction, paranormal stories, or incidents unsupported by visible evidence.",
+            "Product advertising, calls to action, and promotional demonstrations.",
+            "Compilations of unrelated incidents or static scenes without an event."
+          ],
+          "adjacentCategories": [
+            {
+              "categoryId": "military-combat-footage",
+              "difference": "Military action concerns armed forces and warfare; this channel requires civilian law-enforcement work."
+            },
+            {
+              "categoryId": "civilian-street-conflicts",
+              "difference": "A filmed confrontation is insufficient unless police action is visibly central to the incident."
+            },
+            {
+              "categoryId": "police-news-commentary",
+              "difference": "Commentary about an incident is not the event; the decisive police action must be visible in source footage."
+            }
+          ],
+          "positiveExamples": [
+            {
+              "id": "cop-positive-DXOzkCdjMue",
+              "url": "https://www.instagram.com/reel/DXOzkCdjMue/",
+              "storyEventId": "event-domestic-violence-suspect-jumps-moving-car",
+              "reason": "Dashcam shows the suspect jump onto a moving vehicle and provides a visible incident turn."
+            },
+            {
+              "id": "cop-positive-DWwSVVOjMqO",
+              "url": "https://www.instagram.com/reel/DWwSVVOjMqO/",
+              "storyEventId": "event-farmington-street-race-burning-car-rescue",
+              "reason": "A pursuit ends in a rollover and burning car, followed by a visible passenger rescue."
+            },
+            {
+              "id": "cop-positive-DYRVHZIN0ta",
+              "url": "https://www.instagram.com/reel/DYRVHZIN0ta/",
+              "storyEventId": "event-farmington-street-race-burning-car-rescue",
+              "reason": "The officer visibly removes a passenger before the vehicle becomes engulfed in fire."
+            },
+            {
+              "id": "cop-positive-DW5oCZGjPCs",
+              "url": "https://www.instagram.com/reel/DW5oCZGjPCs/",
+              "storyEventId": "event-nashville-officer-involved-shooting",
+              "reason": "Verified frames show a real police firefight and injured-officer incident rather than commentary."
+            },
+            {
+              "id": "cop-positive-DWTlKz_jO0m",
+              "url": "https://www.instagram.com/reel/DWTlKz_jO0m/",
+              "storyEventId": "event-wakefield-motorcycle-stop-flight",
+              "reason": "Verified frames show a traffic stop become a visible attempted motorcycle escape."
+            },
+            {
+              "id": "cop-positive-DXY_ED7jSey",
+              "url": "https://www.instagram.com/reel/DXY_ED7jSey/",
+              "storyEventId": "event-el-paso-vehicle-approach-arrest",
+              "reason": "The approach to a vehicle visibly turns into a forceful arrest with a readable outcome."
+            },
+            {
+              "id": "cop-positive-DW0w8RMjY3Y",
+              "url": "https://www.instagram.com/reel/DW0w8RMjY3Y/",
+              "storyEventId": "event-marysville-drive-through-stop",
+              "reason": "A drive-through traffic stop develops into one continuous visible police incident."
+            },
+            {
+              "id": "cop-positive-DXUPExpjCs2",
+              "url": "https://www.instagram.com/reel/DXUPExpjCs2/",
+              "storyEventId": "event-maryland-troopers-infant-rescue",
+              "reason": "Troopers visibly provide urgent aid to a choking infant and the rescue is the core event."
+            }
+          ],
+          "negativeExamples": [
+            {
+              "id": "cop-negative-DYKFYtTNZsW",
+              "url": "https://www.instagram.com/reel/DYKFYtTNZsW/",
+              "storyEventId": "reject-emergency-hammer-ad",
+              "reason": "The Reel promotes an emergency hammer and is product advertising rather than an incident."
+            },
+            {
+              "id": "cop-negative-DWWLMhgjM97",
+              "url": "https://www.instagram.com/reel/DWWLMhgjM97/",
+              "storyEventId": "reject-unrecoverable-dead-caption",
+              "reason": "The caption and available evidence do not establish a concrete visible police event."
+            },
+            {
+              "id": "cop-negative-DWeYeHujPFx",
+              "url": "https://www.instagram.com/reel/DWeYeHujPFx/",
+              "storyEventId": "reject-engagement-bait-without-event",
+              "reason": "Engagement bait asks for a reaction but does not provide enough evidence of a usable incident."
+            },
+            {
+              "id": "cop-negative-DYDvRg-OqIV",
+              "url": "https://www.instagram.com/reel/DYDvRg-OqIV/",
+              "storyEventId": "reject-man-with-capuchin",
+              "reason": "The footage is an animal lifestyle scene and contains no visible police action."
+            },
+            {
+              "id": "cop-negative-DYvtDJEp24H",
+              "url": "https://www.instagram.com/reel/DYvtDJEp24H/",
+              "storyEventId": "reject-ai-talking-head",
+              "reason": "The footage is an AI talking head with hard subtitles, outside both the event and format boundary."
+            },
+            {
+              "id": "cop-negative-DYWIdjSxbb7",
+              "url": "https://www.instagram.com/reel/DYWIdjSxbb7/",
+              "storyEventId": "reject-ai-news",
+              "reason": "The Reel discusses AI news and has no visible law-enforcement incident."
+            }
+          ],
+          "evidenceBoundary": {
+            "categoryAuthority": "instagram",
+            "youtubeRole": "market-validation-only",
+            "youtubeCanWidenCategory": false
+          },
+          "continuityBuffer": {
+            "uniqueStoryEventIds": [
+              "event-domestic-violence-suspect-jumps-moving-car",
+              "event-farmington-street-race-burning-car-rescue",
+              "event-nashville-officer-involved-shooting",
+              "event-wakefield-motorcycle-stop-flight",
+              "event-el-paso-vehicle-approach-arrest",
+              "event-marysville-drive-through-stop",
+              "event-maryland-troopers-infant-rescue"
+            ]
+          }
+        },
+        "publication": {
+          "timezone": "Europe/Moscow",
+          "slots": [
+            {
+              "slotId": "daily-1",
+              "localTime": "21:15"
+            },
+            {
+              "slotId": "daily-2",
+              "localTime": "21:30"
+            },
+            {
+              "slotId": "daily-3",
+              "localTime": "21:45"
+            }
+          ],
+          "limits": {
+            "dailyPublicationLimit": 3,
+            "maxCandidatesPerRun": 8,
+            "maxConcurrentSourceJobs": 1,
+            "maxConcurrentModelCalls": 1,
+            "maxConcurrentRenders": 1
+          },
+          "retryPolicy": {
+            "strategy": "exponential",
+            "maxAttempts": 3,
+            "initialDelayMs": 1000,
+            "maxDelayMs": 30000,
+            "retryableErrorCodes": [
+              "network_error",
+              "provider_5xx",
+              "rate_limit",
+              "lease_lost"
+            ],
+            "nonRetryableErrorCodes": [
+              "invalid_credentials",
+              "concept_mismatch",
+              "visual_quality_rejected",
+              "copyright_block"
+            ]
+          }
+        },
+        "credentialRefs": {
+          "youtubePublishing": "credential-ref://clips/channel/6187aeeea7bd47188e08089c5916edc1/youtube-publishing",
+          "instagramSource": "credential-ref://clips/workspace/instagram-source"
+        }
+      },
+      "templateId": "cop-scopes-darkwall-glow-bb4319ef",
+      "publishPolicyId": "project-kings-daily-3x3-v1",
+      "qualityPolicyId": "project-kings-quality-v1",
+      "modelRouteManifestId": "project-kings-model-routes-v2",
+      "modelRouteManifestSha256": "f29362a09c0e1a3c98c24a9585759259455703ab8c1c879bc36f8643f2a411de"
+    }
+  ],
+  "evidenceSha256": "885e5fa6fc368beff32e67c2146339e8d507e9e2b5a15ff09d2cec8a14ea839c"
+}

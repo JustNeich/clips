@@ -1,0 +1,60 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 4.005s]
+a
+=
+i
+[source-key-frame-02 @ 15.687s]
+te
+—<s
+a whe
+a
+a PK,
+ae
+fr
+o*8,
+~
+Jom
+vo
+“LP.
+———
+9
+me we
+es
+A
+uN
+an)
+-_ o's
+[source-key-frame-03 @ 27.369s]
+vr
+—
+a
+‘-
+Hey
+|
+=
+[source-key-frame-04 @ 39.385s]
+BX
+W
+/
+fit
+| ,
+A ee ‘|
+[source-key-frame-05 @ 51.067s]
+Win
+ro
+=
+f,
+\e
+ri
+at
+fy
+ay
+[source-key-frame-06 @ 62.749s]
+a
+l}
+ra
+—_—_
+i
+§

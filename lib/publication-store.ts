@@ -184,6 +184,16 @@ export type ChannelPublicationProcessingState = {
   youtubeVideoUrl: string | null;
 };
 
+export type PortfolioPublicationSideEffectFence = {
+  linked: boolean;
+  allowed: boolean;
+  productionItemId: string | null;
+  itemState: string | null;
+  runStatus: string | null;
+  boundPublicationId: string | null;
+  reason: string | null;
+};
+
 export type BlockingPublicationDuplicate = {
   reason: "source" | "title";
   publication: ChannelPublication;
@@ -1179,6 +1189,74 @@ export function getChannelPublicationProcessingState(
   };
 }
 
+/**
+ * Portfolio publications are discovered through their frozen Stage 3 render binding, not only
+ * through production_items.publication_id. That makes a just-created queue row fail closed during
+ * the small window before the production item durably records the publication intent.
+ */
+export function getPortfolioPublicationSideEffectFence(
+  publicationId: string
+): PortfolioPublicationSideEffectFence {
+  const row = getDb().prepare(`SELECT
+      pi.id AS production_item_id,
+      pi.state AS item_state,
+      pi.publication_id AS bound_publication_id,
+      pr.status AS run_status,
+      p.upload_session_url AS publication_upload_session_url,
+      p.youtube_video_id AS publication_youtube_video_id
+    FROM channel_publications p
+    JOIN render_exports re ON re.id = p.render_export_id
+    JOIN production_items pi ON pi.stage3_job_id = re.stage3_job_id
+    JOIN production_runs pr ON pr.id = pi.run_id
+    WHERE p.id = ?
+    ORDER BY pi.created_at ASC
+    LIMIT 1`).get(publicationId) as {
+      production_item_id?: string;
+      item_state?: string;
+      bound_publication_id?: string | null;
+      run_status?: string;
+      publication_upload_session_url?: string | null;
+      publication_youtube_video_id?: string | null;
+    } | undefined;
+  if (!row?.production_item_id) {
+    return {
+      linked: false,
+      allowed: true,
+      productionItemId: null,
+      itemState: null,
+      runStatus: null,
+      boundPublicationId: null,
+      reason: null
+    };
+  }
+  const boundPublicationId = row.bound_publication_id?.trim() || null;
+  const itemState = row.item_state ?? null;
+  const runStatus = row.run_status ?? null;
+  const correctlyBound = boundPublicationId === publicationId;
+  const itemAllowsUpload = itemState === "upload_outcome_unknown";
+  const reconciliationResume = runStatus === "cancel_requested" && Boolean(
+    row.publication_upload_session_url?.trim() || row.publication_youtube_video_id?.trim()
+  );
+  const runAllowsUpload = runStatus === "running" || runStatus === "waiting_public" || reconciliationResume;
+  const allowed = correctlyBound && itemAllowsUpload && runAllowsUpload;
+  const reason = !correctlyBound
+    ? "publication_intent_not_bound"
+    : !itemAllowsUpload
+      ? `item_state_${itemState ?? "missing"}_blocks_upload`
+      : !runAllowsUpload
+        ? `run_status_${runStatus ?? "missing"}_blocks_upload_without_resumable_identity`
+        : null;
+  return {
+    linked: true,
+    allowed,
+    productionItemId: String(row.production_item_id),
+    itemState,
+    runStatus,
+    boundPublicationId,
+    reason
+  };
+}
+
 export function findLatestPublicationForRenderExport(renderExportId: string): ChannelPublication | null {
   const db = getDb();
   const row = db
@@ -1209,6 +1287,39 @@ export function listChannelPublications(channelId: string): ChannelPublication[]
     .all(channelId) as ChannelPublicationRow[];
   const eventsByPublicationId = readPublicationEventsByPublicationIds(rows.map((row) => row.id));
   return rows.map((row) => mapChannelPublicationRow(row, eventsByPublicationId.get(row.id) ?? []));
+}
+
+export function listScheduledChannelPublicationsAwaitingVerification(input: {
+  dueAt?: string;
+  limit?: number;
+} = {}): ChannelPublication[] {
+  const dueAt = input.dueAt ?? nowIso();
+  const limit = Math.max(1, Math.min(100, input.limit ?? 20));
+  const rows = getDb().prepare(
+    `SELECT p.*, r.artifact_file_name as render_file_name, r.source_url as source_url, t.title as chat_title
+       FROM channel_publications p
+       JOIN render_exports r ON r.id = p.render_export_id
+       JOIN chat_threads t ON t.id = p.chat_id
+      WHERE p.status = 'scheduled'
+        AND p.scheduled_at <= ?
+        AND p.youtube_video_id IS NOT NULL
+        AND p.last_error IS NULL
+      ORDER BY p.scheduled_at ASC, p.created_at ASC
+      LIMIT ?`
+  ).all(dueAt, limit) as ChannelPublicationRow[];
+  const events = readPublicationEventsByPublicationIds(rows.map((row) => row.id));
+  return rows.map((row) => mapChannelPublicationRow(row, events.get(row.id) ?? []));
+}
+
+export function getNextChannelPublicationVerificationWakeAt(): string | null {
+  const row = getDb().prepare(
+    `SELECT MIN(scheduled_at) AS wake_at
+       FROM channel_publications
+      WHERE status = 'scheduled'
+        AND youtube_video_id IS NOT NULL
+        AND last_error IS NULL`
+  ).get() as { wake_at?: string | null } | undefined;
+  return row?.wake_at ? String(row.wake_at) : null;
 }
 
 export function listFutureActivePublicationsForChannel(channelId: string): ChannelPublication[] {
@@ -1420,6 +1531,53 @@ export function createChannelPublication(input: {
   scheduleManual?: boolean;
   createdByUserId: string;
 }): ChannelPublication {
+  const ownership = getDb().prepare(`SELECT * FROM production_channel_ownership
+    WHERE workspace_id = ? AND channel_id = ? AND status IN ('active', 'releasing') LIMIT 1`)
+    .get(input.workspaceId, input.channelId) as {
+      status?: "active" | "releasing";
+      profile_id?: string;
+      profile_version?: number;
+      profile_hash?: string;
+    } | undefined;
+  if (ownership?.status === "releasing") {
+    throw new PublicationMutationError(
+      "Канал временно закрыт для новых публикаций: Project Kings v1 завершает уже начатую работу.",
+      { code: "PORTFOLIO_OWNERSHIP_RELEASING", status: 409 }
+    );
+  }
+  if (ownership?.status === "active") {
+    const profileId = ownership.profile_id ?? "";
+    const profileVersion = Number(ownership.profile_version ?? 0);
+    const profileHash = ownership.profile_hash ?? "";
+    const authority = getDb().prepare(`SELECT pi.id, pi.state
+      FROM render_exports re
+      JOIN production_items pi ON pi.stage3_job_id = re.stage3_job_id
+      JOIN production_run_channels prc ON prc.id = pi.run_channel_id
+      JOIN production_runs pr ON pr.id = pi.run_id
+      WHERE re.id = ?
+        AND pi.workspace_id = ?
+        AND pi.channel_id = ?
+        AND pr.mode = 'live'
+        AND prc.profile_id = ?
+        AND prc.profile_version = ?
+        AND prc.profile_hash = ?
+        AND pi.state IN ('final_approved', 'upload_outcome_unknown')
+      ORDER BY pi.created_at ASC LIMIT 1`)
+      .get(
+        input.renderExportId,
+        input.workspaceId,
+        input.channelId,
+        profileId,
+        profileVersion,
+        profileHash
+      ) as { id?: string; state?: string } | undefined;
+    if (!authority?.id) {
+      throw new PublicationMutationError(
+        "Канал на время запуска принадлежит Project Kings v1; legacy и обычный auto-run не могут создать здесь публикацию.",
+        { code: "PORTFOLIO_CHANNEL_OWNED", status: 409 }
+      );
+    }
+  }
   const publicationId = newId();
   const createdAt = nowIso();
   const db = getDb();
@@ -1801,32 +1959,88 @@ export function publishNowChannelPublication(publicationId: string): ChannelPubl
 }
 
 export function sweepPublishedChannelPublications(now = nowIso()): number {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT id
-         FROM channel_publications
-        WHERE status = 'scheduled'
-          AND scheduled_at <= ?`
-    )
-    .all(now) as Array<{ id: string }>;
-  const changed = Number(
-    db.prepare(
-    `UPDATE channel_publications
-        SET status = 'published',
-            published_at = COALESCE(published_at, scheduled_at),
-            updated_at = ?
-      WHERE status = 'scheduled'
-        AND scheduled_at <= ?`
-    ).run(now, now).changes ?? 0
-  );
-  for (const row of rows) {
-    const publication = getChannelPublicationById(String(row.id));
-    if (publication?.status === "published") {
-      auditChannelPublication("publication.published", publication, "published");
-    }
+  void now;
+  // Clock time proves only that the scheduled slot has arrived. A separate
+  // reconciler must confirm the exact video in Clips, channel RSS and the exact
+  // playable Shorts page before calling markChannelPublicationPublicVerified.
+  return 0;
+}
+
+export function markChannelPublicationPublicVerified(input: {
+  publicationId: string;
+  expectedYoutubeVideoId: string;
+  expectedYoutubeChannelId: string;
+  verifiedAt: string;
+  evidenceSha256: string;
+}): ChannelPublication {
+  const current = getPublicationForMutation(input.publicationId);
+  const expectedVideoId = input.expectedYoutubeVideoId.trim();
+  const expectedChannelId = input.expectedYoutubeChannelId.trim();
+  const evidenceSha256 = input.evidenceSha256.trim().toLowerCase();
+  const verifiedAt = new Date(input.verifiedAt);
+  if (!expectedVideoId || !expectedChannelId || !/^[a-f0-9]{64}$/.test(evidenceSha256)) {
+    throw new PublicationMutationError("Некорректное доказательство публичной публикации.", {
+      code: "PUBLIC_VERIFICATION_INVALID"
+    });
   }
-  return changed;
+  if (!Number.isFinite(verifiedAt.getTime())) {
+    throw new PublicationMutationError("Некорректное время публичной проверки.", {
+      code: "PUBLIC_VERIFICATION_INVALID"
+    });
+  }
+  if (current.youtubeVideoId !== expectedVideoId) {
+    throw new PublicationMutationError("YouTube video ID не совпадает с проверенной публикацией.", {
+      code: "PUBLIC_VERIFICATION_VIDEO_MISMATCH"
+    });
+  }
+  if (current.lastError) {
+    throw new PublicationMutationError("Публикация содержит ошибку и не может быть подтверждена публичной.", {
+      code: "PUBLIC_VERIFICATION_PUBLICATION_ERROR"
+    });
+  }
+  const integration = getChannelPublishIntegration(current.channelId);
+  if (integration?.selectedYoutubeChannelId !== expectedChannelId) {
+    throw new PublicationMutationError("YouTube channel ID не совпадает с подключением канала.", {
+      code: "PUBLIC_VERIFICATION_CHANNEL_MISMATCH"
+    });
+  }
+  if (current.status === "published") {
+    return current;
+  }
+  if (current.status !== "scheduled") {
+    throw new PublicationMutationError("Публично подтвердить можно только загруженную scheduled-публикацию.", {
+      code: "PUBLIC_VERIFICATION_STATE_CONFLICT"
+    });
+  }
+
+  const stamp = verifiedAt.toISOString();
+  const changed = getDb()
+    .prepare(
+      `UPDATE channel_publications
+          SET status = 'published',
+              published_at = ?,
+              updated_at = ?
+        WHERE id = ?
+          AND status = 'scheduled'
+          AND youtube_video_id = ?
+          AND last_error IS NULL`
+    )
+    .run(stamp, stamp, current.id, expectedVideoId);
+  if (Number(changed.changes ?? 0) !== 1) {
+    throw new PublicationMutationError("Публикация изменилась во время публичной проверки.", {
+      code: "PUBLIC_VERIFICATION_STATE_CONFLICT"
+    });
+  }
+  appendChannelPublicationEvent(
+    current.id,
+    "info",
+    `Публичность подтверждена по Clips + RSS + exact Shorts page. Evidence: ${evidenceSha256.slice(0, 12)}.`
+  );
+  const publication = getChannelPublicationById(current.id)!;
+  auditChannelPublication("publication.public_verified", publication, "published", {
+    payload: { evidenceSha256, expectedYoutubeChannelId: expectedChannelId }
+  });
+  return publication;
 }
 
 export function recoverInterruptedChannelPublications(): number {
@@ -1883,6 +2097,25 @@ export function claimNextReadyChannelPublication(input: {
             AND p.upload_ready_at <= ?
             AND i.status = 'connected'
             AND i.selected_youtube_channel_id IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1
+              FROM render_exports re
+              JOIN production_items pi ON pi.stage3_job_id = re.stage3_job_id
+              JOIN production_runs pr ON pr.id = pi.run_id
+              WHERE re.id = p.render_export_id
+                AND (
+                  pi.publication_id IS NULL
+                  OR pi.publication_id != p.id
+                  OR pi.state != 'upload_outcome_unknown'
+                  OR (
+                    pr.status NOT IN ('running', 'waiting_public')
+                    AND NOT (
+                      pr.status = 'cancel_requested'
+                      AND (p.upload_session_url IS NOT NULL OR p.youtube_video_id IS NOT NULL)
+                    )
+                  )
+                )
+            )
           ORDER BY p.upload_ready_at ASC, p.created_at ASC
           LIMIT 1`
       )

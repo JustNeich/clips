@@ -8,6 +8,7 @@ import { getDb, getDbFilePath } from "./db/client";
 import { isHostedRenderRuntime } from "./hosted-subprocess";
 import { normalizeSupportedUrl } from "./supported-url";
 import { queueThrottledBackgroundTask } from "./throttled-background-task";
+import { sweepProductionSemanticInputStore } from "./project-kings/production-semantic-input-store";
 
 export type AppStorageCleanupMode = "normal" | "emergency";
 
@@ -226,6 +227,18 @@ function readStorageProtectionSnapshot(): StorageProtectionSnapshot {
     }
   }
 
+  // A hash-qualified Project Kings buffer entry is a durable production input,
+  // even before a chat/job/publication references it. Removing its sticky upload
+  // would leave the DB claiming the buffer is ready while the exact approved
+  // bytes no longer exist.
+  const qualifiedProductionSources = db
+    .prepare(`SELECT DISTINCT source_url FROM channel_source_candidates
+      WHERE status IN ('available', 'reserved') AND qualification_status = 'qualified'`)
+    .all() as Array<{ source_url?: string }>;
+  for (const row of qualifiedProductionSources) {
+    if (row.source_url) protectedSourceUrls.add(row.source_url);
+  }
+
   const recentChatCutoff = new Date(Date.now() - RECENT_SOURCE_PROTECTION_MS).toISOString();
   const recentChats = db
     .prepare("SELECT DISTINCT url FROM chat_threads WHERE updated_at >= ?")
@@ -414,6 +427,14 @@ export async function cleanupAppStorageForWrite(input: {
   };
   const protection = readStorageProtectionSnapshot();
 
+  const semanticInputs = await sweepProductionSemanticInputStore();
+  for (const removed of semanticInputs.removed) {
+    ctx.removedFiles.push({
+      path: removed.filePath,
+      bytes: removed.sizeBytes,
+      reason: "production-semantic-input:terminal-retention"
+    });
+  }
   await pruneStage3WorkingStorage(ctx);
   await pruneRenderExports(ctx, protection);
   await pruneSourceMediaCache(ctx, protection);

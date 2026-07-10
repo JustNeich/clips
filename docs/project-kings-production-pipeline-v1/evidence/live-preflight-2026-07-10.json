@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-10T10:18:35.000Z",
+  "surface": "authenticated owner browser, same-origin Clips API",
+  "authority": "owner",
+  "channels": [
+    {
+      "clipsChannelId": "4b59c5cf412e4c07b192f3312361c2eb",
+      "name": "Dark JoyBoy",
+      "youtubeChannelId": "UCwO37rtHMhHX8caUr5Rc0Bw",
+      "youtubeStatus": "connected",
+      "youtubeLastError": null,
+      "templateId": "science-card-red-1cbf5e07",
+      "templateApiResponseSha256": "b491e55267c73bd1315f26b2a7641b0865b7bcef8ca428c88df12baaa1a4c904",
+      "timezone": "Europe/Moscow",
+      "slots": ["21:00", "21:15", "21:30", "21:45"],
+      "autoQueueEnabled": true,
+      "notifySubscribersByDefault": false
+    },
+    {
+      "clipsChannelId": "43923d42c1c0495282f29d4c6e09b0b4",
+      "name": "THE LIGHT KINGDOM",
+      "youtubeChannelId": "UC0LWZYpYuYAWK55WmvDqxbg",
+      "youtubeStatus": "connected",
+      "youtubeLastError": null,
+      "templateId": "science-card-red-1cbf5e07",
+      "templateApiResponseSha256": "b491e55267c73bd1315f26b2a7641b0865b7bcef8ca428c88df12baaa1a4c904",
+      "timezone": "Europe/Moscow",
+      "slots": ["21:00", "21:15", "21:30", "21:45"],
+      "autoQueueEnabled": true,
+      "notifySubscribersByDefault": false
+    },
+    {
+      "clipsChannelId": "6187aeeea7bd47188e08089c5916edc1",
+      "name": "COP SCOPES",
+      "youtubeChannelId": "UCJhBMXXQ5GrTbrhqjwT1leg",
+      "youtubeStatus": "connected",
+      "youtubeLastError": null,
+      "templateId": "cop-scopes-darkwall-glow-bb4319ef",
+      "templateApiResponseSha256": "4b29faab9bc424f8c7aa2e5e863c073e4a7720effe96508b2bd76a0cb0e9ecc8",
+      "timezone": "Europe/Moscow",
+      "slots": ["21:15", "21:30", "21:45"],
+      "autoQueueEnabled": true,
+      "notifySubscribersByDefault": false
+    }
+  ],
+  "runtime": {
+    "codexStatus": "connected",
+    "isolatedCodexHomeConfigured": true,
+    "stage3WorkerId": "b67d6661d30f474c843353356045eb05",
+    "stage3WorkerLabel": "Mac-mini Zoro renderer",
+    "stage3WorkerStatus": "online",
+    "stage3WorkerCurrentJobId": null
+  }
+}

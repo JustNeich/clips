@@ -1,0 +1,87 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 0.924s]
+COPSCOPES #
+Police Bodycam Footage
+=
+This is How Police Use the Grappler
+the
+_-
+Bumper to End
+=
+is
+a!
+— we
+Don't lose this page, fc
+[source-key-frame-02 @ 3.619s]
+COPSCOPES #
+Police Bodycam Footage
+=
+This is How Police Use the Grappler
+the
+Chase
+Bumper to Enc
+=
+oT
+tae
+(=F ¢
+~
+e
+—_
+Tam
+To
+es 2
+|
+Don’t lose this page,
+[source-key-frame-03 @ 6.314s]
+COPSCOPES #
+=
+Police Bodycam Footage
+This is How Police Use the Srapner
+Bumper to Enc
+the
+= "
+a
+|
+(*
+VY
+—
+Don’t lose this page,
+[source-key-frame-04 @ 9.086s]
+COPSCOPES #
+Police Bodycam Footage
+=
+This is How Police Use the Grappler
+Bumper to End the Chase
+4
+- 4.4
+—
+y |
+Don’t lose this page, follow now
+[source-key-frame-05 @ 11.781s]
+COPSCOPES #
+Police Bodycam Footage
+=
+This is How Police Use the Grappler
+Bumper to End the Chase
+\
+=
+Don’t lose this page, follov
+|
+[source-key-frame-06 @ 14.476s]
+COPSCOPES #
+Police Bodycam Footage
+=
+This is How Police Use the Grappler
+silase
+|
+hace
+Bumper to End the
+ie
+I
+4
+\
+———
+“af
+Don't lose this page, follov

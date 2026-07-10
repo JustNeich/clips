@@ -1,0 +1,8 @@
+status=speech_detected
+tool=openai-whisper-cli
+model=tiny
+language=en
+transcript=What's he doing hoots, what's he doing hoots, come here hoots, come here hoots, come here buddy Yeah, here go, what do you think? Oh, if they get it run, you'll get it run, you kill you Kill you, kill you, kill you, you do it, come here, come here, oh hi
+segment_01={"start":0,"end":5.6000000000000005,"text":"What's he doing hoots, what's he doing hoots, come here hoots, come here hoots, come here buddy","noSpeechProbability":0.25087058544158936,"averageLogProbability":-0.6197852623171922}
+segment_02={"start":5.6000000000000005,"end":11.92,"text":"Yeah, here go, what do you think? Oh, if they get it run, you'll get it run, you kill you","noSpeechProbability":0.25087058544158936,"averageLogProbability":-0.6197852623171922}
+segment_03={"start":12.64,"end":17.52,"text":"Kill you, kill you, kill you, you do it, come here, come here, oh hi","noSpeechProbability":0.25087058544158936,"averageLogProbability":-0.6197852623171922}

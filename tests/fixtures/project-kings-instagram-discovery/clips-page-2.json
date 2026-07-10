@@ -1,0 +1,27 @@
+{
+  "items": [
+    {
+      "media": {
+        "pk": "10001-duplicate",
+        "shortcode": "NEW_One-1",
+        "caption_text": "Duplicate copy",
+        "video_view_count": "99999",
+        "taken_at_timestamp": 1783663200000
+      }
+    },
+    {
+      "media": {
+        "id": 10004,
+        "shortcode": "NEW_Two-2",
+        "caption_text": "A second candidate",
+        "view_count": 4567,
+        "taken_at_timestamp": 1783663320000
+      }
+    }
+  ],
+  "paging_info": {
+    "more_available": false,
+    "max_id": null
+  },
+  "status": "ok"
+}

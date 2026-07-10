@@ -1,0 +1,1171 @@
+[
+  {
+    "candidateId": "dark-local-DDR2PcXRP4j",
+    "profileKey": "dark-joy-boy",
+    "sourceUrl": "https://www.instagram.com/reel/DDR2PcXRP4j/",
+    "contentSha256": "c6635b116f97454521b3ce28db01d5e5b8ad4876df76505ec8149fcfd73aa40d",
+    "profileHash": "4ab92f87f51b7f5bf8636bfd0b52511a4665ffec05c37b260070ae7acb7238d5",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-0da8b6550677467c3cba9a5e20ff586c",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "90472b5b3c519cd318d8f2e16d0da4c0f5ce89db4191d7bb882711bcab2fde58",
+    "artifactSetSha256": "7eeb8daca96f1ec831f1bb636bb69ecda16f935ae15f0406fc347fa7c75200cb",
+    "outputSha256": "5b120d9a39966aefa08703f99a3d0eee75896a10847051d06197bd60673da764",
+    "finishedAt": "2026-07-10T11:57:10.011Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "dark-local-DDR2PcXRP4j",
+      "storyEventId": "event-man-bathes-baby-spider-monkey",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The clip shows one continuous close human-animal interaction: a man bathing a baby spider monkey. That matches the channel concept of warm, readable contact with an exotic animal, and there is no sign of compilation structure, unrelated content, or disqualifying overlays. The source hash and story event do not match the known duplicate lists provided.",
+      "factualClaims": [
+        {
+          "claim": "A human is visibly handling and bathing a baby spider monkey in a single continuous interaction.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The animal is an exotic primate rather than an ordinary pet or farm animal.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source appears to be a usable single-event Instagram Reel rather than a compilation or unrelated montage.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "dark-local-DKVNp4JS57c",
+    "profileKey": "dark-joy-boy",
+    "sourceUrl": "https://www.instagram.com/reel/DKVNp4JS57c/",
+    "contentSha256": "fbf429d9cb0b4e34bf335b92348acf788254ebdadf8995c93e69f8e4e77c1c4d",
+    "profileHash": "4ab92f87f51b7f5bf8636bfd0b52511a4665ffec05c37b260070ae7acb7238d5",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-55cfc438632a21ad8241a412d55bb03c",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "9ce44ac10497e2eb4b2979b482644fdeb124786dd7c16bf9bb472f8a7c07dbbc",
+    "artifactSetSha256": "c49e2453a5775fc1e3cacb7357bc282fb22fe6a662def97d19ebc91f76226cc7",
+    "outputSha256": "94b21222215fe6b2a2abf83952287a9c7f9ce04964bfb2299bd1ca8022e8b02c",
+    "finishedAt": "2026-07-10T11:57:11.860Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "dark-local-DKVNp4JS57c",
+      "storyEventId": "event-human-animal-pool-encounter",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The reel matches the channel concept: a clear, continuous human-exotic-animal pool interaction. The key frames show a person in close contact with a lion in the pool, with no obvious mismatch against the claimed event. The source SHA does not match any known duplicate video hash, and the event is not one of the known story events listed in the packet.",
+      "factualClaims": [
+        {
+          "claim": "The video shows a human and an exotic animal in a pool encounter.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The exotic animal is a lion.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The clip is a continuous close-contact interaction rather than a compilation or unrelated montage.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source is not an exact duplicate of a known video hash in the packet.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The event is not listed among the packet's known story events.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "dark-local-DYDvRg-OqIV",
+    "profileKey": "dark-joy-boy",
+    "sourceUrl": "https://www.instagram.com/reel/DYDvRg-OqIV/",
+    "contentSha256": "16b2be4eeffc849ade01949f3abd9c991b39f74c9705f876a00f398ba57dd85a",
+    "profileHash": "4ab92f87f51b7f5bf8636bfd0b52511a4665ffec05c37b260070ae7acb7238d5",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-7af8bbbf3d26871858ccaf1d85ee749c",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "c2d1f683479ef0880ed0434dbb9afa086cd0dc523053f8e097d45c3704257a13",
+    "artifactSetSha256": "07250bb55996391345667223efd6aafb446d3435e5f1737d3447fe2980be5746",
+    "outputSha256": "2cf62c6ce16adfa1ec10723900ca2e03f33b5cc9bd891e0ce66132fea4b4cc2b",
+    "finishedAt": "2026-07-10T11:57:30.001Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "dark-local-DYDvRg-OqIV",
+      "storyEventId": "event-man-with-capuchin",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The reel shows one continuous close human-animal interaction: a man cuddling and kissing a capuchin monkey. It fits the exotic-animal contact concept, the source media is usable, and it does not match any known duplicate video or event.",
+      "factualClaims": [
+        {
+          "claim": "The source shows a man in close physical contact with a capuchin monkey.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The clip is a single continuous human-animal interaction rather than a montage or unrelated compilation.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source media decoded successfully and is usable for review.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The video content does not match any known duplicate source hash in the packet.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event is distinct from the known story events listed in the packet.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "dark-positive-BtDnmx6HRr_",
+    "profileKey": "dark-joy-boy",
+    "sourceUrl": "https://www.instagram.com/reel/BtDnmx6HRr_/",
+    "contentSha256": "45ea01bf3172459c55b6d5e19b2115d5f3b42ce95ab24dc4aa3bb8d66fa12bfb",
+    "profileHash": "4ab92f87f51b7f5bf8636bfd0b52511a4665ffec05c37b260070ae7acb7238d5",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-f4ad02c0acb4aebc2d681329146667ad",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "86aa8d46fdf4926841a3106fe34215eb5771e193b14221a8771a96f17cbd5bb3",
+    "artifactSetSha256": "941e47561bbaaba0a8d84cc52f9a0dc63148b3c72e7fddf65f9da91ae94dbf24",
+    "outputSha256": "568ff0bc1afda4088a61eaa7de2c3c6a86c4e66b2c4cd87f44e7a08a02663edb",
+    "finishedAt": "2026-07-10T11:57:24.221Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "dark-positive-BtDnmx6HRr_",
+      "storyEventId": "event-man-wrestles-and-hugs-tiger",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": true,
+      "sourceUsable": true,
+      "reason": "The reel matches the concept and the source metadata supports the described tiger hug/wrestle interaction. It is not a duplicate video by hash, but it is a duplicate story event because this exact event id is already present in the concept profile's positive examples/continuity buffer, so it cannot pass the full gate.",
+      "factualClaims": [
+        {
+          "claim": "A man and a large tiger chase, embrace, and roll together in one continuous interaction.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source is an Instagram reel at https://www.instagram.com/reel/BtDnmx6HRr_/.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event id is event-man-wrestles-and-hugs-tiger.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "dark-positive-C-0YpsCAODv",
+    "profileKey": "dark-joy-boy",
+    "sourceUrl": "https://www.instagram.com/reel/C-0YpsCAODv/",
+    "contentSha256": "dec174acdfc1b12da01a4a656ad9bec3c7a472296eefd72049b82e0512ece27e",
+    "profileHash": "4ab92f87f51b7f5bf8636bfd0b52511a4665ffec05c37b260070ae7acb7238d5",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-97c01f780a2f0828f6e77d711a5c5897",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "972ef4078f4ea501517277d4339fb64b15d17f337d5c1230a4b86bd92aeda486",
+    "artifactSetSha256": "5c1fc79b769d2f85fb22ad0a1cfbac29fb7a117ce9d46c64361313b41c510895",
+    "outputSha256": "29b0d29da7d5fcae5057b59e9d6ef34f73fc1a4e085222160ad105e61d2d126a",
+    "finishedAt": "2026-07-10T11:57:28.460Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "dark-positive-C-0YpsCAODv",
+      "storyEventId": "event-chimpanzee-waves-from-womans-shoulders",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": true,
+      "sourceUsable": false,
+      "reason": "The reel matches the channel concept: a chimpanzee is on the woman's shoulders and both are smiling/waving. The source is not a duplicate video by hash, but it is a duplicate event because this exact story event already exists in the approved set, so it fails the uniqueness gate.",
+      "factualClaims": [
+        {
+          "claim": "A chimpanzee hangs from a woman's shoulders.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "Both the woman and chimpanzee are smiling/waving at the camera.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The clip belongs to the 'chimpanzee waves from woman's shoulders' story event.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "dark-positive-C9gLu79MklN",
+    "profileKey": "dark-joy-boy",
+    "sourceUrl": "https://www.instagram.com/reel/C9gLu79MklN/",
+    "contentSha256": "82107e983588a0a45ba3ad69454fa7fa7674e7c83debe5570eaf741857fae102",
+    "profileHash": "4ab92f87f51b7f5bf8636bfd0b52511a4665ffec05c37b260070ae7acb7238d5",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-9e2b3d4f5e6214849e0505bfefb408b1",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "f10ff20f3cc49855d6758e52021ce12a6202ac41f4ef146456ae01561a8204cc",
+    "artifactSetSha256": "0ea5ced31e2b9b378dd9ee218c295c02b4f26ae1ebbf0042358779c31985ff32",
+    "outputSha256": "fdf6550b3151a6c15ad2a9da8e091d2dd139380e77dd1df626952bdb8b299cd4",
+    "finishedAt": "2026-07-10T11:57:54.146Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "dark-positive-C9gLu79MklN",
+      "storyEventId": "event-owner-feeds-and-plays-with-spider-monkey",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": true,
+      "sourceUsable": false,
+      "reason": "The clip matches the exotic-animal contact concept and the frames show a person interacting closely with a spider monkey, but the claimed story event is already present in the known continuity buffer, so this is a duplicate event and cannot pass.",
+      "factualClaims": [
+        {
+          "claim": "The source shows a hand-raised spider monkey in close contact with a person.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The interaction is a continuous feeding/playing clip, not a multi-animal compilation.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The claimed story event id is event-owner-feeds-and-plays-with-spider-monkey.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The story event already exists in the known continuity buffer, making this a duplicate event.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "dark-positive-CsYa4skNBjP",
+    "profileKey": "dark-joy-boy",
+    "sourceUrl": "https://www.instagram.com/reel/CsYa4skNBjP/",
+    "contentSha256": "89af6f204684fc9304b0a08481c3ae1df7ae9aa11e1a4c656020dc3dc495eef5",
+    "profileHash": "4ab92f87f51b7f5bf8636bfd0b52511a4665ffec05c37b260070ae7acb7238d5",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-85fafe2f7d0fee99ccaa8fd4577a1905",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "4bcf093370059bd236a02bf9f1cb333cfb010c977d1bf51beadd5f4b8a2d64a8",
+    "artifactSetSha256": "882659dca8592b68119e5433f99d2c977580c352dd2771dd130781b75b00b7fb",
+    "outputSha256": "54df43261cc6867dd033728f029456f12b69e0c14ccfb52886b4796ddc82e0b1",
+    "finishedAt": "2026-07-10T11:57:43.166Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "dark-positive-CsYa4skNBjP",
+      "storyEventId": "event-man-bottle-feeds-lion",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": true,
+      "sourceUsable": true,
+      "reason": "The reel matches the concept and the metadata/images support the lion bottle-feeding encounter, but the story event is already present in the continuity buffer, so it fails the duplicate-event gate.",
+      "factualClaims": [
+        {
+          "claim": "The source shows a man bottle-feeding a large lion in a close interaction.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The clip is an Instagram reel from the claimed source URL and candidate ID.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event is event-man-bottle-feeds-lion.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The story event is already listed in the concept continuity buffer.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-ask-6QIdqyFoxFE",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.youtube.com/watch?v=6QIdqyFoxFE",
+    "contentSha256": "c0bcb0b58f55fb8c8630f143c5469159aab08c7b2c883ac801bf4707b4d9df58",
+    "profileHash": "09c07d78a3cf415edf4997da96cdbc40514b2a8b56c7b5e19adeb3d4d273c9bc",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-2dd59a434c41b8d52691d4e4af7c293f",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "9ef84df972887eab38fc878dca4673ee97ed48718bc208d135f9f44714a54b58",
+    "artifactSetSha256": "8d362cfd06b331e2e6696ec6ca483fa99fb550bfd3840b625bf8d4cf69f08da3",
+    "outputSha256": "42a7e08a428d194add67b66a3f98f621f6b90b082b3144ae420e0babbaa6351d",
+    "finishedAt": "2026-07-10T11:57:45.612Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-ask-6QIdqyFoxFE",
+      "storyEventId": "event-ai-fiction-parody-part-nine",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source matches the channel concept: it is a recognizable fiction parody with a visible AI-style twist, and the provided metadata explicitly says visible AI-fiction parody is present. I do not see evidence that it is a duplicate of a known source or known story event.",
+      "factualClaims": [
+        {
+          "claim": "The video contains a visible AI-fiction parody.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source is a recognizable fiction-based scene rather than unrelated real-world footage.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The item has a part label and multi-scene compilation risk.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source is not an exact duplicate of any listed known source hash.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source does not match any listed known story event id exactly.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-ask-BwIaEb5vGDo",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.youtube.com/watch?v=BwIaEb5vGDo",
+    "contentSha256": "0c500e91711a6ec9cbf3bb8ad1f498f04f9de23b460d0cc0c9f10ebdc32de47f",
+    "profileHash": "09c07d78a3cf415edf4997da96cdbc40514b2a8b56c7b5e19adeb3d4d273c9bc",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-1754cadf82540124d04c7bf90c7f11a3",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "299ec46515867a5a9ce19a6ab7cd46f51b1a53d2564103fc024a4c1cb0c64911",
+    "artifactSetSha256": "75249bd6005947f316940fa65127a5985b96135df38617381a5b6ad436cb9a0d",
+    "outputSha256": "409f5219fff56520370e1ffa468ec649fdb426f07b544936d242753d32e4f92a",
+    "finishedAt": "2026-07-10T11:57:56.521Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-ask-BwIaEb5vGDo",
+      "storyEventId": "event-ai-mandalorian-grogu-short-scene",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The frames show a recognizable Mandalorian helmet and Grogu in a clearly AI-rebuilt fiction scene, which matches the channel concept. The source is visually clean, short-form, and does not overlap with the provided known event IDs or indicate a duplicate source.",
+      "factualClaims": [
+        {
+          "claim": "The source depicts a Mandalorian-style helmeted character holding Grogu/Baby Yoda.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source presents a visible fiction-remix rather than a talking-head or unrelated real-world clip.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3",
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The provided known story event list does not include the claimed story event ID.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-ask-J6tw2l128YE",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.youtube.com/watch?v=J6tw2l128YE",
+    "contentSha256": "0add34915f9235de87c6d9d3426fb03b2d0461b3e80dd0b488080af337531750",
+    "profileHash": "09c07d78a3cf415edf4997da96cdbc40514b2a8b56c7b5e19adeb3d4d273c9bc",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-0769a8b219e4ed530a8f58e8439dfa1d",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "038725c2979d2ecf7b4a64080f82a4a1645f5d5a606263da63030750747a4096",
+    "artifactSetSha256": "202bffff23ddee9eec70f1738402a6b89c0f675009df5d1187196dc4a504a33f",
+    "outputSha256": "90235c1c8815abc7432698b5fd865091dec246396454a2873e81b9b4d99cbc6e",
+    "finishedAt": "2026-07-10T11:58:03.596Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-ask-J6tw2l128YE",
+      "storyEventId": "event-ai-harry-potter-afterparty",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The key frames show a recognizable Harry Potter-style AI remix with visible fictional characters and a clear transformed scene, matching the channel contract for recognizable fiction rebuilt with a visible AI twist. The claimed event is consistent with the provided metadata, and there is no evidence here that this video duplicates a known source or known story event.",
+      "factualClaims": [
+        {
+          "claim": "The source shows a recognizable Harry Potter-style scene with a visible AI twist.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The claimed story event id is event-ai-harry-potter-afterparty.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The candidate is not an exact duplicate of any known source hash listed in the packet.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The candidate is not an exact duplicate of any known story event id listed in the packet.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-ask-tOk5MQFB0cU",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.youtube.com/watch?v=tOk5MQFB0cU",
+    "contentSha256": "f614501dbd0b8a83fcd606e385b07c12215efadb2254d4403dfc4dd44662fe1c",
+    "profileHash": "09c07d78a3cf415edf4997da96cdbc40514b2a8b56c7b5e19adeb3d4d273c9bc",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-6e7d51c1aedcd361e2f96f31d3b8513e",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "34cb13c72ec213b231e4c017078396ef82a91895ce7381f5a98eb4e0db1df1ad",
+    "artifactSetSha256": "371ac87e02c18413872dfb4e8668b78d4ed0d203c7a932443380c9541b4ffa57",
+    "outputSha256": "d88429ffb871a1bd0b2e058e90314cf4ad0c775ccaee6ca68f36977393552f4a",
+    "finishedAt": "2026-07-10T11:58:11.469Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-ask-tOk5MQFB0cU",
+      "storyEventId": "event-ai-fiction-parody-part-five",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source is a recognizable fiction remix with a visible AI/parody twist, matching the channel concept. The frames show Star Wars scenes altered into comedic AI-style edits, and the packet does not indicate an existing duplicate event or exact duplicate video.",
+      "factualClaims": [
+        {
+          "claim": "The video shows a recognizable fiction scene from Star Wars being remixed with a visible parody/AI-style twist.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source is a short vertical video with decode-complete media and no decode error.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The 'Part 5' label indicates a series installment, but the packet does not prove this candidate duplicates a known event or exact source.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3",
+            "concept-contract",
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-ask-V-xIvJs0Jbo",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.youtube.com/watch?v=V-xIvJs0Jbo",
+    "contentSha256": "e060a47731e4bb1b08067218929b75120929b968750cd8693485cbe938822e74",
+    "profileHash": "09c07d78a3cf415edf4997da96cdbc40514b2a8b56c7b5e19adeb3d4d273c9bc",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-dc1b35c471c69c8cb9e0a45b822ee1fd",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "3a7a6ca6031afd184a9bbe34aaff2aab811abd8af9224ccec347ff9dcf082e13",
+    "artifactSetSha256": "336caecebebc3e4214310eb5e01241ecd505dbd78efcc59d670447839939c4ce",
+    "outputSha256": "d0ac0c143ad66203371e30e3234acbbb2f97d728ab880b9116e4624aca5dcb38",
+    "finishedAt": "2026-07-10T11:58:17.449Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-ask-V-xIvJs0Jbo",
+      "storyEventId": "event-ai-trump-inside-harry-potter-two",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The packet describes a recognizable Harry Potter scene with a visible AI-generated character, which fits the channel concept. The source hash is new, and the claimed event is not an exact duplicate of any known story event in the packet.",
+      "factualClaims": [
+        {
+          "claim": "The source is a short vertical video with a decode-complete media file.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The packet describes a visible generated character placed inside recognizable fiction.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source aligns with the recognizable-fiction-with-visible-AI-twist concept boundary.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source video hash is not one of the known duplicate video hashes provided in the packet.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event is not an exact match for any known story event id listed in the packet.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-ask-WkEyab1jINA",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.youtube.com/watch?v=WkEyab1jINA",
+    "contentSha256": "89a4c8e0d517bc828748b868c8a3758f25c69ab1802254cec428da1e16529270",
+    "profileHash": "09c07d78a3cf415edf4997da96cdbc40514b2a8b56c7b5e19adeb3d4d273c9bc",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-114797257b34a742c1b5ac229e5e9929",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "35483632c2cea4ee777fc16b1b0620192c9ddd905fafd6902c645c8abf5efd86",
+    "artifactSetSha256": "f6c52e5efd89f529769127ba10d51013c6a434d293044731b2a9de034ade2064",
+    "outputSha256": "50facb71a7aa3ab27389a5d09ab9df7311b490d36e1fdf30bc28b0df72f99722",
+    "finishedAt": "2026-07-10T11:58:22.089Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-ask-WkEyab1jINA",
+      "storyEventId": "event-ai-trump-inside-harry-potter-one",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The packet shows a visible AI-generated Trump character placed inside a recognizable Harry Potter scene, which matches the channel concept of recognizable fiction with a visible AI twist. The source metadata flags political/deepfake review risk, but that does not break concept fit or factual fit on its own.",
+      "factualClaims": [
+        {
+          "claim": "The source is a vertical video with duration 53.414 seconds at 1080x1920.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The video contains a visible generated character inserted into recognizable fiction.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The scene is a Harry Potter fiction scene with Trump visually present.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2"
+          ]
+        },
+        {
+          "claim": "The packet flags political/deepfake and multi-scene risks for review.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event id is event-ai-trump-inside-harry-potter-one and it is not listed among the known story event ids.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "concept-contract"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-positive-DW0w8RMjY3Y",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DW0w8RMjY3Y/",
+    "contentSha256": "14c9bacf4d5efcde8137970a94975e71769a8770380eb10c59b5b053e7b27048",
+    "profileHash": "2d4c0437cbf71dfb40263d6ffabda7aa82910b11b7ca686bd7df4fe405b99080",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-73f94218dbc7860205461d053f3e6e59",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "4d87c3a95017604e3ec6a5856491645b41fe391532ec07b202253f714011ef97",
+    "artifactSetSha256": "9f80b13b5a0607d97158f184e556295696a14abddff724cdee415dfc6279a1dd",
+    "outputSha256": "c066495bb6ffc67d85e4d0fa79a145de3fb1ce75537d8951c7bde963bfb65845",
+    "finishedAt": "2026-07-10T11:58:38.430Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "cop-positive-DW0w8RMjY3Y",
+      "storyEventId": "event-marysville-drive-through-stop",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": true,
+      "sourceUsable": true,
+      "reason": "The Reel fits the cop-scopes concept: it shows a continuous, visible police traffic-stop incident with a clear interaction and outcome cues. However, it is a duplicate event because the same story event is already present in the continuity buffer, so it cannot PASS.",
+      "factualClaims": [
+        {
+          "claim": "The source is a vertical Instagram Reel with police bodycam-style footage.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The clip shows a continuous visible police incident centered on a drive-through traffic stop.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The clip includes captions indicating a drunk-driving context with a reported 0.34 BAC.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-positive-DW5oCZGjPCs",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DW5oCZGjPCs/",
+    "contentSha256": "b810cc26ee91b7ee454c30590dd169f8f019e960c98bf2c283a83be13b313101",
+    "profileHash": "2d4c0437cbf71dfb40263d6ffabda7aa82910b11b7ca686bd7df4fe405b99080",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-b83fa70760f83b20680dda7e2cd82181",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "ec05d027fcf5ac169ce31c1605a1ee6fb18dab3205ecd3f75cb464201252a44e",
+    "artifactSetSha256": "8a64be057079dc282950f21173bd97feadbff5f17cb60504bde07d489eccda23",
+    "outputSha256": "5844afb7a8c2ce9417c835d46a15c14d435f213ee02682cb7bab13b8af3e1338",
+    "finishedAt": "2026-07-10T11:58:38.593Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "cop-positive-DW5oCZGjPCs",
+      "storyEventId": "event-nashville-officer-involved-shooting",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source matches the police bodycam/dashcam incident concept, the frames support a real Nashville officer-involved shooting, and there is no evidence here of a duplicate video or duplicate event within the provided continuity set.",
+      "factualClaims": [
+        {
+          "claim": "The Reel is a real US police incident with visible bodycam or dashcam-style footage.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The claimed story event is event-nashville-officer-involved-shooting.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source is not a duplicate of a known source hash in the provided packet.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The event is not already listed in the continuity buffer as a duplicate story event.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-positive-DWTlKz_jO0m",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DWTlKz_jO0m/",
+    "contentSha256": "2fc53a09d4a05c5941c6e58e7665965a9a0aa3cc4baa6c3d430621b2bcc61231",
+    "profileHash": "2d4c0437cbf71dfb40263d6ffabda7aa82910b11b7ca686bd7df4fe405b99080",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-3873460b59500c5e9a486654c9afbd0d",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "dec96d6de54933cbaa03180960e8fad497c76d4a49fc979a2c5c2f6f29403ab9",
+    "artifactSetSha256": "75dfb0c3f65adcb7d8819a6d20ebb0ae2f395a2e15e50c16455876853102f3db",
+    "outputSha256": "3422ba1770fe94c7e401e00680c36ddf831f4b751593118c3b224aeaf3f070d1",
+    "finishedAt": "2026-07-10T11:58:37.060Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "cop-positive-DWTlKz_jO0m",
+      "storyEventId": "event-wakefield-motorcycle-stop-flight",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The reel matches the police-incidents concept, the frames show a traffic stop turning into a visible motorcycle escape attempt, and there is no evidence it duplicates a known source video or event in the provided buffer.",
+      "factualClaims": [
+        {
+          "claim": "Verified frames show a traffic stop become a visible attempted motorcycle escape.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source is marked as a positive example with local media available and decode complete.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The claimed story event is not listed among the continuity buffer's unique story event ids.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-positive-DWwSVVOjMqO",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DWwSVVOjMqO/",
+    "contentSha256": "0e8f65beb75324d243eb59832b80227286d501db4b4815e682bb14874d03b95e",
+    "profileHash": "2d4c0437cbf71dfb40263d6ffabda7aa82910b11b7ca686bd7df4fe405b99080",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-dee1d6ac7b69dc0ff265026a3acd1724",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "7a47827d26d58bb16680c70637a523eefb2439b742cffdd1f4ab3ddf56fad2ad",
+    "artifactSetSha256": "72ec86ade0885f51415aff9edb4e26792e993e6c09fb309802244e8ca67d2d04",
+    "outputSha256": "c950d4e7ba2e9deedaf5bab8e4b2077a40c4f0b42d8caa236cbdd131bfa87af5",
+    "finishedAt": "2026-07-10T11:59:02.371Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "cop-positive-DWwSVVOjMqO",
+      "storyEventId": "event-farmington-street-race-burning-car-rescue",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": true,
+      "sourceUsable": true,
+      "reason": "The clip fits the cop bodycam/dashcam concept and the source finding matches the claimed Farmington burning-car rescue event, but this item is a duplicate of an already known story event in the concept contract, so it cannot pass the source-fit gate.",
+      "factualClaims": [
+        {
+          "claim": "The reel shows a pursuit ending in a rollover and a burning car.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "A passenger rescue is visibly part of the incident outcome.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source belongs to the claimed story event 'event-farmington-street-race-burning-car-rescue'.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The item is not a duplicate video of a known source asset.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The item is a duplicate story event within the known concept set.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-positive-DXOzkCdjMue",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DXOzkCdjMue/",
+    "contentSha256": "a3bb5e65330abe53850dfefdb4dba04bb2d53b56610d0e1fa8bfe1112ac35da7",
+    "profileHash": "2d4c0437cbf71dfb40263d6ffabda7aa82910b11b7ca686bd7df4fe405b99080",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-ffb4819273f00a183bf7c538977afe28",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "b11a71ef42051a98e6d4767b1971ef4617feae2547ccb67c86a8807680b280df",
+    "artifactSetSha256": "0f23a698921fef6c090e739622cfeaa2f960285c6117c42863daa0bf1abf01d8",
+    "outputSha256": "37f699b7d6e2317a5bdf9c1d48a8ccad70e5c492c5e87f5439cf826e43c652e3",
+    "finishedAt": "2026-07-10T11:59:29.453Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "cop-positive-DXOzkCdjMue",
+      "storyEventId": "event-domestic-violence-suspect-jumps-moving-car",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": true,
+      "sourceUsable": true,
+      "reason": "The source fits the police bodycam/dashcam concept and the footage shows a suspect clinging to a moving car while fleeing police. However, the story event is already present in the continuity buffer, so this is a duplicate event and must fail.",
+      "factualClaims": [
+        {
+          "claim": "The source is an Instagram reel from candidate cop-positive-DXOzkCdjMue at https://www.instagram.com/reel/DXOzkCdjMue/.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The footage is a real US police dashcam/bodycam-style incident with a visible suspect clinging to a moving car while fleeing police.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The clip matches the concept of a visible US police incident with a clear action turn and outcome.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The story event id event-domestic-violence-suspect-jumps-moving-car is already included in the continuity buffer.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The source video hash is not listed among the known duplicate source hashes provided in the packet.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-positive-DXUPExpjCs2",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DXUPExpjCs2/",
+    "contentSha256": "b26e2f107d94290ecc1283d2f33eb001484ec04f77ab7de983e99a3e1a4512ea",
+    "profileHash": "2d4c0437cbf71dfb40263d6ffabda7aa82910b11b7ca686bd7df4fe405b99080",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-0ce8bfe8fc4a087f18ebcd6dbde5a5d1",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "b4549962d6ebbad42d9755dee224873f657a3acb1f046d760eb3f214b458553a",
+    "artifactSetSha256": "3f0bae96b33619d1758efa47d9357225627406592a381aff34ac06e129ed7aad",
+    "outputSha256": "ae71d4b199a99eb9b1b4f8d965b95ad88347439d69351a7a37653e4f01a839d4",
+    "finishedAt": "2026-07-10T11:59:00.249Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "cop-positive-DXUPExpjCs2",
+      "storyEventId": "event-maryland-troopers-infant-rescue",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": true,
+      "sourceUsable": true,
+      "reason": "The Reel fits the channel concept and the source metadata says troopers visibly provide urgent aid to a choking infant. But this candidate is already listed as a positive example for the same story event in the concept contract, so it is a duplicate event and cannot pass.",
+      "factualClaims": [
+        {
+          "claim": "The source is a real Instagram Reel with decoded vertical video, 36.666 seconds long.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The footage shows troopers visibly providing urgent aid to a choking infant, making the rescue the core event.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "This candidate maps to the concept's story event event-maryland-troopers-infant-rescue.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The candidate is already present as a positive example in the concept contract, so it is a duplicate event.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        }
+      ]
+    }
+  }
+]

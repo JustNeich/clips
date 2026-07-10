@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-10T11:09:32.000Z",
+  "surface": "authenticated owner Clips API plus public YouTube RSS",
+  "channels": [
+    {
+      "channelId": "4b59c5cf412e4c07b192f3312361c2eb",
+      "youtubeChannelId": "UCwO37rtHMhHX8caUr5Rc0Bw",
+      "recentPublications": [
+        { "youtubeVideoId": "Ep7Y0gbf0xg", "sourceUrl": "https://www.instagram.com/reel/CrWmI-NNW-3/", "title": "SHOULDER CHECK FROM A TIGER" },
+        { "youtubeVideoId": "h0093bjDMLw", "sourceUrl": "https://www.instagram.com/reel/CevnyitO09a/", "title": "CHIMP RUNS THE GYM" },
+        { "youtubeVideoId": "oSDq3quoAg4", "sourceUrl": "https://www.instagram.com/reel/C9xASePvxne/", "title": "THAT SMILE AIN'T NATURAL" },
+        { "youtubeVideoId": "f1x32eCb6LI", "sourceUrl": "https://www.instagram.com/reel/C41jHblt14I/", "title": "WHITE TIGER KEPT TABS" },
+        { "youtubeVideoId": "6WxBUK5eDJ4", "sourceUrl": "https://www.instagram.com/reel/C3SxE6WgvOz/", "title": "WHEN THE CHIMP BLUSHED" },
+        { "youtubeVideoId": "SkMgNaqV2FY", "sourceUrl": "https://www.instagram.com/reel/Ch7U3VkD3iD/", "title": "WHITE TIGER POOL RULES" }
+      ]
+    },
+    {
+      "channelId": "43923d42c1c0495282f29d4c6e09b0b4",
+      "youtubeChannelId": "UC0LWZYpYuYAWK55WmvDqxbg",
+      "recentPublications": [
+        { "youtubeVideoId": "vi5F1xqjzbg", "sourceUrl": "https://www.youtube.com/watch?v=5a2wZxVlO_M", "title": "WHEN JACK BECAME A SITCOM DAD" },
+        { "youtubeVideoId": "c3vtAXu4PK4", "sourceUrl": "https://www.youtube.com/watch?v=z6GsRrFlhbI", "title": "THE SHADES FIX NOTHING" },
+        { "youtubeVideoId": "zccVyzM8JzY", "sourceUrl": "https://www.instagram.com/reel/DZp5UQayxrY/", "title": "MANGO ELON RUNS MISSION CONTROL" },
+        { "youtubeVideoId": "dz3bvzeLfaQ", "sourceUrl": "https://www.instagram.com/reel/DYWIdjSxbb7/", "title": "MICHAEL HIRES A LAPTOP" },
+        { "youtubeVideoId": "J8zVrlaMzfQ", "sourceUrl": "https://www.instagram.com/reel/DY9Ys_TJAQz/", "title": "STOCKY BALBOA RETURNS" },
+        { "youtubeVideoId": "7LBkP3isBW0", "sourceUrl": "https://www.instagram.com/reel/DYpHeq4pM-R/", "title": "THE FIGHT THEY WANTED" }
+      ],
+      "preexistingQueuedPublication": {
+        "publicationId": "0a1a52486d484352a4c05d40f85ad3b3",
+        "scheduledAt": "2026-07-10T18:00:00.000Z",
+        "sourceUrl": "https://www.instagram.com/reel/DZAv8hKJFBn/",
+        "title": "ARSENAL'S RANDOM FINAL BOSS",
+        "portfolioPipelineOwned": false,
+        "conceptV2Fit": "fail",
+        "actionTaken": "none; existing external publication was not canceled without an explicit destructive owner decision"
+      }
+    },
+    {
+      "channelId": "6187aeeea7bd47188e08089c5916edc1",
+      "youtubeChannelId": "UCJhBMXXQ5GrTbrhqjwT1leg",
+      "recentPublications": [
+        { "youtubeVideoId": "5n8_VKX6itk", "sourceUrl": "https://www.instagram.com/reel/DXH6EF5DQEV/", "title": "Shoulder Stop Collision" },
+        { "youtubeVideoId": "VNt0KenHe9o", "sourceUrl": "https://www.instagram.com/reel/DXYq55zDR0r/", "title": "Back Seat Exit" },
+        { "youtubeVideoId": "iD_VuzVDMbg", "sourceUrl": "https://www.instagram.com/reel/DXOoLw-jRjr/", "title": "Snowy Shoulder Impact" }
+      ]
+    }
+  ]
+}

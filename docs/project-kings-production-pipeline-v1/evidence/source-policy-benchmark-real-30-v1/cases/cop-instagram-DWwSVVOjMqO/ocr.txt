@@ -1,0 +1,53 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 3.590s]
+COPSCOPES #
+3
+Police Bodycam Footage
+Street race crash erupts in flames
+~ |
+—
+<7=K-9 Barking’
+[source-key-frame-02 @ 14.061s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Street race crash erupts in flames
+[source-key-frame-03 @ 24.532s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Street race crash erupts in flames
+[source-key-frame-04 @ 35.302s]
+COPSCOPES #
+Police Bodycam Footage
+3
+Street race crash erupts in flames
+Sgt. Martinez
+24
+ii
+iN
+THEM.
+[source-key-frame-05 @ 45.772s]
+COPSCOPES #
+=
+Police Bodycam Footage
+Street race crash erupts in flames
+= Ss
+id
+Al
+Sgt. Martinez
+i
+\
+HANDS BEHIND YOUR
+[source-key-frame-06 @ 56.243s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Street race crash erupts in flames
+-_
+= il
+on
+~—
+LS

@@ -1,0 +1,16 @@
+status=speech_detected
+tool=openai-whisper-cli
+model=tiny
+language=en
+transcript=Thank you for telling me who you are this time last time you didn't oh, that was you That was me This is the citation for driving on suspended license. Okay, why don't he run him? He doesn't even have a warrant robber. You're good, bud. Oh Do you just messed up? I'm sorry you just messed up. Don't you please me bro Drop it But that's my sign Test stupid dude. You know why cuz I get up at the store clock. I want to go home Now I'm dropping her take it gonna let you drive the car so I can go home. I'll the damn paperwork I gotta do now
+segment_01={"start":0,"end":3.56,"text":"Thank you for telling me who you are this time last time you didn't oh, that was you","noSpeechProbability":0.1535174548625946,"averageLogProbability":-0.6810419376079853}
+segment_02={"start":3.56,"end":4.5600000000000005,"text":"That was me","noSpeechProbability":0.1535174548625946,"averageLogProbability":-0.6810419376079853}
+segment_03={"start":4.5600000000000005,"end":8.4,"text":"This is the citation for driving on suspended license. Okay, why don't he run him?","noSpeechProbability":0.1535174548625946,"averageLogProbability":-0.6810419376079853}
+segment_04={"start":8.8,"end":12.16,"text":"He doesn't even have a warrant robber. You're good, bud. Oh","noSpeechProbability":0.1535174548625946,"averageLogProbability":-0.6810419376079853}
+segment_05={"start":16.96,"end":18.96,"text":"Do you just messed up?","noSpeechProbability":0.1535174548625946,"averageLogProbability":-0.6810419376079853}
+segment_06={"start":18.96,"end":22.64,"text":"I'm sorry you just messed up. Don't you please me bro","noSpeechProbability":0.1535174548625946,"averageLogProbability":-0.6810419376079853}
+segment_07={"start":23.28,"end":24.64,"text":"Drop it","noSpeechProbability":0.1535174548625946,"averageLogProbability":-0.6810419376079853}
+segment_08={"start":24.64,"end":26.64,"text":"But that's my sign","noSpeechProbability":0.1535174548625946,"averageLogProbability":-0.6810419376079853}
+segment_09={"start":26.64,"end":31.02,"text":"Test stupid dude. You know why cuz I get up at the store clock. I want to go home","noSpeechProbability":0.08216936886310577,"averageLogProbability":-0.4758756160736084}
+segment_10={"start":31.02,"end":35.3,"text":"Now I'm dropping her take it gonna let you drive the car so I can go home. I'll the damn paperwork","noSpeechProbability":0.08216936886310577,"averageLogProbability":-0.4758756160736084}
+segment_11={"start":35.3,"end":37.3,"text":"I gotta do now","noSpeechProbability":0.08216936886310577,"averageLogProbability":-0.4758756160736084}

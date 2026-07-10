@@ -1,0 +1,141 @@
+{
+  "schemaVersion": "project-kings-replay-evidence-v1",
+  "scenarioId": "infrastructure-recovery",
+  "runId": "pk-replay-infrastructure-recovery-2026-07-10-v1",
+  "runIdKind": "deterministic-business-alias",
+  "logicalDate": "2026-07-10",
+  "clock": {
+    "startedAt": "2026-07-11T11:00:00.000Z",
+    "finishedAt": "2026-07-11T11:00:24.001Z",
+    "logicalDurationMs": 24001,
+    "ticks": 24
+  },
+  "sourceEvidence": {
+    "durableStore": "production_runs + production_items + production_outbox",
+    "simulationAdapter": "createPortfolioSimulationDispatcher",
+    "externalNetworkEnabled": false
+  },
+  "injections": [
+    {
+      "at": "2026-07-11T11:00:00.000Z",
+      "kind": "worker-lease-loss",
+      "eventKind": "source_ingest.requested",
+      "leaseMs": 1000
+    },
+    {
+      "at": "2026-07-11T11:00:00.500Z",
+      "kind": "process-restart",
+      "persistedItems": 9
+    },
+    {
+      "at": "2026-07-11T11:00:02.001Z",
+      "kind": "provider-429",
+      "attempts": 1
+    },
+    {
+      "at": "2026-07-11T11:00:03.001Z",
+      "kind": "completion-502",
+      "attempts": 1
+    },
+    {
+      "at": "2026-07-11T11:00:04.001Z",
+      "kind": "upload-outcome-unknown",
+      "attempts": 1
+    }
+  ],
+  "assertions": [
+    {
+      "name": "durable run survived process restart",
+      "pass": true,
+      "expected": 9,
+      "actual": 9
+    },
+    {
+      "name": "expired worker lease was reclaimed",
+      "pass": true,
+      "expected": 2,
+      "actual": 2
+    },
+    {
+      "name": "429 injected exactly once",
+      "pass": true,
+      "expected": 1,
+      "actual": 1
+    },
+    {
+      "name": "502 injected exactly once",
+      "pass": true,
+      "expected": 1,
+      "actual": 1
+    },
+    {
+      "name": "retryable failures used durable outbox",
+      "pass": true,
+      "expected": 2,
+      "actual": 2
+    },
+    {
+      "name": "upload outcome became unknown once",
+      "pass": true,
+      "expected": 1,
+      "actual": 1
+    },
+    {
+      "name": "unknown upload reconciled once",
+      "pass": true,
+      "expected": 1,
+      "actual": 1
+    },
+    {
+      "name": "one publication intent per item",
+      "pass": true,
+      "expected": 9,
+      "actual": 9
+    },
+    {
+      "name": "one YouTube identity per item",
+      "pass": true,
+      "expected": 9,
+      "actual": 9
+    },
+    {
+      "name": "no second publication schedule after upload uncertainty",
+      "pass": true,
+      "expected": 9,
+      "actual": 9
+    },
+    {
+      "name": "infrastructure replay completed 3x3",
+      "pass": true,
+      "expected": 9,
+      "actual": 9
+    },
+    {
+      "name": "no dead outbox record",
+      "pass": true,
+      "expected": 0,
+      "actual": 0
+    }
+  ],
+  "metrics": {
+    "targetItems": 9,
+    "publicVerifiedItems": 9,
+    "deliveredOutboxEvents": 55,
+    "retryCalls": 2,
+    "deadOutboxEvents": 0,
+    "outboxRecordsWithMultipleClaims": 3,
+    "lostLeaseEventAttempts": 2,
+    "publicationIntentCount": 9,
+    "uniquePublicationIntentCount": 9,
+    "uniqueVideoIdentityCount": 9,
+    "uploadOutcomeUnknownCount": 1,
+    "uploadReconcileCount": 1
+  },
+  "externalEffects": {
+    "networkRequests": 0,
+    "youtubeUploadRequests": 0,
+    "publicVideosCreated": 0
+  },
+  "outcome": "pass",
+  "evidenceSha256": "aff7d3826a549e7aa7b741a9adf83ec84aedd8b0f07cecf6b5cbfafd1b755373"
+}

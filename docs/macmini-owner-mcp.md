@@ -104,5 +104,7 @@ Core tools exposed by `clips-owner`:
 - `clips_owner_pair_stage3_worker`
 - `clips_owner_run_copscopes_daily_pool`
 - `clips_owner_run_video_pipeline`
+- `clips_owner_tick_portfolio_daemon`
+- `clips_owner_release_portfolio_daemon`
 
 For current end-to-end production videos, prefer `clips_owner_run_copscopes_daily_pool` or `clips_owner_run_video_pipeline` without `sourceUrl`; that uses the existing daily-pool runner. With `sourceUrl`, `clips_owner_run_video_pipeline` creates/opens the chat and queues Stage 2, then a selected Stage 2 option still has to be rendered through Stage 3.

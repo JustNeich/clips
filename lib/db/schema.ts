@@ -1,3 +1,35 @@
+export const CHANNEL_PUBLICATIONS_PORTFOLIO_OWNERSHIP_FENCE_TRIGGER_SQL = `
+CREATE TRIGGER IF NOT EXISTS channel_publications_portfolio_ownership_fence
+BEFORE INSERT ON channel_publications
+WHEN EXISTS (
+  SELECT 1 FROM production_channel_ownership ownership
+  WHERE ownership.workspace_id = NEW.workspace_id
+    AND ownership.channel_id = NEW.channel_id
+    AND ownership.status IN ('active', 'releasing')
+    AND (
+      ownership.status = 'releasing'
+      OR NOT EXISTS (
+        SELECT 1
+        FROM render_exports re
+        JOIN production_items pi ON pi.stage3_job_id = re.stage3_job_id
+        JOIN production_run_channels prc ON prc.id = pi.run_channel_id
+        JOIN production_runs pr ON pr.id = pi.run_id
+        WHERE re.id = NEW.render_export_id
+          AND pi.workspace_id = NEW.workspace_id
+          AND pi.channel_id = NEW.channel_id
+          AND pr.mode = 'live'
+          AND prc.profile_id = ownership.profile_id
+          AND prc.profile_version = ownership.profile_version
+          AND prc.profile_hash = ownership.profile_hash
+          AND pi.state IN ('final_approved', 'upload_outcome_unknown')
+      )
+    )
+)
+BEGIN
+  SELECT RAISE(ABORT, 'portfolio_channel_ownership_fence');
+END;
+`;
+
 export const APP_DB_SCHEMA = `
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
@@ -523,6 +555,360 @@ CREATE TABLE IF NOT EXISTS copscopes_daily_run_items (
   FOREIGN KEY (source_reel_id) REFERENCES copscopes_source_reels(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS production_profiles (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('draft', 'shadow', 'active', 'retired')),
+  profile_hash TEXT NOT NULL,
+  expected_youtube_channel_id TEXT NOT NULL,
+  expected_destination_title TEXT NOT NULL DEFAULT '',
+  template_id TEXT NOT NULL,
+  template_snapshot_sha256 TEXT NOT NULL,
+  publish_policy_id TEXT NOT NULL,
+  quality_policy_id TEXT NOT NULL,
+  model_route_manifest_id TEXT NOT NULL,
+  model_route_manifest_sha256 TEXT NOT NULL,
+  target_per_logical_day INTEGER NOT NULL,
+  ready_buffer_min INTEGER NOT NULL,
+  ready_buffer_cap INTEGER NOT NULL,
+  candidate_attempt_budget INTEGER NOT NULL,
+  config_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  approved_at TEXT,
+  approved_by_user_id TEXT,
+  approval_scope TEXT CHECK (approval_scope IS NULL OR approval_scope IN ('shadow', 'live')),
+  approval_binding_sha256 TEXT,
+  UNIQUE (channel_id, version),
+  UNIQUE (workspace_id, profile_hash),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (approved_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS project_kings_source_policy_approvals (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  policy_version TEXT NOT NULL,
+  policy_sha256 TEXT NOT NULL,
+  source_designations_sha256 TEXT NOT NULL,
+  approval_json TEXT NOT NULL,
+  approval_sha256 TEXT NOT NULL,
+  owner_user_id TEXT NOT NULL,
+  owner_authorization_evidence_sha256 TEXT NOT NULL,
+  approved_at TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
+  revoked_at TEXT,
+  revoked_by_user_id TEXT,
+  revocation_reason TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (workspace_id, policy_version, policy_sha256, source_designations_sha256),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE RESTRICT,
+  FOREIGN KEY (revoked_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS production_runs (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  portfolio_profile_hash TEXT NOT NULL,
+  logical_date TEXT NOT NULL,
+  mode TEXT NOT NULL CHECK (mode IN ('simulation', 'shadow', 'live')),
+  status TEXT NOT NULL CHECK (status IN ('created', 'preflight', 'ready', 'running', 'waiting_public', 'cancel_requested', 'completed', 'blocked', 'canceled', 'failed')),
+  target_per_channel INTEGER NOT NULL,
+  manifest_hash TEXT NOT NULL,
+  manifest_json TEXT NOT NULL,
+  request_idempotency_key TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  lease_owner TEXT,
+  lease_token TEXT,
+  lease_expires_at TEXT,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  completed_at TEXT,
+  UNIQUE (workspace_id, portfolio_profile_hash, logical_date, mode),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS production_run_channels (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  profile_id TEXT NOT NULL,
+  profile_version INTEGER NOT NULL,
+  profile_hash TEXT NOT NULL,
+  expected_youtube_channel_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('created', 'preflight', 'ready', 'running', 'waiting_public', 'cancel_requested', 'completed', 'blocked', 'canceled', 'failed')),
+  target_count INTEGER NOT NULL,
+  public_verified_count INTEGER NOT NULL DEFAULT 0,
+  next_slot_at TEXT,
+  blocker_code TEXT,
+  blocker_message TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  completed_at TEXT,
+  UNIQUE (run_id, channel_id),
+  FOREIGN KEY (run_id) REFERENCES production_runs(id) ON DELETE CASCADE,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (profile_id) REFERENCES production_profiles(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS channel_source_candidates (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  canonical_url TEXT NOT NULL,
+  content_sha256 TEXT,
+  event_fingerprint TEXT,
+  category_key TEXT NOT NULL,
+  rights_status TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('available', 'reserved', 'consumed', 'quarantined', 'rejected')),
+  qualification_status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (qualification_status IN ('discovered', 'pending', 'qualified', 'rejected', 'quarantined')),
+  qualification_evidence_sha256 TEXT,
+  evidence_json TEXT NOT NULL,
+  reserved_item_id TEXT,
+  reserved_at TEXT,
+  consumed_at TEXT,
+  quarantined_at TEXT,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (workspace_id, channel_id, canonical_url),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS production_items (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  run_channel_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  item_slot INTEGER NOT NULL,
+  generation INTEGER NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('reserved', 'source_ingested', 'source_qualified', 'brief_ready', 'preview_ready', 'preview_approved', 'final_rendered', 'final_approved', 'publication_scheduled', 'public_verified', 'rework', 'replaced', 'quarantined', 'policy_blocked', 'upload_outcome_unknown', 'cancel_requested', 'canceled', 'failed')),
+  resume_state TEXT CHECK (resume_state IS NULL OR resume_state IN ('source_qualified', 'brief_ready', 'preview_ready')),
+  source_candidate_id TEXT,
+  source_sha256 TEXT,
+  preview_sha256 TEXT,
+  template_sha256 TEXT,
+  settings_sha256 TEXT,
+  final_artifact_sha256 TEXT,
+  chat_id TEXT,
+  stage2_run_id TEXT,
+  stage3_job_id TEXT,
+  publication_id TEXT,
+  expected_youtube_channel_id TEXT NOT NULL,
+  youtube_video_id TEXT,
+  upload_session_url TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  attempt_budget INTEGER NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  lease_owner TEXT,
+  lease_token TEXT,
+  lease_expires_at TEXT,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  completed_at TEXT,
+  UNIQUE (run_id, channel_id, item_slot, generation),
+  UNIQUE (publication_id),
+  FOREIGN KEY (run_id) REFERENCES production_runs(id) ON DELETE CASCADE,
+  FOREIGN KEY (run_channel_id) REFERENCES production_run_channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (source_candidate_id) REFERENCES channel_source_candidates(id) ON DELETE SET NULL,
+  FOREIGN KEY (chat_id) REFERENCES chat_threads(id) ON DELETE SET NULL,
+  FOREIGN KEY (stage2_run_id) REFERENCES stage2_runs(run_id) ON DELETE SET NULL,
+  FOREIGN KEY (stage3_job_id) REFERENCES stage3_jobs(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS production_events (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  channel_id TEXT,
+  production_item_id TEXT,
+  event_type TEXT NOT NULL,
+  from_state TEXT,
+  to_state TEXT,
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (run_id) REFERENCES production_runs(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE SET NULL,
+  FOREIGN KEY (production_item_id) REFERENCES production_items(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS production_outbox (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  production_item_id TEXT NOT NULL,
+  event_kind TEXT NOT NULL,
+  dedupe_key TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'processing', 'delivered', 'dead')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 3,
+  available_at TEXT NOT NULL,
+  lease_owner TEXT,
+  lease_token TEXT,
+  lease_expires_at TEXT,
+  last_error TEXT,
+  dead_letter_code TEXT,
+  projected_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  delivered_at TEXT,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (run_id) REFERENCES production_runs(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (production_item_id) REFERENCES production_items(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS production_daemon_runtime (
+  scope_key TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  daemon_id TEXT NOT NULL,
+  config_sha256 TEXT,
+  config_json TEXT NOT NULL DEFAULT '{}',
+  lease_owner TEXT,
+  lease_token TEXT,
+  lease_expires_at TEXT,
+  dispatch_owner TEXT,
+  dispatch_token TEXT,
+  dispatch_expires_at TEXT,
+  dispatch_heartbeat_at TEXT,
+  heartbeat_at TEXT,
+  status TEXT NOT NULL CHECK (status IN ('standby', 'running', 'blocked', 'error', 'stopping', 'stopped')),
+  logical_date TEXT,
+  active_run_ids_json TEXT NOT NULL DEFAULT '[]',
+  last_error TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (workspace_id, daemon_id),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS production_channel_ownership (
+  workspace_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  daemon_id TEXT NOT NULL,
+  config_sha256 TEXT NOT NULL,
+  profile_id TEXT NOT NULL,
+  profile_version INTEGER NOT NULL,
+  profile_hash TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active', 'releasing', 'released')),
+  fence_token TEXT,
+  activated_at TEXT NOT NULL,
+  release_requested_at TEXT,
+  released_at TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, channel_id),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (profile_id) REFERENCES production_profiles(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS agent_attempts (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  production_item_id TEXT NOT NULL,
+  stage3_job_id TEXT,
+  role TEXT NOT NULL,
+  attempt_no INTEGER NOT NULL,
+  model TEXT NOT NULL,
+  reasoning_level TEXT NOT NULL,
+  prompt_hash TEXT NOT NULL,
+  quality_binding_sha256 TEXT,
+  output_hash TEXT,
+  artifact_ids_json TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('running', 'passed', 'failed', 'timed_out')),
+  outcome TEXT,
+  verdict TEXT,
+  error_code TEXT,
+  input_tokens INTEGER,
+  output_tokens INTEGER,
+  cached_input_tokens INTEGER,
+  reasoning_output_tokens INTEGER,
+  cost_micros INTEGER,
+  cost_unit TEXT CHECK (cost_unit IS NULL OR cost_unit IN ('usd', 'codex_credits')),
+  duration_ms INTEGER,
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE (production_item_id, role, attempt_no),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (run_id) REFERENCES production_runs(id) ON DELETE CASCADE,
+  FOREIGN KEY (production_item_id) REFERENCES production_items(id) ON DELETE CASCADE,
+  FOREIGN KEY (stage3_job_id) REFERENCES stage3_jobs(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS quality_verdicts (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  production_item_id TEXT NOT NULL,
+  gate_type TEXT NOT NULL CHECK (gate_type IN ('source', 'preview', 'final')),
+  judge_kind TEXT NOT NULL CHECK (judge_kind IN ('deterministic', 'semantic', 'vision')),
+  verdict TEXT NOT NULL CHECK (verdict IN ('pass', 'fail')),
+  attempt_no INTEGER NOT NULL,
+  artifact_sha256 TEXT NOT NULL,
+  source_sha256 TEXT,
+  preview_sha256 TEXT,
+  template_sha256 TEXT,
+  settings_sha256 TEXT,
+  agent_attempt_id TEXT,
+  evidence_sha256 TEXT,
+  evidence_artifact_path TEXT,
+  defects_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (production_item_id, gate_type, judge_kind, artifact_sha256, attempt_no),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (run_id) REFERENCES production_runs(id) ON DELETE CASCADE,
+  FOREIGN KEY (production_item_id) REFERENCES production_items(id) ON DELETE CASCADE,
+  FOREIGN KEY (agent_attempt_id) REFERENCES agent_attempts(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS public_verifications (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  production_item_id TEXT NOT NULL,
+  publication_id TEXT NOT NULL,
+  expected_youtube_channel_id TEXT NOT NULL,
+  youtube_video_id TEXT NOT NULL,
+  attempt_no INTEGER NOT NULL,
+  clips_status TEXT NOT NULL,
+  clips_matches INTEGER NOT NULL,
+  rss_seen INTEGER NOT NULL,
+  shorts_http_status INTEGER,
+  page_playable INTEGER NOT NULL,
+  page_canonical_video_id TEXT,
+  page_channel_id TEXT,
+  verified INTEGER NOT NULL,
+  failure_code TEXT,
+  evidence_json TEXT NOT NULL,
+  checked_at TEXT NOT NULL,
+  UNIQUE (production_item_id, attempt_no),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (run_id) REFERENCES production_runs(id) ON DELETE CASCADE,
+  FOREIGN KEY (production_item_id) REFERENCES production_items(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS stage3_jobs (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -570,6 +956,14 @@ CREATE TABLE IF NOT EXISTS stage3_job_artifacts (
   size_bytes INTEGER NOT NULL,
   created_at TEXT NOT NULL,
   FOREIGN KEY (job_id) REFERENCES stage3_jobs(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS production_semantic_input_reservations (
+  reservation_id TEXT NOT NULL,
+  storage_key TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (reservation_id, storage_key)
 );
 
 CREATE TABLE IF NOT EXISTS render_exports (
@@ -761,6 +1155,9 @@ CREATE INDEX IF NOT EXISTS idx_stage3_job_events_job
 CREATE INDEX IF NOT EXISTS idx_stage3_job_artifacts_job
   ON stage3_job_artifacts(job_id, created_at DESC);
 
+CREATE INDEX IF NOT EXISTS idx_production_semantic_input_reservations_key
+  ON production_semantic_input_reservations(storage_key, expires_at);
+
 CREATE INDEX IF NOT EXISTS idx_render_exports_chat_created
   ON render_exports(chat_id, created_at DESC);
 
@@ -793,4 +1190,101 @@ CREATE INDEX IF NOT EXISTS idx_copscopes_daily_runs_channel_created
 
 CREATE INDEX IF NOT EXISTS idx_copscopes_daily_run_items_run
   ON copscopes_daily_run_items(run_id, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_production_profiles_channel_status
+  ON production_profiles(workspace_id, channel_id, status, version DESC);
+
+CREATE INDEX IF NOT EXISTS idx_project_kings_source_policy_approvals_current
+  ON project_kings_source_policy_approvals(
+    workspace_id,
+    policy_version,
+    policy_sha256,
+    source_designations_sha256,
+    status
+  );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_production_runs_request_idempotency
+  ON production_runs(workspace_id, request_idempotency_key)
+  WHERE request_idempotency_key IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_production_runs_status_updated
+  ON production_runs(workspace_id, status, updated_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_production_run_channels_run
+  ON production_run_channels(run_id, channel_id);
+
+CREATE INDEX IF NOT EXISTS idx_channel_source_candidates_buffer
+  ON channel_source_candidates(workspace_id, channel_id, status, created_at ASC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_channel_source_candidates_content
+  ON channel_source_candidates(workspace_id, channel_id, content_sha256)
+  WHERE content_sha256 IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_channel_source_candidates_event
+  ON channel_source_candidates(workspace_id, channel_id, event_fingerprint)
+  WHERE event_fingerprint IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_production_items_run_state
+  ON production_items(run_id, channel_id, state, item_slot, generation DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_production_items_one_current_generation
+  ON production_items(run_id, channel_id, item_slot)
+  WHERE state NOT IN ('replaced', 'quarantined', 'failed');
+
+CREATE INDEX IF NOT EXISTS idx_production_items_lease
+  ON production_items(state, lease_expires_at, updated_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_production_events_run_created
+  ON production_events(run_id, created_at ASC, id ASC);
+
+CREATE INDEX IF NOT EXISTS idx_production_events_item_created
+  ON production_events(production_item_id, created_at ASC, id ASC);
+
+CREATE INDEX IF NOT EXISTS idx_production_outbox_claim
+  ON production_outbox(status, available_at ASC, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_production_daemon_runtime_lease
+  ON production_daemon_runtime(lease_expires_at, heartbeat_at);
+
+CREATE INDEX IF NOT EXISTS idx_production_channel_ownership_status
+  ON production_channel_ownership(workspace_id, status, updated_at);
+
+CREATE INDEX IF NOT EXISTS idx_agent_attempts_run_item
+  ON agent_attempts(run_id, production_item_id, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_quality_verdicts_item_gate_hash
+  ON quality_verdicts(production_item_id, gate_type, artifact_sha256, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_public_verifications_item_checked
+  ON public_verifications(production_item_id, checked_at ASC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_public_verifications_one_success
+  ON public_verifications(production_item_id)
+  WHERE verified = 1;
+
+CREATE TRIGGER IF NOT EXISTS production_events_no_update
+BEFORE UPDATE ON production_events
+BEGIN
+  SELECT RAISE(ABORT, 'production_events_append_only');
+END;
+
+CREATE TRIGGER IF NOT EXISTS production_events_no_delete
+BEFORE DELETE ON production_events
+BEGIN
+  SELECT RAISE(ABORT, 'production_events_append_only');
+END;
+
+${CHANNEL_PUBLICATIONS_PORTFOLIO_OWNERSHIP_FENCE_TRIGGER_SQL}
+
+CREATE TRIGGER IF NOT EXISTS production_outbox_portfolio_stop_fence
+BEFORE INSERT ON production_outbox
+WHEN EXISTS (
+  SELECT 1 FROM production_channel_ownership ownership
+  WHERE ownership.workspace_id = NEW.workspace_id
+    AND ownership.channel_id = NEW.channel_id
+    AND ownership.status = 'releasing'
+)
+BEGIN
+  SELECT RAISE(ABORT, 'portfolio_channel_ownership_releasing');
+END;
 `;

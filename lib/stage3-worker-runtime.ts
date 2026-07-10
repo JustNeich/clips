@@ -24,6 +24,13 @@ import {
 } from "./stage3-worker-job-timeout";
 import { ensureManagedStage3WorkerTools } from "./stage3-worker-managed-tools";
 import type { Stage3RenderProgressEvent } from "./stage3-render-service";
+import {
+  isProductionSemanticExecutorReadiness,
+  unavailableProductionSemanticExecutorReadiness,
+  type ProductionSemanticExecutorReadiness,
+  type ProductionSemanticJobExecutor
+} from "./project-kings/production-semantic-job-contract";
+import type { Stage3JobKind } from "../app/components/types";
 
 declare const __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__: string | undefined;
 
@@ -43,18 +50,20 @@ export type WorkerCapabilities = {
   ffprobe: { available: boolean; path: string | null };
   ytDlp: { available: boolean; path: string | null };
   browser: { available: boolean; path: string | null; source: string | null };
+  productionSemantic?: ProductionSemanticExecutorReadiness;
 };
 
 export type Stage3WorkerLoopOptions = {
   restartAfterRuntimeSync?: boolean;
   installSignalHandlers?: boolean;
   shouldStop?: () => boolean;
+  productionSemanticExecutor?: ProductionSemanticJobExecutor | null;
 };
 
 type Stage3JobEnvelope = {
   job: {
     id: string;
-    kind: "preview" | "render" | "editing-proxy" | "source-download" | "agent-media-step";
+    kind: Stage3JobKind;
     status: "queued" | "running" | "completed" | "failed" | "interrupted";
   };
 };
@@ -134,6 +143,62 @@ const DEFAULT_PUBLIC_FILES = [
   "stage3-template-badges/science-card-v1-check.png",
   "stage3-template-badges/twitter-verified-badge.png"
 ];
+
+const BASE_STAGE3_WORKER_SUPPORTED_KINDS: readonly Stage3JobKind[] = [
+  "preview",
+  "render",
+  "editing-proxy",
+  "source-download",
+  "agent-media-step"
+];
+
+export async function resolveProductionSemanticExecutorReadiness(
+  executor: ProductionSemanticJobExecutor | null | undefined
+): Promise<ProductionSemanticExecutorReadiness> {
+  if (
+    !executor ||
+    typeof executor.preflight !== "function" ||
+    typeof executor.execute !== "function"
+  ) {
+    return unavailableProductionSemanticExecutorReadiness();
+  }
+  try {
+    const readiness = await executor.preflight();
+    if (!isProductionSemanticExecutorReadiness(readiness)) {
+      return {
+        ...unavailableProductionSemanticExecutorReadiness(
+          "The production-semantic executor returned an invalid preflight contract."
+        ),
+        code: "preflight_failed"
+      };
+    }
+    if (!readiness.ready || readiness.code !== "ready") {
+      return {
+        ...readiness,
+        ready: false,
+        code: readiness.code === "ready" ? "preflight_failed" : readiness.code
+      };
+    }
+    return readiness;
+  } catch (error) {
+    return {
+      ...unavailableProductionSemanticExecutorReadiness(
+        error instanceof Error
+          ? `Production-semantic executor preflight failed: ${error.message}`
+          : "Production-semantic executor preflight failed."
+      ),
+      code: "preflight_failed"
+    };
+  }
+}
+
+export function resolveStage3WorkerSupportedKinds(
+  readiness: ProductionSemanticExecutorReadiness
+): Stage3JobKind[] {
+  return readiness.ready && readiness.code === "ready"
+    ? [...BASE_STAGE3_WORKER_SUPPORTED_KINDS, "production-semantic"]
+    : [...BASE_STAGE3_WORKER_SUPPORTED_KINDS];
+}
 
 function workerHomeDir(): string {
   if (process.platform === "darwin") {
@@ -1109,7 +1174,14 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
     console.log("Repaired local rspack runtime before claiming Stage 3 jobs.");
   }
 
-  const capabilities = await detectStage3WorkerCapabilities();
+  const productionSemanticReadiness = await resolveProductionSemanticExecutorReadiness(
+    options.productionSemanticExecutor
+  );
+  const capabilities: WorkerCapabilities = {
+    ...(await detectStage3WorkerCapabilities()),
+    productionSemantic: productionSemanticReadiness
+  };
+  const supportedKinds = resolveStage3WorkerSupportedKinds(productionSemanticReadiness);
   if (!capabilities.ffmpeg.available || !capabilities.ffprobe.available || !capabilities.ytDlp.available) {
     printDoctorResult(capabilities);
     throw new Error("Stage 3 worker dependencies are missing.");
@@ -1166,7 +1238,7 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          supportedKinds: ["preview", "render", "editing-proxy", "source-download", "agent-media-step"],
+          supportedKinds,
           appVersion,
           capabilities
         })
@@ -1218,6 +1290,7 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
             (signal) =>
               executeStage3HeavyJobPayload(job.kind, payloadJson, {
                 signal,
+                productionSemanticExecutor: options.productionSemanticExecutor,
                 onRenderProgress:
                   job.kind === "render" ? (event) => logStage3WorkerRenderProgress(job.id, event) : undefined
               }),

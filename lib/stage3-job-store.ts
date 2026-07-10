@@ -13,6 +13,7 @@ import {
   resolveStage3HostJobTimeoutMs as resolveStage3HostPolicyTimeoutMs,
   resolveStage3WorkerJobTimeoutMs
 } from "./stage3-worker-job-timeout";
+import { hasReusableProductionSemanticResultJson } from "./project-kings/production-semantic-job-contract";
 
 type JobRow = {
   id: string;
@@ -126,7 +127,8 @@ const LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS_BY_KIND: Record<Stage3JobK
   preview: LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS,
   render: LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS,
   "source-download": LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS,
-  "agent-media-step": LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS
+  "agent-media-step": LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS,
+  "production-semantic": LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS
 };
 const HOST_STAGE3_SERVER_WATCHDOG_GRACE_MS = 30_000;
 
@@ -136,7 +138,8 @@ function normalizeJobKind(value: string): Stage3JobKind {
     value === "render" ||
     value === "editing-proxy" ||
     value === "source-download" ||
-    value === "agent-media-step"
+    value === "agent-media-step" ||
+    value === "production-semantic"
   ) {
     return value;
   }
@@ -189,6 +192,7 @@ function buildHostStage3JobPrioritySql(column = "kind"): string {
     WHEN ${column} = 'render' THEN 1
     WHEN ${column} = 'source-download' THEN 2
     WHEN ${column} = 'agent-media-step' THEN 3
+    WHEN ${column} = 'production-semantic' THEN 4
     WHEN ${column} = 'preview' THEN 9
     ELSE 4
   END`;
@@ -200,6 +204,7 @@ function buildLocalStage3JobPrioritySql(column = "kind"): string {
     WHEN ${column} = 'render' THEN 1
     WHEN ${column} = 'source-download' THEN 2
     WHEN ${column} = 'agent-media-step' THEN 3
+    WHEN ${column} = 'production-semantic' THEN 4
     WHEN ${column} = 'preview' THEN 9
     ELSE 4
   END`;
@@ -424,6 +429,32 @@ export function getStage3Job(jobId: string): Stage3JobRecord | null {
   return mapJobRow(readJobRow(jobId));
 }
 
+export function getStage3JobLatestWorkerLease(jobId: string): {
+  workerId: string;
+  leaseUntil: string;
+} | null {
+  const row = getDb().prepare(
+    `SELECT payload_json
+       FROM stage3_job_events
+      WHERE job_id = ?
+        AND message = 'Local worker heartbeat.'
+        AND payload_json IS NOT NULL
+      ORDER BY created_at DESC, rowid DESC
+      LIMIT 1`
+  ).get(jobId) as { payload_json?: string | null } | undefined;
+  if (!row?.payload_json) return null;
+  try {
+    const payload = JSON.parse(row.payload_json) as { workerId?: unknown; leaseUntil?: unknown };
+    if (typeof payload.workerId !== "string" || !payload.workerId.trim() || typeof payload.leaseUntil !== "string") {
+      return null;
+    }
+    if (!Number.isFinite(Date.parse(payload.leaseUntil))) return null;
+    return { workerId: payload.workerId, leaseUntil: payload.leaseUntil };
+  } catch {
+    return null;
+  }
+}
+
 export function listCompletedStage3RenderJobsForChat(input: {
   workspaceId: string;
   chatId: string;
@@ -525,7 +556,16 @@ export function enqueueStage3JobWithOutcome(input: EnqueueStage3JobInput): Stage
         ) {
           return { job: existing, outcome: "reused_in_flight" as const };
         }
-        if (input.reuseCompleted !== false && existing.status === "completed" && existing.artifactFilePath) {
+        const completedResultIsReusable = existing.kind === "agent-media-step"
+          ? Boolean(existing.resultJson)
+          : existing.kind === "production-semantic"
+            ? hasReusableProductionSemanticResultJson(
+                existing.payloadJson,
+                existing.resultJson,
+                input.payloadJson
+              )
+            : Boolean(existing.artifactFilePath);
+        if (input.reuseCompleted !== false && existing.status === "completed" && completedResultIsReusable) {
           return { job: existing, outcome: "reused_completed" as const };
         }
 

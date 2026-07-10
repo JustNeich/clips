@@ -1,0 +1,172 @@
+{
+  "schemaVersion": "project-kings-vision-qa-route-benchmark-annotations-v1",
+  "datasetId": "project-kings-vision-qa-route-selection-real-30",
+  "datasetVersion": "real-public-30-v1",
+  "frozenBeforeModelExecution": true,
+  "annotationMethod": {
+    "annotator": "Codex visual-curation agent, separate from the benchmarked model routes",
+    "scope": "All 15 exact public Shorts in live-publication-inventory-2026-07-10.json",
+    "decode": "Complete video-stream decode with ffmpeg; audio-stream presence and media geometry checked with ffprobe",
+    "visualReview": "Twelve ordered frames per six-second Short at 0.5 second intervals, inspected before any route output existed",
+    "rule": "Public availability is not evidence of cleanliness. A base is eligible only when concept, hook-action-payoff, main event, crop, channel/template, and forbidden-overlay gates all pass without unresolved uncertainty."
+  },
+  "baseAnnotations": [
+    {
+      "youtubeVideoId": "Ep7Y0gbf0xg",
+      "profileKey": "dark-joy-boy",
+      "storyEventId": "public-tiger-shoulder-contact",
+      "disposition": "clean",
+      "visibleEvent": "A tiger approaches over a person's shoulder and the encounter resolves in close, calm human-animal contact.",
+      "observedDefectCodes": [],
+      "reason": "One continuous exotic-animal interaction; readable hook, approach, and close-contact payoff; no foreign UI, CTA, handle, watermark, or captions in the media region."
+    },
+    {
+      "youtubeVideoId": "h0093bjDMLw",
+      "profileKey": "dark-joy-boy",
+      "storyEventId": "public-chimp-gym-bars-contact",
+      "disposition": "clean",
+      "visibleEvent": "A chimpanzee moves across roof bars directly above and beside a person.",
+      "observedDefectCodes": [],
+      "reason": "The human and exotic animal remain part of one readable interaction with a movement payoff; only authorized channel-card identity is visible."
+    },
+    {
+      "youtubeVideoId": "oSDq3quoAg4",
+      "profileKey": "dark-joy-boy",
+      "storyEventId": "public-chimp-smiles-alone",
+      "disposition": "reject",
+      "visibleEvent": "A chimpanzee sits and smiles toward the camera without a person participating in the visible event.",
+      "observedDefectCodes": ["concept_mismatch"],
+      "reason": "The frozen channel contract requires a visible human-exotic-animal interaction; the sampled complete sequence shows the chimpanzee alone."
+    },
+    {
+      "youtubeVideoId": "f1x32eCb6LI",
+      "profileKey": "dark-joy-boy",
+      "storyEventId": "public-white-tiger-pool-human-contact",
+      "disposition": "clean",
+      "visibleEvent": "A white tiger moves through a pool while a nearby person enters the interaction and remains part of the payoff.",
+      "observedDefectCodes": [],
+      "reason": "One continuous exotic-animal encounter with visible human participation and a readable pool-action payoff; no forbidden media-region overlays."
+    },
+    {
+      "youtubeVideoId": "6WxBUK5eDJ4",
+      "profileKey": "dark-joy-boy",
+      "storyEventId": "public-child-chimp-close-contact",
+      "disposition": "clean",
+      "visibleEvent": "A child and chimpanzee remain face-to-face and exchange a close, calm response.",
+      "observedDefectCodes": [],
+      "reason": "The visible human-animal bond is the entire event and produces a clear reaction payoff; no foreign UI, CTA, handle, watermark, or captions in the media region."
+    },
+    {
+      "youtubeVideoId": "SkMgNaqV2FY",
+      "profileKey": "dark-joy-boy",
+      "storyEventId": "public-white-tiger-underwater-human-contact",
+      "disposition": "clean",
+      "visibleEvent": "A white tiger enters a pool with a person and continues the encounter underwater.",
+      "observedDefectCodes": [],
+      "reason": "The human-tiger interaction, water entry, and underwater payoff remain readable in the crop; no forbidden source overlay is visible."
+    },
+    {
+      "youtubeVideoId": "vi5F1xqjzbg",
+      "profileKey": "light-kingdom",
+      "storyEventId": "public-shining-sitcom-ai-remake",
+      "disposition": "reject",
+      "visibleEvent": "A recognizable Shining-style scene is rebuilt as an AI sitcom-like sequence.",
+      "observedDefectCodes": ["watermark"],
+      "reason": "The Sora ownership mark is visibly burned into multiple media-region frames and is not authorized channel identity."
+    },
+    {
+      "youtubeVideoId": "c3vtAXu4PK4",
+      "profileKey": "light-kingdom",
+      "storyEventId": "public-terminator-sunglasses-ai-remake",
+      "disposition": "clean",
+      "visibleEvent": "A recognizable Terminator-like figure raises sunglasses while an AI-remade eye changes the familiar scene.",
+      "observedDefectCodes": [],
+      "reason": "The recognizable-fiction premise, visible AI anomaly, and payoff are all present; the media region has no donor UI, CTA, foreign handle, watermark, or captions."
+    },
+    {
+      "youtubeVideoId": "zccVyzM8JzY",
+      "profileKey": "light-kingdom",
+      "storyEventId": "public-mango-elon-spacex",
+      "disposition": "reject",
+      "visibleEvent": "A synthetic Elon Musk figure appears in a SpaceX-themed real-world parody.",
+      "observedDefectCodes": ["concept_mismatch"],
+      "reason": "The frozen concept requires recognizable film or television fiction; a public-figure SpaceX parody does not satisfy that boundary."
+    },
+    {
+      "youtubeVideoId": "dz3bvzeLfaQ",
+      "profileKey": "light-kingdom",
+      "storyEventId": "public-office-ai-subscription-chair",
+      "disposition": "clean",
+      "visibleEvent": "A recognizable Office scene is altered with a visible AI-subscription chair premise and changed character payoff.",
+      "observedDefectCodes": [],
+      "reason": "The orange loading object is part of the generated story event, not source UI; the recognizable-fiction and visible-AI gates pass without a foreign watermark or caption."
+    },
+    {
+      "youtubeVideoId": "J8zVrlaMzfQ",
+      "profileKey": "light-kingdom",
+      "storyEventId": "public-stocky-balboa-ai-remake",
+      "disposition": "reject",
+      "visibleEvent": "A Rocky-like sequence is rebuilt around an altered Stocky Balboa character.",
+      "observedDefectCodes": ["foreign_captions"],
+      "reason": "Large burned-in STOCKY text appears inside the media region in the final frames and is not authorized card text."
+    },
+    {
+      "youtubeVideoId": "7LBkP3isBW0",
+      "profileKey": "light-kingdom",
+      "storyEventId": "public-boys-alternate-ai-fight",
+      "disposition": "clean",
+      "visibleEvent": "Recognizable The Boys characters move through an AI-remade alternate fight and altered final close-up.",
+      "observedDefectCodes": [],
+      "reason": "The recognizable-fiction basis and visibly altered AI action/payoff are readable across the sequence; no forbidden media-region overlay is visible."
+    },
+    {
+      "youtubeVideoId": "5n8_VKX6itk",
+      "profileKey": "copscopes-x2e",
+      "storyEventId": "public-roadside-shoulder-collision",
+      "disposition": "clean",
+      "visibleEvent": "Dashcam shows a stopped BMW, an approaching vehicle, the collision, and the officer moving away from the impact.",
+      "observedDefectCodes": [],
+      "reason": "The police incident has a visible hook, collision action, and outcome; crop and source region are readable with only authorized COP SCOPES identity."
+    },
+    {
+      "youtubeVideoId": "VNt0KenHe9o",
+      "profileKey": "copscopes-x2e",
+      "storyEventId": "public-patrol-back-seat-exit",
+      "disposition": "clean",
+      "visibleEvent": "Patrol-car video shows a restrained passenger shifting, the rear door opening, and the custody struggle changing.",
+      "observedDefectCodes": [],
+      "reason": "One continuous law-enforcement event retains its decisive action and payoff; no foreign UI, CTA, handle, watermark, or captions are visible in the source region."
+    },
+    {
+      "youtubeVideoId": "iD_VuzVDMbg",
+      "profileKey": "copscopes-x2e",
+      "storyEventId": "public-snowy-shoulder-impact",
+      "disposition": "reject",
+      "visibleEvent": "Bodycam shows a snowy roadside stop and a vehicle impact beside the officer.",
+      "observedDefectCodes": ["watermark"],
+      "reason": "AXON BODY 3 device identity, serial text, and timestamp are burned into the media region; the strict no-foreign-watermark gate therefore fails."
+    }
+  ],
+  "controlledVariants": [
+    { "baseYoutubeVideoId": "Ep7Y0gbf0xg", "defect": "donor_ui" },
+    { "baseYoutubeVideoId": "Ep7Y0gbf0xg", "defect": "unsafe_crop" },
+    { "baseYoutubeVideoId": "h0093bjDMLw", "defect": "cta" },
+    { "baseYoutubeVideoId": "h0093bjDMLw", "defect": "main_event_lost" },
+    { "baseYoutubeVideoId": "f1x32eCb6LI", "defect": "handle" },
+    { "baseYoutubeVideoId": "f1x32eCb6LI", "defect": "watermark" },
+    { "baseYoutubeVideoId": "6WxBUK5eDJ4", "defect": "foreign_captions" },
+    { "baseYoutubeVideoId": "6WxBUK5eDJ4", "defect": "banned_word" },
+    { "baseYoutubeVideoId": "SkMgNaqV2FY", "defect": "wrong_template" },
+    { "baseYoutubeVideoId": "SkMgNaqV2FY", "defect": "flash_frame" },
+    { "baseYoutubeVideoId": "c3vtAXu4PK4", "defect": "donor_ui" },
+    { "baseYoutubeVideoId": "c3vtAXu4PK4", "defect": "unsafe_crop" },
+    { "baseYoutubeVideoId": "dz3bvzeLfaQ", "defect": "cta" },
+    { "baseYoutubeVideoId": "dz3bvzeLfaQ", "defect": "main_event_lost" },
+    { "baseYoutubeVideoId": "7LBkP3isBW0", "defect": "handle" },
+    { "baseYoutubeVideoId": "7LBkP3isBW0", "defect": "watermark" },
+    { "baseYoutubeVideoId": "5n8_VKX6itk", "defect": "foreign_captions" },
+    { "baseYoutubeVideoId": "5n8_VKX6itk", "defect": "banned_word" },
+    { "baseYoutubeVideoId": "VNt0KenHe9o", "defect": "wrong_template" },
+    { "baseYoutubeVideoId": "VNt0KenHe9o", "defect": "flash_frame" }
+  ]
+}

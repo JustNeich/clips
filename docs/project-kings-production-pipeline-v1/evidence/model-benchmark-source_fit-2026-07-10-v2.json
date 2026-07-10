@@ -1,0 +1,402 @@
+{
+  "schemaVersion": "project-kings-model-benchmark-evidence-v1",
+  "benchmarkVersion": "project-kings-stage-models-2026-07-10-v2",
+  "stageRole": "source_fit",
+  "createdAt": "2026-07-10T10:41:24.028Z",
+  "bounds": {
+    "maxCases": 120,
+    "maxCandidates": 12,
+    "maxExecutions": 240,
+    "actualExecutions": 9
+  },
+  "dataset": {
+    "datasetId": "project-kings-source-fit",
+    "datasetVersion": "v1",
+    "datasetSha256": "e5e1626411a6428c1ce89737e722a3dd241b8c2ad23ac6bdc9c8c2c4cffec525",
+    "promptSetSha256": "beb238f67d2267f0b83ac30474b5fb4595432c407087776dd2b60527a9933579",
+    "outputSchemaSha256": "bb6ea99a7c48388752196553f562bc110b90103fe3be05d15dcefe21833563e2",
+    "sampleSize": 3
+  },
+  "qualityEvaluator": {
+    "evaluatorId": "project-kings-stage-quality",
+    "evaluatorVersion": "v1",
+    "implementationSha256": "4bd0e6da7dcb0628acfd8b9aa1214b0ebdf40d405eec246192edc81379ee882b",
+    "configSha256": "9d8f31faf4b28846f6b02e32f57cdbc66652e28f9e9edaedbce5bfbd38beee57"
+  },
+  "executionContract": {
+    "registrySha256": "4bd1cb98b553b54cb856f9841c358ea02e8c05e8c00284c8ad9cfa3af55ef1a7",
+    "policySha256": "d5f822f6001e59a87d85092c82f6a0f6266698fff4769c9a930690517ae9e618",
+    "schemaValidationMethod": "strict-production-agent-output-v1",
+    "qualityAggregationMethod": "mean-passed-evaluator-score-v1",
+    "p95Method": "nearest-rank-p95-v1",
+    "costMethod": "uncached-input-plus-cached-input-plus-total-output-v1",
+    "reasoningTokensDoubleCounted": false
+  },
+  "pricing": [
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 18.75,
+      "cachedInputPerMillionTokens": 1.875,
+      "outputPerMillionTokens": 113,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10.json",
+      "verifiedAt": "2026-07-10T10:25:00.000Z",
+      "sourceSha256": "8eecae97c60246ccdfe6acc3c3b17071131ca2a2ef3104d866d427933a11638c"
+    },
+    {
+      "routeId": "codex:gpt-5.4",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 62.5,
+      "cachedInputPerMillionTokens": 6.25,
+      "outputPerMillionTokens": 375,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10.json",
+      "verifiedAt": "2026-07-10T10:25:00.000Z",
+      "sourceSha256": "8eecae97c60246ccdfe6acc3c3b17071131ca2a2ef3104d866d427933a11638c"
+    }
+  ],
+  "candidates": [
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "provider": "codex",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "low",
+      "samples": [
+        {
+          "caseId": "source-fit-clean",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "6fcb5840de14b67e2f7ed9debd6cf123f35a50488b05c7a5cd02a986ed9c129c",
+          "startedAt": "2026-07-10T10:38:03.928Z",
+          "durationMs": 15678.654625,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS"
+            ]
+          },
+          "usage": {
+            "inputTokens": 75819,
+            "cachedInputTokens": 48768,
+            "outputTokens": 571,
+            "reasoningOutputTokens": 156
+          },
+          "cost": 0.66316925,
+          "costUnit": "codex_credits",
+          "outputSha256": "ef434bb6c88d93d940fd1de670ce974087c636915234b1ea6c80931daac1894c",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-duplicate",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "c7bbc659e89e61dc96f77c2a66ebf5515550db96310c37f9994f476790855223",
+          "startedAt": "2026-07-10T10:38:19.606Z",
+          "durationMs": 17872.904041,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL"
+            ]
+          },
+          "usage": {
+            "inputTokens": 99522,
+            "cachedInputTokens": 71680,
+            "outputTokens": 686,
+            "reasoningOutputTokens": 157
+          },
+          "cost": 0.7339555,
+          "costUnit": "codex_credits",
+          "outputSha256": "a0ebf7c332ab42dc7dd9fb71f42843d655ed056105884ffc14281577545fdb42",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-offconcept",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "df98b00920eb5940a03c79d44a1a7aeb4b0909350cbbcf58286c2fd3fe6f3ae9",
+          "startedAt": "2026-07-10T10:38:37.479Z",
+          "durationMs": 10282.95825,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL"
+            ]
+          },
+          "usage": {
+            "inputTokens": 47844,
+            "cachedInputTokens": 34560,
+            "outputTokens": 443,
+            "reasoningOutputTokens": 102
+          },
+          "cost": 0.363934,
+          "costUnit": "codex_credits",
+          "outputSha256": "d1da05aebd6758ad16bc18a49717fa86f0ccf2dbf11d74595746b542b07bc87f",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 3,
+        "schemaSuccessRate": 1,
+        "qualityScore": 1,
+        "qualityPassRate": 1,
+        "p95LatencyMs": 17872.904041,
+        "meanCost": 0.587019583333,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": true,
+        "selectorBenchmark": {
+          "benchmarkVersion": "project-kings-stage-models-2026-07-10-v2",
+          "routeId": "codex:gpt-5.4-mini",
+          "reasoningEffort": "low",
+          "sampleSize": 3,
+          "qualityScore": 1,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 17872.904041,
+          "meanCost": 0.587019583333,
+          "costUnit": "codex_credits"
+        }
+      }
+    },
+    {
+      "routeId": "codex:gpt-5.4",
+      "provider": "codex",
+      "model": "gpt-5.4",
+      "reasoningEffort": "low",
+      "samples": [
+        {
+          "caseId": "source-fit-clean",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "6fcb5840de14b67e2f7ed9debd6cf123f35a50488b05c7a5cd02a986ed9c129c",
+          "startedAt": "2026-07-10T10:38:47.763Z",
+          "durationMs": 17816.056458,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=FAIL"
+            ]
+          },
+          "usage": {
+            "inputTokens": 48874,
+            "cachedInputTokens": 35584,
+            "outputTokens": 739,
+            "reasoningOutputTokens": 220
+          },
+          "cost": 1.33015,
+          "costUnit": "codex_credits",
+          "outputSha256": "c65fc72563d6d965494fabba47bcc4387005e7eb151111c5c625062d9c4ed7d1",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-duplicate",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "c7bbc659e89e61dc96f77c2a66ebf5515550db96310c37f9994f476790855223",
+          "startedAt": "2026-07-10T10:39:05.579Z",
+          "durationMs": 21133.80425,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL"
+            ]
+          },
+          "usage": {
+            "inputTokens": 48898,
+            "cachedInputTokens": 24832,
+            "outputTokens": 787,
+            "reasoningOutputTokens": 264
+          },
+          "cost": 1.95445,
+          "costUnit": "codex_credits",
+          "outputSha256": "717b5ee997f7184d3e1df64ab998c1da5af59dbcf0214513aa0a0fc03f833fa0",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-offconcept",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "df98b00920eb5940a03c79d44a1a7aeb4b0909350cbbcf58286c2fd3fe6f3ae9",
+          "startedAt": "2026-07-10T10:39:26.713Z",
+          "durationMs": 24626.79625,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL"
+            ]
+          },
+          "usage": {
+            "inputTokens": 76945,
+            "cachedInputTokens": 49792,
+            "outputTokens": 781,
+            "reasoningOutputTokens": 156
+          },
+          "cost": 2.3011375,
+          "costUnit": "codex_credits",
+          "outputSha256": "2875e8494f613c1a84234c5de8dcfcdf0ba18a8da6045069b51cf8f3529eb651",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 3,
+        "schemaSuccessRate": 1,
+        "qualityScore": 0.666666666667,
+        "qualityPassRate": 0.666666666667,
+        "p95LatencyMs": 24626.79625,
+        "meanCost": 1.8619125,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": true,
+        "selectorBenchmark": {
+          "benchmarkVersion": "project-kings-stage-models-2026-07-10-v2",
+          "routeId": "codex:gpt-5.4",
+          "reasoningEffort": "low",
+          "sampleSize": 3,
+          "qualityScore": 0.666666666667,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 24626.79625,
+          "meanCost": 1.8619125,
+          "costUnit": "codex_credits"
+        }
+      }
+    },
+    {
+      "routeId": "codex:gpt-5.4",
+      "provider": "codex",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "samples": [
+        {
+          "caseId": "source-fit-clean",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "6fcb5840de14b67e2f7ed9debd6cf123f35a50488b05c7a5cd02a986ed9c129c",
+          "startedAt": "2026-07-10T10:39:51.340Z",
+          "durationMs": 30233.020208,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=FAIL"
+            ]
+          },
+          "usage": {
+            "inputTokens": 78610,
+            "cachedInputTokens": 50816,
+            "outputTokens": 1203,
+            "reasoningOutputTokens": 567
+          },
+          "cost": 2.50585,
+          "costUnit": "codex_credits",
+          "outputSha256": "45055280ff1874ba7cb4e2af5e001f7643c3282f79fe49dcb01fe3e0298369ba",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-duplicate",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "c7bbc659e89e61dc96f77c2a66ebf5515550db96310c37f9994f476790855223",
+          "startedAt": "2026-07-10T10:40:21.573Z",
+          "durationMs": 26347.997625,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL"
+            ]
+          },
+          "usage": {
+            "inputTokens": 77243,
+            "cachedInputTokens": 49792,
+            "outputTokens": 1097,
+            "reasoningOutputTokens": 466
+          },
+          "cost": 2.4382625,
+          "costUnit": "codex_credits",
+          "outputSha256": "8e30a2fe625a892becf70ba53bc18825dc08f0b53e4d20a38f4b63aaef5b577c",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-offconcept",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "df98b00920eb5940a03c79d44a1a7aeb4b0909350cbbcf58286c2fd3fe6f3ae9",
+          "startedAt": "2026-07-10T10:40:47.921Z",
+          "durationMs": 36106.760084,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL"
+            ]
+          },
+          "usage": {
+            "inputTokens": 78367,
+            "cachedInputTokens": 61568,
+            "outputTokens": 900,
+            "reasoningOutputTokens": 275
+          },
+          "cost": 1.7722375,
+          "costUnit": "codex_credits",
+          "outputSha256": "56e203feec87846069b4d37711dae275418ff9505108c88be266427b83e5e0df",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 3,
+        "schemaSuccessRate": 1,
+        "qualityScore": 0.666666666667,
+        "qualityPassRate": 0.666666666667,
+        "p95LatencyMs": 36106.760084,
+        "meanCost": 2.238783333333,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": true,
+        "selectorBenchmark": {
+          "benchmarkVersion": "project-kings-stage-models-2026-07-10-v2",
+          "routeId": "codex:gpt-5.4",
+          "reasoningEffort": "medium",
+          "sampleSize": 3,
+          "qualityScore": 0.666666666667,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 36106.760084,
+          "meanCost": 2.238783333333,
+          "costUnit": "codex_credits"
+        }
+      }
+    }
+  ],
+  "selection": null,
+  "selectionError": "Primary route codex:gpt-5.4-mini has no distinct benchmark-qualified fallback.",
+  "selectionRejections": [
+    {
+      "routeId": "codex:gpt-5.4",
+      "reason": "quality score is below the floor"
+    },
+    {
+      "routeId": "codex:gpt-5.4",
+      "reason": "quality score is below the floor"
+    }
+  ],
+  "evidenceSha256": "286bac85ab7394f637b0f13e44ba0780d61b9cf47976e677696568a818f35c17"
+}

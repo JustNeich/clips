@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Repository source template for the Mac mini/Zoro Project Kings source-buffer
+  refiller. It polls the authenticated production source-buffer endpoint and may
+  sync only the configured frozen readiness evidence through the checked-in sync
+  script. It never searches, invents, qualifies, approves or uploads new sources.
+
+  The installer validates and copies this plist but never loads it. Activation is
+  a separate owner action after the frozen evidence and machine credential are
+  verified on Zoro.
+-->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.zoro.clips-project-kings-source-buffer-refiller</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>{{NODE_BIN}}</string>
+      <string>{{CLIPS_REPO}}/scripts/run-project-kings-source-buffer-refiller.mjs</string>
+      <string>run</string>
+      <string>--config</string>
+      <string>{{USER_HOME}}/.config/assistant/project-kings-source-buffer-refiller.env</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>{{CLIPS_REPO}}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+    <key>ExitTimeOut</key>
+    <integer>30</integer>
+    <key>StandardOutPath</key>
+    <string>{{USER_HOME}}/Library/Logs/com.zoro.clips-project-kings-source-buffer-refiller/stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{USER_HOME}}/Library/Logs/com.zoro.clips-project-kings-source-buffer-refiller/stderr.log</string>
+  </dict>
+</plist>

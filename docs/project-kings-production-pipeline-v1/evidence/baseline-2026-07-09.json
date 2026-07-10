@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-10T09:18:53Z",
+  "purpose": "Comparable July 9 baseline for Project Kings Production Pipeline v1",
+  "sourceSession": {
+    "runtime": "Claude Desktop",
+    "sessionId": "2d727ac3-f1f8-4a8b-8f80-ea5d9325d2c5",
+    "rootTranscriptSha256": "4d8063bd531f58fed41b7048f25051a2ca845734778e1612cad48de744a4aea9",
+    "subagentTranscriptSetSha256": "678169b08545d44bca628f10f56f0e95a90a438ead60854adabfb2580c349ac0",
+    "timezone": "Europe/Moscow"
+  },
+  "operatorIntensiveWindow": {
+    "from": "2026-07-09T13:00:00+03:00",
+    "to": "2026-07-09T19:00:00+03:00",
+    "rootAssistantMessages": 181,
+    "subagentAssistantMessages": 1763,
+    "usage": {
+      "directInputTokens": 1462697,
+      "outputTokens": 1118444,
+      "cacheCreationInputTokens": 10447749,
+      "cacheReadInputTokens": 196800810,
+      "logicalTokenEvents": 209829700
+    }
+  },
+  "throughPublicEvidenceWindow": {
+    "from": "2026-07-09T13:00:00+03:00",
+    "to": "2026-07-09T21:10:00+03:00",
+    "rootAssistantMessages": 191,
+    "subagentAssistantMessages": 1773,
+    "usage": {
+      "directInputTokens": 1563382,
+      "outputTokens": 1148994,
+      "cacheCreationInputTokens": 10982131,
+      "cacheReadInputTokens": 200057437,
+      "logicalTokenEvents": 213751944
+    },
+    "modelsObserved": [
+      "claude-fable-5",
+      "claude-opus-4-8"
+    ]
+  },
+  "acceptedOutput": {
+    "publicVerifiedVideos": 2,
+    "channelsWithOneNewPublicVideo": [
+      "Dark Joy Boy",
+      "THE LIGHT KINGDOM"
+    ],
+    "copScopesPublicVideos": 0,
+    "targetVideos": 9,
+    "logicalTokenEventsPerPublicVideo": 106875972
+  },
+  "comparisonRules": {
+    "denominator": "one exact public_verified video",
+    "waitingAndPollingModelTokensAllowed": 0,
+    "minimumReductionVsBaselinePercent": 50,
+    "baselineLogicalTokenEventsPerPublicVideo": 106875972,
+    "passThresholdLogicalTokenEventsPerPublicVideo": 53437986,
+    "warning": "Provider usage fields are counted independently: direct input, output, cache creation input, and cache read input. Future runs must use the same formula or report the comparison as not proven."
+  },
+  "repositoryBaseline": {
+    "commit": "01661fb44629cb4c9711480409af4c8b121a6d09",
+    "branch": "main",
+    "preExistingDirtyAllowlist": [
+      "AGENTS.md",
+      ".tmp/cache-keys.mts",
+      "experiments/"
+    ],
+    "node": "v24.14.1",
+    "npm": "11.11.0",
+    "ffmpeg": "8.1",
+    "ffprobe": "8.1",
+    "ytDlp": "2026.03.17",
+    "remotionCli": "4.0.468"
+  },
+  "criticalTestBaseline": {
+    "beforeFixtureRepair": {
+      "total": 82,
+      "passed": 75,
+      "failed": 7,
+      "cause": "Seven transport tests sent four arbitrary bytes after the worker endpoint began enforcing the MP4 ftyp signature."
+    },
+    "afterFixtureRepair": {
+      "total": 82,
+      "passed": 82,
+      "failed": 0,
+      "typecheck": "pass"
+    }
+  }
+}

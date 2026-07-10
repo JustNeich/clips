@@ -1,0 +1,85 @@
+{
+  "status": "speech_detected",
+  "model": "tiny",
+  "language": "en",
+  "text": "it will. okay so we can see the Where are you? Hey! Hey! Here you are! You can't do it! You can't do it! You can't do it! Come on! You can't do it!",
+  "segments": [
+    {
+      "start": 0,
+      "end": 12.48,
+      "text": "it will.",
+      "noSpeechProbability": 0.48817768692970276,
+      "averageLogProbability": -3.491297403971354
+    },
+    {
+      "start": 12.48,
+      "end": 18.28,
+      "text": "okay so we can see the",
+      "noSpeechProbability": 0.48817768692970276,
+      "averageLogProbability": -3.491297403971354
+    },
+    {
+      "start": 18.28,
+      "end": 20.28,
+      "text": "Where are you?",
+      "noSpeechProbability": 0.3796742260456085,
+      "averageLogProbability": -0.8642122992153826
+    },
+    {
+      "start": 20.28,
+      "end": 22.28,
+      "text": "Hey!",
+      "noSpeechProbability": 0.3796742260456085,
+      "averageLogProbability": -0.8642122992153826
+    },
+    {
+      "start": 22.28,
+      "end": 24.28,
+      "text": "Hey!",
+      "noSpeechProbability": 0.3796742260456085,
+      "averageLogProbability": -0.8642122992153826
+    },
+    {
+      "start": 24.28,
+      "end": 26.28,
+      "text": "Here you are!",
+      "noSpeechProbability": 0.3796742260456085,
+      "averageLogProbability": -0.8642122992153826
+    },
+    {
+      "start": 26.28,
+      "end": 28.28,
+      "text": "You can't do it!",
+      "noSpeechProbability": 0.3796742260456085,
+      "averageLogProbability": -0.8642122992153826
+    },
+    {
+      "start": 28.28,
+      "end": 30.28,
+      "text": "You can't do it!",
+      "noSpeechProbability": 0.3796742260456085,
+      "averageLogProbability": -0.8642122992153826
+    },
+    {
+      "start": 30.28,
+      "end": 32.28,
+      "text": "You can't do it!",
+      "noSpeechProbability": 0.3796742260456085,
+      "averageLogProbability": -0.8642122992153826
+    },
+    {
+      "start": 32.28,
+      "end": 34.28,
+      "text": "Come on!",
+      "noSpeechProbability": 0.3796742260456085,
+      "averageLogProbability": -0.8642122992153826
+    },
+    {
+      "start": 34.28,
+      "end": 36.28,
+      "text": "You can't do it!",
+      "noSpeechProbability": 0.3796742260456085,
+      "averageLogProbability": -0.8642122992153826
+    }
+  ]
+}

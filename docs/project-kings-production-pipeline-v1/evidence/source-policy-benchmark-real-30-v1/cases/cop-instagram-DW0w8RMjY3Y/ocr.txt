@@ -1,0 +1,71 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 1.668s]
+COPSCOPES #
+Police Bodycam Footage
+eg
+Driver's bizarre behavior reveals shocking 0.34 BAC
+~_—_—
+>
+Ly
+eZ,
+ip
+Age
+So the- the
+[source-key-frame-02 @ 6.533s]
+COPSCOPES #
+Police Bodycam Footage
+Driver's bizarre behavior reveals shocking 0.34 BAC
+P .
+”
+“=
+Fe
+La
+Kl
+===
+ne
+VL
+Scones
+[source-key-frame-03 @ 11.398s]
+COPSCOPES #
+Police Bodycam Footage
+Driver's bizarre behavior reveals shocking 0.34 BAC
+iy
+‘
+[source-key-frame-04 @ 16.402s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Driver's bizarre behavior reveals shocking 0.34 BAC
+[source-key-frame-05 @ 21.267s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Driver's bizarre behavior reveals shocking 0.34 BAC
+Ce
+“elo =)
+a”
+a8 4
+"ie
+_
+h
+-
+[aT
+, You’re Completely.
+e
+\
+[source-key-frame-06 @ 26.132s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Driver's bizarre behavior reveals shocking 0.34 BAC
+f
+ee -~
+}
+s”
+-
+~~
+al ,"
+@conscopes
+“An 11?

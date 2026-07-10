@@ -1,0 +1,15 @@
+{
+  "status": "speech_detected",
+  "model": "tiny",
+  "language": "en",
+  "text": "Good luck and good luck!",
+  "segments": [
+    {
+      "start": 0,
+      "end": 2.06,
+      "text": "Good luck and good luck!",
+      "noSpeechProbability": 0.43443697690963745,
+      "averageLogProbability": -2.31483883327908
+    }
+  ]
+}

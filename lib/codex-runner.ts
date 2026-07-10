@@ -9,7 +9,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 
-type RunCodexExecInput = {
+export type RunCodexExecInput = {
   prompt: string;
   imagePaths: string[];
   outputSchemaPath: string;
@@ -20,11 +20,23 @@ type RunCodexExecInput = {
   timeoutMs?: number;
   model?: string | null;
   reasoningEffort?: string | null;
+  jsonEvents?: boolean;
+  ignoreUserConfig?: boolean;
+  ignoreRules?: boolean;
+  signal?: AbortSignal | null;
 };
 
-type RunCodexExecResult = {
+export type CodexExecUsage = {
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+};
+
+export type RunCodexExecResult = {
   stdout: string;
   stderr: string;
+  usage: CodexExecUsage | null;
 };
 
 export function formatCodexExecFailureMessage(input: {
@@ -80,6 +92,9 @@ export function buildCodexExecArgs(input: {
   codexHome?: string | null;
   model?: string | null;
   reasoningEffort?: string | null;
+  jsonEvents?: boolean;
+  ignoreUserConfig?: boolean;
+  ignoreRules?: boolean;
 }): { args: string[]; cwd: string } {
   const hasIsolatedExecutionCwd = Boolean(input.executionCwd?.trim());
   const executionCwd = input.executionCwd?.trim() || input.cwd;
@@ -97,6 +112,16 @@ export function buildCodexExecArgs(input: {
     "--output-last-message",
     input.outputMessagePath
   ];
+
+  if (input.jsonEvents) {
+    args.push("--json");
+  }
+  if (input.ignoreUserConfig) {
+    args.push("--ignore-user-config");
+  }
+  if (input.ignoreRules) {
+    args.push("--ignore-rules");
+  }
 
   const codexHome = input.codexHome?.trim();
   if (hasIsolatedExecutionCwd && codexHome) {
@@ -118,6 +143,38 @@ export function buildCodexExecArgs(input: {
   // Read prompt from stdin to avoid command length limits.
   args.push("-");
   return { args, cwd: executionCwd };
+}
+
+export function parseCodexExecUsage(stdout: string): CodexExecUsage | null {
+  let usage: CodexExecUsage | null = null;
+  for (const line of stdout.split(/\r?\n/)) {
+    if (!line.trim().startsWith("{")) {
+      continue;
+    }
+    try {
+      const event = JSON.parse(line) as {
+        type?: string;
+        usage?: {
+          input_tokens?: number;
+          cached_input_tokens?: number;
+          output_tokens?: number;
+          reasoning_output_tokens?: number;
+        };
+      };
+      if (event.type !== "turn.completed" || !event.usage) {
+        continue;
+      }
+      usage = {
+        inputTokens: Number(event.usage.input_tokens) || 0,
+        cachedInputTokens: Number(event.usage.cached_input_tokens) || 0,
+        outputTokens: Number(event.usage.output_tokens) || 0,
+        reasoningOutputTokens: Number(event.usage.reasoning_output_tokens) || 0
+      };
+    } catch {
+      // Codex may mix diagnostic lines with JSONL events. Ignore non-events.
+    }
+  }
+  return usage;
 }
 
 export async function getCodexLoginStatus(
@@ -193,11 +250,38 @@ export async function runCodexExec(input: RunCodexExecInput): Promise<RunCodexEx
 
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
-    const timer = setTimeout(() => {
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      input.signal?.removeEventListener("abort", abortHandler);
+      callback();
+    };
+
+    const abortHandler = () => {
       child.kill("SIGTERM");
-      reject(new Error("Codex generation timed out."));
+      finish(() =>
+        reject(
+          input.signal?.reason instanceof Error
+            ? input.signal.reason
+            : new DOMException("Codex generation was aborted.", "AbortError")
+        )
+      );
+    };
+
+    timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      finish(() => reject(new Error("Codex generation timed out.")));
     }, timeoutMs);
+
+    if (input.signal?.aborted) {
+      abortHandler();
+    } else {
+      input.signal?.addEventListener("abort", abortHandler, { once: true });
+    }
 
     child.stdout.on("data", (chunk: Buffer | string) => {
       stdout += chunk.toString();
@@ -208,25 +292,24 @@ export async function runCodexExec(input: RunCodexExecInput): Promise<RunCodexEx
     });
 
     child.on("error", (error) => {
-      clearTimeout(timer);
       if (isCodexNotFoundError(error)) {
-        reject(new Error(codexNotFoundMessage()));
+        finish(() => reject(new Error(codexNotFoundMessage())));
         return;
       }
-      reject(error);
+      finish(() => reject(error));
     });
 
     child.on("close", (code) => {
-      clearTimeout(timer);
-
       if (code !== 0) {
-        reject(
-          new Error(
-            formatCodexExecFailureMessage({
-              stdout,
-              stderr,
-              fallback: "Codex exec failed."
-            })
+        finish(() =>
+          reject(
+            new Error(
+              formatCodexExecFailureMessage({
+                stdout,
+                stderr,
+                fallback: "Codex exec failed."
+              })
+            )
           )
         );
         return;
@@ -239,25 +322,36 @@ export async function runCodexExec(input: RunCodexExecInput): Promise<RunCodexEx
             stdout,
             stderr
           });
-          resolve({ stdout, stderr });
+          finish(() =>
+            resolve({
+              stdout,
+              stderr,
+              usage: input.jsonEvents ? parseCodexExecUsage(stdout) : null
+            })
+          );
         })
         .catch((error) => {
-          reject(
-            new Error(
-              formatCodexExecFailureMessage({
-                stdout,
-                stderr,
-                fallback:
-                  error instanceof Error
-                    ? `Codex completed without writing the final message file: ${error.message}`
-                    : "Codex completed without writing the final message file."
-              })
+          finish(() =>
+            reject(
+              new Error(
+                formatCodexExecFailureMessage({
+                  stdout,
+                  stderr,
+                  fallback:
+                    error instanceof Error
+                      ? `Codex completed without writing the final message file: ${error.message}`
+                      : "Codex completed without writing the final message file."
+                })
+              )
             )
           );
         });
     });
 
-    child.stdin.write(input.prompt);
-    child.stdin.end();
+    if (!settled) {
+      child.stdin.on("error", () => undefined);
+      child.stdin.write(input.prompt);
+      child.stdin.end();
+    }
   });
 }

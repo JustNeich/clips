@@ -1,0 +1,110 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 2.200s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Maryland Troopers Save
+Choking Infant ®
+f
+———
+Ness BODY 4 DO1ADE?70
+<<
+y
+\\i
+it
+Land
+iy
+7)
+ba
+y 9
+¢
+Make arepost
+ps)
+[source-key-frame-02 @ 8.617s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Maryland Troopers Save
+Choking Infant ®
+3 = 2:
+th: 43) =|
+\XO
+30DY 4 D@1AD5770
+>
+“~s
+utt's Gifke He s chok
+g on sone ifs
+[source-key-frame-03 @ 15.033s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Maryland Troopers Save
+Choking infant &
+X
+2
+ae
+THEO:
+D@VADS770
+\
+s
+549
+ap!
+fi
+aie
+es SS
+~s
+— &
+[source-key-frame-04 @ 21.633s]
+COPSCOPES #
+Police Bodycam Footage
+Maryland Troopers Save
+Cho
+king infant ®
+)
+f
+NY
+78
+4 i
+i
+Se
+Gr
+re
+en
+[source-key-frame-05 @ 28.050s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Maryland Troopers Save
+Choking Infant ®
+REC
+2026-03-21 14:0!
+AXON BODY 4 D@1AD5770
+22!
+<
+@r
+Ss Giudib!
+more police clips
+follow Gcopscopes
+[source-key-frame-06 @ 34.466s]
+COPSCOPES #
+Police Bodycam Footage
+eg
+Maryland Troopers Save
+Choking infant @
+eR
+2026 eae 06 35
+4 D@1AD5770
+ae
+Pe
+RN
+X
+ah i
+he
+lies
+—_—=
+= A
+=
+more police clips
+follow Gcopscopes

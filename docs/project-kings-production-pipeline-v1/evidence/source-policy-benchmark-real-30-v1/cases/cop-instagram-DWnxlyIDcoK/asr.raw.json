@@ -1,0 +1,64 @@
+{
+  "status": "speech_detected",
+  "model": "tiny",
+  "language": "en",
+  "text": "Is it stop here on red? I saw you looking down doing everything else! Yeah, I was just assaulted by police officer. You see prison charges against me? Yeah, because they killed all of us. For assault. Cause you hit it. Same right there. And he has video to hit it.",
+  "segments": [
+    {
+      "start": 0,
+      "end": 20.6,
+      "text": "Is it stop here on red? I saw you looking down doing everything else!",
+      "noSpeechProbability": 0.29322367906570435,
+      "averageLogProbability": -1.548123550415039
+    },
+    {
+      "start": 20.6,
+      "end": 25.6,
+      "text": "Yeah, I was just assaulted by police officer.",
+      "noSpeechProbability": 0.38650065660476685,
+      "averageLogProbability": -0.6109397763111553
+    },
+    {
+      "start": 25.6,
+      "end": 27.6,
+      "text": "You see prison charges against me?",
+      "noSpeechProbability": 0.38650065660476685,
+      "averageLogProbability": -0.6109397763111553
+    },
+    {
+      "start": 27.6,
+      "end": 28.6,
+      "text": "Yeah, because they killed all of us.",
+      "noSpeechProbability": 0.38650065660476685,
+      "averageLogProbability": -0.6109397763111553
+    },
+    {
+      "start": 28.6,
+      "end": 29.6,
+      "text": "For assault.",
+      "noSpeechProbability": 0.38650065660476685,
+      "averageLogProbability": -0.6109397763111553
+    },
+    {
+      "start": 29.6,
+      "end": 30.6,
+      "text": "Cause you hit it.",
+      "noSpeechProbability": 0.38650065660476685,
+      "averageLogProbability": -0.6109397763111553
+    },
+    {
+      "start": 30.6,
+      "end": 32.6,
+      "text": "Same right there.",
+      "noSpeechProbability": 0.38650065660476685,
+      "averageLogProbability": -0.6109397763111553
+    },
+    {
+      "start": 32.6,
+      "end": 34.6,
+      "text": "And he has video to hit it.",
+      "noSpeechProbability": 0.38650065660476685,
+      "averageLogProbability": -0.6109397763111553
+    }
+  ]
+}

@@ -1,0 +1,2299 @@
+{
+  "schemaVersion": "project-kings-source-policy-dataset-v1",
+  "datasetId": "project-kings-source-policy-real-candidates",
+  "datasetVersion": "real-30-v1",
+  "createdAt": "2026-07-10T16:02:57.474Z",
+  "policyVersion": "project-kings-source-rights-sensitive-policy-v2",
+  "policySha256": "b6664c4364c4a3b172a1f1d653e3d100604e98f5ef1b33857324691fa894eb39",
+  "frameCountPerCase": 6,
+  "sampleSize": 30,
+  "selection": {
+    "darkJoyBoy": 8,
+    "copScopes": 10,
+    "lightKingdom": 12,
+    "sourceMediaRule": "exact downloaded MP4 bytes under .data/project-kings/source-candidates"
+  },
+  "cases": [
+    {
+      "caseId": "dark-instagram-BtDnmx6HRr_",
+      "profileKey": "dark-joy-boy",
+      "channelId": "UCwO37rtHMhHX8caUr5Rc0Bw",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/BtDnmx6HRr_/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/dark/instagram/BtDnmx6HRr_.mp4",
+      "contentSha256": "45ea01bf3172459c55b6d5e19b2115d5f3b42ce95ab24dc4aa3bb8d66fa12bfb",
+      "durationSec": 45.813,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-BtDnmx6HRr_/source-metadata.json",
+          "sha256": "8231d45ba8e86265ab50eaae64829d365cb2eb2ec9e41df195ea667522750abe"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-BtDnmx6HRr_/frames/source-key-frame-01.jpg",
+            "timestampMs": 2749,
+            "sha256": "f767a85777c1e17c084ea74e0522afbc2ab91d4a8365b448500ef08f257558a6"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-BtDnmx6HRr_/frames/source-key-frame-02.jpg",
+            "timestampMs": 10766,
+            "sha256": "3ab5ebb4d9826d82376cce0965a0f320b5593b589380399381561c3f7f1c8773"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-BtDnmx6HRr_/frames/source-key-frame-03.jpg",
+            "timestampMs": 18783,
+            "sha256": "3d79bf46054c7fc3c5d5226dd8f77aa0f999d80b66b3adef3eb25d6e76e58f63"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-BtDnmx6HRr_/frames/source-key-frame-04.jpg",
+            "timestampMs": 27030,
+            "sha256": "4e605336aa627853f724c3820ead41f86f1627b1ea866484014b561d303ff2ab"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-BtDnmx6HRr_/frames/source-key-frame-05.jpg",
+            "timestampMs": 35047,
+            "sha256": "2c3e10a351aeaa0097a72c0be55451f98f66118cffadc3dab8bb6987a0f747f0"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-BtDnmx6HRr_/frames/source-key-frame-06.jpg",
+            "timestampMs": 43064,
+            "sha256": "25549cf7fba0df79410606b88c7db8c9d0b0fcac044f63d750016fb519269b5a"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-BtDnmx6HRr_/ocr.txt",
+          "sha256": "46f1cfad50c1225b1083339ff4ca6d1f8562fd625f9b968d3ea70c89c2a77693"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-BtDnmx6HRr_/asr.txt",
+          "sha256": "bc551959cccfb5c890a35584e8bb4d8966b9054470aba8d38a7a17e3ff1a4ce6",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-BtDnmx6HRr_/asr.raw.json",
+          "rawSha256": "43ac05f1dff7c2ba3edd79d477862134944cb0e1d9ca618cbfb1009bb9b47b54"
+        }
+      },
+      "caseBindingSha256": "cd61c222b30d69597ca597e8b1d7a04363522fd2100b2ab36aa510004da2ee71"
+    },
+    {
+      "caseId": "dark-instagram-C-0YpsCAODv",
+      "profileKey": "dark-joy-boy",
+      "channelId": "UCwO37rtHMhHX8caUr5Rc0Bw",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/C-0YpsCAODv/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/dark/instagram/C-0YpsCAODv.mp4",
+      "contentSha256": "dec174acdfc1b12da01a4a656ad9bec3c7a472296eefd72049b82e0512ece27e",
+      "durationSec": 7.223,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/source-metadata.json",
+          "sha256": "2a8e6b80de7a495057ba84b446f4b0f5b9de0031337ae552fe5141f74712d977"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/frames/source-key-frame-01.jpg",
+            "timestampMs": 433,
+            "sha256": "2e18bca961409e1a37e5728c0ea13b25e9331ff0c4c6188cb0802d451af9558f"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/frames/source-key-frame-02.jpg",
+            "timestampMs": 1697,
+            "sha256": "168412f1aafdb3f7dcd9354c799539b568820a8ec7b175959ad893a8ab835315"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/frames/source-key-frame-03.jpg",
+            "timestampMs": 2961,
+            "sha256": "8b23a20a05d71b79d2a5547764870d5135be85b7bb02268b14cc2480e4458d69"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/frames/source-key-frame-04.jpg",
+            "timestampMs": 4262,
+            "sha256": "c04b2f8e7bd741d8dee17425dcb286daaef807fba263407e9e203c6188830d8a"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/frames/source-key-frame-05.jpg",
+            "timestampMs": 5526,
+            "sha256": "c68c8eba88fd380716c0c1a580ec3a12f9fed8e1239cf07d7e35e65f5b54cb27"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/frames/source-key-frame-06.jpg",
+            "timestampMs": 6790,
+            "sha256": "8d0e831177f98cb59ca67aa9762f695ccff564a8de56afad04cc8faf8f365c10"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/ocr.txt",
+          "sha256": "06db62b9d96604484c8e0f7b84ef8649b82690094b5bca9ca3bfc335214f8d49"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/asr.txt",
+          "sha256": "ff048afe90faa11b09009218506b872151dede6e203ee18e231638b6d6c017ed",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/asr.raw.json",
+          "rawSha256": "b0e33df4335c7fdee0a0bbe8085667248e7d995a5817a2831ae441d9f3f8737e"
+        }
+      },
+      "caseBindingSha256": "d28c31dff9679dd530e178cc54ecffb013e522a04e4f7ba646153cce4edcc3bf"
+    },
+    {
+      "caseId": "dark-instagram-C9gLu79MklN",
+      "profileKey": "dark-joy-boy",
+      "channelId": "UCwO37rtHMhHX8caUr5Rc0Bw",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/C9gLu79MklN/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/dark/instagram/C9gLu79MklN.mp4",
+      "contentSha256": "82107e983588a0a45ba3ad69454fa7fa7674e7c83debe5570eaf741857fae102",
+      "durationSec": 18.182,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C9gLu79MklN/source-metadata.json",
+          "sha256": "ac2ad1040588dfd1f1156d83efff111d95c0d22912df4fb23f444092624771ec"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C9gLu79MklN/frames/source-key-frame-01.jpg",
+            "timestampMs": 1091,
+            "sha256": "62804f8ad8ea56bf3f51aaa4d1a6cbafbd440865d82854821d0f139b888a6d15"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C9gLu79MklN/frames/source-key-frame-02.jpg",
+            "timestampMs": 4273,
+            "sha256": "8d61a9e43dc86b3737a2dddc255f5f579103626cc6fa6e9cbcc35ae147bdf047"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C9gLu79MklN/frames/source-key-frame-03.jpg",
+            "timestampMs": 7455,
+            "sha256": "fa2bd8e13b37b43fe20dc4575b4a9e1670f28b73647b182f53b463f9341b111f"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C9gLu79MklN/frames/source-key-frame-04.jpg",
+            "timestampMs": 10727,
+            "sha256": "db2d53f01a27399c1a56fe3e7a7cd27155c91e95dd26892ff4bb124a3092d7fd"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C9gLu79MklN/frames/source-key-frame-05.jpg",
+            "timestampMs": 13909,
+            "sha256": "4599b8be9c2cb4f875aa61359e9e608cde70de0e97716e13336623dd0bea1c15"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C9gLu79MklN/frames/source-key-frame-06.jpg",
+            "timestampMs": 17091,
+            "sha256": "0f7a49b3be8e2ed17a9400bbef93f6aaab140dd6ceb31aa43b851725749976bb"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C9gLu79MklN/ocr.txt",
+          "sha256": "d6399dcc5c70c32faafcf1d8ae15c790119a688b1d7376fb161156a38e85539f"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C9gLu79MklN/asr.txt",
+          "sha256": "8e1d4cdec2e362281d403475bfe5172797c5a57dd76f192a6eb2035dca4f1758",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C9gLu79MklN/asr.raw.json",
+          "rawSha256": "cd7cc035dbab37c6ae541a59adde1a38a537b5990a7d6cd5deb027fe3b28dcc2"
+        }
+      },
+      "caseBindingSha256": "8870055f34c009b5eb396a3799a685f00db9c486937a32242b538ba692aa75fc"
+    },
+    {
+      "caseId": "dark-instagram-CsYa4skNBjP",
+      "profileKey": "dark-joy-boy",
+      "channelId": "UCwO37rtHMhHX8caUr5Rc0Bw",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/CsYa4skNBjP/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/dark/instagram/CsYa4skNBjP.mp4",
+      "contentSha256": "89af6f204684fc9304b0a08481c3ae1df7ae9aa11e1a4c656020dc3dc495eef5",
+      "durationSec": 8.433333,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-CsYa4skNBjP/source-metadata.json",
+          "sha256": "a5de921c42db5e2d9a6345c2c0621d1112436d4d82b821429423fb5f070502cb"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-CsYa4skNBjP/frames/source-key-frame-01.jpg",
+            "timestampMs": 506,
+            "sha256": "7cdb9887a2012af682bffb6c30cf2db61066b3fb0f975b7303ac2e45ba525111"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-CsYa4skNBjP/frames/source-key-frame-02.jpg",
+            "timestampMs": 1982,
+            "sha256": "b554caf59c0de80c682ad33eb3700a00b98e406aab75a8f847d4b980c8a29f02"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-CsYa4skNBjP/frames/source-key-frame-03.jpg",
+            "timestampMs": 3458,
+            "sha256": "88577787469aeb6c02233be10ca8cdc1f8b21afcaae9101b6292918e5ab47008"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-CsYa4skNBjP/frames/source-key-frame-04.jpg",
+            "timestampMs": 4976,
+            "sha256": "97194fbf0b456244725001c05c7ec8e337f0d1cc5004aeae7181981486e77124"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-CsYa4skNBjP/frames/source-key-frame-05.jpg",
+            "timestampMs": 6451,
+            "sha256": "efb94fdcc0d8e7a2fad01185db5b30670216506238cf085f75fcf4e4d89598ad"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-CsYa4skNBjP/frames/source-key-frame-06.jpg",
+            "timestampMs": 7927,
+            "sha256": "372a910c574d032719772e183cda633be18ea6e4b2f9b7a4391d24465ce508cd"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-CsYa4skNBjP/ocr.txt",
+          "sha256": "0341d5c23678f86806007b8743078f1d094761701b7650b63051ee9311a69183"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-CsYa4skNBjP/asr.txt",
+          "sha256": "aa9326e6d79c83770a9fc68008cdf4d2c946816632b8dd37d3f807380b2b7899",
+          "status": "no_speech",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-CsYa4skNBjP/asr.raw.json",
+          "rawSha256": "6f7998ce3caa168b85ca5480e019c1e8e21540859c1a429f756b99dbe9217bb4"
+        }
+      },
+      "caseBindingSha256": "794ee93bcc86c0d4a204eacb8622cce0334bf789fd92a71f23651b48507ed8c6"
+    },
+    {
+      "caseId": "dark-instagram-Cw_QTMmA69_",
+      "profileKey": "dark-joy-boy",
+      "channelId": "UCwO37rtHMhHX8caUr5Rc0Bw",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/Cw_QTMmA69_/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/dark/instagram/Cw_QTMmA69_.mp4",
+      "contentSha256": "b9afa27653b60ad2364551beb83b0a76dbc9af5a5d3eefd27a58a2d19e96939b",
+      "durationSec": 20.969,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cw_QTMmA69_/source-metadata.json",
+          "sha256": "a32e97f1ceb055279491071156a2afb3c853cd1cbebd235193705fa8c901744e"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cw_QTMmA69_/frames/source-key-frame-01.jpg",
+            "timestampMs": 1258,
+            "sha256": "1d0502609bfa7f4399362188d2b2763116bc8c65063bc119808be133638d1e5b"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cw_QTMmA69_/frames/source-key-frame-02.jpg",
+            "timestampMs": 4928,
+            "sha256": "c0d62e5540947233a85c596168f8480813638a4e8bbb653ed8b1f8d9a3de72c9"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cw_QTMmA69_/frames/source-key-frame-03.jpg",
+            "timestampMs": 8597,
+            "sha256": "a5144efb33db2e890d353302dfe3cc45f0f4e5929cfffaae82c607e11b98fdcc"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cw_QTMmA69_/frames/source-key-frame-04.jpg",
+            "timestampMs": 12372,
+            "sha256": "d34768c7fcf54551fbfa0f93d0c8169cc00af18a37801fd90994d91749a74f86"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cw_QTMmA69_/frames/source-key-frame-05.jpg",
+            "timestampMs": 16041,
+            "sha256": "0cf6a133d0d59609dbcb55401c075d709f159c1ca1a586394e9529427e69b1f5"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cw_QTMmA69_/frames/source-key-frame-06.jpg",
+            "timestampMs": 19711,
+            "sha256": "7107c3f76b45927ca6a497e273aa1582c41a0913ae11d3abcbac5a9f00e8b551"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cw_QTMmA69_/ocr.txt",
+          "sha256": "29f185fbe0f9e6e94e8e2351eaaa2fbf10d555724121794310f412030a5a7298"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cw_QTMmA69_/asr.txt",
+          "sha256": "03b3cb9deec8b336a9775acee07e1495d4ab9387224b9bab731080ded25f21c9",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cw_QTMmA69_/asr.raw.json",
+          "rawSha256": "c9f5a20b6566964774b6d28f14a96017545286723db65908232d36c06b92ab05"
+        }
+      },
+      "caseBindingSha256": "6c54953242f9c83b787e5ffab606fae891113fe0c367fc15c43aa420a75f2b4b"
+    },
+    {
+      "caseId": "dark-instagram-Cxb0DmpJ7oM",
+      "profileKey": "dark-joy-boy",
+      "channelId": "UCwO37rtHMhHX8caUr5Rc0Bw",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/Cxb0DmpJ7oM/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/dark/instagram/Cxb0DmpJ7oM.mp4",
+      "contentSha256": "0438717607aad46859cd008d49276a8e0e93d0a1d2fe21e7073f4c5ad734f0b7",
+      "durationSec": 11,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cxb0DmpJ7oM/source-metadata.json",
+          "sha256": "05165c03e377f5407b5f577259ffdd889e73a0ed37d5f625e9d4009e34de9ba9"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cxb0DmpJ7oM/frames/source-key-frame-01.jpg",
+            "timestampMs": 660,
+            "sha256": "7da159975af62dfc2277966848614719453b2940ede70d72372f6e71c844932a"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cxb0DmpJ7oM/frames/source-key-frame-02.jpg",
+            "timestampMs": 2585,
+            "sha256": "37aee2e08bf4953e4590d72a3dc3804afad7ab96d015f6d6ff0aca324450322f"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cxb0DmpJ7oM/frames/source-key-frame-03.jpg",
+            "timestampMs": 4510,
+            "sha256": "8249dd41971f475d0bd8775d11cf77de795d7d868da973acb92794fd9651e958"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cxb0DmpJ7oM/frames/source-key-frame-04.jpg",
+            "timestampMs": 6490,
+            "sha256": "571924d79c7fa6d18af848ae290b940a9d85ef1e60759698a3569ab8466e81fc"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cxb0DmpJ7oM/frames/source-key-frame-05.jpg",
+            "timestampMs": 8415,
+            "sha256": "1c292a88c01aff1153995c316b7dc121a05c88e0a028a38b13da223bab64bb21"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cxb0DmpJ7oM/frames/source-key-frame-06.jpg",
+            "timestampMs": 10340,
+            "sha256": "ecbf6453bde4e44372c884742b2f35ed5c01659032a2be0ef808ec0ae0e9b142"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cxb0DmpJ7oM/ocr.txt",
+          "sha256": "058f6fd192bb6591f3dabd1717f6260f04da1e50fe4ccdcbc87c2768fa56ebab"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cxb0DmpJ7oM/asr.txt",
+          "sha256": "b57f84f3a7f7454257e66daed1209e2ece6e1ca059f0fe224cd785304a72c7b3",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-Cxb0DmpJ7oM/asr.raw.json",
+          "rawSha256": "d4d34b776064ade5151d24bfc0f38f92041df0aa2b7c44f8a2cc7a5a409a9c38"
+        }
+      },
+      "caseBindingSha256": "9bbf57318d809c9c1dc282e45c130ef915fc22a2849125054b39a4d48d28bcbe"
+    },
+    {
+      "caseId": "dark-instagram-DIUYX9QStl3",
+      "profileKey": "dark-joy-boy",
+      "channelId": "UCwO37rtHMhHX8caUr5Rc0Bw",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/DIUYX9QStl3/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/dark/instagram/DIUYX9QStl3.mp4",
+      "contentSha256": "373c5ac04ca129f3bee910245be74cdcb56f6c291af09994a8376f6e7d4ede41",
+      "durationSec": 11.449,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DIUYX9QStl3/source-metadata.json",
+          "sha256": "f37f554eeaafc93c79cbd03b75a9ef8a38a5998790f1652fa977576d5b49e3e8"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DIUYX9QStl3/frames/source-key-frame-01.jpg",
+            "timestampMs": 687,
+            "sha256": "44169011cdf20d8128712fc23542c01682488aad1caeb4d1b72e881a82d8b697"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DIUYX9QStl3/frames/source-key-frame-02.jpg",
+            "timestampMs": 2691,
+            "sha256": "8f199df1948fae52ef5c8eeab1d31194c5702d3c77936ced0904846937398574"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DIUYX9QStl3/frames/source-key-frame-03.jpg",
+            "timestampMs": 4694,
+            "sha256": "40774d4bbc1c8d71afa7b8371507ccadd518fea1f5322cdd02d0a8cffb65fca4"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DIUYX9QStl3/frames/source-key-frame-04.jpg",
+            "timestampMs": 6755,
+            "sha256": "eba5c8d1bcfbc8c5c7aae88083df3a283525ca35a8aab4a12092422c158cd8d4"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DIUYX9QStl3/frames/source-key-frame-05.jpg",
+            "timestampMs": 8758,
+            "sha256": "cd0cf11aa8b52505553f4ecf2460b14d6c8ff9d36948bf9f9d23d702150c024b"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DIUYX9QStl3/frames/source-key-frame-06.jpg",
+            "timestampMs": 10762,
+            "sha256": "e770f9e7c1bbd816638d8f44ed50b97e73103b51eacbdd344d6b4d458533d42a"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DIUYX9QStl3/ocr.txt",
+          "sha256": "35b8537ba4d894bf77d00b88419b3d0062e05f1f4df9ecae4db91affdfbbe2d3"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DIUYX9QStl3/asr.txt",
+          "sha256": "f8451ac8eca107828ae876c00d5fb5be8ba07c42ab7212b88f6ca7853d6d5745",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DIUYX9QStl3/asr.raw.json",
+          "rawSha256": "b906152bef8558b251090dcd1c6196631cf6b5ad5676cd3b01a4bd0d1b6b5e91"
+        }
+      },
+      "caseBindingSha256": "7a8f7c58e73aa083aa7e5251e686348f5ae4dfc4abc0b8185546665d89b5426f"
+    },
+    {
+      "caseId": "dark-instagram-DKM66d2tamf",
+      "profileKey": "dark-joy-boy",
+      "channelId": "UCwO37rtHMhHX8caUr5Rc0Bw",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/DKM66d2tamf/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/dark/instagram/DKM66d2tamf.mp4",
+      "contentSha256": "08759736b752ed0321f5e92f58862c4261e91bfa4accf78b9ce0ccf8ea4cc0d1",
+      "durationSec": 37.5,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DKM66d2tamf/source-metadata.json",
+          "sha256": "c59495c88a37192455b322057b25a4bfede127e5bdbcf541c8ba8ebf05577098"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DKM66d2tamf/frames/source-key-frame-01.jpg",
+            "timestampMs": 2250,
+            "sha256": "09daf59e275bdc29facc0a5fe334960ac934e2e955edc4963cfd1a87e337bd6b"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DKM66d2tamf/frames/source-key-frame-02.jpg",
+            "timestampMs": 8813,
+            "sha256": "821c689a3f7ce5ff4ef7867cbc3d85af9f4ba24734e259207739b196700496f0"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DKM66d2tamf/frames/source-key-frame-03.jpg",
+            "timestampMs": 15375,
+            "sha256": "93c45479affd18385e89e178fc67d0565102ab12759237cf37e99b6587f571f0"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DKM66d2tamf/frames/source-key-frame-04.jpg",
+            "timestampMs": 22125,
+            "sha256": "3a954bc2fc2755abb299e86324cbea3701939efc32d252fdc4e360589cb06e04"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DKM66d2tamf/frames/source-key-frame-05.jpg",
+            "timestampMs": 28688,
+            "sha256": "190c7d6db6bd4e0ca15798eb17eb9d88d19f0890f13c6d9352dff91ee86c4d6b"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DKM66d2tamf/frames/source-key-frame-06.jpg",
+            "timestampMs": 35250,
+            "sha256": "afdec117db6b506dc1c1ded5e6cd68a14f969688cce9ab952331ba547abd68b9"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DKM66d2tamf/ocr.txt",
+          "sha256": "39b4d85a6521bb7fca8b844405202377341847804ecf72d64316eef9bcae276e"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DKM66d2tamf/asr.txt",
+          "sha256": "03eee69d95b995ad5bb846a8c535631c0ed138b804dc299f0967a87d9daf3575",
+          "status": "no_speech",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-DKM66d2tamf/asr.raw.json",
+          "rawSha256": "6cef6bef751c951b2202ce4b18a821975d27adc3003762c72a9ada12346a1866"
+        }
+      },
+      "caseBindingSha256": "a5bc6fa1f0eb4df08ed647b5da8ef0a8750e5679077697f7f9953a76fc38e1d5"
+    },
+    {
+      "caseId": "cop-instagram-DW0w8RMjY3Y",
+      "profileKey": "copscopes-x2e",
+      "channelId": "UCJhBMXXQ5GrTbrhqjwT1leg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/DW0w8RMjY3Y/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/cop/instagram/DW0w8RMjY3Y.mp4",
+      "contentSha256": "14c9bacf4d5efcde8137970a94975e71769a8770380eb10c59b5b053e7b27048",
+      "durationSec": 27.8,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW0w8RMjY3Y/source-metadata.json",
+          "sha256": "19fee16f18d0e548380c12ac854efd031a92269f940f2d35d1673b521d28ab20"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW0w8RMjY3Y/frames/source-key-frame-01.jpg",
+            "timestampMs": 1668,
+            "sha256": "5b50cea22f392399a4e9af87f0fe1d589f7b9311d3cc27f5095fe56b537388f0"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW0w8RMjY3Y/frames/source-key-frame-02.jpg",
+            "timestampMs": 6533,
+            "sha256": "c0fda68d9b11b68b5c85321177b21052c889613c0bad8e6ad5b2b63e6bdcc6aa"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW0w8RMjY3Y/frames/source-key-frame-03.jpg",
+            "timestampMs": 11398,
+            "sha256": "7f19e67a81ddac3cc72cdf69afc9a163560f2bf6a549af1c572c83990bdae9b0"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW0w8RMjY3Y/frames/source-key-frame-04.jpg",
+            "timestampMs": 16402,
+            "sha256": "3ac16fe5803743a04a8b3e97a813e37a4750e30f627f1230b5b8dbd4f88f3ca6"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW0w8RMjY3Y/frames/source-key-frame-05.jpg",
+            "timestampMs": 21267,
+            "sha256": "8a55b5ef7419b08fc0708b3a6cc5beb6f226e8fa762093d82f9b28bc6e7741d2"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW0w8RMjY3Y/frames/source-key-frame-06.jpg",
+            "timestampMs": 26132,
+            "sha256": "78a645564c02287f7e3d32ba21b9ae85885d4c3310711191b56b259289f12100"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW0w8RMjY3Y/ocr.txt",
+          "sha256": "03d4c4ab02741f3716794d5e7f03d51b324bf935f7d21d0a5d3d99c3202452eb"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW0w8RMjY3Y/asr.txt",
+          "sha256": "7c34a8b09f175df287714422dde3d05058699c77f446285b9be650b223fc6c12",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW0w8RMjY3Y/asr.raw.json",
+          "rawSha256": "6279b7558fe9b7147a6a27d53543b7fa1bcc35bf01591e78ce8967e4facf0bcd"
+        }
+      },
+      "caseBindingSha256": "37a80828758558b84b2e40301bfb35fef056509dfc67bbe5a564d5d86d75ae48"
+    },
+    {
+      "caseId": "cop-instagram-DW5s3qoDbHC",
+      "profileKey": "copscopes-x2e",
+      "channelId": "UCJhBMXXQ5GrTbrhqjwT1leg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/DW5s3qoDbHC/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/cop/instagram/DW5s3qoDbHC.mp4",
+      "contentSha256": "a333d0f614de8d88f29c246c34aa42bb9218b327e5893d3a8cd6304a56c01a9d",
+      "durationSec": 36.3,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW5s3qoDbHC/source-metadata.json",
+          "sha256": "fc053e9a7d4edc51bd9fd5a66398e5b0beff6bb4d634112173e3ecaa79a9eef4"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW5s3qoDbHC/frames/source-key-frame-01.jpg",
+            "timestampMs": 2178,
+            "sha256": "59b0681ced8d94dc3ac172d761ff2e6d9cf47dba979a97db2814a93bed5eca91"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW5s3qoDbHC/frames/source-key-frame-02.jpg",
+            "timestampMs": 8530,
+            "sha256": "bd861c818b8cef9ce562628fad6043361bd1445f36e6dda97357415cebcf332e"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW5s3qoDbHC/frames/source-key-frame-03.jpg",
+            "timestampMs": 14883,
+            "sha256": "30c179ec7c9eb920e6a10377b96f8379b2e1bad41d79faae592b972e6041df0d"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW5s3qoDbHC/frames/source-key-frame-04.jpg",
+            "timestampMs": 21417,
+            "sha256": "b88b2bdf6014b6e9e695cda7f63109fa2f3f3fe76b1e927137a69437f7f2003d"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW5s3qoDbHC/frames/source-key-frame-05.jpg",
+            "timestampMs": 27769,
+            "sha256": "cbed44a37fa988cc76f1e6c1e14b83cbd73d970467afca1a574f07892ab27474"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW5s3qoDbHC/frames/source-key-frame-06.jpg",
+            "timestampMs": 34122,
+            "sha256": "3a936616c4f8d57263f0dd2f1d1efe24320c39921b7ad90f96951933189cc7ef"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW5s3qoDbHC/ocr.txt",
+          "sha256": "cf2595758bbb8ec43e3e752d02359d49f60153458ce17d73edbc4cb697c315bf"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW5s3qoDbHC/asr.txt",
+          "sha256": "8c515582f346737fffaae696f5e3a0781f9aae72f39049430147d8c685ced49f",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DW5s3qoDbHC/asr.raw.json",
+          "rawSha256": "3b56de3b58e8c521fad1d82e907b4b0886150f82ebddc697fb6be730502b2186"
+        }
+      },
+      "caseBindingSha256": "7818919cc14ea16230c96a366bc8dd47e634080f21facba2caf4a72595a0da83"
+    },
+    {
+      "caseId": "cop-instagram-DWjH5fWjBnt",
+      "profileKey": "copscopes-x2e",
+      "channelId": "UCJhBMXXQ5GrTbrhqjwT1leg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/DWjH5fWjBnt/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/cop/instagram/DWjH5fWjBnt.mp4",
+      "contentSha256": "94e12f40757e74cc9926231726b9df86f93eff0c9046792e033b82b190d4a5c3",
+      "durationSec": 15.4,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWjH5fWjBnt/source-metadata.json",
+          "sha256": "160809b29135349519678d1a0451cf12ef947f52a2425a567796de4c2117616e"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWjH5fWjBnt/frames/source-key-frame-01.jpg",
+            "timestampMs": 924,
+            "sha256": "0f132f56b888ea0645f20b9874125f6b748302a140d6be81adff1272880eef5f"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWjH5fWjBnt/frames/source-key-frame-02.jpg",
+            "timestampMs": 3619,
+            "sha256": "d073dd6e2c1be506a2ee37985b861c2c5bc160a9dbbe2d4396d658bc589f73a2"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWjH5fWjBnt/frames/source-key-frame-03.jpg",
+            "timestampMs": 6314,
+            "sha256": "dc53923948bfcd38c1927997d25a308536cc5fbc8a5f1384e429d32f67234746"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWjH5fWjBnt/frames/source-key-frame-04.jpg",
+            "timestampMs": 9086,
+            "sha256": "1d01afd1f293b98f02a4951929284b8389853b636d126044b95c3bac09a3aee7"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWjH5fWjBnt/frames/source-key-frame-05.jpg",
+            "timestampMs": 11781,
+            "sha256": "ba7520c02dae8f07cc1930f307da5c86ca39a7e5f6acdff7d514bd291b25bf04"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWjH5fWjBnt/frames/source-key-frame-06.jpg",
+            "timestampMs": 14476,
+            "sha256": "f0b9b4e49e5e006aad01f3bd0fdaaa46860ae733d36eee2c32d3beef6dba50d1"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWjH5fWjBnt/ocr.txt",
+          "sha256": "a5523a573f18e9ef355375311bf90dcfe54e5d9eb264b36c5054be81ac76b1a6"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWjH5fWjBnt/asr.txt",
+          "sha256": "aa9326e6d79c83770a9fc68008cdf4d2c946816632b8dd37d3f807380b2b7899",
+          "status": "no_speech",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWjH5fWjBnt/asr.raw.json",
+          "rawSha256": "6f7998ce3caa168b85ca5480e019c1e8e21540859c1a429f756b99dbe9217bb4"
+        }
+      },
+      "caseBindingSha256": "c713a8744c8dfba076f255a573090134bc5624a2331403c2baa1e770eccee90d"
+    },
+    {
+      "caseId": "cop-instagram-DWnxlyIDcoK",
+      "profileKey": "copscopes-x2e",
+      "channelId": "UCJhBMXXQ5GrTbrhqjwT1leg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/DWnxlyIDcoK/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/cop/instagram/DWnxlyIDcoK.mp4",
+      "contentSha256": "49dd483449878265613f19b57bcdf0da2af201d765adccaf813e1397c5c14fd1",
+      "durationSec": 34.966667,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWnxlyIDcoK/source-metadata.json",
+          "sha256": "f7b769b24d734a8e62eb370ffeac3a2f9aaff6c32a0d18b47d263714b7871f44"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWnxlyIDcoK/frames/source-key-frame-01.jpg",
+            "timestampMs": 2098,
+            "sha256": "6d166065bf0f8fce0e3d8353061744178a8a25b9e33e4afde8159f6dd1a2c5fa"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWnxlyIDcoK/frames/source-key-frame-02.jpg",
+            "timestampMs": 8217,
+            "sha256": "f07b9fa7e03999ee2e210661be6c0e9461945f0deddd78de4d21068c3439135a"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWnxlyIDcoK/frames/source-key-frame-03.jpg",
+            "timestampMs": 14336,
+            "sha256": "71a34bb8418f1cddb36da3bff5d3d679cf00a688242070734f798f9a6c5b1ee3"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWnxlyIDcoK/frames/source-key-frame-04.jpg",
+            "timestampMs": 20630,
+            "sha256": "d08831a935ed73e0076eb8b58cd05d0180e9c4057a8cae69a7a86ea81340d8d8"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWnxlyIDcoK/frames/source-key-frame-05.jpg",
+            "timestampMs": 26750,
+            "sha256": "d574b5205cccb49c0a8f723bf4419c99a87a51df01265daf3f4d737ab0e1a05b"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWnxlyIDcoK/frames/source-key-frame-06.jpg",
+            "timestampMs": 32869,
+            "sha256": "058a049169f6898a68bf3ae90d830b9419edf5558fca2f7304bad7b63c49e554"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWnxlyIDcoK/ocr.txt",
+          "sha256": "f30312794045a7b3a2e668faaeff8afaf85d73ef59cab77344d4cda2502a27de"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWnxlyIDcoK/asr.txt",
+          "sha256": "df169812a750d27025228442bc1da0f8ba92f5a3cd5d788eb774cee9883ce371",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWnxlyIDcoK/asr.raw.json",
+          "rawSha256": "bd7977d0cdb5b729a0e9cbd5fbbc937ca1665c77d2ea70b7d963c93d7865fa4f"
+        }
+      },
+      "caseBindingSha256": "e203c8df0e00a1705520b07feafe3ce6bb7f7d0d0dbeddee40f2e106796bc689"
+    },
+    {
+      "caseId": "cop-instagram-DWwSVVOjMqO",
+      "profileKey": "copscopes-x2e",
+      "channelId": "UCJhBMXXQ5GrTbrhqjwT1leg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/DWwSVVOjMqO/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/cop/instagram/DWwSVVOjMqO.mp4",
+      "contentSha256": "0e8f65beb75324d243eb59832b80227286d501db4b4815e682bb14874d03b95e",
+      "durationSec": 59.833333,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWwSVVOjMqO/source-metadata.json",
+          "sha256": "238e3b09ddf40fd71ae6119bf249155bb55fa7cdf2c53488459fa02842444e02"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWwSVVOjMqO/frames/source-key-frame-01.jpg",
+            "timestampMs": 3590,
+            "sha256": "3138ed3ca9815b2b005846b23a5a420c762164651bfe92c9e05e165f6c0073e7"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWwSVVOjMqO/frames/source-key-frame-02.jpg",
+            "timestampMs": 14061,
+            "sha256": "e019d5fc41d2e74eb701aa19489c2a0d7fd4309de158fa56d208f93cff0d7f09"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWwSVVOjMqO/frames/source-key-frame-03.jpg",
+            "timestampMs": 24532,
+            "sha256": "8ab4d1d2de6f496a725857683035bc795f8badf90596c0777363147901c299fc"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWwSVVOjMqO/frames/source-key-frame-04.jpg",
+            "timestampMs": 35302,
+            "sha256": "7d51bd387b73d98a8df884ef773bf57859f401ebce08a526095f74818a3655bb"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWwSVVOjMqO/frames/source-key-frame-05.jpg",
+            "timestampMs": 45772,
+            "sha256": "377cbd3c6f6cd384d0e0a8c1f4788e27e1b5e611f9e52e460e785d587503fc21"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWwSVVOjMqO/frames/source-key-frame-06.jpg",
+            "timestampMs": 56243,
+            "sha256": "79120b9f02d4230f847332760f9397e811608fbad63df4519a82c93eeea167ef"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWwSVVOjMqO/ocr.txt",
+          "sha256": "1045a154a909a4ba27d04dbcc28a8597650e7d66728f84e34ec8bc5b626651cb"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWwSVVOjMqO/asr.txt",
+          "sha256": "236da343127a6c017e6c72363f92de1762b06501b852b769f8a5a9512e215b58",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DWwSVVOjMqO/asr.raw.json",
+          "rawSha256": "7e6125617f61706916bf8d9835e946f0a86d7df765a42dbf06411acd5027586a"
+        }
+      },
+      "caseBindingSha256": "cce2b67f23a63cf2261a5fc6e7dd21f2e2fb9a9550d9a3d06805d6e5f5609817"
+    },
+    {
+      "caseId": "cop-instagram-DXBhsJPjSgW",
+      "profileKey": "copscopes-x2e",
+      "channelId": "UCJhBMXXQ5GrTbrhqjwT1leg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/DXBhsJPjSgW/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/cop/instagram/DXBhsJPjSgW.mp4",
+      "contentSha256": "00104eabefd531eee16dff7a3c5a230e22d39758815e70b8685c30cd59248151",
+      "durationSec": 58.466667,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXBhsJPjSgW/source-metadata.json",
+          "sha256": "001b01055271581cdc827e92d8f631fcca9b53f46ac0beaf5b9ca390d112b373"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXBhsJPjSgW/frames/source-key-frame-01.jpg",
+            "timestampMs": 3508,
+            "sha256": "372110d9e12900c0f615e9b2a36d9af933b8b8679714d5731d37e6b0a21474f4"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXBhsJPjSgW/frames/source-key-frame-02.jpg",
+            "timestampMs": 13740,
+            "sha256": "f7b5c63e8e024e996f16a869a0fcbc17d02f93f7b86164f27ab7368d07994b71"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXBhsJPjSgW/frames/source-key-frame-03.jpg",
+            "timestampMs": 23971,
+            "sha256": "a130d377819d7328f00ec20c6dd83ab9126f6028ffd6c5e8b16350f21af9d98b"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXBhsJPjSgW/frames/source-key-frame-04.jpg",
+            "timestampMs": 34495,
+            "sha256": "5493f84bd65be6aa8eab9cc060005bbccd0543f7d1039a2d3a2fcb66405c9e12"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXBhsJPjSgW/frames/source-key-frame-05.jpg",
+            "timestampMs": 44727,
+            "sha256": "6359e6c95f9857ab6c3f75ab768cb26039ae33c6f898fb37631a2875d8fa6dba"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXBhsJPjSgW/frames/source-key-frame-06.jpg",
+            "timestampMs": 54959,
+            "sha256": "7c9f6eeab5435715fc119e7117ff076855002dae544d2801222ca1d7cb410a79"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXBhsJPjSgW/ocr.txt",
+          "sha256": "c900051f57285fff1b64b5964befdd41a57d4d9685fb3af0b4938b7b6d501967"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXBhsJPjSgW/asr.txt",
+          "sha256": "0a1fb3535ba4533ecb64e004d962ebb17e972d62ada26b831c125767c41dce6f",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXBhsJPjSgW/asr.raw.json",
+          "rawSha256": "f3d65c512654aeea072b3255ffa9b38285adfe6443bde6cb5c6298ce735faafc"
+        }
+      },
+      "caseBindingSha256": "7ae883abeb81eef7de4ae159f03acc2e87fcac3092b5833bb17d6762717280f7"
+    },
+    {
+      "caseId": "cop-instagram-DXHx529DVb0",
+      "profileKey": "copscopes-x2e",
+      "channelId": "UCJhBMXXQ5GrTbrhqjwT1leg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/DXHx529DVb0/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/cop/instagram/DXHx529DVb0.mp4",
+      "contentSha256": "b687a8fcf77ebfb7d44e88239a652acebd22f92f9f2a49d82e9385eb989b5dbf",
+      "durationSec": 21.5,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/source-metadata.json",
+          "sha256": "a4fc217277c9cf27b3db04011e1d37a85b1edcd64023472ba20e0cf9ef6a8d30"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/frames/source-key-frame-01.jpg",
+            "timestampMs": 1290,
+            "sha256": "e1e894c79e33c58423b5be843abbc4caf540d591bf3831f40393ec9c56ae9e5a"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/frames/source-key-frame-02.jpg",
+            "timestampMs": 5052,
+            "sha256": "0670b593bd0ca81a0dde7d57bea7e6236c66a90cc9f89137a93ead343870cbb1"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/frames/source-key-frame-03.jpg",
+            "timestampMs": 8815,
+            "sha256": "19906fdc82948c3a53454383edbe07f1ac49a1e93de8d648e51760372eb3e70d"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/frames/source-key-frame-04.jpg",
+            "timestampMs": 12685,
+            "sha256": "e274f2ec1b6d4170fb53d43a38bfd5ac260ef64603f2fc1f24938e1c520dfa55"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/frames/source-key-frame-05.jpg",
+            "timestampMs": 16448,
+            "sha256": "a43bf8c9b6c9a8a44a7233a7c985bd585df7bde49fbad3e917c9e2be6a084704"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/frames/source-key-frame-06.jpg",
+            "timestampMs": 20210,
+            "sha256": "d6e8df33f875462ffc0211002b3c92061c41d4329183b46a877398ee9f4f8ae4"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/ocr.txt",
+          "sha256": "81d83fbfdac77826e627e5628c851b4e503374604c3e50e37681661043e90407"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/asr.txt",
+          "sha256": "0d62fc286e0968954a7e3655eb82e0d0fb424d6d9c5c60beb75ce63bf63976b9",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/asr.raw.json",
+          "rawSha256": "a1c6a27d8f9091b828448da87118b09e56bcf9ab9aabc34aed11fc44404a5682"
+        }
+      },
+      "caseBindingSha256": "25621f98563f3a0392e9df3fa6289966f12286e966a0a34cc22a306606ddfe0b"
+    },
+    {
+      "caseId": "cop-instagram-DXNBoz7jYmd",
+      "profileKey": "copscopes-x2e",
+      "channelId": "UCJhBMXXQ5GrTbrhqjwT1leg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/DXNBoz7jYmd/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/cop/instagram/DXNBoz7jYmd.mp4",
+      "contentSha256": "b295ef42328b54ed3eee861df2ae163c3415b93c758fc67accd90debd43adcbf",
+      "durationSec": 97.833008,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXNBoz7jYmd/source-metadata.json",
+          "sha256": "530196819aebf1a75e7d325cf57101330a3374781bfc3c1cfee04b9609dd8fee"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXNBoz7jYmd/frames/source-key-frame-01.jpg",
+            "timestampMs": 5870,
+            "sha256": "ae0340e0659a7c2e264be3c6806cf9bd7672eef86ad8252eb0f1927b2698a9ba"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXNBoz7jYmd/frames/source-key-frame-02.jpg",
+            "timestampMs": 22991,
+            "sha256": "8d5b11b730b54776ebb97c0f942418670a673dc1a33e44516918d4d254cbc1ef"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXNBoz7jYmd/frames/source-key-frame-03.jpg",
+            "timestampMs": 40112,
+            "sha256": "3a6d7b6f51e95262012edaedc7e2691a3c28f9f8b0137e6fd2f0597157000633"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXNBoz7jYmd/frames/source-key-frame-04.jpg",
+            "timestampMs": 57721,
+            "sha256": "97242b4c2830418544cb64e417d497e05b5fb91601f1554382e792263435e8f4"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXNBoz7jYmd/frames/source-key-frame-05.jpg",
+            "timestampMs": 74842,
+            "sha256": "2be65f24f89cb42d05e4beef7be437f8023f72a31afed2eb6cbad04d6ab0a294"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXNBoz7jYmd/frames/source-key-frame-06.jpg",
+            "timestampMs": 91963,
+            "sha256": "903502cce731cc33c55026ce8939ea2c8935b473b746867eb8a0656bc32e98c2"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXNBoz7jYmd/ocr.txt",
+          "sha256": "b2f3bd33623cee6a9b3578d1829eb4b098fb0e22168d9fd6d6a6db5982925774"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXNBoz7jYmd/asr.txt",
+          "sha256": "b92c6a9b45b3f37a39a86035d4858c01b84fa621e3aef80ea0cf56fae12f3920",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXNBoz7jYmd/asr.raw.json",
+          "rawSha256": "d82810c7907a059ef9f8bfcbf959143fded92b0fb9f6b4dc66ec4f5810c4ee00"
+        }
+      },
+      "caseBindingSha256": "fd2ada94d08816f9d683ed67c42af7f396820f932c09d325930f63de6c441790"
+    },
+    {
+      "caseId": "cop-instagram-DXOzkCdjMue",
+      "profileKey": "copscopes-x2e",
+      "channelId": "UCJhBMXXQ5GrTbrhqjwT1leg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/DXOzkCdjMue/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/cop/instagram/DXOzkCdjMue.mp4",
+      "contentSha256": "a3bb5e65330abe53850dfefdb4dba04bb2d53b56610d0e1fa8bfe1112ac35da7",
+      "durationSec": 20.466667,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXOzkCdjMue/source-metadata.json",
+          "sha256": "9698d484723acefabad3d4a674d5582ffce099828a66eb0f754e4662eee10471"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXOzkCdjMue/frames/source-key-frame-01.jpg",
+            "timestampMs": 1228,
+            "sha256": "8a1fc18a0762808d995448b650d1a8d6f9b92d68d6af0cb934a730a2e100b48b"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXOzkCdjMue/frames/source-key-frame-02.jpg",
+            "timestampMs": 4810,
+            "sha256": "fa2e9393109503613ffafe66ffb54c2f49cf4e519ef32d2eece9213613c6b118"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXOzkCdjMue/frames/source-key-frame-03.jpg",
+            "timestampMs": 8391,
+            "sha256": "d15df4b5ab27d55df48b85dab908d35ff2d48de8a55594c2ea5e857bb76e8f62"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXOzkCdjMue/frames/source-key-frame-04.jpg",
+            "timestampMs": 12075,
+            "sha256": "1c389e44a6721347f274093613c38dfcc66c162dbbe7ea520a6c42c1dd6424e8"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXOzkCdjMue/frames/source-key-frame-05.jpg",
+            "timestampMs": 15657,
+            "sha256": "6c60216f3da280dc9614fc13e37664fd71cc8e2294f4b24da881b7d1f1f3d744"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXOzkCdjMue/frames/source-key-frame-06.jpg",
+            "timestampMs": 19239,
+            "sha256": "610a8b7322d0919b3a117ff87204a71184fcf403e4e788e6a30e10dede2a0f9e"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXOzkCdjMue/ocr.txt",
+          "sha256": "4c15c0eb26962002c48dddb6282c0dd5a982ef1d9c55e9ece474279afa59bae5"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXOzkCdjMue/asr.txt",
+          "sha256": "b5408bc12590e8184f7661a32a7901f1b864dd6f37341df0394bc3e1fc0e6a96",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXOzkCdjMue/asr.raw.json",
+          "rawSha256": "1f109cf40d0ad88a6980c828e574ec89c071cc102d9439d4f4252eaa55e2d043"
+        }
+      },
+      "caseBindingSha256": "a7fa95f5e2ad381c96712d02028ed5916e1d39eef97acfc6a70a8d74cca71e0d"
+    },
+    {
+      "caseId": "cop-instagram-DXUPExpjCs2",
+      "profileKey": "copscopes-x2e",
+      "channelId": "UCJhBMXXQ5GrTbrhqjwT1leg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.instagram.com/reel/DXUPExpjCs2/",
+      "mediaRelativePath": ".data/project-kings/source-candidates/cop/instagram/DXUPExpjCs2.mp4",
+      "contentSha256": "b26e2f107d94290ecc1283d2f33eb001484ec04f77ab7de983e99a3e1a4512ea",
+      "durationSec": 36.666016,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXUPExpjCs2/source-metadata.json",
+          "sha256": "f4d2a0cf9b19289f91f46b8e21fc56223815a021d35eb9435d85b8dd60db14d7"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXUPExpjCs2/frames/source-key-frame-01.jpg",
+            "timestampMs": 2200,
+            "sha256": "5343beb2c25e071dd427f6c237b084c470e79142fb30e435be6347c1ef6a2f95"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXUPExpjCs2/frames/source-key-frame-02.jpg",
+            "timestampMs": 8617,
+            "sha256": "b648c28db1449478c45d32408ba12b43f9247e7470975bb1724fa704d8251dab"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXUPExpjCs2/frames/source-key-frame-03.jpg",
+            "timestampMs": 15033,
+            "sha256": "62a7a05adf1e099d973f3209c5d46cc911a960b6d7ce9a01c745287ad76a52d5"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXUPExpjCs2/frames/source-key-frame-04.jpg",
+            "timestampMs": 21633,
+            "sha256": "de1f0e1b4d8c5010073d5c0e85690e17c3dc01873c09d6e5b64b728cc16a2c0b"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXUPExpjCs2/frames/source-key-frame-05.jpg",
+            "timestampMs": 28050,
+            "sha256": "293a2f2a74b1613c997a4eb99538f303ea4c9e4f15bbe8eccaa0ea798d0996ae"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXUPExpjCs2/frames/source-key-frame-06.jpg",
+            "timestampMs": 34466,
+            "sha256": "c2808136f873cd4d1455136f80efc6fc37f0e1f7f07ab233046fe3fcd51b8db9"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXUPExpjCs2/ocr.txt",
+          "sha256": "b65dcfbb79c09c2ff72d53c3fa0246b786b94b2e1398d8a6bcc7ad7ebe5a2790"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXUPExpjCs2/asr.txt",
+          "sha256": "0eeeb7a63a988f5e733838cdf16ec7cb823ab66b89b7344d2b7c0edc6eb78e1d",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXUPExpjCs2/asr.raw.json",
+          "rawSha256": "60dc5147020537ad4aa61ce0997eadbafc6a7d55f4cfa254e9267487d8e2dbf4"
+        }
+      },
+      "caseBindingSha256": "38de6f8f2effd4cdabf2cf61d062b22f5b42590802d2bf50e4e57a1e2a6a0ef7"
+    },
+    {
+      "caseId": "light-youtube-1diIRo4sHtk",
+      "profileKey": "light-kingdom",
+      "channelId": "UC0LWZYpYuYAWK55WmvDqxbg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.youtube.com/shorts/1diIRo4sHtk",
+      "mediaRelativePath": ".data/project-kings/source-candidates/light/ask-v3/1diIRo4sHtk.mp4",
+      "contentSha256": "c8a55d94d4fb2a2c03971890b40ab8fd35bf19c21dce68277cc6adb325643424",
+      "durationSec": 40.394,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-1diIRo4sHtk/source-metadata.json",
+          "sha256": "e566eea9dd6dba3731f6f67e2057beed16484f21b155060b7dacb6c3d3063ba2"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-1diIRo4sHtk/frames/source-key-frame-01.jpg",
+            "timestampMs": 2424,
+            "sha256": "60db14dd8088e82565be6e5a4e4a98e974b9826a9cb6aa125f6ff39e1419118a"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-1diIRo4sHtk/frames/source-key-frame-02.jpg",
+            "timestampMs": 9493,
+            "sha256": "132b1d1800531daa544a2b321171ece55541b8896f7064ce0eb667160d7f1022"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-1diIRo4sHtk/frames/source-key-frame-03.jpg",
+            "timestampMs": 16562,
+            "sha256": "8ff1d9096934554fc0419b97a8670d7c502f0ebf5acf642851484eaa74c4e4f3"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-1diIRo4sHtk/frames/source-key-frame-04.jpg",
+            "timestampMs": 23832,
+            "sha256": "6663fb8a98715b5f7bfef09cebeb8ea3452e322b398bb0aec0ec272650c333da"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-1diIRo4sHtk/frames/source-key-frame-05.jpg",
+            "timestampMs": 30901,
+            "sha256": "aa3d3d4b0873133dc3ee81e4b32a93e395bf2fa0b86dad8b7d6f4614443ca0a4"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-1diIRo4sHtk/frames/source-key-frame-06.jpg",
+            "timestampMs": 37970,
+            "sha256": "58a5b8ea790f1bcbd10aea23fcf989a93ad4fa43acb7ab6acc042c8218ba5aca"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-1diIRo4sHtk/ocr.txt",
+          "sha256": "0c4c466432506a5b411f3118ff9fb9aa748662636dbecbf36dfd37b4378afaf2"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-1diIRo4sHtk/asr.txt",
+          "sha256": "7767d0469010f2ad1d1888bf81ac074992ac5366f460e536238fcabced585bce",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-1diIRo4sHtk/asr.raw.json",
+          "rawSha256": "4f5d58b12a6ba216a753dccc9eb24b1b5945309f979cc2b52b55996a33d88fa3"
+        }
+      },
+      "caseBindingSha256": "fd0b0bed3a8244847f6eb17ae1ea411403e53cd73436c153e815e0409406154e"
+    },
+    {
+      "caseId": "light-youtube-6IlkA1MLVYA",
+      "profileKey": "light-kingdom",
+      "channelId": "UC0LWZYpYuYAWK55WmvDqxbg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.youtube.com/shorts/6IlkA1MLVYA",
+      "mediaRelativePath": ".data/project-kings/source-candidates/light/ask-v3/6IlkA1MLVYA.mp4",
+      "contentSha256": "8e1a9c7430bccce5d04f30081c87f3ed56236e92ad7b11cea6ff373977e3040b",
+      "durationSec": 24.834,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6IlkA1MLVYA/source-metadata.json",
+          "sha256": "199a7c4450e4bc81da7e8cf375c503a398ab9a0545efec756c8e87a9f2ba7826"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6IlkA1MLVYA/frames/source-key-frame-01.jpg",
+            "timestampMs": 1490,
+            "sha256": "3e78a13705602d258a9e179b758aa5398309977acd5b5bcad1f35426a8e1ff04"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6IlkA1MLVYA/frames/source-key-frame-02.jpg",
+            "timestampMs": 5836,
+            "sha256": "551a090e89cdeb4fb8cc1e3fe17a34182d60ab64a92d903d5c55e6d91d21e9bc"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6IlkA1MLVYA/frames/source-key-frame-03.jpg",
+            "timestampMs": 10182,
+            "sha256": "254d07d51f4fae176a085b8c947bf9967afffe9ac57d7abc03c98cb9305319b5"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6IlkA1MLVYA/frames/source-key-frame-04.jpg",
+            "timestampMs": 14652,
+            "sha256": "bfaa6858bab4dc28f929685e26bcffba922aef94f002a7bcda9bef60cc10fc66"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6IlkA1MLVYA/frames/source-key-frame-05.jpg",
+            "timestampMs": 18998,
+            "sha256": "396b553bc6beae6db5efa0013b01210ca725356b6b8e8928c92ebdc51c4ef27e"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6IlkA1MLVYA/frames/source-key-frame-06.jpg",
+            "timestampMs": 23344,
+            "sha256": "4d3ca4f83aa4aeb39edbcc70bb44a94c5ad48261da106e4cf776df975b6c4237"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6IlkA1MLVYA/ocr.txt",
+          "sha256": "c4bf42da6c724401bf55b0e045906e53fc92988fecd6938e1bbe29b49cc27770"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6IlkA1MLVYA/asr.txt",
+          "sha256": "aa9326e6d79c83770a9fc68008cdf4d2c946816632b8dd37d3f807380b2b7899",
+          "status": "no_speech",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6IlkA1MLVYA/asr.raw.json",
+          "rawSha256": "6f7998ce3caa168b85ca5480e019c1e8e21540859c1a429f756b99dbe9217bb4"
+        }
+      },
+      "caseBindingSha256": "70d0d8f5dc6d495a90f6e8f74efa36f59e1c85689ab8b4c198be7a79613284fc"
+    },
+    {
+      "caseId": "light-youtube-6QIdqyFoxFE",
+      "profileKey": "light-kingdom",
+      "channelId": "UC0LWZYpYuYAWK55WmvDqxbg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.youtube.com/shorts/6QIdqyFoxFE",
+      "mediaRelativePath": ".data/project-kings/source-candidates/light/ask-v3/6QIdqyFoxFE.mp4",
+      "contentSha256": "c0bcb0b58f55fb8c8630f143c5469159aab08c7b2c883ac801bf4707b4d9df58",
+      "durationSec": 34.274,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6QIdqyFoxFE/source-metadata.json",
+          "sha256": "71992dedee28e09117e70aa566f63182a657ace21ccc73c9b4ed4af1976b2ed3"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6QIdqyFoxFE/frames/source-key-frame-01.jpg",
+            "timestampMs": 2056,
+            "sha256": "028cd570614abacf66d1f5111fdabff67b17fce1159ab46bac4b82e8a1f7ee7a"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6QIdqyFoxFE/frames/source-key-frame-02.jpg",
+            "timestampMs": 8054,
+            "sha256": "6e845441ba8d9f8ea25a1f0ae390f49ba0f5a41aa64cbb743231be485a80640c"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6QIdqyFoxFE/frames/source-key-frame-03.jpg",
+            "timestampMs": 14052,
+            "sha256": "a1d89b1091865c536980c5a31b7b9b60e24943c7fc7ae703be5e74b0233805d3"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6QIdqyFoxFE/frames/source-key-frame-04.jpg",
+            "timestampMs": 20222,
+            "sha256": "dfe10049651b516605616c6343ff22772085c9f08a7ac732fee06ca8655d0a22"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6QIdqyFoxFE/frames/source-key-frame-05.jpg",
+            "timestampMs": 26220,
+            "sha256": "80f25c27574bb1e734104e0cfb81e74a307a74f0d9457759788432fa009b4169"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6QIdqyFoxFE/frames/source-key-frame-06.jpg",
+            "timestampMs": 32218,
+            "sha256": "b06dbfcc4e8121da67d3d93eb79ee8ec3fd4f96ebdf26a1b1e5dd96b9d249c29"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6QIdqyFoxFE/ocr.txt",
+          "sha256": "7739c7f3c38c3e861bb9ae98827ea3c32261d798b2a4cb84ed894b0524ed8359"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6QIdqyFoxFE/asr.txt",
+          "sha256": "b39342d5bcb77cb630c38c224c05d9f42b724d3aba4d16f2538c2d2bb15196f5",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-6QIdqyFoxFE/asr.raw.json",
+          "rawSha256": "e4cb147e7b2496092d621d3f59b79981c79cbc61dd0d9a2bd162d8ccd69b710b"
+        }
+      },
+      "caseBindingSha256": "08ca9621bce4dfcab70d3905b834081e540356d1210e01f0b9504f05d95ce4e0"
+    },
+    {
+      "caseId": "light-youtube-BwIaEb5vGDo",
+      "profileKey": "light-kingdom",
+      "channelId": "UC0LWZYpYuYAWK55WmvDqxbg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.youtube.com/shorts/BwIaEb5vGDo",
+      "mediaRelativePath": ".data/project-kings/source-candidates/light/ask-v3/BwIaEb5vGDo.mp4",
+      "contentSha256": "0c500e91711a6ec9cbf3bb8ad1f498f04f9de23b460d0cc0c9f10ebdc32de47f",
+      "durationSec": 6.874,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-BwIaEb5vGDo/source-metadata.json",
+          "sha256": "79040367f2a67a382f01541ec506dafe8f22d4f40f50102c4a1a4dd90b5afcb3"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-BwIaEb5vGDo/frames/source-key-frame-01.jpg",
+            "timestampMs": 412,
+            "sha256": "d712304f1fed5b9f592ea8dbaa985c633a626e0f36f7b08282ec1374be7ef9fd"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-BwIaEb5vGDo/frames/source-key-frame-02.jpg",
+            "timestampMs": 1615,
+            "sha256": "45192331d16e88389720e143956281ca7b5360978af0a241e571ef987e764713"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-BwIaEb5vGDo/frames/source-key-frame-03.jpg",
+            "timestampMs": 2818,
+            "sha256": "d6eb7c1a3a7a1db424725fb3351ab71e7a60eec5da7affcd127930f7c4ab9bc7"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-BwIaEb5vGDo/frames/source-key-frame-04.jpg",
+            "timestampMs": 4056,
+            "sha256": "2a58c2dac2a79c7582f4db3ee6f1d5addbcaa69ce1e91709b570d7fff0eaf90d"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-BwIaEb5vGDo/frames/source-key-frame-05.jpg",
+            "timestampMs": 5259,
+            "sha256": "24103dd49c9676a071140063610006b10f2bc3cfb6943714596b1c6dc91fe3d1"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-BwIaEb5vGDo/frames/source-key-frame-06.jpg",
+            "timestampMs": 6462,
+            "sha256": "9c895e51a58d3cec9f3aa60f61359c2d2199a6c81d4a9ea86d7860bd735346a2"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-BwIaEb5vGDo/ocr.txt",
+          "sha256": "17b3637b3eecae0c79b538a077c16402724f3825ad208090be9071d7a1fed4f3"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-BwIaEb5vGDo/asr.txt",
+          "sha256": "aa9326e6d79c83770a9fc68008cdf4d2c946816632b8dd37d3f807380b2b7899",
+          "status": "no_speech",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-BwIaEb5vGDo/asr.raw.json",
+          "rawSha256": "6f7998ce3caa168b85ca5480e019c1e8e21540859c1a429f756b99dbe9217bb4"
+        }
+      },
+      "caseBindingSha256": "3d2701e88c9c419009b89d8721dddc54da9172d94c645121654f242bc3de8212"
+    },
+    {
+      "caseId": "light-youtube-EYkw1ELHXq0",
+      "profileKey": "light-kingdom",
+      "channelId": "UC0LWZYpYuYAWK55WmvDqxbg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.youtube.com/shorts/EYkw1ELHXq0",
+      "mediaRelativePath": ".data/project-kings/source-candidates/light/ask-v3/EYkw1ELHXq0.mp4",
+      "contentSha256": "ecd8da65c9d4cc2d0e8dbd49c8c32df17918b0df57c067b148a94226115847e2",
+      "durationSec": 43.554,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-EYkw1ELHXq0/source-metadata.json",
+          "sha256": "39bae1f36ee66e60629e4aac97d02e917e02bba7967d81963e96d8fe7f447c5d"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-EYkw1ELHXq0/frames/source-key-frame-01.jpg",
+            "timestampMs": 2613,
+            "sha256": "e12cfa840db76d6cdff9b59310950b238a358ff25c069aa85defed4a7e2b93a1"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-EYkw1ELHXq0/frames/source-key-frame-02.jpg",
+            "timestampMs": 10235,
+            "sha256": "1804c6a084881de6855e71f10736c2083d518c09280b66b64240c808aa070ab6"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-EYkw1ELHXq0/frames/source-key-frame-03.jpg",
+            "timestampMs": 17857,
+            "sha256": "576f90179204f467132d6c645f96c951fc78cc86d9d64d0a89a79f3d052b99b0"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-EYkw1ELHXq0/frames/source-key-frame-04.jpg",
+            "timestampMs": 25697,
+            "sha256": "8773670df1aa341ca9eacda9f493a92eb575dbf54ef2f8695a6365429cd09b46"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-EYkw1ELHXq0/frames/source-key-frame-05.jpg",
+            "timestampMs": 33319,
+            "sha256": "50cf1cf9ce0da83a569cd7db128f5f96ba4b934c4a09003414a8f5cd56a04718"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-EYkw1ELHXq0/frames/source-key-frame-06.jpg",
+            "timestampMs": 40941,
+            "sha256": "cedae2de2a8a39f3ad41e6034dc4bf46a6241b18eefd3576fb905be3d0b40e47"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-EYkw1ELHXq0/ocr.txt",
+          "sha256": "31c38186d39cbfad2f15048d03743b8e282c2180159820366df29b411f17d364"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-EYkw1ELHXq0/asr.txt",
+          "sha256": "aa9326e6d79c83770a9fc68008cdf4d2c946816632b8dd37d3f807380b2b7899",
+          "status": "no_speech",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-EYkw1ELHXq0/asr.raw.json",
+          "rawSha256": "6f7998ce3caa168b85ca5480e019c1e8e21540859c1a429f756b99dbe9217bb4"
+        }
+      },
+      "caseBindingSha256": "d40e7c6c9419e25f1fcee7830728f5cd19943a5d7c77353d4793982b1f97587d"
+    },
+    {
+      "caseId": "light-youtube-J6tw2l128YE",
+      "profileKey": "light-kingdom",
+      "channelId": "UC0LWZYpYuYAWK55WmvDqxbg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.youtube.com/shorts/J6tw2l128YE",
+      "mediaRelativePath": ".data/project-kings/source-candidates/light/ask-v3/J6tw2l128YE.mp4",
+      "contentSha256": "0add34915f9235de87c6d9d3426fb03b2d0461b3e80dd0b488080af337531750",
+      "durationSec": 24.514,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/source-metadata.json",
+          "sha256": "e8330b3040b55525e2148a66258bdef39fcd58a7308f25621885285a2a5832d2"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/frames/source-key-frame-01.jpg",
+            "timestampMs": 1471,
+            "sha256": "00a213c4f687217175f1f2d66ec2254244c0289146aa088f91a4d6166c6d465f"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/frames/source-key-frame-02.jpg",
+            "timestampMs": 5761,
+            "sha256": "881685c098fa69836f6cea61b5811549b125ca9c8bab56c95f0a113c2a806729"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/frames/source-key-frame-03.jpg",
+            "timestampMs": 10051,
+            "sha256": "572753b9954895535cd9b0a64b548d9c06ef6eea0a8968bcba43c596fcbb4748"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/frames/source-key-frame-04.jpg",
+            "timestampMs": 14463,
+            "sha256": "1c0246ca31180efc97317b8cd6261e9456dbcac33e643a55a394dfcdeb31a8f4"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/frames/source-key-frame-05.jpg",
+            "timestampMs": 18753,
+            "sha256": "961e55483dcb0e90f1cf4b95c7a19cd59aa4c223401111628db2d07a4e59c75c"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/frames/source-key-frame-06.jpg",
+            "timestampMs": 23043,
+            "sha256": "eabd09c239f97d99b41b0438556498567a641b2c64c89d5ac592bbaba9eb5b21"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/ocr.txt",
+          "sha256": "e5bb227ab2fa4ee52e2db46f66d869c4e1ca8fa113fa7a1f3213681b2de2bb70"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/asr.txt",
+          "sha256": "b9b85082fdf2d8093a546f60f2517f9b14fb9ae0464b14f72f7bf8b9b3ad98d1",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-J6tw2l128YE/asr.raw.json",
+          "rawSha256": "d856c17794e24611c07ff83e756c63a261ba586feabf76e351cc0d9a35e8b5b5"
+        }
+      },
+      "caseBindingSha256": "3117639104749ffc3d08ed06e3f645898d5e747fcdcfdc6c44506636053fe388"
+    },
+    {
+      "caseId": "light-youtube-V-xIvJs0Jbo",
+      "profileKey": "light-kingdom",
+      "channelId": "UC0LWZYpYuYAWK55WmvDqxbg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.youtube.com/shorts/V-xIvJs0Jbo",
+      "mediaRelativePath": ".data/project-kings/source-candidates/light/ask-v3/V-xIvJs0Jbo.mp4",
+      "contentSha256": "e060a47731e4bb1b08067218929b75120929b968750cd8693485cbe938822e74",
+      "durationSec": 66.754,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-V-xIvJs0Jbo/source-metadata.json",
+          "sha256": "f572d9f5a7290a8e5b4c26dbedf90fe418b5fe2fa1058e0d42182fb0c96b47db"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-V-xIvJs0Jbo/frames/source-key-frame-01.jpg",
+            "timestampMs": 4005,
+            "sha256": "0933ce3ba051f480ee7426c96d33b576a8316d1c248e398bba865e479edbe34f"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-V-xIvJs0Jbo/frames/source-key-frame-02.jpg",
+            "timestampMs": 15687,
+            "sha256": "a4a544701ae4df2c154fbb999fb1d2a66284d146f0041972ab813ebca68ca48d"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-V-xIvJs0Jbo/frames/source-key-frame-03.jpg",
+            "timestampMs": 27369,
+            "sha256": "74272ebe346604d7447e8750a522a3cb150d0dc2435503da605ebed7db6c7f95"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-V-xIvJs0Jbo/frames/source-key-frame-04.jpg",
+            "timestampMs": 39385,
+            "sha256": "a97840e2039d7e20b8570e5c0da8ead74cc222a82dbe6ae546e90a728f85b5cc"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-V-xIvJs0Jbo/frames/source-key-frame-05.jpg",
+            "timestampMs": 51067,
+            "sha256": "e7d8740634af48295347c9ebff55321e261071c4331c214ae8cb9d6ebe294fda"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-V-xIvJs0Jbo/frames/source-key-frame-06.jpg",
+            "timestampMs": 62749,
+            "sha256": "25d831156517f885ee00f7a8e10ee516c0504632f2bb8f7af68dfb5f3a11946d"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-V-xIvJs0Jbo/ocr.txt",
+          "sha256": "e7c4e1c9a8bb8085893ae3cf6e87cfcb03a18f5d2af28580a178833461e48285"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-V-xIvJs0Jbo/asr.txt",
+          "sha256": "c2b4ae2c5b5451dc378b65150bd3d2637ee2c4a6ebe040d76cb4ad616894d57b",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-V-xIvJs0Jbo/asr.raw.json",
+          "rawSha256": "939f1cd4c4fdcb0198654847ab4bb2f27ee6acf948ad8e7035211c464064b5cb"
+        }
+      },
+      "caseBindingSha256": "ba99f8dfaeb800e7f97d4e66dfe15490abd1be832cf21f6bdcf88f4c2275d0fa"
+    },
+    {
+      "caseId": "light-youtube-WkEyab1jINA",
+      "profileKey": "light-kingdom",
+      "channelId": "UC0LWZYpYuYAWK55WmvDqxbg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.youtube.com/shorts/WkEyab1jINA",
+      "mediaRelativePath": ".data/project-kings/source-candidates/light/ask-v3/WkEyab1jINA.mp4",
+      "contentSha256": "89a4c8e0d517bc828748b868c8a3758f25c69ab1802254cec428da1e16529270",
+      "durationSec": 53.414,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-WkEyab1jINA/source-metadata.json",
+          "sha256": "e6e8a8c216c798f9d2c894e5f0bd509c1d23cd37ac630726fc2d97610db20101"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-WkEyab1jINA/frames/source-key-frame-01.jpg",
+            "timestampMs": 3205,
+            "sha256": "7c6c17253eb5fd633cedaea67829ab10c16b4eb5092e5235655dce606b62b7ae"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-WkEyab1jINA/frames/source-key-frame-02.jpg",
+            "timestampMs": 12552,
+            "sha256": "64277b53185508fb08e9d57431aae2e49726984ee5b3201412ee046f30f2a760"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-WkEyab1jINA/frames/source-key-frame-03.jpg",
+            "timestampMs": 21900,
+            "sha256": "f9cf89d58ead7c45712e61925c833c5b6b51b1ad1efc8e4ff5d7e96feacad32a"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-WkEyab1jINA/frames/source-key-frame-04.jpg",
+            "timestampMs": 31514,
+            "sha256": "574787432ad09f8bd5d6325db00316daf01076d7a1ccbb748bb7f398c95f8b0f"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-WkEyab1jINA/frames/source-key-frame-05.jpg",
+            "timestampMs": 40862,
+            "sha256": "9adbd02cc7690e9955606816ab0d226c22cbc23e7aeabb1a0fe3c16ed3de0784"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-WkEyab1jINA/frames/source-key-frame-06.jpg",
+            "timestampMs": 50209,
+            "sha256": "bc6c0f92ce80de383f7c731aff04be66f572cd068bd9467bb20c3b57bdd545b5"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-WkEyab1jINA/ocr.txt",
+          "sha256": "0f499130bdcc24846000ae282cc68a1140a64207473fae0142d062e74be9af69"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-WkEyab1jINA/asr.txt",
+          "sha256": "1a3eda6d57073db8ddf569e33a5ac7f90ce559662095db819370d6df09cf1afe",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-WkEyab1jINA/asr.raw.json",
+          "rawSha256": "8f3ac742607403364e6158c9a730fd4dff8502fb9d17de07a2c692831f5f10d1"
+        }
+      },
+      "caseBindingSha256": "b512700831a6d497ed2441d429dd3e2b0a7ad0bcbab6e9e9d51206769a93fe1a"
+    },
+    {
+      "caseId": "light-youtube-XPKBwhDPxk0",
+      "profileKey": "light-kingdom",
+      "channelId": "UC0LWZYpYuYAWK55WmvDqxbg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.youtube.com/shorts/XPKBwhDPxk0",
+      "mediaRelativePath": ".data/project-kings/source-candidates/light/ask-v3/XPKBwhDPxk0.mp4",
+      "contentSha256": "9a0d618a504dc4765cb5f2e047fd4f940205b1d60eb371cea70a8094a26220d9",
+      "durationSec": 23.234,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-XPKBwhDPxk0/source-metadata.json",
+          "sha256": "dff01410194e6ecff4335403438851135d6477c3ef49e461d111f31974f92da0"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-XPKBwhDPxk0/frames/source-key-frame-01.jpg",
+            "timestampMs": 1394,
+            "sha256": "fb248faa7bef1b386696f1495cf69326603c32a801720eca3ff07c6c5e9eaea3"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-XPKBwhDPxk0/frames/source-key-frame-02.jpg",
+            "timestampMs": 5460,
+            "sha256": "cf8f4ea6cca277b29499dc3da8c0eed2afc59b811da6eca70e096095a2e9e725"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-XPKBwhDPxk0/frames/source-key-frame-03.jpg",
+            "timestampMs": 9526,
+            "sha256": "153aaee4f76b0ca9ef460ac68b42682615d150d5de634da8c534c09a8d2de995"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-XPKBwhDPxk0/frames/source-key-frame-04.jpg",
+            "timestampMs": 13708,
+            "sha256": "fa298d9ed8fcd06940c93abc1f115175519d7b14e0b206f1d947fc8d0b95a1df"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-XPKBwhDPxk0/frames/source-key-frame-05.jpg",
+            "timestampMs": 17774,
+            "sha256": "40bc469621e475c29621cb53c7a948e7cd28fa5d7deab20c75b482c10b777602"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-XPKBwhDPxk0/frames/source-key-frame-06.jpg",
+            "timestampMs": 21840,
+            "sha256": "58d6ae8f6fdb19f834ffb4f0b7dded0a2a2f2d0cb3a60ffc8da48b2b17ed1a47"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-XPKBwhDPxk0/ocr.txt",
+          "sha256": "44253baeb533ab99c4b79bb59a2319f7aa4a60f4e544d7678d7c3d3f69cbf46c"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-XPKBwhDPxk0/asr.txt",
+          "sha256": "24ddeb4a8e931f83eff4b29ca7a2de3535c8f05854bdd0c552496246ba04d590",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-XPKBwhDPxk0/asr.raw.json",
+          "rawSha256": "66c4b53d4a47a14d83524cbb09ea77b359b288f221d14ef7230f6f7112cf07fe"
+        }
+      },
+      "caseBindingSha256": "a5221ddf293c6bd3379b501fc66956ab728b2a2153f8272bd6d899d153cd8961"
+    },
+    {
+      "caseId": "light-youtube-fj6CXk2KTIs",
+      "profileKey": "light-kingdom",
+      "channelId": "UC0LWZYpYuYAWK55WmvDqxbg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.youtube.com/shorts/fj6CXk2KTIs",
+      "mediaRelativePath": ".data/project-kings/source-candidates/light/ask-v3/fj6CXk2KTIs.mp4",
+      "contentSha256": "842ca7347b6d4fd35e32c71565fcb1d317f978aec625d2c6067bd53141b052dd",
+      "durationSec": 14.374,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-fj6CXk2KTIs/source-metadata.json",
+          "sha256": "a24f1a24cc3c0221e9d58fc21cbe53e7712e86ae53baca9e8378d313ba6f1f66"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-fj6CXk2KTIs/frames/source-key-frame-01.jpg",
+            "timestampMs": 862,
+            "sha256": "49a30a9469f420a54223a283f7f6683f24f49dcd0f676737e83ef10f73246085"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-fj6CXk2KTIs/frames/source-key-frame-02.jpg",
+            "timestampMs": 3378,
+            "sha256": "66742ae6970293ff7e3bbb4f38411f1077447e9c07233a0b1187848182f2016f"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-fj6CXk2KTIs/frames/source-key-frame-03.jpg",
+            "timestampMs": 5893,
+            "sha256": "203a275ae0e581722eca44d1c87b2aee52bf7b0e059b59da0ac971e4fdf63320"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-fj6CXk2KTIs/frames/source-key-frame-04.jpg",
+            "timestampMs": 8481,
+            "sha256": "88567910a364fd8746b73a88584d4c1204f0b087c427d30c405426337ff2aaa7"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-fj6CXk2KTIs/frames/source-key-frame-05.jpg",
+            "timestampMs": 10996,
+            "sha256": "4d7653eb4ced6a0a66922e1bb937e3df9802cc5232d52a8f741d24d7033e61cd"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-fj6CXk2KTIs/frames/source-key-frame-06.jpg",
+            "timestampMs": 13512,
+            "sha256": "9870e0cd26de083ac36be49c28c181f307980346b63617b6073bc690b57fe6c6"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-fj6CXk2KTIs/ocr.txt",
+          "sha256": "0e290cfde720066dff1857bbe3f7190674f91282d6bc39077aad27a441b3ff69"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-fj6CXk2KTIs/asr.txt",
+          "sha256": "2efb0772d82e22c5ed57b0d5f8049899e216231e22db9547b61812e6e72ae08a",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-fj6CXk2KTIs/asr.raw.json",
+          "rawSha256": "f5d4908575b8d2cfe7bd3b815fee25f89f2ac3f09a53c93061e7f0e4ed254886"
+        }
+      },
+      "caseBindingSha256": "1c1a42b078a827ef5199dfcfd6ace28e3735c93de42cf79bc7026c5be7040bc5"
+    },
+    {
+      "caseId": "light-youtube-n9kD935iROw",
+      "profileKey": "light-kingdom",
+      "channelId": "UC0LWZYpYuYAWK55WmvDqxbg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.youtube.com/shorts/n9kD935iROw",
+      "mediaRelativePath": ".data/project-kings/source-candidates/light/ask-v3/n9kD935iROw.mp4",
+      "contentSha256": "5a59e6927e5265ff2272d9c538446f7f4585a47949785be19653debca63b855c",
+      "durationSec": 8.014,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-n9kD935iROw/source-metadata.json",
+          "sha256": "c89f8c746695f066298138fe7bd64dd52bb1b7e0bcfa2c5a8a120105003b748f"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-n9kD935iROw/frames/source-key-frame-01.jpg",
+            "timestampMs": 481,
+            "sha256": "bd2df3a7c158b0832cf321609ee78882249f1a6f19a9db7a8a235278a4270e6f"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-n9kD935iROw/frames/source-key-frame-02.jpg",
+            "timestampMs": 1883,
+            "sha256": "7ff9e52027f4f9c7504b18d69463d11c5e47b7da58694d5207466a1ca7e5d999"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-n9kD935iROw/frames/source-key-frame-03.jpg",
+            "timestampMs": 3286,
+            "sha256": "d039340f12b5a9cdf820552a28da9aa3cf2c3db6789eaa8bbe560cba2d4b8ca6"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-n9kD935iROw/frames/source-key-frame-04.jpg",
+            "timestampMs": 4728,
+            "sha256": "a3e6a8da419b952ff3efd058b0fa5785c474f56884090ac0025bb376a059b3dd"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-n9kD935iROw/frames/source-key-frame-05.jpg",
+            "timestampMs": 6131,
+            "sha256": "d90e7c7f329f97ba2f190d0e45acf3837dca11e9a041fc9749a4c7d778d50a11"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-n9kD935iROw/frames/source-key-frame-06.jpg",
+            "timestampMs": 7533,
+            "sha256": "ec434a85c64d6236a82f6061bb3f7b10479a475c27572b32cf49afe017ae7e4d"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-n9kD935iROw/ocr.txt",
+          "sha256": "2c4810ac9f10b31b5e34c29a926998d6cce4ed30236b715fec0838979509efc8"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-n9kD935iROw/asr.txt",
+          "sha256": "45ee068d022c821459aab2ca0004d4df18d7cc5dba4cb25c871c1f03d3a1a0eb",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-n9kD935iROw/asr.raw.json",
+          "rawSha256": "3844704d399b70bc886d3d5fca21a95f3560e596f17f4fe6eb94066639adfb41"
+        }
+      },
+      "caseBindingSha256": "7ef78b2577adf3b22c9e0b6c18ba04da19509d4fdfd01c20f8cdb62e85d59ce7"
+    },
+    {
+      "caseId": "light-youtube-oA7rziyGv8s",
+      "profileKey": "light-kingdom",
+      "channelId": "UC0LWZYpYuYAWK55WmvDqxbg",
+      "profileVersion": "channel-production-profile-v1",
+      "sourceUrl": "https://www.youtube.com/shorts/oA7rziyGv8s",
+      "mediaRelativePath": ".data/project-kings/source-candidates/light/ask-v3/oA7rziyGv8s.mp4",
+      "contentSha256": "3e4b7ea026b323a1cbcd957bff6e90f9ae8c852022aa4dc89b61f69a9792f287",
+      "durationSec": 10.034,
+      "frameCount": 6,
+      "artifacts": {
+        "sourceMetadata": {
+          "artifactId": "source-policy-metadata",
+          "kind": "source_metadata",
+          "mediaType": "json",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-oA7rziyGv8s/source-metadata.json",
+          "sha256": "e60b1d8b470bde691b3a59e3dc8e41c97fda6414d453dac68b5cc87e854244c1"
+        },
+        "orderedKeyFrames": [
+          {
+            "artifactId": "source-key-frame-01",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-oA7rziyGv8s/frames/source-key-frame-01.jpg",
+            "timestampMs": 602,
+            "sha256": "7b1ac37c78a6dfb1eb28332edad5e0560ae33fd795a7b70a51540af12ee14ca8"
+          },
+          {
+            "artifactId": "source-key-frame-02",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-oA7rziyGv8s/frames/source-key-frame-02.jpg",
+            "timestampMs": 2358,
+            "sha256": "3a39ed7b58db65b806434a7c49fa178c9ac15c29ecb6ef30675560e5231e1e96"
+          },
+          {
+            "artifactId": "source-key-frame-03",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-oA7rziyGv8s/frames/source-key-frame-03.jpg",
+            "timestampMs": 4114,
+            "sha256": "343185a0d927b17fa4595700539a29133669a2dbd2ce81fe08da74d83368f290"
+          },
+          {
+            "artifactId": "source-key-frame-04",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-oA7rziyGv8s/frames/source-key-frame-04.jpg",
+            "timestampMs": 5920,
+            "sha256": "a860e0d21adfab467c7b5bcb6df3d431e0c712250ef0150fae3b13d4ec92647f"
+          },
+          {
+            "artifactId": "source-key-frame-05",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-oA7rziyGv8s/frames/source-key-frame-05.jpg",
+            "timestampMs": 7676,
+            "sha256": "c0cd01b76998d8e2562acc37b1e741e6c564846537cf93d1fefa3c9e7d0cebdd"
+          },
+          {
+            "artifactId": "source-key-frame-06",
+            "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-oA7rziyGv8s/frames/source-key-frame-06.jpg",
+            "timestampMs": 9432,
+            "sha256": "27660d53ea48a349c3b7c0bf10dabf8edda4ef8fb564d81ff6125efc82ae88d7"
+          }
+        ],
+        "ocr": {
+          "artifactId": "source-policy-ocr",
+          "kind": "ocr",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-oA7rziyGv8s/ocr.txt",
+          "sha256": "c2df95ecdd7df88c22f1153c90522d541e5784ea9242e04452e531e08fa0f258"
+        },
+        "asr": {
+          "artifactId": "source-policy-asr",
+          "kind": "transcript",
+          "mediaType": "text",
+          "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-oA7rziyGv8s/asr.txt",
+          "sha256": "7faf7a6e041ea78567e3c7313604b92c16cd5dded7e63881038724a2e8ac12e5",
+          "status": "speech_detected",
+          "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/light-youtube-oA7rziyGv8s/asr.raw.json",
+          "rawSha256": "15cdcc4aea2aedc95b3cb40031051b7f9697e1bc6cba23c0c5abc4d8a35b09a2"
+        }
+      },
+      "caseBindingSha256": "bc9bc44791eba29ec4670b1fec2c06eb0dbbc2193ca0f93c969cce7e5bd4d968"
+    }
+  ],
+  "datasetSha256": "21ce4864f790f5b9e552bbcfea5cd4abe468e96f3e9f5c7a3a9819460a114e66"
+}

@@ -3,14 +3,16 @@ export type Stage3WorkerJobKind =
   | "preview"
   | "render"
   | "source-download"
-  | "agent-media-step";
+  | "agent-media-step"
+  | "production-semantic";
 
 const DEFAULT_TIMEOUT_MS_BY_KIND: Record<Stage3WorkerJobKind, number> = {
   "editing-proxy": 5 * 60_000,
   preview: 150_000,
   render: 15 * 60_000,
   "source-download": 5 * 60_000,
-  "agent-media-step": 10 * 60_000
+  "agent-media-step": 10 * 60_000,
+  "production-semantic": 12 * 60_000
 };
 
 const DEFAULT_HOST_TIMEOUT_MS_BY_KIND: Record<Stage3WorkerJobKind, number> = {
@@ -18,7 +20,8 @@ const DEFAULT_HOST_TIMEOUT_MS_BY_KIND: Record<Stage3WorkerJobKind, number> = {
   preview: 150_000,
   render: 30 * 60_000,
   "source-download": 5 * 60_000,
-  "agent-media-step": 10 * 60_000
+  "agent-media-step": 10 * 60_000,
+  "production-semantic": 12 * 60_000
 };
 
 const ENV_KEY_BY_KIND: Record<Stage3WorkerJobKind, string> = {
@@ -26,7 +29,8 @@ const ENV_KEY_BY_KIND: Record<Stage3WorkerJobKind, string> = {
   preview: "STAGE3_WORKER_PREVIEW_TIMEOUT_MS",
   render: "STAGE3_WORKER_RENDER_TIMEOUT_MS",
   "source-download": "STAGE3_WORKER_SOURCE_DOWNLOAD_TIMEOUT_MS",
-  "agent-media-step": "STAGE3_WORKER_AGENT_MEDIA_STEP_TIMEOUT_MS"
+  "agent-media-step": "STAGE3_WORKER_AGENT_MEDIA_STEP_TIMEOUT_MS",
+  "production-semantic": "STAGE3_WORKER_PRODUCTION_SEMANTIC_TIMEOUT_MS"
 };
 
 const HOST_ENV_KEY_BY_KIND: Record<Stage3WorkerJobKind, string> = {
@@ -34,7 +38,8 @@ const HOST_ENV_KEY_BY_KIND: Record<Stage3WorkerJobKind, string> = {
   preview: "STAGE3_HOST_PREVIEW_TIMEOUT_MS",
   render: "STAGE3_HOST_RENDER_TIMEOUT_MS",
   "source-download": "STAGE3_HOST_SOURCE_DOWNLOAD_TIMEOUT_MS",
-  "agent-media-step": "STAGE3_HOST_AGENT_MEDIA_STEP_TIMEOUT_MS"
+  "agent-media-step": "STAGE3_HOST_AGENT_MEDIA_STEP_TIMEOUT_MS",
+  "production-semantic": "STAGE3_HOST_PRODUCTION_SEMANTIC_TIMEOUT_MS"
 };
 
 // Real local renders on editor laptops can still exceed 5 minutes even after the

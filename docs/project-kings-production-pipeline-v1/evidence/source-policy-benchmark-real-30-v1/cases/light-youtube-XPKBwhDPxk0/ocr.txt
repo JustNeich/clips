@@ -1,0 +1,26 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 1.394s]
+is
+‘a
+X
+[source-key-frame-02 @ 5.460s]
+\4
+if
+tan
+Ay
+ra.
+AK —
+[source-key-frame-03 @ 9.526s]
+al
+>
+> |
+[source-key-frame-04 @ 13.708s]
+f
+Fae A
+‘Bx
+[source-key-frame-05 @ 17.774s]
+. les
+[source-key-frame-06 @ 21.840s]
+Gigsles

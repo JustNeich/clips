@@ -1,0 +1,1810 @@
+{
+  "schemaVersion": "project-kings-model-benchmark-evidence-v1",
+  "benchmarkVersion": "project-kings-source-policy-real-30-2026-07-10-v2",
+  "stageRole": "source_policy",
+  "createdAt": "2026-07-10T16:33:16.986Z",
+  "bounds": {
+    "maxCases": 120,
+    "maxCandidates": 12,
+    "maxExecutions": 240,
+    "actualExecutions": 60
+  },
+  "dataset": {
+    "datasetId": "project-kings-source-policy-real-candidates",
+    "datasetVersion": "real-30-v1",
+    "datasetSha256": "6836fea948cc9eef2765223dd7627d3fe7d90778a4fee42bf84295dd8f14722b",
+    "promptSetSha256": "dbc8ccc215b24d8a6cf0431ad92e8d3902a6b6da31c8f867cc02b8a8eee55d0b",
+    "outputSchemaSha256": "59266e6ae132883e278b11c8da433f841a5d15dfe4de13ef39777390ee504db3",
+    "sampleSize": 30
+  },
+  "qualityEvaluator": {
+    "evaluatorId": "project-kings-stage-quality",
+    "evaluatorVersion": "v1",
+    "implementationSha256": "17f4687ac6661215cedaa5d2dd703dd3e1c1599dcc6ad074515b0dcec4269835",
+    "configSha256": "de6a71ee91dc834a7b58d36dbd6954bfd5d2026dc8c1c8e692553f30b649d880"
+  },
+  "executionContract": {
+    "registrySha256": "4bd1cb98b553b54cb856f9841c358ea02e8c05e8c00284c8ad9cfa3af55ef1a7",
+    "policySha256": "6f635076564bb849b8f331fef8da498be53c43bd7c15702699f88eb87573bc05",
+    "schemaValidationMethod": "strict-production-agent-output-v1",
+    "qualityAggregationMethod": "mean-passed-evaluator-score-v1",
+    "p95Method": "nearest-rank-p95-v1",
+    "costMethod": "uncached-input-plus-cached-input-plus-total-output-v1",
+    "reasoningTokensDoubleCounted": false
+  },
+  "pricing": [
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 18.75,
+      "cachedInputPerMillionTokens": 1.875,
+      "outputPerMillionTokens": 113,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10.json",
+      "verifiedAt": "2026-07-10T10:25:00.000Z",
+      "sourceSha256": "8eecae97c60246ccdfe6acc3c3b17071131ca2a2ef3104d866d427933a11638c"
+    },
+    {
+      "routeId": "codex:gpt-5.4",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 62.5,
+      "cachedInputPerMillionTokens": 6.25,
+      "outputPerMillionTokens": 375,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10.json",
+      "verifiedAt": "2026-07-10T10:25:00.000Z",
+      "sourceSha256": "8eecae97c60246ccdfe6acc3c3b17071131ca2a2ef3104d866d427933a11638c"
+    }
+  ],
+  "candidates": [
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "provider": "codex",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "low",
+      "samples": [
+        {
+          "caseId": "dark-instagram-BtDnmx6HRr_",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "3a5cf13c9001df7fea38d70dc55647990659bcb6816f774b68928c3fe45d0e34",
+          "startedAt": "2026-07-10T16:14:51.131Z",
+          "durationMs": 10809.753125,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 28925,
+            "cachedInputTokens": 2432,
+            "outputTokens": 408,
+            "reasoningOutputTokens": 175
+          },
+          "cost": 0.54740775,
+          "costUnit": "codex_credits",
+          "outputSha256": "87b248bde8ce3c2bd1450191f2476e12dbc9cb437f7a666c8629b3693f8ea86c",
+          "error": null
+        },
+        {
+          "caseId": "dark-instagram-C-0YpsCAODv",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "a21379ab79c97373b184fecadc477444ed46b588b05579b88893d883bd9d7c58",
+          "startedAt": "2026-07-10T16:15:01.942Z",
+          "durationMs": 22013.848292,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 68328,
+            "cachedInputTokens": 4864,
+            "outputTokens": 546,
+            "reasoningOutputTokens": 147
+          },
+          "cost": 1.260768,
+          "costUnit": "codex_credits",
+          "outputSha256": "7d7b25d37a4b3c40f3396e1342782e7003464abbd4507cd58e3abae7ed5f1437",
+          "error": null
+        },
+        {
+          "caseId": "dark-instagram-C9gLu79MklN",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "90bd154e0156dada4a96680fdc5995c5ccaa18c36caf57972e9a357fc2609c7f",
+          "startedAt": "2026-07-10T16:15:23.956Z",
+          "durationMs": 19389.521875,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 32759,
+            "cachedInputTokens": 2432,
+            "outputTokens": 318,
+            "reasoningOutputTokens": 100
+          },
+          "cost": 0.60912525,
+          "costUnit": "codex_credits",
+          "outputSha256": "02665cc6266a162546de0566aec22bc916d10d748523137c221723ace5a2b638",
+          "error": null
+        },
+        {
+          "caseId": "dark-instagram-CsYa4skNBjP",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "50df196ab14a33e536a6797ed090ed3ff02c7c6cd36c0660020e7c3eb096a1a0",
+          "startedAt": "2026-07-10T16:15:43.346Z",
+          "durationMs": 24031.086208,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 68078,
+            "cachedInputTokens": 43264,
+            "outputTokens": 465,
+            "reasoningOutputTokens": 119
+          },
+          "cost": 0.5989275,
+          "costUnit": "codex_credits",
+          "outputSha256": "91bd24242f87ad6f742cf628d752fca2618f53ed7a02226c9950de0575aa7b6e",
+          "error": null
+        },
+        {
+          "caseId": "dark-instagram-Cw_QTMmA69_",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "4147789c6f1e0785aa53ed3364e76597b9a027f70a5bf0b5bfda251932648f0a",
+          "startedAt": "2026-07-10T16:16:07.377Z",
+          "durationMs": 18578.078167,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 33185,
+            "cachedInputTokens": 2432,
+            "outputTokens": 381,
+            "reasoningOutputTokens": 134
+          },
+          "cost": 0.62423175,
+          "costUnit": "codex_credits",
+          "outputSha256": "fbb93ee03ec237e906da895ab0391e7875262431f24774867e5d23ac00ed7efd",
+          "error": null
+        },
+        {
+          "caseId": "dark-instagram-Cxb0DmpJ7oM",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "64d218a9d78b950615200d8e5f259f1e9e94f251f176e16f6728da31afe66e8c",
+          "startedAt": "2026-07-10T16:16:25.955Z",
+          "durationMs": 10390.953709,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 32753,
+            "cachedInputTokens": 2432,
+            "outputTokens": 333,
+            "reasoningOutputTokens": 94
+          },
+          "cost": 0.61070775,
+          "costUnit": "codex_credits",
+          "outputSha256": "546777e210599c80c7769754e21693ab3f3067f6c95d5550ab07a48961564d34",
+          "error": null
+        },
+        {
+          "caseId": "dark-instagram-DIUYX9QStl3",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "fed03448713caac1bed118e0bf8ee29283f085eed9b2a44413420729c0035d0d",
+          "startedAt": "2026-07-10T16:16:36.346Z",
+          "durationMs": 10284.642709,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 32768,
+            "cachedInputTokens": 12672,
+            "outputTokens": 344,
+            "reasoningOutputTokens": 134
+          },
+          "cost": 0.439432,
+          "costUnit": "codex_credits",
+          "outputSha256": "6bfcd367dfa0bc0dc3e744301e1ce2794f9d78c3823145b8a6c4311c80fde1cc",
+          "error": null
+        },
+        {
+          "caseId": "dark-instagram-DKM66d2tamf",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "bdc99796674fcd9b7717ef371bdafa86b906b13d2f80cb56cf50677523d263c0",
+          "startedAt": "2026-07-10T16:16:46.631Z",
+          "durationMs": 11387.417333,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 32749,
+            "cachedInputTokens": 12672,
+            "outputTokens": 432,
+            "reasoningOutputTokens": 211
+          },
+          "cost": 0.44901975,
+          "costUnit": "codex_credits",
+          "outputSha256": "6bab508f73673d28c5f350d8cf95afe42ccc3e188a53b8b7e47137328d38d32d",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DW0w8RMjY3Y",
+          "expectedQualityLabel": "sp:a,p,a,a",
+          "promptSha256": "0119c1ccfbc65020b4181b2c44ac17b6a5602db0dd4de7586a9b9a6213607788",
+          "startedAt": "2026-07-10T16:16:58.018Z",
+          "durationMs": 16243.208709,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,p,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,p,a,a",
+              "actual=sp:a,p,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 32781,
+            "cachedInputTokens": 2432,
+            "outputTokens": 640,
+            "reasoningOutputTokens": 394
+          },
+          "cost": 0.64592375,
+          "costUnit": "codex_credits",
+          "outputSha256": "8e54bd14810d1e589ceab006f56a0d6fb03bc16daa6938317fcbafbe0db83527",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DW5s3qoDbHC",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "ca030847ae1216873f051334ca4ef8ac91df50df95e782ce71f5fe1a354be761",
+          "startedAt": "2026-07-10T16:17:14.262Z",
+          "durationMs": 12174.401875,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 32762,
+            "cachedInputTokens": 12672,
+            "outputTokens": 482,
+            "reasoningOutputTokens": 193
+          },
+          "cost": 0.4549135,
+          "costUnit": "codex_credits",
+          "outputSha256": "3c4476c90cffe83f43e47dd37bfd3e0ca41a929ac7cd8041b46ecf6aea2e7143",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DWjH5fWjBnt",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "22517e3168ef6f9f66fa6955c2a5031c8d397c224119f3a73e89126e110b1c63",
+          "startedAt": "2026-07-10T16:17:26.436Z",
+          "durationMs": 22395.323208,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 32767,
+            "cachedInputTokens": 12672,
+            "outputTokens": 409,
+            "reasoningOutputTokens": 183
+          },
+          "cost": 0.44675825,
+          "costUnit": "codex_credits",
+          "outputSha256": "16c2b73cefe47b10c42b189f28d995870ef252e948f2477b1e3fd3d1501c7802",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DWnxlyIDcoK",
+          "expectedQualityLabel": "sp:a,p,a,a",
+          "promptSha256": "1f1a206ea1b5fde1c1f2c410c830118339e2e4b0e44405e142e154891e0af722",
+          "startedAt": "2026-07-10T16:17:48.832Z",
+          "durationMs": 20578.730125,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,p,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,p,a,a",
+              "actual=sp:a,p,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 68470,
+            "cachedInputTokens": 43264,
+            "outputTokens": 529,
+            "reasoningOutputTokens": 163
+          },
+          "cost": 0.6135095,
+          "costUnit": "codex_credits",
+          "outputSha256": "eb4020f204e8f52785cfaa19367570cba404a1286e6dec7f34e3ed7819f36a29",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DWwSVVOjMqO",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "bc803af56b7bba91fd4e8940c390f913cbe4828dc3284a1716c2e07e383b7f40",
+          "startedAt": "2026-07-10T16:18:09.410Z",
+          "durationMs": 18924.596459,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,u,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,u,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"unknown\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 108284,
+            "cachedInputTokens": 77952,
+            "outputTokens": 696,
+            "reasoningOutputTokens": 235
+          },
+          "cost": 0.793533,
+          "costUnit": "codex_credits",
+          "outputSha256": "204d73764df6200ea26719a3ea62a328eecc86edcc0acb8702f18d94e029004f",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DXBhsJPjSgW",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "63d3ce6885944809803fb23bf977cf82a54f5ae7affb9d1744695e133f37af00",
+          "startedAt": "2026-07-10T16:18:28.335Z",
+          "durationMs": 17127.723958,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,p,a,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,p,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 70827,
+            "cachedInputTokens": 43264,
+            "outputTokens": 604,
+            "reasoningOutputTokens": 245
+          },
+          "cost": 0.66617825,
+          "costUnit": "codex_credits",
+          "outputSha256": "aaf5a6c279a447592f6e3dc8b1b0ff73a9150f26b80f070742e7871fd140285c",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DXHx529DVb0",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "42dde5accec94395cb79c5b76cee857c610d1f95cfc43db41cee156a3a6ec852",
+          "startedAt": "2026-07-10T16:18:45.463Z",
+          "durationMs": 16640.738417,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 68342,
+            "cachedInputTokens": 43264,
+            "outputTokens": 663,
+            "reasoningOutputTokens": 268
+          },
+          "cost": 0.6262515,
+          "costUnit": "codex_credits",
+          "outputSha256": "c00138f908f58b1f895b45552de9d26a99e8c25baa977bab6a963e85e64b50fc",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DXNBoz7jYmd",
+          "expectedQualityLabel": "sp:a,p,p,a",
+          "promptSha256": "99a2b478c80ce6274609ef71099768369ffe4e51526ca236ef2dc5051613d4d2",
+          "startedAt": "2026-07-10T16:19:02.104Z",
+          "durationMs": 27136.925792,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,p,p,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,p,p,a",
+              "actual=sp:a,p,p,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"present\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 32765,
+            "cachedInputTokens": 2432,
+            "outputTokens": 637,
+            "reasoningOutputTokens": 417
+          },
+          "cost": 0.64528475,
+          "costUnit": "codex_credits",
+          "outputSha256": "a5320beae5bb1743661c1f406023655a17fd37265cb57b84867cc2c32049041e",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DXOzkCdjMue",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "d69cceeb124121d264bd61073ca011fc4c40085ed0231e725dd76e3cc21258eb",
+          "startedAt": "2026-07-10T16:19:29.241Z",
+          "durationMs": 18251.203792,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 34563,
+            "cachedInputTokens": 9600,
+            "outputTokens": 363,
+            "reasoningOutputTokens": 125
+          },
+          "cost": 0.52707525,
+          "costUnit": "codex_credits",
+          "outputSha256": "a27e2a5d04002b8d52141fa8fd60bb7a7c229509ab2a2472bc54679668119413",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DXUPExpjCs2",
+          "expectedQualityLabel": "sp:a,a,p,a",
+          "promptSha256": "957c956cc8d2acd33562a0de349232963da99f0c028857cd04e67f1cde1ceb31",
+          "startedAt": "2026-07-10T16:19:47.493Z",
+          "durationMs": 12666.700041,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,p,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,p,a",
+              "actual=sp:a,a,p,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"present\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 32782,
+            "cachedInputTokens": 12672,
+            "outputTokens": 376,
+            "reasoningOutputTokens": 158
+          },
+          "cost": 0.4433105,
+          "costUnit": "codex_credits",
+          "outputSha256": "1c8bbb61dff6d9320351a2599e210906f15cf9ca84624b74dc5b0c905c8c68be",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-1diIRo4sHtk",
+          "expectedQualityLabel": "sp:a,a,a,p",
+          "promptSha256": "8f6dc23af653a2b917b81423d1a2b00bdc51b43f6b3fb23af685cc949a82d62a",
+          "startedAt": "2026-07-10T16:20:00.159Z",
+          "durationMs": 14268.48075,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,p",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 32762,
+            "cachedInputTokens": 2432,
+            "outputTokens": 436,
+            "reasoningOutputTokens": 208
+          },
+          "cost": 0.6225155,
+          "costUnit": "codex_credits",
+          "outputSha256": "da11fdb9bb9da21d7b0de04201e7c21bbe5a8f9af160d4359c8fe35ed1de312f",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-6IlkA1MLVYA",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "3194cde3ac338b3a005092200620fa63cbf5147a69576624a3a3af6c91dbd6b1",
+          "startedAt": "2026-07-10T16:20:14.428Z",
+          "durationMs": 20856.0125,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 70377,
+            "cachedInputTokens": 43264,
+            "outputTokens": 440,
+            "reasoningOutputTokens": 113
+          },
+          "cost": 0.63920875,
+          "costUnit": "codex_credits",
+          "outputSha256": "51abc7153fa3c9c982ef5e9ed8e9e447bad800e4f61fe1b92ac83860da090d97",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-6QIdqyFoxFE",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "d9d8c9b2ea5fa8487b8e4f4bb7e8fdc3421f572beb7495a967ddf90ce04ac5dc",
+          "startedAt": "2026-07-10T16:20:35.284Z",
+          "durationMs": 13891.509917,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 67997,
+            "cachedInputTokens": 33024,
+            "outputTokens": 504,
+            "reasoningOutputTokens": 108
+          },
+          "cost": 0.77461575,
+          "costUnit": "codex_credits",
+          "outputSha256": "787df0d9b871590100fa1f51e9496ed9033239ab629d5ade43039f471bfa7d07",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-BwIaEb5vGDo",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "e30dbc4dbdb6f5559458d1ef520868899752fec5d9c8448ed4ba378fe8412d62",
+          "startedAt": "2026-07-10T16:20:49.176Z",
+          "durationMs": 20612.78375,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 60918,
+            "cachedInputTokens": 30464,
+            "outputTokens": 526,
+            "reasoningOutputTokens": 154
+          },
+          "cost": 0.6875705,
+          "costUnit": "codex_credits",
+          "outputSha256": "9a55fb219de3c840866335e4151a26f8d6befd8c59864a2aed1cbd0eeb927ecf",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-EYkw1ELHXq0",
+          "expectedQualityLabel": "sp:a,a,a,p",
+          "promptSha256": "2c77efc3c854dc8a2a63a26916d50c81c30222e0c850d4000bdf63e707642511",
+          "startedAt": "2026-07-10T16:21:09.789Z",
+          "durationMs": 12298.176125,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,u",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,p",
+              "actual=sp:a,a,a,u",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"unknown\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 32763,
+            "cachedInputTokens": 12672,
+            "outputTokens": 504,
+            "reasoningOutputTokens": 279
+          },
+          "cost": 0.45741825,
+          "costUnit": "codex_credits",
+          "outputSha256": "45525024d0b404713124c638d02b61a2d5e2a5c5d4d38f84afa8e045c2bf1cfd",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-J6tw2l128YE",
+          "expectedQualityLabel": "sp:a,a,a,p",
+          "promptSha256": "f14b5edd88f7160b75e73b5ff44d5462b748191f19f8dd3f8746165a22cb75ea",
+          "startedAt": "2026-07-10T16:21:22.087Z",
+          "durationMs": 13166.531833,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,u,u,u",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,p",
+              "actual=sp:a,u,u,u",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"unknown\",\"minorInSensitiveIncident\":\"unknown\",\"realisticPoliticalOrPublicFigureDeepfake\":\"unknown\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 32765,
+            "cachedInputTokens": 12672,
+            "outputTokens": 473,
+            "reasoningOutputTokens": 215
+          },
+          "cost": 0.45395275,
+          "costUnit": "codex_credits",
+          "outputSha256": "e8c3f699469170dbb673973f41a10117da971e37b3582a1c8a9b36731adcad69",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-V-xIvJs0Jbo",
+          "expectedQualityLabel": "sp:a,a,a,p",
+          "promptSha256": "5c0232e7daab7cb6526bfea888a0c169aaafc54c67096cace47d8e718de12062",
+          "startedAt": "2026-07-10T16:21:35.254Z",
+          "durationMs": 17649.973584,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,p",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,p",
+              "actual=sp:a,a,a,p",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 72245,
+            "cachedInputTokens": 43264,
+            "outputTokens": 620,
+            "reasoningOutputTokens": 286
+          },
+          "cost": 0.69457375,
+          "costUnit": "codex_credits",
+          "outputSha256": "6888b262d76bdda82d05e913e0018b516f16f965ecb423bb9be88941127707fd",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-WkEyab1jINA",
+          "expectedQualityLabel": "sp:a,a,a,p",
+          "promptSha256": "2aace8a3b5be2b0f5d0559a4aa8bd1b8081b10c27e3b1f53d7b6686863828b32",
+          "startedAt": "2026-07-10T16:21:52.904Z",
+          "durationMs": 15477.825,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,p",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,p",
+              "actual=sp:a,a,a,p",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 70772,
+            "cachedInputTokens": 43264,
+            "outputTokens": 503,
+            "reasoningOutputTokens": 176
+          },
+          "cost": 0.653734,
+          "costUnit": "codex_credits",
+          "outputSha256": "502101ee5444032dd1a76e2776d26e21ff8b315c3f88790d6d65042981ec2363",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-XPKBwhDPxk0",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "d6448a5c8de348c09430ca50014ee6ff7b210899697aff8ba1e671acfdc413b7",
+          "startedAt": "2026-07-10T16:22:08.382Z",
+          "durationMs": 11242.299625,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 32772,
+            "cachedInputTokens": 12672,
+            "outputTokens": 438,
+            "reasoningOutputTokens": 158
+          },
+          "cost": 0.450129,
+          "costUnit": "codex_credits",
+          "outputSha256": "fd4a5c070bb920246cbc4ea9837ac47adbac63c4a2d3849ca201413b3177e888",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-fj6CXk2KTIs",
+          "expectedQualityLabel": "sp:a,a,a,p",
+          "promptSha256": "039d9ac7b76a92cd7c6526332aa6c47fac2a333761cc791740c26a29c434a219",
+          "startedAt": "2026-07-10T16:22:19.624Z",
+          "durationMs": 14155.123833,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,p",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,p",
+              "actual=sp:a,a,a,p",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 32755,
+            "cachedInputTokens": 12672,
+            "outputTokens": 475,
+            "reasoningOutputTokens": 250
+          },
+          "cost": 0.45399125,
+          "costUnit": "codex_credits",
+          "outputSha256": "c7e52092c7388580a01be9cfbf9b7803a955fe808ce917ba477ef508ba6b682a",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-n9kD935iROw",
+          "expectedQualityLabel": "sp:a,a,a,u",
+          "promptSha256": "b2f0d6783ec6bfe2ccbd4a27fb6b209b6c8467b494b4be47bdd5075764d75116",
+          "startedAt": "2026-07-10T16:22:33.779Z",
+          "durationMs": 17876.931875,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,u",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 67229,
+            "cachedInputTokens": 42752,
+            "outputTokens": 526,
+            "reasoningOutputTokens": 143
+          },
+          "cost": 0.59854175,
+          "costUnit": "codex_credits",
+          "outputSha256": "2f097357cd80f8ff11e62550d07bba5c19c8956cb7b56bb140adfc14bd787846",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-oA7rziyGv8s",
+          "expectedQualityLabel": "sp:a,a,a,p",
+          "promptSha256": "fa9c04ca1dcebdcc01db77586e8e5a24e0802d2b0fa888819d6afa5ec609ad71",
+          "startedAt": "2026-07-10T16:22:51.656Z",
+          "durationMs": 13887.483375,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,p",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 70411,
+            "cachedInputTokens": 43264,
+            "outputTokens": 495,
+            "reasoningOutputTokens": 165
+          },
+          "cost": 0.64606125,
+          "costUnit": "codex_credits",
+          "outputSha256": "99f6310a523b9e5293d9398091a7c7dcb5ae57e502afbc8a4217dab5e177fca8",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 30,
+        "schemaSuccessRate": 1,
+        "qualityScore": 0.766666666667,
+        "qualityPassRate": 0.766666666667,
+        "p95LatencyMs": 24031.086208,
+        "meanCost": 0.604489016667,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": true,
+        "selectorBenchmark": {
+          "benchmarkVersion": "project-kings-source-policy-real-30-2026-07-10-v2",
+          "routeId": "codex:gpt-5.4-mini",
+          "reasoningEffort": "low",
+          "sampleSize": 30,
+          "qualityScore": 0.766666666667,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 24031.086208,
+          "meanCost": 0.604489016667,
+          "costUnit": "codex_credits"
+        }
+      }
+    },
+    {
+      "routeId": "codex:gpt-5.4",
+      "provider": "codex",
+      "model": "gpt-5.4",
+      "reasoningEffort": "low",
+      "samples": [
+        {
+          "caseId": "dark-instagram-BtDnmx6HRr_",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "3a5cf13c9001df7fea38d70dc55647990659bcb6816f774b68928c3fe45d0e34",
+          "startedAt": "2026-07-10T16:23:05.544Z",
+          "durationMs": 13072.706334,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,u,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,u,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"unknown\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 29661,
+            "cachedInputTokens": 2432,
+            "outputTokens": 381,
+            "reasoningOutputTokens": 101
+          },
+          "cost": 1.8598875,
+          "costUnit": "codex_credits",
+          "outputSha256": "77512a49e2aa5e8734e022b56944a86cbfb36d60edd00e5a57a6f69554bebd27",
+          "error": null
+        },
+        {
+          "caseId": "dark-instagram-C-0YpsCAODv",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "a21379ab79c97373b184fecadc477444ed46b588b05579b88893d883bd9d7c58",
+          "startedAt": "2026-07-10T16:23:18.617Z",
+          "durationMs": 12705.771917,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 33112,
+            "cachedInputTokens": 2432,
+            "outputTokens": 423,
+            "reasoningOutputTokens": 149
+          },
+          "cost": 2.091325,
+          "costUnit": "codex_credits",
+          "outputSha256": "a220a8d2a607ce66d01913934161ff7d16f1050c5dc76dedb5a1f102bc2fc548",
+          "error": null
+        },
+        {
+          "caseId": "dark-instagram-C9gLu79MklN",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "90bd154e0156dada4a96680fdc5995c5ccaa18c36caf57972e9a357fc2609c7f",
+          "startedAt": "2026-07-10T16:23:31.323Z",
+          "durationMs": 12397.301459,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 33117,
+            "cachedInputTokens": 13184,
+            "outputTokens": 406,
+            "reasoningOutputTokens": 152
+          },
+          "cost": 1.4804625,
+          "costUnit": "codex_credits",
+          "outputSha256": "759c21b8b4dc2ae501691b9b2d6e5918a8f5b05c5722233c04f405386a6e9e9b",
+          "error": null
+        },
+        {
+          "caseId": "dark-instagram-CsYa4skNBjP",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "50df196ab14a33e536a6797ed090ed3ff02c7c6cd36c0660020e7c3eb096a1a0",
+          "startedAt": "2026-07-10T16:23:43.721Z",
+          "durationMs": 13631.618416,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 33101,
+            "cachedInputTokens": 13184,
+            "outputTokens": 469,
+            "reasoningOutputTokens": 251
+          },
+          "cost": 1.5030875,
+          "costUnit": "codex_credits",
+          "outputSha256": "aa18585d7d32be4e7679af5032a43a0d4d3e80d05b9f40c1b9c1e37cb5201993",
+          "error": null
+        },
+        {
+          "caseId": "dark-instagram-Cw_QTMmA69_",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "4147789c6f1e0785aa53ed3364e76597b9a027f70a5bf0b5bfda251932648f0a",
+          "startedAt": "2026-07-10T16:23:57.352Z",
+          "durationMs": 11865.090041,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 33109,
+            "cachedInputTokens": 2432,
+            "outputTokens": 413,
+            "reasoningOutputTokens": 158
+          },
+          "cost": 2.0873875,
+          "costUnit": "codex_credits",
+          "outputSha256": "4e4b571a480d06b8748e1aaa23ffe9bda4f29d8dc809280d16335c8eaff34e2f",
+          "error": null
+        },
+        {
+          "caseId": "dark-instagram-Cxb0DmpJ7oM",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "64d218a9d78b950615200d8e5f259f1e9e94f251f176e16f6728da31afe66e8c",
+          "startedAt": "2026-07-10T16:24:09.218Z",
+          "durationMs": 14596.652708,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,u,a,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,u,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"unknown\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 33108,
+            "cachedInputTokens": 13184,
+            "outputTokens": 505,
+            "reasoningOutputTokens": 261
+          },
+          "cost": 1.517025,
+          "costUnit": "codex_credits",
+          "outputSha256": "1092de4bc0f93b6065c3f5222b62346a3dd2c89fca615de5606c8f4e88a9f13e",
+          "error": null
+        },
+        {
+          "caseId": "dark-instagram-DIUYX9QStl3",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "fed03448713caac1bed118e0bf8ee29283f085eed9b2a44413420729c0035d0d",
+          "startedAt": "2026-07-10T16:24:23.814Z",
+          "durationMs": 14141.418167,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 33114,
+            "cachedInputTokens": 2432,
+            "outputTokens": 473,
+            "reasoningOutputTokens": 244
+          },
+          "cost": 2.1102,
+          "costUnit": "codex_credits",
+          "outputSha256": "4ad39d3e98b5b3edb9354c150b636d638e10dc368b3706f5f68f6d1935f9e2a7",
+          "error": null
+        },
+        {
+          "caseId": "dark-instagram-DKM66d2tamf",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "bdc99796674fcd9b7717ef371bdafa86b906b13d2f80cb56cf50677523d263c0",
+          "startedAt": "2026-07-10T16:24:37.956Z",
+          "durationMs": 15753.478667,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 34890,
+            "cachedInputTokens": 2432,
+            "outputTokens": 416,
+            "reasoningOutputTokens": 174
+          },
+          "cost": 2.199825,
+          "costUnit": "codex_credits",
+          "outputSha256": "b642ad91c8694e80617942b283af2dc29a66752e2a0498d67939adcb546f6b5f",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DW0w8RMjY3Y",
+          "expectedQualityLabel": "sp:a,p,a,a",
+          "promptSha256": "0119c1ccfbc65020b4181b2c44ac17b6a5602db0dd4de7586a9b9a6213607788",
+          "startedAt": "2026-07-10T16:24:53.709Z",
+          "durationMs": 22109.663791,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,p,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,p,a,a",
+              "actual=sp:a,p,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 69383,
+            "cachedInputTokens": 44288,
+            "outputTokens": 742,
+            "reasoningOutputTokens": 167
+          },
+          "cost": 2.1234875,
+          "costUnit": "codex_credits",
+          "outputSha256": "47bba8c3f38dc67a2a69bdc93ebcc63edac2d5a432e3dd04e89d5134cec62934",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DW5s3qoDbHC",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "ca030847ae1216873f051334ca4ef8ac91df50df95e782ce71f5fe1a354be761",
+          "startedAt": "2026-07-10T16:25:15.819Z",
+          "durationMs": 50905.87125,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,p,a,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,p,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 69875,
+            "cachedInputTokens": 44288,
+            "outputTokens": 1123,
+            "reasoningOutputTokens": 512
+          },
+          "cost": 2.2971125,
+          "costUnit": "codex_credits",
+          "outputSha256": "500dfa0b80bdd66abe1589125ad49c344141a60d4611f273ba02c98de90609bc",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DWjH5fWjBnt",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "22517e3168ef6f9f66fa6955c2a5031c8d397c224119f3a73e89126e110b1c63",
+          "startedAt": "2026-07-10T16:26:06.725Z",
+          "durationMs": 18218.138458,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 33116,
+            "cachedInputTokens": 13184,
+            "outputTokens": 582,
+            "reasoningOutputTokens": 314
+          },
+          "cost": 1.5464,
+          "costUnit": "codex_credits",
+          "outputSha256": "9eca02f288e6e87b470868669c1be26c24bdcbc24e18fcf1da8c4c59f1c6f248",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DWnxlyIDcoK",
+          "expectedQualityLabel": "sp:a,p,a,a",
+          "promptSha256": "1f1a206ea1b5fde1c1f2c410c830118339e2e4b0e44405e142e154891e0af722",
+          "startedAt": "2026-07-10T16:26:24.944Z",
+          "durationMs": 26376.396958,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,p,a,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,p,a,a",
+              "actual=sp:a,p,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 69373,
+            "cachedInputTokens": 44288,
+            "outputTokens": 707,
+            "reasoningOutputTokens": 227
+          },
+          "cost": 2.1097375,
+          "costUnit": "codex_credits",
+          "outputSha256": "c155a1dd76594cb1ea2fe109f13075a69960efdc74fe681762555867ab9d59d6",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DWwSVVOjMqO",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "bc803af56b7bba91fd4e8940c390f913cbe4828dc3284a1716c2e07e383b7f40",
+          "startedAt": "2026-07-10T16:26:51.320Z",
+          "durationMs": 16024.654833,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,p,u,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,p,u,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"unknown\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 32719,
+            "cachedInputTokens": 2432,
+            "outputTokens": 477,
+            "reasoningOutputTokens": 194
+          },
+          "cost": 2.0870125,
+          "costUnit": "codex_credits",
+          "outputSha256": "ac20366f3affb7c8bf0fbaa11e3eb2a0cda507ca724f3e8cb5277fe416d00460",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DXBhsJPjSgW",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "63d3ce6885944809803fb23bf977cf82a54f5ae7affb9d1744695e133f37af00",
+          "startedAt": "2026-07-10T16:27:07.345Z",
+          "durationMs": 24498.794709,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,p,a,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,p,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 69327,
+            "cachedInputTokens": 43776,
+            "outputTokens": 905,
+            "reasoningOutputTokens": 260
+          },
+          "cost": 2.2099125,
+          "costUnit": "codex_credits",
+          "outputSha256": "4ce5034ca694fef4ae164ada6682fecee7cf7f6ecbf1f7eaa14f3ff8c1395dbc",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DXHx529DVb0",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "42dde5accec94395cb79c5b76cee857c610d1f95cfc43db41cee156a3a6ec852",
+          "startedAt": "2026-07-10T16:27:31.844Z",
+          "durationMs": 34465.251583,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,p,a,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,p,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 72671,
+            "cachedInputTokens": 35072,
+            "outputTokens": 792,
+            "reasoningOutputTokens": 241
+          },
+          "cost": 2.8661375,
+          "costUnit": "codex_credits",
+          "outputSha256": "d7f38e43f9e8338a2ab4192cf63579f7794a85e78569dd82063dbc37b8860926",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DXNBoz7jYmd",
+          "expectedQualityLabel": "sp:a,p,p,a",
+          "promptSha256": "99a2b478c80ce6274609ef71099768369ffe4e51526ca236ef2dc5051613d4d2",
+          "startedAt": "2026-07-10T16:28:06.309Z",
+          "durationMs": 20485.296458,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,p,u,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,p,p,a",
+              "actual=sp:a,p,u,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"unknown\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 33117,
+            "cachedInputTokens": 13184,
+            "outputTokens": 468,
+            "reasoningOutputTokens": 158
+          },
+          "cost": 1.5037125,
+          "costUnit": "codex_credits",
+          "outputSha256": "77445b427dea7dc7b8b1995c54467bfe037c9cbd210b9384c6141a259926151d",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DXOzkCdjMue",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "d69cceeb124121d264bd61073ca011fc4c40085ed0231e725dd76e3cc21258eb",
+          "startedAt": "2026-07-10T16:28:26.795Z",
+          "durationMs": 25455.813583,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,p,a,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,p,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 68884,
+            "cachedInputTokens": 44288,
+            "outputTokens": 697,
+            "reasoningOutputTokens": 202
+          },
+          "cost": 2.075425,
+          "costUnit": "codex_credits",
+          "outputSha256": "c85efde74334b694254fc58591577a4fe50abc6bd7a4f449a9b97656ecff9342",
+          "error": null
+        },
+        {
+          "caseId": "cop-instagram-DXUPExpjCs2",
+          "expectedQualityLabel": "sp:a,a,p,a",
+          "promptSha256": "957c956cc8d2acd33562a0de349232963da99f0c028857cd04e67f1cde1ceb31",
+          "startedAt": "2026-07-10T16:28:52.251Z",
+          "durationMs": 24513.495125,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,p,a",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,p,a",
+              "actual=sp:a,a,p,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"present\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 69584,
+            "cachedInputTokens": 44288,
+            "outputTokens": 743,
+            "reasoningOutputTokens": 131
+          },
+          "cost": 2.136425,
+          "costUnit": "codex_credits",
+          "outputSha256": "91be467a69bfcd73b2c4bee1274a14f3d103aee23436b57bd664159337db6a9e",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-1diIRo4sHtk",
+          "expectedQualityLabel": "sp:a,a,a,p",
+          "promptSha256": "8f6dc23af653a2b917b81423d1a2b00bdc51b43f6b3fb23af685cc949a82d62a",
+          "startedAt": "2026-07-10T16:29:16.764Z",
+          "durationMs": 14552.92275,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,p",
+              "actual=sp:a,a,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 33114,
+            "cachedInputTokens": 13184,
+            "outputTokens": 430,
+            "reasoningOutputTokens": 158
+          },
+          "cost": 1.489275,
+          "costUnit": "codex_credits",
+          "outputSha256": "8f9f9a522a44a4eaee08f0355605a282aff74b8bbd598f3f7542c46278b1788e",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-6IlkA1MLVYA",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "3194cde3ac338b3a005092200620fa63cbf5147a69576624a3a3af6c91dbd6b1",
+          "startedAt": "2026-07-10T16:29:31.317Z",
+          "durationMs": 20139.576583,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,u,a,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,u,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"unknown\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 33116,
+            "cachedInputTokens": 13184,
+            "outputTokens": 686,
+            "reasoningOutputTokens": 369
+          },
+          "cost": 1.5854,
+          "costUnit": "codex_credits",
+          "outputSha256": "0692781a0ef949ef0947f97621238d33c723ae6106ff6501d2c93024b12d37a7",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-6QIdqyFoxFE",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "d9d8c9b2ea5fa8487b8e4f4bb7e8fdc3421f572beb7495a967ddf90ce04ac5dc",
+          "startedAt": "2026-07-10T16:29:51.457Z",
+          "durationMs": 15239.210292,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,p,p",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,a,p,p",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"present\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 33117,
+            "cachedInputTokens": 13184,
+            "outputTokens": 611,
+            "reasoningOutputTokens": 306
+          },
+          "cost": 1.5573375,
+          "costUnit": "codex_credits",
+          "outputSha256": "0424759826c763dd1a734bc8065d8e00d6323b3e821907c39fde4105089544ac",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-BwIaEb5vGDo",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "e30dbc4dbdb6f5559458d1ef520868899752fec5d9c8448ed4ba378fe8412d62",
+          "startedAt": "2026-07-10T16:30:06.696Z",
+          "durationMs": 20290.887542,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,u,a,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,u,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"unknown\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 29673,
+            "cachedInputTokens": 13184,
+            "outputTokens": 674,
+            "reasoningOutputTokens": 377
+          },
+          "cost": 1.3657125,
+          "costUnit": "codex_credits",
+          "outputSha256": "507bedf33513a90cdccfbdb35ef5bf555e19c155493cf1ca1bc54e3a1ed9becb",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-EYkw1ELHXq0",
+          "expectedQualityLabel": "sp:a,a,a,p",
+          "promptSha256": "2c77efc3c854dc8a2a63a26916d50c81c30222e0c850d4000bdf63e707642511",
+          "startedAt": "2026-07-10T16:30:26.987Z",
+          "durationMs": 19674.3965,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,p",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,p",
+              "actual=sp:a,a,a,p",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 34910,
+            "cachedInputTokens": 14208,
+            "outputTokens": 560,
+            "reasoningOutputTokens": 283
+          },
+          "cost": 1.592675,
+          "costUnit": "codex_credits",
+          "outputSha256": "9509ece5f679afaca7f135d8da9ff2e979b3dca0cedb6eece471188c40ea354c",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-J6tw2l128YE",
+          "expectedQualityLabel": "sp:a,a,a,p",
+          "promptSha256": "f14b5edd88f7160b75e73b5ff44d5462b748191f19f8dd3f8746165a22cb75ea",
+          "startedAt": "2026-07-10T16:30:46.662Z",
+          "durationMs": 19588.820584,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,u,a,p",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,p",
+              "actual=sp:a,u,a,p",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"unknown\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 33117,
+            "cachedInputTokens": 13184,
+            "outputTokens": 659,
+            "reasoningOutputTokens": 380
+          },
+          "cost": 1.5753375,
+          "costUnit": "codex_credits",
+          "outputSha256": "f21ee934685981b5f50afd680d446e141b3c5acf167ef3f641568fafb814974a",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-V-xIvJs0Jbo",
+          "expectedQualityLabel": "sp:a,a,a,p",
+          "promptSha256": "5c0232e7daab7cb6526bfea888a0c169aaafc54c67096cace47d8e718de12062",
+          "startedAt": "2026-07-10T16:31:06.251Z",
+          "durationMs": 29087.80775,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,p",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,p",
+              "actual=sp:a,a,a,p",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 69665,
+            "cachedInputTokens": 33024,
+            "outputTokens": 803,
+            "reasoningOutputTokens": 348
+          },
+          "cost": 2.7975875,
+          "costUnit": "codex_credits",
+          "outputSha256": "8cc426756dd8b64376ded8ebffb18e26ff72f75de55b99febf5e50ca1e4698b7",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-WkEyab1jINA",
+          "expectedQualityLabel": "sp:a,a,a,p",
+          "promptSha256": "2aace8a3b5be2b0f5d0559a4aa8bd1b8081b10c27e3b1f53d7b6686863828b32",
+          "startedAt": "2026-07-10T16:31:35.339Z",
+          "durationMs": 27431.741583,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,p",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,p",
+              "actual=sp:a,a,a,p",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 70103,
+            "cachedInputTokens": 43776,
+            "outputTokens": 848,
+            "reasoningOutputTokens": 198
+          },
+          "cost": 2.2370375,
+          "costUnit": "codex_credits",
+          "outputSha256": "c6977a9e61b1b0cd68c80df5c8e35f6096da389a60cf5920bef6d92171de9a40",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-XPKBwhDPxk0",
+          "expectedQualityLabel": "sp:a,a,a,a",
+          "promptSha256": "d6448a5c8de348c09430ca50014ee6ff7b210899697aff8ba1e671acfdc413b7",
+          "startedAt": "2026-07-10T16:32:02.770Z",
+          "durationMs": 19815.405542,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,u,u,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,a",
+              "actual=sp:a,u,u,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"unknown\",\"minorInSensitiveIncident\":\"unknown\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 33118,
+            "cachedInputTokens": 13184,
+            "outputTokens": 670,
+            "reasoningOutputTokens": 433
+          },
+          "cost": 1.579525,
+          "costUnit": "codex_credits",
+          "outputSha256": "268cba4f2b87f9d8d95ef69b45b39422f1b69379683facde9aaef90592791c7e",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-fj6CXk2KTIs",
+          "expectedQualityLabel": "sp:a,a,a,p",
+          "promptSha256": "039d9ac7b76a92cd7c6526332aa6c47fac2a333761cc791740c26a29c434a219",
+          "startedAt": "2026-07-10T16:32:22.586Z",
+          "durationMs": 19182.911584,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,u",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,p",
+              "actual=sp:a,a,a,u",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"unknown\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 33113,
+            "cachedInputTokens": 13184,
+            "outputTokens": 610,
+            "reasoningOutputTokens": 353
+          },
+          "cost": 1.5567125,
+          "costUnit": "codex_credits",
+          "outputSha256": "eb98c77ea1d8d8100d47318a68d493027653e0270473253a3ab530c71c3307f8",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-n9kD935iROw",
+          "expectedQualityLabel": "sp:a,a,a,u",
+          "promptSha256": "b2f0d6783ec6bfe2ccbd4a27fb6b209b6c8467b494b4be47bdd5075764d75116",
+          "startedAt": "2026-07-10T16:32:41.769Z",
+          "durationMs": 16378.441542,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,u,a,a",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=sp:a,a,a,u",
+              "actual=sp:a,u,a,a",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"unknown\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 33125,
+            "cachedInputTokens": 13184,
+            "outputTokens": 520,
+            "reasoningOutputTokens": 244
+          },
+          "cost": 1.5237125,
+          "costUnit": "codex_credits",
+          "outputSha256": "4b4c4d74bdac26b8e863a82cbd9d4bac827c34872832f599a34c314e07a127bc",
+          "error": null
+        },
+        {
+          "caseId": "light-youtube-oA7rziyGv8s",
+          "expectedQualityLabel": "sp:a,a,a,p",
+          "promptSha256": "fa9c04ca1dcebdcc01db77586e8e5a24e0802d2b0fa888819d6afa5ec609ad71",
+          "startedAt": "2026-07-10T16:32:58.147Z",
+          "durationMs": 18837.506584,
+          "schemaValid": true,
+          "quality": {
+            "label": "sp:a,a,a,p",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=sp:a,a,a,p",
+              "actual=sp:a,a,a,p",
+              "signals={\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"}"
+            ]
+          },
+          "usage": {
+            "inputTokens": 33130,
+            "cachedInputTokens": 2432,
+            "outputTokens": 543,
+            "reasoningOutputTokens": 287
+          },
+          "cost": 2.13745,
+          "costUnit": "codex_credits",
+          "outputSha256": "72d5c924d1c420afb1af0eba95e57871afef2f219a52f94b834505f0376def60",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 30,
+        "schemaSuccessRate": 1,
+        "qualityScore": 0.466666666667,
+        "qualityPassRate": 0.466666666667,
+        "p95LatencyMs": 34465.251583,
+        "meanCost": 1.893410833333,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": true,
+        "selectorBenchmark": {
+          "benchmarkVersion": "project-kings-source-policy-real-30-2026-07-10-v2",
+          "routeId": "codex:gpt-5.4",
+          "reasoningEffort": "low",
+          "sampleSize": 30,
+          "qualityScore": 0.466666666667,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 34465.251583,
+          "meanCost": 1.893410833333,
+          "costUnit": "codex_credits"
+        }
+      }
+    }
+  ],
+  "selection": null,
+  "selectionError": "No model route passed the benchmark policy.",
+  "selectionRejections": [
+    {
+      "routeId": "codex:gpt-5.4",
+      "reason": "quality score is below the floor"
+    },
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "reason": "quality score is below the floor"
+    }
+  ],
+  "evidenceSha256": "3aad17b4c447f90912001a369e021f7a9332181e563c1b23a3aa544592f5e7c6"
+}

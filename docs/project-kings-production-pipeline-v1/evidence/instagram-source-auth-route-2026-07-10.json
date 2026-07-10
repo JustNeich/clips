@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-07-10T11:32:00.000Z",
+  "sourceUrl": "https://www.instagram.com/reel/DYuu2CVJc3G/",
+  "localRoute": {
+    "provider": "ytDlp",
+    "outcome": "failed",
+    "failureClass": "instagram_antibot_or_auth",
+    "credentialsChanged": false
+  },
+  "fallbackRoute": {
+    "surface": "authenticated Clips owner session",
+    "executor": "Mac mini/Zoro source-download worker",
+    "provider": "ytDlp",
+    "httpStatus": 200,
+    "contentType": "video/mp4",
+    "contentLength": 15845815,
+    "outcome": "passed",
+    "newLoginRequired": false,
+    "credentialsChanged": false
+  },
+  "artifact": {
+    "relativePath": ".data/project-kings/source-candidates/light/instagram/DYuu2CVJc3G.mp4",
+    "sha256": "9153dc52831aab17840b25a8cda6afdc6da16700e733433cc57ffe84089a7f97",
+    "width": 1080,
+    "height": 1920,
+    "durationSec": 103.532,
+    "videoCodec": "h264",
+    "audioCodec": "aac",
+    "fullDecode": "pass"
+  },
+  "contentDisposition": {
+    "sourceFit": "fail",
+    "reason": "Persistent donor branding and burned-in top caption make the source unsuitable even though acquisition succeeded."
+  }
+}

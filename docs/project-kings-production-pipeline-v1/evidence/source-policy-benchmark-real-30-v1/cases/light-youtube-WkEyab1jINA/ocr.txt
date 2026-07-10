@@ -1,0 +1,45 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 3.205s]
+ye
+AQ
+\\ oN |
+oe:
+1
+——\ Ko
+Leth
+un
+BA oss
+iS
+> 2\
+[source-key-frame-02 @ 12.552s]
+A.
+Tt
+Cee
+[source-key-frame-03 @ 21.900s]
+mit\k
+is
+$ #5
+F )
+[source-key-frame-04 @ 31.514s]
+_Y
+<P
+=_
+[source-key-frame-05 @ 40.862s]
+(ma
+MA
+_“
+Sar
+Aa)
+t
+“ae
+ry
+- we &
+“\
+3
+= y
+cf
+ae
+[source-key-frame-06 @ 50.209s]
+Hello Mr. Trump, ri is To

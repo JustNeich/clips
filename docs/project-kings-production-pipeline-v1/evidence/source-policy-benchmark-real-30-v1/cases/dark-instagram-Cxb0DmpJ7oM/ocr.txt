@@ -1,0 +1,42 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 0.660s]
+q
+'
+é.
+i
+Va
+a
+= \\
+i
+=
+y
+. i
+oP
+ls
+et
+“ys
+[source-key-frame-02 @ 2.585s]
+~~
+[source-key-frame-03 @ 4.510s]
+>
+y
+PP
+[source-key-frame-04 @ 6.490s]
+\
+\
+—
+PZ
+hehe
+[source-key-frame-05 @ 8.415s]
+cy
+PD.
+o.%
+Zz,
+Cae p
+[source-key-frame-06 @ 10.340s]
+by
+a
+~~
+a

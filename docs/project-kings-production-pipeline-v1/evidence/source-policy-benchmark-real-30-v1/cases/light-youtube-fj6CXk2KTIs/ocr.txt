@@ -1,0 +1,155 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 0.862s]
+MARVEL
+>.
+oom
+ij
+a
+i]
+ene
+a
+a OP heey
+ro)
+=
+a "ees
+na
+V$
+Wy
+IN|
+——i\
+l AN
+iy
+AWA
+Ia
+al
+[==
+«<>
+—_——
+(
+mm
+mine with Ai
+[source-key-frame-02 @ 3.378s]
+MARVEL
+1
+&
+Ze
+%
+m
+a?
+\
+AA
+i}
+\
+Ae"
+\
+) Wee WAY
+IN
+\
+Ui”
+"
+Wy
+&&
+—"
+7
+V$
+y
+i
+\"s
+jy
+ce
+sion
+aye
+WU
+a
+Tall
+anit
+Lo”
+él
+4
+oe
+ll
+a’
+mine with Al
+[source-key-frame-03 @ 5.893s]
+MARVEL
+Fa
+17
+74
+el
+fr on
+a)
+| ad
+Sai
+a
+===
+iy
+©)
+se
+we
+_ A
+‘+
+A
+V$
+' a
+Ness)
+I
+|
+a
+if
+ill
+th
+=
+Wi
+Lie
+ee
+mine with Al
+[source-key-frame-04 @ 8.481s]
+MARVEL
+a
+/ », ii
+Tih
+<<
+V$
+=
+yi
+at
+=|
+ds
+ed
+F
+Lge
+Lee
+%
+| nail
+Sore Ay
+SAP
+mine with Ai
+[source-key-frame-05 @ 10.996s]
+MARVEL
+My
+ey,
+|
+=
+oti
+\ 2a
+NW
+V$
+Ya
+I -
+«
+4
+“y
+mine with Ai
+[source-key-frame-06 @ 13.512s]
+MARVEL
+xe,
+~
+Vise
+%
+A
+\) So
+-
+b malay
+mine with Ali

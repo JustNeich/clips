@@ -1,0 +1,6 @@
+status=speech_detected
+tool=openai-whisper-cli
+model=tiny
+language=jw
+transcript=Ano
+segment_01={"start":0,"end":2.14,"text":"Ano","noSpeechProbability":0.3680776059627533,"averageLogProbability":-3.4384475708007813}

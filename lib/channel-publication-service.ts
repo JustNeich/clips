@@ -20,6 +20,7 @@ import {
   findLatestPublicationForRenderExport,
   getChannelPublicationById,
   getChannelPublicationProcessingState,
+  getPortfolioPublicationSideEffectFence,
   getChannelPublishIntegration,
   getChannelPublishSettings,
   getRenderExportById,
@@ -1070,6 +1071,13 @@ export async function processQueuedChannelPublication(
       );
     }
     const processingState = getChannelPublicationProcessingState(latest.id);
+    const preUploadFence = getPortfolioPublicationSideEffectFence(latest.id);
+    if (preUploadFence.linked && !preUploadFence.allowed) {
+      throw new YouTubePublishError(
+        `Portfolio cancel fence stopped YouTube upload before the external side effect (${preUploadFence.reason ?? "blocked"}).`,
+        { recoverable: true }
+      );
+    }
     const remote = await uploadYouTubeVideo({
       accessToken: credential.accessToken!,
       filePath: renderExport.artifactFilePath,
@@ -1111,6 +1119,14 @@ export async function processQueuedChannelPublication(
       youtubeVideoUrl: remote.videoUrl,
       expectedLeaseToken
     });
+    const postUploadFence = getPortfolioPublicationSideEffectFence(latest.id);
+    if (postUploadFence.linked && !postUploadFence.allowed) {
+      appendChannelPublicationEvent(
+        latest.id,
+        "warn",
+        `Portfolio cancel arrived during upload; remote identity was preserved for reconciliation (${postUploadFence.reason ?? "blocked"}).`
+      );
+    }
     if (scheduled.status === "scheduled" && scheduled.youtubeVideoId) {
       try {
         await updateYouTubeScheduledVideo({

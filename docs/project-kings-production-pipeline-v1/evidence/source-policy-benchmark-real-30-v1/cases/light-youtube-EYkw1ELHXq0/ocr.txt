@@ -1,0 +1,237 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 2.613s]
+‘.
+hI
+‘-
+J
+Set
+ww
+q,
+a
+Me’
+yy
+arg
+la
+rs
+&.
+=
+y
+mi
+Morning breakfast
+the love of my life’ ®
+a
+z
+A
+[source-key-frame-02 @ 10.235s]
+)
+x
+Rec |
+”
+La!
+te
+ie
+By
+‘ Ve
+)
+Pal
+Se 5
+oa, {
+é\
+A
+\
+x
+wY.
+AY
+SS
+A I
+~~
+ext generation-of.
+~~
+eacekeepers
+\
+\
+[source-key-frame-03 @ 17.857s]
+X
+‘ y,
+if
+ha Lo
+yb
+a
+ye
+A
+a”
+vez
+2
+oe
+a= s
+_——
+i
+ee
+=
+d=
+Oe,
+—s
+Pe
+int o stay light-sidelbut
+hese WISIN test me daily a
+-,
+“*
+’
+~
+.
+ae
+‘
+\
+=
+-
+[source-key-frame-04 @ 25.697s]
+<==
+mt
+\
+——_—
+i
+4
+Pa
+4
+<<
+-_
+“A
+VA
+~~ Ba
+S.
+/
+\
+[a
+San
+Sain
+—~
+a:
+=
+we
+2x,
+tie
+Seat from
+to the to eIbs
+Bs
+S\
+f
+Vi
+J|
+wl)
+¥
+2
+<=
+—
+ed]
+Lan
+SS
+ety
+eI
+~
+el
+as
+in
+Sew hy
+iy
+tae:
+Wa
+pam « 1)
+MW,
+fm
+Bye
+>
+4
+th
+»
+Vf
+(ia
+,. ee |
+|
+[source-key-frame-05 @ 33.319s]
+|
+. ch ||
+wa
+bs
+3%
+|
+~
+4
+a
+w-
+“|
+|
+a
+~~ 1
+B |
+,
+|
+a”
+‘a
+ai
+A
+~’
+ee
+lee
+#
+~= af
+fH,
+| '
+ts
+iy
+tans
+yy
+“"
+'@
+a™
+1
+y
+"vo
+cis
+Time to relax.. he “
+kig
+4
+oa
+look at this stunning view’, \. .
+‘
+y%
+Je,
+a.
+ats
+~
+fy
+[source-key-frame-06 @ 40.941s]
+ote
+ae
+AG eet
+|
+~
+Sy deore nim
+an
+/ a,
+a")
+—_e y jee, oer
+one
+ot BAS
+~.,
+i
+is
+Ww
+} ))
+YY
+a
+Final
+|
+MED seiBeone ¥
+Goodn
+t, friends!
+H) \
+\
+WY
+\
+\
+\\
+\\
+AY
+i\

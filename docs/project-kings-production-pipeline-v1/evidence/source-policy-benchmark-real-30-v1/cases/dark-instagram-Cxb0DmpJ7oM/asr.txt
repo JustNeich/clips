@@ -1,0 +1,7 @@
+status=speech_detected
+tool=openai-whisper-cli
+model=tiny
+language=en
+transcript=Engage is the whole monkey burrito. Hangin' out, hangin' out.
+segment_01={"start":0,"end":2,"text":"Engage is the whole monkey burrito.","noSpeechProbability":0.026863183826208115,"averageLogProbability":-0.8627058664957682}
+segment_02={"start":3.34,"end":5.34,"text":"Hangin' out, hangin' out.","noSpeechProbability":0.026863183826208115,"averageLogProbability":-0.8627058664957682}

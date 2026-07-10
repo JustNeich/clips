@@ -1,0 +1,193 @@
+{
+  "schemaVersion": "project-kings-replay-evidence-v1",
+  "scenarioId": "content-rework",
+  "runId": "pk-replay-content-rework-2026-07-10-v1",
+  "runIdKind": "deterministic-business-alias",
+  "logicalDate": "2026-07-10",
+  "clock": {
+    "startedAt": "2026-07-11T12:00:00.000Z",
+    "finishedAt": "2026-07-11T12:00:22.000Z",
+    "logicalDurationMs": 22000,
+    "ticks": 23
+  },
+  "sourceEvidence": {
+    "channelProfiles": "PROJECT_KINGS_PILOT_PROFILES",
+    "sourceFitSchema": "production-agent-packet-v1/source_fit",
+    "qualityGate": "evaluateProductionQualityGate",
+    "externalNetworkEnabled": false
+  },
+  "injections": [
+    {
+      "at": "2026-07-11T12:00:01.000Z",
+      "kind": "source-fit-failure",
+      "defects": [
+        "duplicate_video",
+        "duplicate_event",
+        "concept_mismatch"
+      ]
+    },
+    {
+      "at": "2026-07-11T12:00:02.000Z",
+      "kind": "approval-binding-change",
+      "expectedError": "quality_gate_missing"
+    },
+    {
+      "at": "2026-07-11T12:00:03.000Z",
+      "kind": "unsafe-crop",
+      "revisionBudget": 3
+    }
+  ],
+  "assertions": [
+    {
+      "name": "duplicate video rejected",
+      "pass": true,
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "duplicate event rejected",
+      "pass": true,
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "wrong concept rejected",
+      "pass": true,
+      "expected": false,
+      "actual": false
+    },
+    {
+      "name": "unsafe crop detected",
+      "pass": true,
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "stale approval rejected by exact hash binding",
+      "pass": true,
+      "expected": "quality_gate_missing",
+      "actual": "quality_gate_missing"
+    },
+    {
+      "name": "visual revision budget is bounded",
+      "pass": true,
+      "expected": [
+        "targeted_visual_revision",
+        "targeted_visual_revision",
+        "replace_source"
+      ],
+      "actual": [
+        "targeted_visual_revision",
+        "targeted_visual_revision",
+        "replace_source"
+      ]
+    },
+    {
+      "name": "two bounded replacements preserve slot history",
+      "pass": true,
+      "expected": [
+        {
+          "generation": 1,
+          "state": "quarantined"
+        },
+        {
+          "generation": 2,
+          "state": "replaced"
+        },
+        {
+          "generation": 3,
+          "state": "final_approved"
+        }
+      ],
+      "actual": [
+        {
+          "generation": 1,
+          "state": "quarantined"
+        },
+        {
+          "generation": 2,
+          "state": "replaced"
+        },
+        {
+          "generation": 3,
+          "state": "final_approved"
+        }
+      ]
+    },
+    {
+      "name": "generation two still allowed one replacement",
+      "pass": true,
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "generation three cannot be replaced again",
+      "pass": true,
+      "expected": false,
+      "actual": false
+    },
+    {
+      "name": "bad source was quarantined",
+      "pass": true,
+      "expected": 1,
+      "actual": 1
+    },
+    {
+      "name": "content replay completed all current items",
+      "pass": true,
+      "expected": 9,
+      "actual": 9
+    },
+    {
+      "name": "content replay created no publication",
+      "pass": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "no dead outbox record",
+      "pass": true,
+      "expected": 0,
+      "actual": 0
+    }
+  ],
+  "metrics": {
+    "targetItems": 9,
+    "finalApprovedItems": 9,
+    "historicalGenerationsForFaultedSlot": [
+      {
+        "generation": 1,
+        "state": "quarantined"
+      },
+      {
+        "generation": 2,
+        "state": "replaced"
+      },
+      {
+        "generation": 3,
+        "state": "final_approved"
+      }
+    ],
+    "revisionActions": [
+      "targeted_visual_revision",
+      "targeted_visual_revision",
+      "replace_source"
+    ],
+    "unsafeCropDefectCodes": [
+      "unsafe_crop",
+      "vision_deterministic_disagreement"
+    ],
+    "quarantinedSourceCount": 1,
+    "agentAttempts": 53,
+    "deliveredOutboxEvents": 51,
+    "retriedOutboxEvents": 0,
+    "deadOutboxEvents": 0
+  },
+  "externalEffects": {
+    "networkRequests": 0,
+    "youtubeUploadRequests": 0,
+    "publicVideosCreated": 0
+  },
+  "outcome": "pass",
+  "evidenceSha256": "792217fd3d3044c99dedd94b9840dabb9f173caa18e884d27687b4dd765326c2"
+}

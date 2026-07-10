@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "project-kings-source-policy-annotation-overrides-v1",
+  "revisionId": "project-kings-source-policy-real-30-annotation-review-v2",
+  "baseAnnotationSetId": "project-kings-source-policy-real-30-v1",
+  "baseAnnotationsSha256": "2d3af03d65a26be3d439d09616b7375462d9e4ebcbce0f498c351ab985f98504",
+  "datasetSha256": "21ce4864f790f5b9e552bbcfea5cd4abe468e96f3e9f5c7a3a9819460a114e66",
+  "reviewMethod": "second direct review of exact ordered frames, OCR, ASR and class definitions after mismatch clustering; model outputs were not adopted as labels",
+  "overrides": [
+    {
+      "caseId": "cop-instagram-DXNBoz7jYmd",
+      "previousSignals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "present",
+        "minorInSensitiveIncident": "present",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "present",
+        "minorInSensitiveIncident": "unknown",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "OCR alleges two teens in a stolen Hyundai and the frames show a police chase, so the stolen-vehicle allegation remains unsupported. No occupant is visible clearly enough to identify a minor; because the only age evidence is the unsupported overlay, minor involvement is unknown rather than present."
+    },
+    {
+      "caseId": "light-youtube-fj6CXk2KTIs",
+      "previousSignals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "present"
+      },
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "The upper comparison contains authentic Robert Downey Jr. footage. The AI-labelled lower comparison depicts a different generic man rather than a recognizable synthetic likeness of that public actor. Synthetic media is visible, but synthetic depiction of a recognizable public figure is not."
+    }
+  ]
+}

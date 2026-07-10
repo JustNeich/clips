@@ -1,0 +1,52 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 1.228s]
+COPSCOPES #
+Police Bodycam Footage
+Suspect clings to moving car while fleeing police:
+"som
+~_
+.
+i —
+[source-key-frame-02 @ 4.810s]
+COPSCOPES #
+Police Bodycam Footage
+Suspect clings to moving car while fleeing police
+—
+a
+[source-key-frame-03 @ 8.391s]
+COPSCOPES #
+Police Bodycam Footage
+Suspect clings to moving car while fleeing police:
+=,
+v
+ae.
+[source-key-frame-04 @ 12.075s]
+COPSCOPES @
+Police Bodycam Footage
+Suspect clings to moving car while fleeing police:
+—
+__
+[source-key-frame-05 @ 15.657s]
+COPSCOPES @
+Police Bodycam Footage
+Suspect clings to moving car while fleeing police:
+a
+—
+-
+_
+x
+[source-key-frame-06 @ 19.239s]
+COPSCOPES #
+=
+Police Bodycam Footage
+Suspect clings to moving car while fleeing police:
+—_
+a
+ot
+Taal
+@consce
+v
+Follow for more
+ie

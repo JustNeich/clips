@@ -1,0 +1,319 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 1.258s]
+‘7
+_
+yom
+ae
+—
+we,
+o™
+a
+We
+a)
+8 oe
+Me
+Ps
+a3
+an
+iy
+iui
+i |
+hs
+4
+v
+h) }
+wr
+-),
+\i
+XA
+$
+Lek
+eo
+Pa,
+% sg?
+ae
+ae
+lta
+*
+—
+=
+_—
+a
+ee
+—
+————
+~s
+—=
+——~S,
+=.
+—
+———
+&
+pe
+—=
+——
+—$<——_—_—_
+—
+[source-key-frame-02 @ 4.928s]
+—
+Rat
+Ss
+(an
+* nk
+ws
+fj
+9
+y
+—
+od
+tty
+/ :
+A.
+“<
+B
+a
+co
+hee
+a, ee”.
+a
+if
+~~
+re
+ss
+big
+"E
+a
+¢
+iy
+Cf
+“ray I
+ES
+———
+=
+~-
+, ee
+=
+a
+~~
+—
+— =
+>
+=>
+—<——S==—
+<<<
+———__——
+SN
+——
+se
+—s
+—=
+SS
+—_
+—=—
+<=,
+<< S=
+_S——_
+~ men ere
+—SS
+[source-key-frame-03 @ 8.597s]
+G
+24
+N
+“¢)
+fr ae
+Je
+2 .
+‘a
+"
+we,
+Po
+a
+ber
+1,
+113
+>
+bY)
+Hp
+Vy
+ies
+“
+‘ae
+i
+iy
+oe
+Wo
+,
+)
+yh
+1 ae
+Wi,
+4)
+i
+By
+by,
+i
+att
+ait
+VV
+a
+i
+WW,
+Y
+uff
+Wail
+ii
+We
+Ah
+eM
+ih
+di
+|
+ey
+\
+fe
+Vy
+i
+my /
+4
+i
+_<
+~
+—_—
+i
+——
+—
+[source-key-frame-04 @ 12.372s]
+Ba’, Pt A
+i
+Sg
+Ss
+of
+wee
+wv
+m
+~~
+ae
+ny
+, Fe!
+os
+ee.
+Fo Nine
+74
+—
+¥
+a
+AN
+er
+oS
+Ye
+VF
+At
+Mi
+1)
+se
+i!
+sd
+Wy) 4
+if
+Up
+ZA
+My
+LS
+2
+mI Cl
+=
+ZY.
+=
+oe
+SS
+ZZ
+SS
+Ss
+~\S
+[source-key-frame-05 @ 16.041s]
+rl
+a a
+4,
+— «|
+th
+» i
+[source-key-frame-06 @ 19.711s]
+aF
+gt
+“<)
+aya
+a
+cs
+Feta»
+ae
+at
+L
+of
+Ye
+<7
+s
+@
+“"'
+es tw
+ai
+A
+Pd
+.
+ee
+te el
+al
+re
+Ww
+.
+sg
+es joes
+‘s
+-
+<
+%.; “-
+ng:
+~~y
+\
+wa
+oe ee
+“
+]
+weet
+ih
+hg
+y a
+=
+me
+oan
+q
+i
+Me
+Ww
+7
+NG
+\
+AN
+‘|
+-_
+Ya,
+V7
+—
+—— on
+———
+aie
+—
+s
+gl
+a
+<<
+—>
+__
+——
+a
+—_—_
+=—
+—F
+———S
+——

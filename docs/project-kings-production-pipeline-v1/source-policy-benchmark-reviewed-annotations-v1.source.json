@@ -1,0 +1,152 @@
+[
+  {
+    "caseId": "dark-instagram-BtDnmx6HRr_",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Six ordered frames show a tiger chasing and interacting with a domestic cat outdoors. OCR and ASR contain no graphic injury, serious accusation, minor in a sensitive incident, or synthetic public figure."
+  },
+  {
+    "caseId": "dark-instagram-C-0YpsCAODv",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Six ordered frames show a woman posing calmly with a chimpanzee. The song transcript and visible watermark add no prohibited policy signal."
+  },
+  {
+    "caseId": "dark-instagram-C9gLu79MklN",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Six ordered frames show a small monkey playing indoors with an adult. The rough tiny-model ASR contains no supported visual sign of violence or any serious accusation."
+  },
+  {
+    "caseId": "dark-instagram-CsYa4skNBjP",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Six ordered frames show an adult calmly holding and touching a sloth. Whisper returned no speech and OCR contains no prohibited allegation."
+  },
+  {
+    "caseId": "dark-instagram-Cw_QTMmA69_",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Six ordered frames show an adult feeding and petting a lion through a barrier. No blood, injury, minor, serious accusation, or synthetic public figure is visible or stated."
+  },
+  {
+    "caseId": "dark-instagram-Cxb0DmpJ7oM",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Six ordered frames show an adult holding a towel-wrapped baby monkey. OCR and the short monkey-burrito ASR contain no prohibited policy class."
+  },
+  {
+    "caseId": "dark-instagram-DIUYX9QStl3",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Six ordered frames show an adult swimming calmly with a chimpanzee. The song transcript contains no accusation and no prohibited visual signal is present."
+  },
+  {
+    "caseId": "dark-instagram-DKM66d2tamf",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Six ordered frames show an adult handling a tiger lying on grass. Whisper found no speech; the frames contain no injury, minor, accusation, or synthetic public figure."
+  },
+  {
+    "caseId": "cop-instagram-DW0w8RMjY3Y",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "present", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Frames show a traffic-stop conversation without injury. OCR asserts a specific 0.34 BAC, while ASR only records concern and impairment questions and supplies no BAC test result, so that serious intoxication accusation is unsupported by the packet."
+  },
+  {
+    "caseId": "cop-instagram-DW5s3qoDbHC",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Six ordered frames and ASR show an adult fleeing a traffic-stop citation and being confronted. The claimed running action is visible, with no graphic injury, minor, or synthetic public figure."
+  },
+  {
+    "caseId": "cop-instagram-DWjH5fWjBnt",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Six ordered dashcam frames demonstrate a police grappler ending a vehicle chase. Whisper found no speech and no prohibited visual class appears."
+  },
+  {
+    "caseId": "cop-instagram-DWnxlyIDcoK",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "present", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Frames show an adult officer-civilian encounter without visible injury. ASR includes an assault accusation against an officer, but the six frames and OCR do not establish the alleged assault, so the serious misconduct allegation is unsupported."
+  },
+  {
+    "caseId": "cop-instagram-DWwSVVOjMqO",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Frames show a vehicle fire and later police interaction, but no gore or severe injury. ASR includes an apparent street-racing admission, so the OCR event description is not an unsupported accusation."
+  },
+  {
+    "caseId": "cop-instagram-DXBhsJPjSgW",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Six frames show an adult hospital conversation without graphic injury. OCR says she learns her charges and ASR records an officer stating the homicide charge; the content reports the formal charge rather than asserting guilt."
+  },
+  {
+    "caseId": "cop-instagram-DXHx529DVb0",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Six dashcam frames show a trooper stopping a wrong-way vehicle. OCR describes the visible event and Whisper detects only music/noise; no prohibited class is present."
+  },
+  {
+    "caseId": "cop-instagram-DXNBoz7jYmd",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "present", "minorInSensitiveIncident": "present", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "OCR explicitly labels two teens in a stolen Hyundai during a wild police chase, so identifiable minors are in a crime incident. The frames show the chase but do not establish that the Hyundai was stolen, leaving that serious crime accusation unsupported."
+  },
+  {
+    "caseId": "cop-instagram-DXOzkCdjMue",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Six frames and ASR show an adult police pursuit and attempted vehicle intervention. No gore, identifiable minor, unsupported serious accusation, or synthetic public figure appears."
+  },
+  {
+    "caseId": "cop-instagram-DXUPExpjCs2",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "present", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "OCR identifies Maryland troopers saving a choking infant and the six frames show the infant emergency and intervention. This is an identifiable minor in a severe emergency, without graphic injury."
+  },
+  {
+    "caseId": "light-youtube-1diIRo4sHtk",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "present" },
+    "reason": "Six frames depict a realistic synthetic first-person Harry Potter vlog using the recognizable likeness of a public actor. No violence, sensitive minor incident, or serious accusation appears."
+  },
+  {
+    "caseId": "light-youtube-6IlkA1MLVYA",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Six frames show stylized fictional superhero transformations without a recognizable real public figure. Whisper found no speech and no other prohibited class is present."
+  },
+  {
+    "caseId": "light-youtube-6QIdqyFoxFE",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Six frames show a non-sensitive dialogue scene with young Harry Potter characters. There is no violence, crime, exploitation, emergency, serious accusation, or demonstrated synthetic public-figure depiction."
+  },
+  {
+    "caseId": "light-youtube-BwIaEb5vGDo",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Six frames show synthetic Mandalorian and Grogu fiction plus an unidentified generic woman. No recognizable real public figure or other prohibited class appears, and Whisper found no speech."
+  },
+  {
+    "caseId": "light-youtube-EYkw1ELHXq0",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "present" },
+    "reason": "Six frames show realistic synthetic selfie-like scenes using recognizable Harry Potter actor likenesses in situations outside the original film footage. No other prohibited class appears."
+  },
+  {
+    "caseId": "light-youtube-J6tw2l128YE",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "present" },
+    "reason": "Six black-and-white frames show realistic fabricated party images using recognizable public actor likenesses. The song ASR and OCR contain no other prohibited signal."
+  },
+  {
+    "caseId": "light-youtube-V-xIvJs0Jbo",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "present" },
+    "reason": "Ordered frames visibly insert a realistic synthetic Donald Trump into Harry Potter scenes, and ASR identifies Trump dialogue. This is a clear political-figure deepfake without graphic violence or a sensitive minor incident."
+  },
+  {
+    "caseId": "light-youtube-WkEyab1jINA",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "present" },
+    "reason": "Ordered frames and ASR again place a realistic synthetic Donald Trump persona inside Harry Potter scenes. Insults in the fictional dialogue are not serious crime or misconduct allegations."
+  },
+  {
+    "caseId": "light-youtube-XPKBwhDPxk0",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "absent" },
+    "reason": "Six frames show a helmeted fictional Mandalorian gag without a recognizable real public figure. OCR and ASR contain no prohibited allegation, minor incident, or graphic violence."
+  },
+  {
+    "caseId": "light-youtube-fj6CXk2KTIs",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "present" },
+    "reason": "The six-frame Marvel comparison explicitly says mine with AI and includes realistic synthetic variants using recognizable public actor likenesses. No other prohibited class appears."
+  },
+  {
+    "caseId": "light-youtube-n9kD935iROw",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "unknown" },
+    "reason": "Frames show a realistic Anakin likeness and ASR contains newly written meme dialogue, but the packet does not resolve whether the face is synthetic, authentic footage with altered audio, or a public-figure impersonation. Uncertainty is preserved."
+  },
+  {
+    "caseId": "light-youtube-oA7rziyGv8s",
+    "signals": { "graphicViolence": "absent", "unsupportedAllegation": "absent", "minorInSensitiveIncident": "absent", "realisticPoliticalOrPublicFigureDeepfake": "present" },
+    "reason": "Six frames show a realistic synthetic council scene with a recognizable elderly public figure, while visible StrangeAI text and impossible staging identify the AI construction. No other prohibited class appears."
+  }
+]

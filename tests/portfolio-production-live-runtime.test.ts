@@ -1,0 +1,371 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  buildPortfolioProductionAgentPacketBase,
+  buildPortfolioProductionVisionBinding,
+  createPortfolioLiveDispatcher,
+  decidePortfolioLiveRecoveryBudget,
+  resolvePortfolioProductionAgentChannelId,
+  type PortfolioLiveEventHandler,
+  type PortfolioLiveEventKind,
+  type PortfolioLiveRuntimeOptions,
+  type ProductionAgentSelections
+} from "../lib/portfolio-production-live-runtime";
+import type {
+  ProductionItemRecord,
+  ProductionItemState,
+  ProductionOutboxRecord
+} from "../lib/portfolio-production-store";
+import { validateProductionAgentPacket } from "../lib/project-kings/production-agent-contracts";
+
+const WORKSPACE_ID = "workspace-live-runtime-test";
+const ITEM_ID = "item-live-runtime-test";
+
+function itemFixture(state: ProductionItemState = "reserved"): ProductionItemRecord {
+  return {
+    id: ITEM_ID,
+    runId: "run-live-runtime-test",
+    runChannelId: "run-channel-live-runtime-test",
+    workspaceId: WORKSPACE_ID,
+    channelId: "channel-live-runtime-test",
+    itemSlot: 1,
+    generation: 1,
+    state,
+    resumeState: null,
+    sourceCandidateId: "candidate-live-runtime-test",
+    sourceSha256: null,
+    previewSha256: null,
+    templateSha256: null,
+    settingsSha256: null,
+    finalArtifactSha256: null,
+    chatId: null,
+    stage2RunId: null,
+    stage3JobId: null,
+    publicationId: null,
+    expectedYoutubeChannelId: "UC1234567890123456789012",
+    youtubeVideoId: null,
+    uploadSessionUrl: null,
+    attempts: 0,
+    attemptBudget: 3,
+    version: 1,
+    leaseOwner: null,
+    leaseExpiresAt: null,
+    lastError: null,
+    createdAt: "2026-07-10T00:00:00.000Z",
+    updatedAt: "2026-07-10T00:00:00.000Z",
+    completedAt: null
+  };
+}
+
+function eventFixture(eventKind: PortfolioLiveEventKind): ProductionOutboxRecord {
+  return {
+    id: `event-${eventKind}`,
+    workspaceId: WORKSPACE_ID,
+    runId: "run-live-runtime-test",
+    channelId: "channel-live-runtime-test",
+    productionItemId: ITEM_ID,
+    eventKind,
+    dedupeKey: `dedupe-${eventKind}`,
+    payload: {},
+    status: "processing",
+    attempts: 1,
+    maxAttempts: 3,
+    availableAt: "2026-07-10T00:00:00.000Z",
+    leaseOwner: "test",
+    leaseToken: "test-token",
+    leaseExpiresAt: "2026-07-10T00:05:00.000Z",
+    lastError: null,
+    deadLetterCode: null,
+    projectedAt: null,
+    createdAt: "2026-07-10T00:00:00.000Z",
+    updatedAt: "2026-07-10T00:00:00.000Z",
+    deliveredAt: null
+  };
+}
+
+function optionsFixture(): PortfolioLiveRuntimeOptions {
+  return {
+    workspaceId: WORKSPACE_ID,
+    userId: "user-live-runtime-test",
+    routeManifestId: "project-kings-model-routes-v2",
+    routeManifestSha256: "a".repeat(64),
+    selections: {} as ProductionAgentSelections
+  };
+}
+
+test("semantic packet identity uses stable YouTube UC id, never the Clips database id", () => {
+  const item = itemFixture();
+  const packet = buildPortfolioProductionAgentPacketBase("source_fit", item, 1, [
+    {
+      id: "source-metadata",
+      kind: "source_metadata",
+      mediaType: "json",
+      path: "/tmp/source-metadata.json",
+      sha256: "a".repeat(64)
+    }
+  ]);
+
+  assert.equal(packet.channelId, item.expectedYoutubeChannelId);
+  assert.notEqual(packet.channelId, item.channelId);
+  assert.equal(
+    validateProductionAgentPacket("source_fit", {
+      ...packet,
+      task: {
+        candidateId: "candidate-1",
+        sourceUrl: "https://www.youtube.com/shorts/source1",
+        sourceSha256: "b".repeat(64),
+        claimedStoryEventId: "story-event-1",
+        knownSourceSha256: [],
+        knownStoryEventIds: []
+      }
+    }).channelId,
+    item.expectedYoutubeChannelId
+  );
+  assert.equal(resolvePortfolioProductionAgentChannelId(item), "UC1234567890123456789012");
+  assert.equal(
+    buildPortfolioProductionVisionBinding({
+      item,
+      sourceSha256: "b".repeat(64),
+      previewSha256: "c".repeat(64),
+      templateSha256: "d".repeat(64),
+      settingsSha256: "e".repeat(64)
+    }).channelId,
+    item.expectedYoutubeChannelId
+  );
+  assert.throws(
+    () =>
+      resolvePortfolioProductionAgentChannelId({
+        expectedYoutubeChannelId: item.channelId
+      }),
+    /24-character YouTube UC channel ID/
+  );
+});
+
+test("injected live dispatcher preserves the complete source-to-public order", async () => {
+  let item = itemFixture();
+  const calls: string[] = [];
+  const advance = (
+    labels: string[],
+    toState: ProductionItemState
+  ): PortfolioLiveEventHandler => async () => {
+    calls.push(...labels);
+    item = { ...item, state: toState, version: item.version + 1 };
+  };
+  const handlers: Partial<Record<PortfolioLiveEventKind, PortfolioLiveEventHandler>> = {
+    "source_ingest.requested": advance(["source"], "source_ingested"),
+    "source_fit.requested": advance(["semantic:source_fit"], "source_qualified"),
+    "brief.requested": advance(
+      ["semantic:caption", "semantic:montage_planner"],
+      "brief_ready"
+    ),
+    "preview.requested": advance(["preview_render", "preview_qa"], "preview_approved"),
+    "final_render.requested": advance(["final_render", "final_qa"], "final_approved"),
+    "publication.requested": advance(["publication"], "publication_scheduled"),
+    "public_verify.requested": advance(["public_verify"], "public_verified")
+  };
+  const dispatch = createPortfolioLiveDispatcher(optionsFixture(), {
+    getItem: () => item,
+    handlers
+  });
+
+  for (const eventKind of [
+    "source_ingest.requested",
+    "source_fit.requested",
+    "brief.requested",
+    "preview.requested",
+    "final_render.requested",
+    "publication.requested",
+    "public_verify.requested"
+  ] as const) {
+    await dispatch(eventFixture(eventKind));
+  }
+
+  assert.deepEqual(calls, [
+    "source",
+    "semantic:source_fit",
+    "semantic:caption",
+    "semantic:montage_planner",
+    "preview_render",
+    "preview_qa",
+    "final_render",
+    "final_qa",
+    "publication",
+    "public_verify"
+  ]);
+  assert.equal(item.state, "public_verified");
+});
+
+test("publication handler is never invoked before final approval", async () => {
+  let item = itemFixture("preview_approved");
+  let finalQaCalls = 0;
+  let publicationCalls = 0;
+  const dispatch = createPortfolioLiveDispatcher(optionsFixture(), {
+    getItem: () => item,
+    handlers: {
+      "final_render.requested": async () => {
+        finalQaCalls += 1;
+        item = { ...item, state: "final_approved" };
+      },
+      "publication.requested": async () => {
+        publicationCalls += 1;
+        item = { ...item, state: "publication_scheduled" };
+      }
+    }
+  });
+
+  await dispatch(eventFixture("publication.requested"));
+  assert.equal(publicationCalls, 0);
+
+  item = { ...item, state: "final_rendered" };
+  await dispatch(eventFixture("publication.requested"));
+  assert.equal(publicationCalls, 0);
+
+  item = { ...item, state: "preview_approved" };
+  await dispatch(eventFixture("final_render.requested"));
+  await dispatch(eventFixture("publication.requested"));
+  assert.equal(finalQaCalls, 1);
+  assert.equal(publicationCalls, 1);
+});
+
+test("cancel and upload-unknown events remain dispatchable until the external outcome is reconciled", async () => {
+  let item = {
+    ...itemFixture("cancel_requested"),
+    publicationId: "publication-race-1"
+  };
+  const calls: string[] = [];
+  const authlessOptions: PortfolioLiveRuntimeOptions = {
+    workspaceId: WORKSPACE_ID,
+    userId: "user-live-runtime-test",
+    routeManifestId: "project-kings-model-routes-v2",
+    routeManifestSha256: "a".repeat(64),
+    selections: {} as ProductionAgentSelections
+  };
+  const dispatch = createPortfolioLiveDispatcher(authlessOptions, {
+    getItem: () => item,
+    handlers: {
+      "production.item.cancel_requested": async () => {
+        calls.push("cancel_fence");
+        item = { ...item, state: "upload_outcome_unknown", version: item.version + 1 };
+      },
+      "publication.requested": async () => {
+        calls.push("publication_reconcile");
+        item = { ...item, state: "publication_scheduled", version: item.version + 1 };
+      },
+      "public_verify.requested": async () => {
+        calls.push("public_verify");
+        item = { ...item, state: "public_verified", version: item.version + 1 };
+      }
+    }
+  });
+
+  await dispatch(eventFixture("production.item.cancel_requested"));
+  await dispatch(eventFixture("publication.requested"));
+  await dispatch(eventFixture("public_verify.requested"));
+
+  assert.deepEqual(calls, ["cancel_fence", "publication_reconcile", "public_verify"]);
+  assert.equal(item.state, "public_verified");
+});
+
+test("partial preview and final QA states remain retryable without opening publication", async () => {
+  let item = itemFixture("preview_ready");
+  const calls: string[] = [];
+  const dispatch = createPortfolioLiveDispatcher(optionsFixture(), {
+    getItem: () => item,
+    handlers: {
+      "preview.requested": async () => {
+        calls.push("preview_qa_retry");
+        item = { ...item, state: "preview_approved" };
+      },
+      "final_render.requested": async () => {
+        calls.push(item.state === "final_rendered" ? "final_qa_retry" : "final_render");
+        item = { ...item, state: "final_approved" };
+      },
+      "publication.requested": async () => {
+        calls.push("publication");
+      }
+    }
+  });
+
+  await dispatch({ ...eventFixture("preview.requested"), attempts: 2 });
+  item = { ...item, state: "final_rendered" };
+  await dispatch({ ...eventFixture("final_render.requested"), attempts: 2 });
+  await dispatch(eventFixture("publication.requested"));
+
+  assert.deepEqual(calls, ["preview_qa_retry", "final_qa_retry", "publication"]);
+});
+
+test("revision dispatch requires a ledger-backed application before the next preview", async () => {
+  let item: ProductionItemRecord = {
+    ...itemFixture("rework"),
+    resumeState: "preview_ready",
+    attempts: 1
+  };
+  const calls: string[] = [];
+  const dispatch = createPortfolioLiveDispatcher(optionsFixture(), {
+    getItem: () => item,
+    handlers: {
+      "revision.requested": async (event) => {
+        assert.equal(event.payload.expectedRevisionAction, "targeted_visual_revision");
+        calls.push("persist_and_apply_revision_ledger");
+        item = { ...item, state: "preview_ready", resumeState: null };
+      },
+      "preview_revision.requested": async (event) => {
+        assert.equal(event.payload.revisionLedgerEntryId, "revision-ledger-entry-1");
+        calls.push("render_changed_snapshot");
+        item = { ...item, state: "preview_approved" };
+      }
+    }
+  });
+
+  await dispatch({
+    ...eventFixture("revision.requested"),
+    payload: { expectedRevisionAction: "targeted_visual_revision" }
+  });
+  await dispatch({
+    ...eventFixture("preview_revision.requested"),
+    payload: { revisionLedgerEntryId: "revision-ledger-entry-1" }
+  });
+
+  assert.deepEqual(calls, ["persist_and_apply_revision_ledger", "render_changed_snapshot"]);
+  assert.equal(item.state, "preview_approved");
+});
+
+test("rework and replacement budgets are bounded and invalid counters fail closed", () => {
+  assert.deepEqual(
+    decidePortfolioLiveRecoveryBudget({ attempts: 0, attemptBudget: 3, generation: 1 }),
+    {
+      canRework: true,
+      canReplace: true,
+      remainingReworks: 3,
+      remainingReplacements: 2
+    }
+  );
+  assert.deepEqual(
+    decidePortfolioLiveRecoveryBudget({ attempts: 3, attemptBudget: 3, generation: 2 }),
+    {
+      canRework: false,
+      canReplace: true,
+      remainingReworks: 0,
+      remainingReplacements: 1
+    }
+  );
+  assert.deepEqual(
+    decidePortfolioLiveRecoveryBudget({ attempts: 2, attemptBudget: 3, generation: 3 }),
+    {
+      canRework: true,
+      canReplace: false,
+      remainingReworks: 1,
+      remainingReplacements: 0
+    }
+  );
+  assert.deepEqual(
+    decidePortfolioLiveRecoveryBudget({ attempts: -1, attemptBudget: 0, generation: 0 }),
+    {
+      canRework: false,
+      canReplace: false,
+      remainingReworks: 0,
+      remainingReplacements: 0
+    }
+  );
+});

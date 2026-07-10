@@ -1,0 +1,5 @@
+status=no_speech
+tool=openai-whisper-cli
+model=tiny
+language=en
+transcript=<no_speech_detected>

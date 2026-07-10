@@ -1,0 +1,232 @@
+{
+  "status": "speech_detected",
+  "model": "tiny",
+  "language": "en",
+  "text": "Careful, that's a mandrank. It's just a plant. Don't make such a fuss. Aaaaaahhhhhh! Welcome students to Defence Against the Dark Art. Lock out your fire, I'm teaching this class now. Mouth or you called or a mudblood. You're gonna pay for that. Whoa, whoa, what's going on here? Nobody insults a lady like that. Stay out of this, you oof! Mouth or with that's a terrible thing to say. You're a loser, a total loser. The heir of Slitharin has returned. Who could it be? It can only mean me. I'm the greatest heir. Where were you three this evening? Professor, they were with me. Believe me, it was tremendous. With you, unlikely. Walda Frey, clean that graffiti off the wall. And Phil's not free, you madman. To transform a creature into a chalice, one must focus in tent. Wrong, that's useless. Let me show you how it's done. See, a Coca-Cola. Perfect. Move aside, Lockhart. I know how to fix this. I was a paladin in World of Warcraft.",
+  "segments": [
+    {
+      "start": 0,
+      "end": 1.58,
+      "text": "Careful, that's a mandrank.",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 1.58,
+      "end": 3.04,
+      "text": "It's just a plant.",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 3.04,
+      "end": 4.16,
+      "text": "Don't make such a fuss.",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 4.16,
+      "end": 5.84,
+      "text": "Aaaaaahhhhhh!",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 5.84,
+      "end": 7.92,
+      "text": "Welcome students to Defence Against the Dark Art.",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 7.92,
+      "end": 9.72,
+      "text": "Lock out your fire, I'm teaching this class now.",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 9.72,
+      "end": 11.120000000000001,
+      "text": "Mouth or you called or a mudblood.",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 11.120000000000001,
+      "end": 12.18,
+      "text": "You're gonna pay for that.",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 12.18,
+      "end": 13.52,
+      "text": "Whoa, whoa, what's going on here?",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 13.52,
+      "end": 14.8,
+      "text": "Nobody insults a lady like that.",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 14.8,
+      "end": 15.92,
+      "text": "Stay out of this, you oof!",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 15.92,
+      "end": 17.16,
+      "text": "Mouth or with that's a terrible thing to say.",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 17.16,
+      "end": 18.64,
+      "text": "You're a loser, a total loser.",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 18.64,
+      "end": 20.56,
+      "text": "The heir of Slitharin has returned.",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 20.56,
+      "end": 21.72,
+      "text": "Who could it be?",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 21.72,
+      "end": 23,
+      "text": "It can only mean me.",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 23,
+      "end": 24.16,
+      "text": "I'm the greatest heir.",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 24.16,
+      "end": 26.32,
+      "text": "Where were you three this evening?",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 26.32,
+      "end": 27.6,
+      "text": "Professor, they were with me.",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 27.6,
+      "end": 29.44,
+      "text": "Believe me, it was tremendous.",
+      "noSpeechProbability": 0.31164705753326416,
+      "averageLogProbability": -0.5098919213986864
+    },
+    {
+      "start": 29.44,
+      "end": 30.740000000000002,
+      "text": "With you, unlikely.",
+      "noSpeechProbability": 0.029736394062638283,
+      "averageLogProbability": -0.3330360609909584
+    },
+    {
+      "start": 30.740000000000002,
+      "end": 32.64,
+      "text": "Walda Frey, clean that graffiti off the wall.",
+      "noSpeechProbability": 0.029736394062638283,
+      "averageLogProbability": -0.3330360609909584
+    },
+    {
+      "start": 32.64,
+      "end": 34.04,
+      "text": "And Phil's not free, you madman.",
+      "noSpeechProbability": 0.029736394062638283,
+      "averageLogProbability": -0.3330360609909584
+    },
+    {
+      "start": 34.04,
+      "end": 35.64,
+      "text": "To transform a creature into a chalice,",
+      "noSpeechProbability": 0.029736394062638283,
+      "averageLogProbability": -0.3330360609909584
+    },
+    {
+      "start": 35.64,
+      "end": 36.64,
+      "text": "one must focus in tent.",
+      "noSpeechProbability": 0.029736394062638283,
+      "averageLogProbability": -0.3330360609909584
+    },
+    {
+      "start": 36.64,
+      "end": 37.64,
+      "text": "Wrong, that's useless.",
+      "noSpeechProbability": 0.029736394062638283,
+      "averageLogProbability": -0.3330360609909584
+    },
+    {
+      "start": 37.64,
+      "end": 38.64,
+      "text": "Let me show you how it's done.",
+      "noSpeechProbability": 0.029736394062638283,
+      "averageLogProbability": -0.3330360609909584
+    },
+    {
+      "start": 38.64,
+      "end": 39.64,
+      "text": "See, a Coca-Cola.",
+      "noSpeechProbability": 0.029736394062638283,
+      "averageLogProbability": -0.3330360609909584
+    },
+    {
+      "start": 39.64,
+      "end": 40.64,
+      "text": "Perfect.",
+      "noSpeechProbability": 0.029736394062638283,
+      "averageLogProbability": -0.3330360609909584
+    },
+    {
+      "start": 40.64,
+      "end": 41.44,
+      "text": "Move aside, Lockhart.",
+      "noSpeechProbability": 0.029736394062638283,
+      "averageLogProbability": -0.3330360609909584
+    },
+    {
+      "start": 41.44,
+      "end": 42.64,
+      "text": "I know how to fix this.",
+      "noSpeechProbability": 0.029736394062638283,
+      "averageLogProbability": -0.3330360609909584
+    },
+    {
+      "start": 42.64,
+      "end": 44.24,
+      "text": "I was a paladin in World of Warcraft.",
+      "noSpeechProbability": 0.029736394062638283,
+      "averageLogProbability": -0.3330360609909584
+    }
+  ]
+}

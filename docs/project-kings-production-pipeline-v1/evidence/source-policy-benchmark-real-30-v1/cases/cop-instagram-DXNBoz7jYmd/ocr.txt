@@ -1,0 +1,128 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 5.870s]
+COPSCOPES #
+=
+Police Bodycam Footage
+Wild Chase With 2 Teens in Stolen Hyundai:
+eke
+|
+“_——
+=
+Share this clip
+[source-key-frame-02 @ 22.991s]
+COPSCOPES #
+Police Bodycam Footage
+Wild Chase With 2 Teens in Stolen Hyundai:
+aK,
+— J)
+Tete
+| SSS
+| Sa
+,
+“
+el
+— le AA
+eine
+[source-key-frame-03 @ 40.112s]
+COPSCOPES #
+Police Bodycam Footage
+Wild Chase With 2 Teens in Stolen Hyundai:
+fe
+LF
+4 Ee
+BY Ww
+= ’
+8 ag
+=
+K-i
+=
+7s
+, =
+i
+f*
+hae
+as
+ae:
+—
+a le
+—_—
+eZ
+o¢/ >)»
+Y ae
+a
+ae.
+[source-key-frame-04 @ 57.721s]
+COPSCOPES #
+Police Bodycam Footage
+Wild Chase With 2 Teen
+Hyundai:
+dl stole
+er +
+emeit
+Ses a
+f
+iB
+Bek
+PS pe tye
+—_—
+ray
+ee
+Ans
+= >!
+a
+—
+-__
+—
+ru
+Ls,
+a =
+I
+~—~
+A
+>
+[source-key-frame-05 @ 74.842s]
+COPSCOPES #
+Police Bodycam Footage
+ws Ene
+With 2 Teens in Stolen Hyundai:
+PW ee
+« ein
+' FR
+€ * 8
+My
+eh,
+t-
+ee
+- wae
+“Ml.
+i
+[source-key-frame-06 @ 91.963s]
+COPSCOPES #
+Police Bodycam Footage
+Wild chee With 2 Teens i in Stolen Hyundai:
+ey ae
+ue.
+er
+“4
+or,
+A
+if
+'
+weer
+ro |
+w!
+=<
+mf
+o—-
+em
+AN
+=e
+|
+< aS
+~H
+—=S,
+Donvtlosethis crazy,
+page
+Taisen eee

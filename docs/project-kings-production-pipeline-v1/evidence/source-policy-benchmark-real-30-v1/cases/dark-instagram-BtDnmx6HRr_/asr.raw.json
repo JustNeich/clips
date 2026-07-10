@@ -1,0 +1,57 @@
+{
+  "status": "speech_detected",
+  "model": "tiny",
+  "language": "en",
+  "text": "Oh, I thought it was big old baby. I thought it was big baby, child. Oh my god. Oh my god. Oh my god. Oh my god. Where did you do when you built my?",
+  "segments": [
+    {
+      "start": 0,
+      "end": 10,
+      "text": "Oh, I thought it was big old baby.",
+      "noSpeechProbability": 0.3006478250026703,
+      "averageLogProbability": -0.8355486551920573
+    },
+    {
+      "start": 10,
+      "end": 13,
+      "text": "I thought it was big baby, child.",
+      "noSpeechProbability": 0.3006478250026703,
+      "averageLogProbability": -0.8355486551920573
+    },
+    {
+      "start": 13,
+      "end": 16,
+      "text": "Oh my god.",
+      "noSpeechProbability": 0.3006478250026703,
+      "averageLogProbability": -0.8355486551920573
+    },
+    {
+      "start": 16,
+      "end": 19,
+      "text": "Oh my god.",
+      "noSpeechProbability": 0.3006478250026703,
+      "averageLogProbability": -0.8355486551920573
+    },
+    {
+      "start": 19,
+      "end": 21,
+      "text": "Oh my god.",
+      "noSpeechProbability": 0.3006478250026703,
+      "averageLogProbability": -0.8355486551920573
+    },
+    {
+      "start": 21,
+      "end": 23,
+      "text": "Oh my god.",
+      "noSpeechProbability": 0.3006478250026703,
+      "averageLogProbability": -0.8355486551920573
+    },
+    {
+      "start": 23,
+      "end": 26,
+      "text": "Where did you do when you built my?",
+      "noSpeechProbability": 0.3006478250026703,
+      "averageLogProbability": -0.8355486551920573
+    }
+  ]
+}

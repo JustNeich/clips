@@ -456,6 +456,170 @@ server.registerTool(
 );
 
 server.registerTool(
+  "clips_owner_approve_source_policy",
+  {
+    title: "Explicitly approve the current Project Kings source policy",
+    description:
+      "One-time control-plane approval for the exact current rights/sensitive-content policy and designated source routes. Starting a run never creates this approval.",
+    inputSchema: z.object({
+      policyVersion: z.literal("project-kings-source-rights-sensitive-policy-v2"),
+      policySha256: z.string().regex(/^[a-f0-9]{64}$/),
+      sourceDesignationsSha256: z.string().regex(/^[a-f0-9]{64}$/),
+      ownerAuthorizationEvidenceSha256: z.string().regex(/^[a-f0-9]{64}$/)
+    })
+  },
+  async (input) => ownerControl("clips_owner_approve_source_policy", input)
+);
+
+server.registerTool(
+  "clips_owner_prepare_production_profiles",
+  {
+    title: "Prepare Project Kings production profiles",
+    description:
+      "Create the three current frozen Project Kings profiles as unapproved drafts, or return an exact existing version without changing it. This command never authorizes shadow or live execution.",
+    inputSchema: z.object({})
+  },
+  async (input) => ownerControl("clips_owner_prepare_production_profiles", input)
+);
+
+server.registerTool(
+  "clips_owner_approve_production_profile",
+  {
+    title: "Explicitly approve one production profile",
+    description:
+      "Approve one exact Project Kings profile id, version and frozen profile hash for shadow or live. A new draft must receive shadow approval before promotion to active/live.",
+    inputSchema: z.object({
+      profileId: z.string(),
+      version: z.number().int().positive(),
+      profileHash: z.string().regex(/^[a-f0-9]{64}$/i),
+      targetStatus: z.enum(["shadow", "active"])
+    })
+  },
+  async (input) => ownerControl("clips_owner_approve_production_profile", input)
+);
+
+server.registerTool(
+  "clips_owner_validate_production_profile",
+  {
+    title: "Validate a frozen production profile",
+    description:
+      "Compare one immutable Project Kings profile version with live channel, destination, template, slots, source buffer, Codex and worker facts.",
+    inputSchema: z.object({
+      profileId: z.string(),
+      version: z.number().int().positive()
+    })
+  },
+  async (input) => ownerControl("clips_owner_validate_production_profile", input)
+);
+
+server.registerTool(
+  "clips_owner_start_portfolio_run",
+  {
+    title: "Start a Project Kings portfolio run",
+    description:
+      "Create or return the idempotent 3-channel x 3-item run. Shadow and live modes require exact profiles approved beforehand through the explicit hash-bound approval command; start never prepares or approves them.",
+    inputSchema: z.object({
+      profileIds: z.array(z.string()).length(3).optional(),
+      logicalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      mode: z.enum(["simulation", "shadow", "live"]),
+      canaryPolicy: z.enum(["first_item_per_channel_public_verified", "none"]).optional(),
+      targetPerChannel: z.literal(3).optional(),
+      publishPolicyId: z.literal("project-kings-daily-3x3-v1").optional(),
+      idempotencyKey: z.string().optional()
+    })
+  },
+  async (input) => ownerControl("clips_owner_start_portfolio_run", input)
+);
+
+server.registerTool(
+  "clips_owner_get_portfolio_run",
+  {
+    title: "Get a Project Kings portfolio run",
+    description:
+      "Read channel and item states, blockers, next slot, SLA metrics, costs, retries and exact YouTube video IDs.",
+    inputSchema: z.object({
+      runId: z.string()
+    })
+  },
+  async (input) => ownerControl("clips_owner_get_portfolio_run", input)
+);
+
+server.registerTool(
+  "clips_owner_reconcile_portfolio_run",
+  {
+    title: "Reconcile a Project Kings portfolio run",
+    description:
+      "Acquire the singleton run lease, resume missing dispatches and recompute channel/run completion from durable item truth.",
+    inputSchema: z.object({
+      runId: z.string(),
+      expectedVersion: z.number().int().positive()
+    })
+  },
+  async (input) => ownerControl("clips_owner_reconcile_portfolio_run", input)
+);
+
+server.registerTool(
+  "clips_owner_retry_production_item",
+  {
+    title: "Retry one Project Kings production item",
+    description:
+      "Resume a bounded rework or create the next source generation. Policy blocks and upload-unknown states remain fail-closed.",
+    inputSchema: z.object({
+      runId: z.string(),
+      itemId: z.string(),
+      expectedVersion: z.number().int().positive(),
+      reason: z.string().min(1)
+    })
+  },
+  async (input) => ownerControl("clips_owner_retry_production_item", input)
+);
+
+server.registerTool(
+  "clips_owner_cancel_portfolio_run",
+  {
+    title: "Cancel a Project Kings portfolio run",
+    description:
+      "Stop pre-upload work without deleting remote videos or losing artifacts and outbox evidence.",
+    inputSchema: z.object({
+      runId: z.string(),
+      expectedVersion: z.number().int().positive(),
+      reason: z.string().min(1)
+    })
+  },
+  async (input) => ownerControl("clips_owner_cancel_portfolio_run", input)
+);
+
+server.registerTool(
+  "clips_owner_tick_portfolio_daemon",
+  {
+    title: "Tick the persistent Project Kings portfolio daemon",
+    description:
+      "Acquire or renew the production-DB singleton lease, idempotently ensure today's configured 3x3 run, and resume its durable background work.",
+    inputSchema: z.object({
+      profileIds: z.array(z.string()).length(3),
+      mode: z.enum(["shadow", "live"]),
+      canaryPolicy: z.enum(["first_item_per_channel_public_verified", "none"]).optional(),
+      timezone: z.string().optional(),
+      leaseToken: z.string().optional()
+    })
+  },
+  async (input) => ownerControl("clips_owner_tick_portfolio_daemon", input)
+);
+
+server.registerTool(
+  "clips_owner_release_portfolio_daemon",
+  {
+    title: "Release the Project Kings portfolio daemon lease",
+    description:
+      "Release only the caller's singleton lease and stop the matching in-process portfolio runtime. It does not cancel production runs.",
+    inputSchema: z.object({
+      leaseToken: z.string()
+    })
+  },
+  async (input) => ownerControl("clips_owner_release_portfolio_daemon", input)
+);
+
+server.registerTool(
   "clips_owner_run_agent_pipeline",
   {
     title: "Run Clips agent pipeline (decomposition)",

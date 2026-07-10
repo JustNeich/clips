@@ -1,0 +1,7 @@
+status=speech_detected
+tool=openai-whisper-cli
+model=tiny
+language=en
+transcript=Stop it. This is trying to be a car captain
+segment_01={"start":0,"end":7.62,"text":"Stop it.","noSpeechProbability":0.1339084506034851,"averageLogProbability":-2.9667376349954044}
+segment_02={"start":7.62,"end":29.94,"text":"This is trying to be a car captain","noSpeechProbability":0.1339084506034851,"averageLogProbability":-2.9667376349954044}

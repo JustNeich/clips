@@ -1,0 +1,126 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 2.178s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Why did he run away??
+oe
+ae
+i
+\“
+e.
+Ae
+le
+NN =
+vle=
+acd
+—
+‘é
+Offic icer:
+last time you didn’ tb
+'
+i=
+@copscopes.
+ces
+= |
+[source-key-frame-02 @ 8.530s]
+COPSCOPES #
+=
+Police Bodycam Footage
+Why did he run away??
+oe
+4 =
+| 7
+E Officer:
+ral
+Why’s he anna?
+~
+=)
+@conscopes
+“a
+[source-key-frame-03 @ 14.883s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Why did he run away??
+<<"
+REC
+eo
+[source-key-frame-04 @ 21.417s]
+COPSCOPES #
+é
+Police Bodycam Footage
+Why did he run away??
+een J
+ay
+@ REC
+att
+ae
+- RR
+|
+rr 7
+7
+— Ya
+>
+“*
+|
+A
+od
+Ct a
+eg.
+‘{
++
+Hr.
+[source-key-frame-05 @ 27.769s]
+COPSCOPES @
+Police Bodycam Footage
+rg
+Why did he run away??
+“al
+ce.
+a, mm iB
+id
+ft. 9 - 4
+-
+“=
+oe.
+a>
+a
+=
+NC
+a
+| Officer:
+how stupid dude
+a.
+a~ eZ
+[source-key-frame-06 @ 34.122s]
+COPSCOPES #
+Police Bodycam Footage
+é
+eh
+Why ¢ did he run away??
+a,
+*
++ REC
+me
+mh
+ey
+—
+~~.
+=!
+-
+>
+—_
+== F
+>
+Ze
+JOR
+Officer
+so | could go home.
+1
+y
+this clip
+o
+wey

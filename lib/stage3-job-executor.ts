@@ -29,6 +29,12 @@ import {
   renderStage3VideoInChildProcess,
   shouldUseStage3HostRenderChildProcess
 } from "./stage3-host-render-child-client";
+import {
+  parseProductionSemanticJobPayloadJson,
+  ProductionSemanticJobContractError,
+  validateProductionSemanticJobResult,
+  type ProductionSemanticJobExecutor
+} from "./project-kings/production-semantic-job-contract";
 
 export type Stage3ExecutedJobResult = {
   resultJson: string | null;
@@ -42,10 +48,18 @@ export type Stage3ExecutedJobResult = {
   cleanup: (() => Promise<void>) | null;
 };
 
-type Stage3HeavyJobExecutionOptions = {
+export type Stage3HeavyJobExecutionOptions = {
   signal?: AbortSignal | null;
   onRenderProgress?: (event: Stage3RenderProgressEvent) => void;
+  productionSemanticExecutor?: ProductionSemanticJobExecutor | null;
 };
+
+export class ProductionSemanticExecutorUnavailableError extends Error {
+  constructor() {
+    super("No ready production-semantic executor is installed in this worker runtime.");
+    this.name = "ProductionSemanticExecutorUnavailableError";
+  }
+}
 
 function buildStage3RenderResultJson(rendered: Awaited<ReturnType<typeof renderStage3Video>>): string {
   return JSON.stringify({
@@ -73,6 +87,9 @@ export function resolveStage3HeavyJobErrorCode(kind: Stage3JobKind): string {
   }
   if (kind === "source-download") {
     return "source_download_failed";
+  }
+  if (kind === "production-semantic") {
+    return "production_semantic_failed";
   }
   return "job_failed";
 }
@@ -193,6 +210,22 @@ export async function executeStage3HeavyJobPayload(
     };
   }
 
+  if (kind === "production-semantic") {
+    const payload = parseProductionSemanticJobPayloadJson(payloadJson);
+    const executor = options?.productionSemanticExecutor;
+    if (!executor) {
+      throw new ProductionSemanticExecutorUnavailableError();
+    }
+    const result = await executor.execute(payload, {
+      signal: options?.signal ?? undefined
+    });
+    return {
+      resultJson: JSON.stringify(validateProductionSemanticJobResult(result, payload)),
+      artifact: null,
+      cleanup: null
+    };
+  }
+
   throw new Error(`Unsupported Stage 3 local job kind: ${kind}`);
 }
 
@@ -214,6 +247,20 @@ export function classifyStage3HeavyJobError(
       code: "artifact_storage_full",
       message,
       recoverable: true
+    };
+  }
+  if (error instanceof ProductionSemanticExecutorUnavailableError) {
+    return {
+      code: "production_semantic_executor_unavailable",
+      message: error.message,
+      recoverable: false
+    };
+  }
+  if (kind === "production-semantic" && error instanceof ProductionSemanticJobContractError) {
+    return {
+      code: "production_semantic_contract_invalid",
+      message,
+      recoverable: false
     };
   }
   if (
@@ -264,6 +311,13 @@ export function classifyStage3HeavyJobError(
     return {
       code: resolveStage3HeavyJobErrorCode(kind),
       message: message || "Stage 3 agent media step failed.",
+      recoverable: true
+    };
+  }
+  if (kind === "production-semantic") {
+    return {
+      code: resolveStage3HeavyJobErrorCode(kind),
+      message: message || "Project Kings semantic job failed.",
       recoverable: true
     };
   }

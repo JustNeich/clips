@@ -1,0 +1,85 @@
+{
+  "status": "speech_detected",
+  "model": "tiny",
+  "language": "en",
+  "text": "I hate this slow up with the fake escape through a quick grab. Thank you for our good health now. I'm going to the second one. I'm going to the second one. I'm going to the second one. I'm going to the second one. I'm going to the second one. I don't know if he's going to be inside the top of the park, but I don't want to stop him. I don't know if he's going to be inside the top of the park, but I don't want to stop him. He doesn't give up. Yeah,",
+  "segments": [
+    {
+      "start": 0,
+      "end": 3,
+      "text": "I hate this slow up with the fake escape through a quick grab.",
+      "noSpeechProbability": 0.3190677762031555,
+      "averageLogProbability": -0.954704089042468
+    },
+    {
+      "start": 5.5,
+      "end": 7,
+      "text": "Thank you for our good health now.",
+      "noSpeechProbability": 0.3190677762031555,
+      "averageLogProbability": -0.954704089042468
+    },
+    {
+      "start": 15,
+      "end": 17,
+      "text": "I'm going to the second one.",
+      "noSpeechProbability": 0.3190677762031555,
+      "averageLogProbability": -0.954704089042468
+    },
+    {
+      "start": 17,
+      "end": 18,
+      "text": "I'm going to the second one.",
+      "noSpeechProbability": 0.3190677762031555,
+      "averageLogProbability": -0.954704089042468
+    },
+    {
+      "start": 18,
+      "end": 19,
+      "text": "I'm going to the second one.",
+      "noSpeechProbability": 0.3190677762031555,
+      "averageLogProbability": -0.954704089042468
+    },
+    {
+      "start": 23,
+      "end": 25,
+      "text": "I'm going to the second one.",
+      "noSpeechProbability": 0.3190677762031555,
+      "averageLogProbability": -0.954704089042468
+    },
+    {
+      "start": 25,
+      "end": 26,
+      "text": "I'm going to the second one.",
+      "noSpeechProbability": 0.3190677762031555,
+      "averageLogProbability": -0.954704089042468
+    },
+    {
+      "start": 26,
+      "end": 34,
+      "text": "I don't know if he's going to be inside the top of the park, but I don't want to stop him.",
+      "noSpeechProbability": 0.7413531541824341,
+      "averageLogProbability": -0.7986545562744141
+    },
+    {
+      "start": 34,
+      "end": 42,
+      "text": "I don't know if he's going to be inside the top of the park, but I don't want to stop him.",
+      "noSpeechProbability": 0.7413531541824341,
+      "averageLogProbability": -0.7986545562744141
+    },
+    {
+      "start": 72,
+      "end": 73.8,
+      "text": "He doesn't give up.",
+      "noSpeechProbability": 0.29634153842926025,
+      "averageLogProbability": -3.424054659329928
+    },
+    {
+      "start": 79.8,
+      "end": 86.8,
+      "text": "Yeah,",
+      "noSpeechProbability": 0.29634153842926025,
+      "averageLogProbability": -3.424054659329928
+    }
+  ]
+}

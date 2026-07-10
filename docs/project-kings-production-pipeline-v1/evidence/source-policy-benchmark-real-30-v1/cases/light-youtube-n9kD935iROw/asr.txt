@@ -1,0 +1,8 @@
+status=speech_detected
+tool=openai-whisper-cli
+model=tiny
+language=en
+transcript=Okay, so, like, the temple raid was mid, not gonna lie. Total L, Obi-Wan's ghosting me. Gotta find Padme, low key freaking.
+segment_01={"start":0,"end":3.7600000000000002,"text":"Okay, so, like, the temple raid was mid, not gonna lie.","noSpeechProbability":0.00876366626471281,"averageLogProbability":-0.3619087175889449}
+segment_02={"start":3.7600000000000002,"end":5.88,"text":"Total L, Obi-Wan's ghosting me.","noSpeechProbability":0.00876366626471281,"averageLogProbability":-0.3619087175889449}
+segment_03={"start":5.88,"end":8.08,"text":"Gotta find Padme, low key freaking.","noSpeechProbability":0.00876366626471281,"averageLogProbability":-0.3619087175889449}

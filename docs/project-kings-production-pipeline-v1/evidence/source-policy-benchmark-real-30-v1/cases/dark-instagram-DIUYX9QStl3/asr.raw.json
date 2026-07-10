@@ -1,0 +1,22 @@
+{
+  "status": "speech_detected",
+  "model": "tiny",
+  "language": "en",
+  "text": "If the world must end, I wanna be next to you That's the part you must...",
+  "segments": [
+    {
+      "start": 0,
+      "end": 9,
+      "text": "If the world must end, I wanna be next to you",
+      "noSpeechProbability": 0.49749791622161865,
+      "averageLogProbability": -0.7219274044036865
+    },
+    {
+      "start": 9,
+      "end": 11,
+      "text": "That's the part you must...",
+      "noSpeechProbability": 0.49749791622161865,
+      "averageLogProbability": -0.7219274044036865
+    }
+  ]
+}

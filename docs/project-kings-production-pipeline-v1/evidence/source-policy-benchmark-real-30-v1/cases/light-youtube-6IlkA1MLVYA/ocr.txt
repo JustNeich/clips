@@ -1,0 +1,82 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 1.490s]
+ys
+[source-key-frame-02 @ 5.836s]
+if
+~~
+“>
+fr
+sake al
+A
+[source-key-frame-03 @ 10.182s]
+RANK)
+420000
+OE
+We
+\\
+Vi, Ss
+*
+,*
+[source-key-frame-04 @ 14.652s]
+'
+yy
+us
+Wey
+%
+Q
+\
+nx
+S\
+—
+a
+‘ite ]
+re
+\
+=
+>.
+[source-key-frame-05 @ 18.998s]
+50000)
+A
+|
+————n
+ZZ
+}
+—_ a
+|
+3 \ >
+=
+f=
+aM
+\\k
+hy
+aN
+Kf
+=” N
+a
+[source-key-frame-06 @ 23.344s]
+wee
+it
+z
+(me
+yA
+as
+é |
+=
+iN,
+aT)
+We
+¥
+4
+oe
+Ca
+aio
+‘
+ji?
+MB
+4's
+_ =~
+SS
+=
+»

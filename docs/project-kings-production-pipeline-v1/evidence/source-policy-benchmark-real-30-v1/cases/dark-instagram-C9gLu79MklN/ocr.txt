@@ -1,0 +1,77 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 1.091s]
+yi
+on
+cS)
+%
+og Il
+A\
+ay
+byt
+wi
+‘es hy
+ari
+yy
+\W \d
+ye
+eng
+Hive
+\ ae
+# wy
+=
+,
+\
+we
+\
+[source-key-frame-02 @ 4.273s]
+-
+Le
+Bt?
+ee,
+%.
+4. Fs
+“et
+Ly
+ws
+ee.
+Of
+4
+Y
+t%
+ty
+G4
+%
+Fo
+W0
+\\
+>
+[source-key-frame-03 @ 7.455s]
+_—
+[source-key-frame-04 @ 10.727s]
+Gi
+[source-key-frame-05 @ 13.909s]
+1B
+\ WZ
+iF
+nal
+Pa
+=;
+a
+i
+‘-s
+ih
+p
+A
+——_=
+&
+Ve
+A
+fee,
+ase i
+be 5
+[source-key-frame-06 @ 17.091s]
+a
+4
+7 f

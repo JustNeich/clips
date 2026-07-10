@@ -1,0 +1,116 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 2.098s]
+COPSCOPES #
+=
+Police Bodycam Footage
+Off-Duty Officer Forgets He’s on Camera
+— REC
+5 Be
+Ni
+el
+—_
+~ |e
+Qan
+[source-key-frame-02 @ 8.217s]
+COPSCOPES #
+Police Bodycam Footage
+Off-Duty Officer Forgets He’s on Camera
+a=
+We
+==)
+=
+Ve
+)
+—/s
+\7
+bg
+—
+Ea
+SS==
+—
+_——
+———
+—
+—_——
+== \
+[source-key-frame-03 @ 14.336s]
+COPSCOPES #
+=
+Police Bodycam Footage
+_
+elit Officer Forgets He’s on Camera
+REC
+——-
+—
+r
+am
+|
+{A
+Ww
+i
++ |
+4)
+ea
+——
+|.
+lo fl VU
+‘
+it
+[source-key-frame-04 @ 20.630s]
+COPSCOPES #
+Police Bodycam Footage
+9
+Off-Duty Officer oat He’s on Camera
+“a
+ai
+Baa
+v
+Ip
+a
+7 »
+=
+\_s
+—
+|
+iA
+[source-key-frame-05 @ 26.750s]
+COPSCOPES #
+=
+Police Bodycam Footage
+Off-Duty Officer Forgets He’s on Camera
+~)
+i)
+|
+~ fo
+ay
+vy,
+oie DUTY ae
+O)P.
+GEG
+Ss ESS
+ING
+|
+[source-key-frame-06 @ 32.869s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Off-Duty Officer Forgets He's oer
+="
+sustil
+7
+es) \
+[
+(
+I'S
+rn
+J
+=)
+/
+yf
+oF)
+SF,
+é
+y
+p

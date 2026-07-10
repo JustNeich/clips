@@ -1,0 +1,130 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 3.508s]
+COPSCOPES #
+Police Bodycam Footage
+Woman finds out her charges while in the hospital
+~~
+me
+me
+"-
+i
+, ose
+—,
+uy
+"s.
+@co
+S
+i ieee
+~ Ss
+| at
+[source-key-frame-02 @ 13.740s]
+COPSCOPES #
+Police Bodycam Footage
+Woman finds out her charges while in the hospital:
+-
+eS
+ee
+Me.
+——
+a
+[source-key-frame-03 @ 23.971s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Woman finds out her charges while in the hospital:
+‘s.
+ewe
+Pr
+- ——
+—
+_é
+— =
+=
+—-
+a
+f
+at
+ad
+y
+*~
+@
+foe
+——
+pa
+a
+[source-key-frame-04 @ 34.495s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Woman finds out her charges while in the hospital
+= en
+Ih,
+cm
+es Oe as me
+“Sa
+= —
+“-
+ft
+wel
+~as
+"a.
+we
+[
+a)
+| |
+=,
+—
+=
+0
+AU
+.@co
+—
+[source-key-frame-05 @ 44.727s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Woman finds out her charges while in the hospital
+| ad
+ae,
+FO as OS oe i
+Pi:
+?
+ee
+on)
+—-
+ti
+oo yy
+—
+“wy
+UE
+Ti
+A]
+“Q
+@et
+ONS
+»
+[source-key-frame-06 @ 54.959s]
+COPSCOPES #
+=
+Police Bodycam Footag
+Woman finds out her charges while in the hospital:
+= —_
+— an
+— a
+~
+- ee ee
+OS mm
+es
+a BY,
+a!
+PR
+{|
+; co
+Cor
+=
+4S
+WSharetthis
+Cup
+d

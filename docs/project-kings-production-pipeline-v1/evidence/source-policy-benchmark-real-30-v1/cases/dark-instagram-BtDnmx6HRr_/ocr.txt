@@ -1,0 +1,232 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 2.749s]
+} =.
+p
+[source-key-frame-02 @ 10.766s]
+mi
+|
+a
+jt
+=
+--
+ee!
+a
+. a
+7
+4-™
+'%
+—
+¢
+<a
+os
+-—
+>
+ais
+i
+- =
+eal |
+S ale
+:
+=,
+“~~
+ye
+—s
+= 2
+6
+wy
+4)
+$%
+-¢*
+ey
+Ss
+~?
+~ -
+ae
+i> p<
+~~
+= &
+e~
+>» *
+«3
+\ on 8
+—,
+i _—~
+© Lat
+on
+, an
++a
+~o
+et
+ve?
+ae
+©
+=
+a
+ae
+~ be
+1. me
+oi
+e
+[source-key-frame-03 @ 18.783s]
+/ * '
+Ye
+iS 2S
+ta
+.&
+vette
+@
+ag
+Se
+4
+Ke
+ap
++; %
+2
+/ e4
+LEE
+Ape
+A
+pas
+\)
+<7
+_¥
+WA
+se
+5
+<7
+ive
+aA,
+*
+LP es
+- @
+74
+eS
+=
+. |
+.
+ty.)
+A
+aS
+at
+ofa
+. E&e
+=X. - =
+[source-key-frame-04 @ 27.030s]
+--a
+bs
+og
+%
+>
+-_ s sf
+Ad
+rey
+“i
+=
+aty
+~
+ams
+Vs Me
+}
+YW
+4
+i/
+&%}
+i tn
+(inl
+¥*
+a
+-
++5.
+‘y
+r,s
+ot aa
+= \
+ull
+[source-key-frame-05 @ 35.047s]
+--2
+—s72
+>
+——
+-.
+i
+[source-key-frame-06 @ 43.064s]
+ty
+Sy
+<<
+A
+\
+~ <<
+ae
+ca
+PAS
+_
+aS
+ee
+wae
+oF Ne ae
+as
+-
+a
+at
+SSE Pe
+al
+Pork
+Na
+Ss
+ae
+ue
+=
+rte >
+=
++
+Zi os
+AX
+ys
+Py 2
+may |
+~ A
+hn
+psf
+me. eds
+2
+2a,
+ahs
+ef
+ae 7
+S Sie Ps
+—~pawr a 4
+t=
+se
+2 ger
+eo
+="
+Ve
+4
+7
+=
+“or
+~t Z
+a)
+pe. -
+_ y.*
+a5
+=
+re
+ean”
+See
+«A
+Re 4
+=
+ee
+i=
+“et
+Se
+»\@s
+Ne
+=
+re.
+oe se.
+a
+Sore

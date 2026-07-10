@@ -1,0 +1,402 @@
+{
+  "schemaVersion": "project-kings-source-policy-annotations-v1",
+  "annotationSetId": "project-kings-source-policy-real-30-v1",
+  "createdAt": "2026-07-10T16:02:57.479Z",
+  "datasetSha256": "21ce4864f790f5b9e552bbcfea5cd4abe468e96f3e9f5c7a3a9819460a114e66",
+  "annotatorKind": "implementation_agent_direct_visual_review",
+  "independentFromModelRoutesUnderTest": true,
+  "sampleSize": 30,
+  "cases": [
+    {
+      "caseId": "dark-instagram-BtDnmx6HRr_",
+      "datasetCaseBindingSha256": "cd61c222b30d69597ca597e8b1d7a04363522fd2100b2ab36aa510004da2ee71",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Six ordered frames show a tiger chasing and interacting with a domestic cat outdoors. OCR and ASR contain no graphic injury, serious accusation, minor in a sensitive incident, or synthetic public figure.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "0cb4aa538669a5517de1f98bd0b693a83b586f5738e267a2cfc739fb05760c54"
+    },
+    {
+      "caseId": "dark-instagram-C-0YpsCAODv",
+      "datasetCaseBindingSha256": "d28c31dff9679dd530e178cc54ecffb013e522a04e4f7ba646153cce4edcc3bf",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Six ordered frames show a woman posing calmly with a chimpanzee. The song transcript and visible watermark add no prohibited policy signal.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "eb98e34e1e4276fe037ad31c6893b03c7ef66e9402a4bd9d71443d644e2586ba"
+    },
+    {
+      "caseId": "dark-instagram-C9gLu79MklN",
+      "datasetCaseBindingSha256": "8870055f34c009b5eb396a3799a685f00db9c486937a32242b538ba692aa75fc",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Six ordered frames show a small monkey playing indoors with an adult. The rough tiny-model ASR contains no supported visual sign of violence or any serious accusation.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "18ce3c8a576baa0de53e8bb30dd7d7bf82ae390e47852acd75821607c14fa1f1"
+    },
+    {
+      "caseId": "dark-instagram-CsYa4skNBjP",
+      "datasetCaseBindingSha256": "794ee93bcc86c0d4a204eacb8622cce0334bf789fd92a71f23651b48507ed8c6",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Six ordered frames show an adult calmly holding and touching a sloth. Whisper returned no speech and OCR contains no prohibited allegation.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "bb264d0fde7f65692bedc2b7d72568a779254949579195332fc17ca4f658c030"
+    },
+    {
+      "caseId": "dark-instagram-Cw_QTMmA69_",
+      "datasetCaseBindingSha256": "6c54953242f9c83b787e5ffab606fae891113fe0c367fc15c43aa420a75f2b4b",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Six ordered frames show an adult feeding and petting a lion through a barrier. No blood, injury, minor, serious accusation, or synthetic public figure is visible or stated.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "47286bb13ba0c8a228e5b0b91a144f1db0ddd453d0be033ddc64bdff44293a68"
+    },
+    {
+      "caseId": "dark-instagram-Cxb0DmpJ7oM",
+      "datasetCaseBindingSha256": "9bbf57318d809c9c1dc282e45c130ef915fc22a2849125054b39a4d48d28bcbe",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Six ordered frames show an adult holding a towel-wrapped baby monkey. OCR and the short monkey-burrito ASR contain no prohibited policy class.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "c579b44d20a815cd311ad3297a073e3e7b49ac3562cef98c09c693277817eeb1"
+    },
+    {
+      "caseId": "dark-instagram-DIUYX9QStl3",
+      "datasetCaseBindingSha256": "7a8f7c58e73aa083aa7e5251e686348f5ae4dfc4abc0b8185546665d89b5426f",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Six ordered frames show an adult swimming calmly with a chimpanzee. The song transcript contains no accusation and no prohibited visual signal is present.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "c251f31b1f62561c3126cf47967095e17c25d20e0b5c8ff4609ed21b045df0ba"
+    },
+    {
+      "caseId": "dark-instagram-DKM66d2tamf",
+      "datasetCaseBindingSha256": "a5bc6fa1f0eb4df08ed647b5da8ef0a8750e5679077697f7f9953a76fc38e1d5",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Six ordered frames show an adult handling a tiger lying on grass. Whisper found no speech; the frames contain no injury, minor, accusation, or synthetic public figure.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "a50390b0e00b17470d53795c84c63ee6a78f97376a5362d955aa0f78501d55e4"
+    },
+    {
+      "caseId": "cop-instagram-DW0w8RMjY3Y",
+      "datasetCaseBindingSha256": "37a80828758558b84b2e40301bfb35fef056509dfc67bbe5a564d5d86d75ae48",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "present",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Frames show a traffic-stop conversation without injury. OCR asserts a specific 0.34 BAC, while ASR only records concern and impairment questions and supplies no BAC test result, so that serious intoxication accusation is unsupported by the packet.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "c8c599d449bc4f3c1125ca540ec529a9805d2115b055125946493dddfabb7f04"
+    },
+    {
+      "caseId": "cop-instagram-DW5s3qoDbHC",
+      "datasetCaseBindingSha256": "7818919cc14ea16230c96a366bc8dd47e634080f21facba2caf4a72595a0da83",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Six ordered frames and ASR show an adult fleeing a traffic-stop citation and being confronted. The claimed running action is visible, with no graphic injury, minor, or synthetic public figure.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "3ee6b332cb349b1d309cd5a2af084c19e71b769173bbf9b8be353b97c32a9a2f"
+    },
+    {
+      "caseId": "cop-instagram-DWjH5fWjBnt",
+      "datasetCaseBindingSha256": "c713a8744c8dfba076f255a573090134bc5624a2331403c2baa1e770eccee90d",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Six ordered dashcam frames demonstrate a police grappler ending a vehicle chase. Whisper found no speech and no prohibited visual class appears.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "30528ec9bf5f2849bb79ba7dca2310fd9ded1163aaba2fa16b78753e544fca4d"
+    },
+    {
+      "caseId": "cop-instagram-DWnxlyIDcoK",
+      "datasetCaseBindingSha256": "e203c8df0e00a1705520b07feafe3ce6bb7f7d0d0dbeddee40f2e106796bc689",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "present",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Frames show an adult officer-civilian encounter without visible injury. ASR includes an assault accusation against an officer, but the six frames and OCR do not establish the alleged assault, so the serious misconduct allegation is unsupported.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "4c74adb499272d8a3f0410e92e77d5257df20c035643699bcc3b631af4b8a9ad"
+    },
+    {
+      "caseId": "cop-instagram-DWwSVVOjMqO",
+      "datasetCaseBindingSha256": "cce2b67f23a63cf2261a5fc6e7dd21f2e2fb9a9550d9a3d06805d6e5f5609817",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Frames show a vehicle fire and later police interaction, but no gore or severe injury. ASR includes an apparent street-racing admission, so the OCR event description is not an unsupported accusation.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "1a8bb7e88685e4098967c0af701af6d3f3a4de288d816ad801a942a9dd01ebae"
+    },
+    {
+      "caseId": "cop-instagram-DXBhsJPjSgW",
+      "datasetCaseBindingSha256": "7ae883abeb81eef7de4ae159f03acc2e87fcac3092b5833bb17d6762717280f7",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Six frames show an adult hospital conversation without graphic injury. OCR says she learns her charges and ASR records an officer stating the homicide charge; the content reports the formal charge rather than asserting guilt.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "45d30c2a0df13196e665278b7e09e035d6a95f95339250533350b287597ded8c"
+    },
+    {
+      "caseId": "cop-instagram-DXHx529DVb0",
+      "datasetCaseBindingSha256": "25621f98563f3a0392e9df3fa6289966f12286e966a0a34cc22a306606ddfe0b",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Six dashcam frames show a trooper stopping a wrong-way vehicle. OCR describes the visible event and Whisper detects only music/noise; no prohibited class is present.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "f93cd14040e58b5a9372aba75a2c2fc0a5a6c6f88856fdda8ad6a1dff83cfa49"
+    },
+    {
+      "caseId": "cop-instagram-DXNBoz7jYmd",
+      "datasetCaseBindingSha256": "fd2ada94d08816f9d683ed67c42af7f396820f932c09d325930f63de6c441790",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "present",
+        "minorInSensitiveIncident": "present",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "OCR explicitly labels two teens in a stolen Hyundai during a wild police chase, so identifiable minors are in a crime incident. The frames show the chase but do not establish that the Hyundai was stolen, leaving that serious crime accusation unsupported.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "687b670a8efda0c3d95d37b1fd7a414b2988d808855ba66145d756888c51d06c"
+    },
+    {
+      "caseId": "cop-instagram-DXOzkCdjMue",
+      "datasetCaseBindingSha256": "a7fa95f5e2ad381c96712d02028ed5916e1d39eef97acfc6a70a8d74cca71e0d",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Six frames and ASR show an adult police pursuit and attempted vehicle intervention. No gore, identifiable minor, unsupported serious accusation, or synthetic public figure appears.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "8c2b6e05e9ffbd3529580823ac417a2fe85ea4d955f9c8faa55c39c737e17b98"
+    },
+    {
+      "caseId": "cop-instagram-DXUPExpjCs2",
+      "datasetCaseBindingSha256": "38de6f8f2effd4cdabf2cf61d062b22f5b42590802d2bf50e4e57a1e2a6a0ef7",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "present",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "OCR identifies Maryland troopers saving a choking infant and the six frames show the infant emergency and intervention. This is an identifiable minor in a severe emergency, without graphic injury.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "038f0dce8a8ab7e0c45aa24f474a16cc317dcfb48c2de44fa36c2cff2a68d3fb"
+    },
+    {
+      "caseId": "light-youtube-1diIRo4sHtk",
+      "datasetCaseBindingSha256": "fd0b0bed3a8244847f6eb17ae1ea411403e53cd73436c153e815e0409406154e",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "present"
+      },
+      "reason": "Six frames depict a realistic synthetic first-person Harry Potter vlog using the recognizable likeness of a public actor. No violence, sensitive minor incident, or serious accusation appears.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "b5df44ca5f513c464adff9d4c11b76829e5050c8691121e0bff00cabe74f78b8"
+    },
+    {
+      "caseId": "light-youtube-6IlkA1MLVYA",
+      "datasetCaseBindingSha256": "70d0d8f5dc6d495a90f6e8f74efa36f59e1c85689ab8b4c198be7a79613284fc",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Six frames show stylized fictional superhero transformations without a recognizable real public figure. Whisper found no speech and no other prohibited class is present.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "d9632e933608b9fb77370c48a95e3bbd8644cc169bf268b96398255fed5b92ef"
+    },
+    {
+      "caseId": "light-youtube-6QIdqyFoxFE",
+      "datasetCaseBindingSha256": "08ca9621bce4dfcab70d3905b834081e540356d1210e01f0b9504f05d95ce4e0",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Six frames show a non-sensitive dialogue scene with young Harry Potter characters. There is no violence, crime, exploitation, emergency, serious accusation, or demonstrated synthetic public-figure depiction.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "5e758a4d68d2008eb4ef84ea846beafe070fb0ed87e6ab68baaee4e47ac2107a"
+    },
+    {
+      "caseId": "light-youtube-BwIaEb5vGDo",
+      "datasetCaseBindingSha256": "3d2701e88c9c419009b89d8721dddc54da9172d94c645121654f242bc3de8212",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Six frames show synthetic Mandalorian and Grogu fiction plus an unidentified generic woman. No recognizable real public figure or other prohibited class appears, and Whisper found no speech.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "471977d21419e41eb1bd0ed51a3f03a2cec527f82dde51fd73b47ff6c5905e8a"
+    },
+    {
+      "caseId": "light-youtube-EYkw1ELHXq0",
+      "datasetCaseBindingSha256": "d40e7c6c9419e25f1fcee7830728f5cd19943a5d7c77353d4793982b1f97587d",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "present"
+      },
+      "reason": "Six frames show realistic synthetic selfie-like scenes using recognizable Harry Potter actor likenesses in situations outside the original film footage. No other prohibited class appears.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "6de24fdcc7ef58d0fcb62724c5a8c577dcf5e015c0433e4d34c28056f52bc1f3"
+    },
+    {
+      "caseId": "light-youtube-J6tw2l128YE",
+      "datasetCaseBindingSha256": "3117639104749ffc3d08ed06e3f645898d5e747fcdcfdc6c44506636053fe388",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "present"
+      },
+      "reason": "Six black-and-white frames show realistic fabricated party images using recognizable public actor likenesses. The song ASR and OCR contain no other prohibited signal.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "df0c8cdf8e04db8ac3cf0278e78f754ff61ebed51a2768143793f21d7d6b45e6"
+    },
+    {
+      "caseId": "light-youtube-V-xIvJs0Jbo",
+      "datasetCaseBindingSha256": "ba99f8dfaeb800e7f97d4e66dfe15490abd1be832cf21f6bdcf88f4c2275d0fa",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "present"
+      },
+      "reason": "Ordered frames visibly insert a realistic synthetic Donald Trump into Harry Potter scenes, and ASR identifies Trump dialogue. This is a clear political-figure deepfake without graphic violence or a sensitive minor incident.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "676eb9ab0ad2b4e7b93f2436217d5a87c060393adb7cec4e469da22341a7dcc9"
+    },
+    {
+      "caseId": "light-youtube-WkEyab1jINA",
+      "datasetCaseBindingSha256": "b512700831a6d497ed2441d429dd3e2b0a7ad0bcbab6e9e9d51206769a93fe1a",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "present"
+      },
+      "reason": "Ordered frames and ASR again place a realistic synthetic Donald Trump persona inside Harry Potter scenes. Insults in the fictional dialogue are not serious crime or misconduct allegations.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "2d0e4565484e55de3e6c92e5acafdd789debe41289bcf8e91018910dcddd3b2c"
+    },
+    {
+      "caseId": "light-youtube-XPKBwhDPxk0",
+      "datasetCaseBindingSha256": "a5221ddf293c6bd3379b501fc66956ab728b2a2153f8272bd6d899d153cd8961",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "reason": "Six frames show a helmeted fictional Mandalorian gag without a recognizable real public figure. OCR and ASR contain no prohibited allegation, minor incident, or graphic violence.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "ef03808cbfa63d12a54f8ffb789979bf78d1a62539fc954acfe292e685f70fb7"
+    },
+    {
+      "caseId": "light-youtube-fj6CXk2KTIs",
+      "datasetCaseBindingSha256": "1c1a42b078a827ef5199dfcfd6ace28e3735c93de42cf79bc7026c5be7040bc5",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "present"
+      },
+      "reason": "The six-frame Marvel comparison explicitly says mine with AI and includes realistic synthetic variants using recognizable public actor likenesses. No other prohibited class appears.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "ed370ef43962b4cef60d282c695e3a45479961ba3da12c0a1c35c71dc2f16e37"
+    },
+    {
+      "caseId": "light-youtube-n9kD935iROw",
+      "datasetCaseBindingSha256": "7ef78b2577adf3b22c9e0b6c18ba04da19509d4fdfd01c20f8cdb62e85d59ce7",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "unknown"
+      },
+      "reason": "Frames show a realistic Anakin likeness and ASR contains newly written meme dialogue, but the packet does not resolve whether the face is synthetic, authentic footage with altered audio, or a public-figure impersonation. Uncertainty is preserved.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "00766dd3ed6312caa9c7e6ba68e69ec7e547cc8abcc4a51f8ce925926eaee389"
+    },
+    {
+      "caseId": "light-youtube-oA7rziyGv8s",
+      "datasetCaseBindingSha256": "bc9bc44791eba29ec4670b1fec2c06eb0dbbc2193ca0f93c969cce7e5bd4d968",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "present"
+      },
+      "reason": "Six frames show a realistic synthetic council scene with a recognizable elderly public figure, while visible StrangeAI text and impossible staging identify the AI construction. No other prohibited class appears.",
+      "reviewMethod": "direct ordered-frame review with exact OCR and Whisper-ASR evidence",
+      "annotationSha256": "9412f6e980684597790502b16048011e73e000cdaacf25b6004889add0541fb0"
+    }
+  ],
+  "annotationsSha256": "2d3af03d65a26be3d439d09616b7375462d9e4ebcbce0f498c351ab985f98504"
+}

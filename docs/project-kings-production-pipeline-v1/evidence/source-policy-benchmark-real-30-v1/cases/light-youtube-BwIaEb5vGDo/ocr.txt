@@ -1,0 +1,58 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 0.412s]
+|
+Z
+yu
+DS
+-
+» =
+fi
+>»)
+»
+[source-key-frame-02 @ 1.615s]
+7
+5
+77
+[source-key-frame-03 @ 2.818s]
+e,'
+[source-key-frame-04 @ 4.056s]
+=a
+\
+7
+G
+[mm
+an.
+>
+[source-key-frame-05 @ 5.259s]
+| |
+ti
+i
+=
+Ly
+\/
+>
+* WW
+Gj
+=
+oad
+4 ——
+i
+‘a
+ae
+“
+'y
+[source-key-frame-06 @ 6.462s]
+\
+>
+C:
+MOT ANTONY
+ALA
+ANE
+ny i
+“Dp
+(DR
+i 4
+a)"
+i

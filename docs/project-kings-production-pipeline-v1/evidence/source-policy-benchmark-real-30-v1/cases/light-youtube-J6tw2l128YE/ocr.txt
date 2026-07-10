@@ -1,0 +1,43 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 1.471s]
+=X
+\!
+a
+=
+—
+~\
+Vd
+)
+[source-key-frame-02 @ 5.761s]
+a
+Mi
+o
+4
+oo
+NS
+~
+& ; Fs os Ne *
+—_—_ =
+aa’
+[source-key-frame-03 @ 10.051s]
+a &
+\
+'
+Ly:
+i
+| ws
+[source-key-frame-04 @ 14.463s]
+—
+-f[2R J
+M
+»
+\ 2
+[source-key-frame-05 @ 18.753s]
+h,
+——
+ee
+———
+[source-key-frame-06 @ 23.043s]
+=

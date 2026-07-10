@@ -1,0 +1,187 @@
+[
+  {
+    "candidateId": "cop-donor-DW5s3qoDbHC",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DW5s3qoDbHC/",
+    "contentSha256": "a333d0f614de8d88f29c246c34aa42bb9218b327e5893d3a8cd6304a56c01a9d",
+    "profileHash": "2d4c0437cbf71dfb40263d6ffabda7aa82910b11b7ca686bd7df4fe405b99080",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-a6f5d391f166084c38b77a6ffe148491",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "45ccaa02593f75b3cbe63ce3d52e940c8055696ba95e41f7833c50ddf70cda9c",
+    "artifactSetSha256": "35a0d026c4b77fbb0dbed9ca7b10cde3208bac77b7ca947a7b40ca46ca820d3b",
+    "rawOutputSha256": "aa7afa2104a6b629e11638fd5e3e4dc61ebf7899f9e79adee5b9e8d02d751ae0",
+    "outputSha256": "b990811cb295f6717902b0365e953412a074d90d300eb677ee3dd279c850d5b0",
+    "finishedAt": "2026-07-10T14:33:33.818Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "cop-donor-DW5s3qoDbHC",
+      "storyEventId": "event-husband-flees-traffic-stop-on-foot",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": false,
+      "reason": "The Reel matches the concept of a visible US police traffic-stop incident with a foot escape, but the source metadata flags heavy donor subtitles, watermark, and CTA that may make it unusable for publication. It is not listed as a known duplicate by hash or story event.",
+      "factualClaims": [
+        {
+          "claim": "The candidate is an Instagram Reel from the approved cop donor pool.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The footage shows a police traffic stop that turns into an on-foot flight.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The candidate source hash is not in the known duplicate source list.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The claimed story event is not in the known duplicate story event list.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The source may be unusable because central donor subtitles, watermark, and CTA are present.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-donor-DWjH5fWjBnt",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DWjH5fWjBnt/",
+    "contentSha256": "94e12f40757e74cc9926231726b9df86f93eff0c9046792e033b82b190d4a5c3",
+    "profileHash": "2d4c0437cbf71dfb40263d6ffabda7aa82910b11b7ca686bd7df4fe405b99080",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-ed6eea7911c49b7b3f612ccf77997802",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "0ec30c2cd064bb26b61040d850ac6e9d6c5593b340233b35642ea43635dd64ed",
+    "artifactSetSha256": "7fd5711db84dc5c78130f7c2c3023ce4a17900d7fd85a37e2bd0ce7451eda3f1",
+    "rawOutputSha256": "206b9a9f703885b6934d9ddda5c55f2a38e8bb727b1e0ec6eee7ff0620b1af35",
+    "outputSha256": "79b48cda271315ede1dfd6cd544a507f8661b85d1e19e96aa7c78af755f09224",
+    "finishedAt": "2026-07-10T14:33:28.249Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "cop-donor-DWjH5fWjBnt",
+      "storyEventId": "event-police-grappler-stops-fleeing-pickup",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "Matches the concept of police using a grappler bumper to stop a fleeing pickup. The source hash is not in the known duplicate list, and the claimed story event is not in the known duplicate event list. The key frames visually support the chase-and-disable sequence shown in the concept.",
+      "factualClaims": [
+        {
+          "claim": "The candidate shows police using a grappler bumper during a pursuit of a white pickup truck.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The grappler line appears deployed from the pursuing police vehicle to the pickup.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The candidate source is not an exact duplicate of a known source hash in the task.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event is not listed among the task's known duplicate story event IDs.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-donor-DXBhsJPjSgW",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DXBhsJPjSgW/",
+    "contentSha256": "00104eabefd531eee16dff7a3c5a230e22d39758815e70b8685c30cd59248151",
+    "profileHash": "2d4c0437cbf71dfb40263d6ffabda7aa82910b11b7ca686bd7df4fe405b99080",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-4e3a5d1b9af3ce78b383608ceae4bf9a",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "5ab3f87e547955dc4fa6eb0c4192ea2aadbe826eb24a43772693568ab6cfc5ef",
+    "artifactSetSha256": "3c5ea81d5e8f05f38553a791832358b4b9c638906bfa1d47bd6eee2208540779",
+    "rawOutputSha256": "708fb0f70008b6748fc68282c7a2a12ea18a41af0954d98dcc77366dab62cc5f",
+    "outputSha256": "321690c8f9216f79e1ab39bea0daf77bf208de5e4556064561b44f2e8d6e45f5",
+    "finishedAt": "2026-07-10T14:33:34.619Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "cop-donor-DXBhsJPjSgW",
+      "storyEventId": "event-utah-dodge-charger-crash-hospital",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The reel fits the channel boundary: it is a visible US police incident with a road crash-to-hospital progression and a readable hospital aftermath, and the source metadata supports that this is a single crash-to-hospital event. It is not a known duplicate by source hash or story event id.",
+      "factualClaims": [
+        {
+          "claim": "The source was acquired from the owner-approved @copscopes Instagram donor pool.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The footage is a crash-to-hospital incident with hospital aftermath visible in the captured frames.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The candidate source hash is not in the known duplicate source list, and the claimed story event id is not in the known duplicate event list.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  }
+]

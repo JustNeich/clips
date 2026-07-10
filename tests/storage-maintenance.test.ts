@@ -7,6 +7,10 @@ import test from "node:test";
 
 import { getDb, newId, nowIso } from "../lib/db/client";
 import { createChannelPublication, createRenderExport } from "../lib/publication-store";
+import {
+  transitionChannelSourceCandidateQualification,
+  upsertChannelSourceCandidate
+} from "../lib/portfolio-production-store";
 import { getSourceMediaCacheKey } from "../lib/source-media-cache";
 import { cleanupAppStorageForWrite } from "../lib/storage-maintenance";
 
@@ -128,6 +132,49 @@ test("storage cleanup removes old inactive uploaded sources but keeps recent cha
     assert.equal(existsSync(oldPath), false, "inactive old uploaded source must be deleted");
     assert.equal(existsSync(path.join(cacheDir, `${oldKey}.json`)), false, "deleted upload meta must be removed too");
     assert.ok(result.removedFiles.some((file) => file.path === oldPath));
+  });
+});
+
+test("storage cleanup keeps exact uploads referenced only by the qualified production buffer", async () => {
+  await withIsolatedAppData(async () => {
+    const { workspaceId, channelId } = seedWorkspace();
+    const sourceUrl = "upload://qualified-buffer/qualified.mp4";
+    const sourceKey = getSourceMediaCacheKey(sourceUrl);
+    const cacheDir = path.join(process.env.APP_DATA_DIR!, "source-media-cache", "sources");
+    const sourcePath = path.join(cacheDir, `${sourceKey}.mp4`);
+    await writeOldFile(sourcePath, "qualified-buffer-video");
+    await writeFile(path.join(cacheDir, `${sourceKey}.json`), JSON.stringify({
+      sticky: true,
+      downloadProvider: "upload"
+    }));
+    const discovered = upsertChannelSourceCandidate({
+      workspaceId,
+      channelId,
+      provider: "instagram",
+      sourceUrl,
+      canonicalUrl: "https://www.instagram.com/reel/qualified-buffer/",
+      contentSha256: "a".repeat(64),
+      eventFingerprint: "event-qualified-buffer",
+      categoryKey: "qualified-buffer",
+      rightsStatus: "owner_approved_source_pool",
+      evidence: { discovered: true }
+    }).candidate;
+    transitionChannelSourceCandidateQualification({
+      candidateId: discovered.id,
+      toStatus: "qualified",
+      contentSha256: "a".repeat(64),
+      eventFingerprint: "event-qualified-buffer",
+      evidence: { exactSourceBinding: "a".repeat(64) }
+    });
+
+    const result = await cleanupAppStorageForWrite({
+      reason: "test-qualified-buffer-protection",
+      incomingBytes: 1024,
+      mode: "emergency"
+    });
+
+    assert.equal(existsSync(sourcePath), true, "qualified source buffer upload must be kept");
+    assert.equal(result.removedFiles.some((file) => file.path === sourcePath), false);
   });
 });
 

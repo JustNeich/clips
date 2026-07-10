@@ -1,0 +1,332 @@
+[
+  {
+    "candidateId": "light-donor-DaADZ3AxOqO",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.instagram.com/reel/DaADZ3AxOqO/",
+    "contentSha256": "8710bed83a717619010a631d6e2e44ad4df5306a5dc7cbfbd5bf698948e12f60",
+    "profileHash": "09c07d78a3cf415edf4997da96cdbc40514b2a8b56c7b5e19adeb3d4d273c9bc",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-259da514676a3b67cfe21f3c487531ca",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "a5b10631f9839d8edb705d7fdcd18f8e38b42329427d18253fe2c6564ed815b2",
+    "artifactSetSha256": "2803cdff8d217cc540300833818a3a7183045d736e2d8f0bde17135969f8a054",
+    "rawOutputSha256": "bb9bb6d8d421262381e7580bc53b864e41e1e48e006da85bc4114df9bb343b15",
+    "outputSha256": "203e718f8370a98ea42c2c0058078d3eb60b666accd2193003e0d7f9af3a9651",
+    "finishedAt": "2026-07-10T14:18:22.218Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-donor-DaADZ3AxOqO",
+      "storyEventId": "event-ai-breaking-bad-fat-remake",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The reel matches the channel boundary: it is a recognizable Breaking Bad remake with a clear visible AI/comedic transformation, and it is not listed in the known duplicate ledgers.",
+      "factualClaims": [
+        {
+          "claim": "The source is a vertical Instagram reel with a decoded runtime of 20.972 seconds.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The footage shows a recognizable Breaking Bad scene remade with visibly heavier characters, which fits the visible AI-twist concept.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3",
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The candidate source hash is not present in the knownSourceSha256 duplicate ledger.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The claimed story event is not present in the knownStoryEventIds duplicate ledger.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "concept-contract"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-donor-DaDxHb1poeD",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.instagram.com/reel/DaDxHb1poeD/",
+    "contentSha256": "799d2a8254ab473a8466b9f1419a8ea4b0304a53ea7634ff789ed793f37d2961",
+    "profileHash": "09c07d78a3cf415edf4997da96cdbc40514b2a8b56c7b5e19adeb3d4d273c9bc",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-7b0c895381052d3f516a954188dfdbcd",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "60fdf767672762319c9c37084cccd6aa9a7f87cbfb4d1aac23b43aff5a494adb",
+    "artifactSetSha256": "e92882838e463ee783b6571c5be4a0f38d31c4f4c90891a33f673c03df6ad42a",
+    "rawOutputSha256": "2e8c76311f6af127f9cb2bf782dc237f5a5af60a30a65ab0eaf761611f6a2303",
+    "outputSha256": "a5ea5b2f255084e4ae33320753be6926f73078efd24bea9ed623c27823631775",
+    "finishedAt": "2026-07-10T14:18:32.619Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-donor-DaDxHb1poeD",
+      "storyEventId": "event-ai-tom-and-jerry-live-action-remake",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The candidate matches the Tom and Jerry live-action AI remake concept shown in the provided frames, and the event is not listed in the task's known duplicate ledgers. The source looks usable for this event type, with no direct conflict against the authoritative duplicate lists.",
+      "factualClaims": [
+        {
+          "claim": "The candidate depicts a Tom and Jerry live-action remake made with AI.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The candidate source hash is not present in packet.task.knownSourceSha256.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event id is not present in packet.task.knownStoryEventIds.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source is usable for this concept and event.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-donor-DYM7AYJpMYa",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.instagram.com/reel/DYM7AYJpMYa/",
+    "contentSha256": "47cbda3ee94ab2ddc1837c285fb325f90dda87eacfc780f0b29dc389a9365acd",
+    "profileHash": "09c07d78a3cf415edf4997da96cdbc40514b2a8b56c7b5e19adeb3d4d273c9bc",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-5f87e75d260d2b1ddbb1f50208746715",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "ddad9088adb9e30dd396b2df543fe1d4d0a5368ac0d7979fad684c99049487c9",
+    "artifactSetSha256": "d73204f7a7b45343578e85013d2dceb2e5ce88583b5750ebdefbaf0a705df2f1",
+    "rawOutputSha256": "478f0bead2b3301fed4905e95a1a47d0fb8a6e2bb17ee18d6b0f6644c00d2b0b",
+    "outputSha256": "932bc2035232c96b04fff550cd88e8e5516c06aedb2c0ff65fe262d7bb965556",
+    "finishedAt": "2026-07-10T14:18:26.023Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "light-donor-DYM7AYJpMYa",
+      "storyEventId": "event-ai-titanic-alternate-ending-remake",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": false,
+      "reason": "The source matches the channel concept and the Titanic alternate-ending claim is visually supported, but the metadata flags an inner-source mark that must be removed before this can pass, so the source is not usable as-is.",
+      "factualClaims": [
+        {
+          "claim": "The reel shows a recognizable Titanic scene rebuilt with an AI alternate ending.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source is not a known duplicate video in the task ledger.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event is not listed in the known duplicate event ledger.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "A removable inner-source mark is present, preventing the source from passing as-is.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-donor-DZO838rIfHO",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.instagram.com/reel/DZO838rIfHO/",
+    "contentSha256": "75f12a927cfa960cbee94300a1978f84180baca2335f41ae63aca483acc8eb12",
+    "profileHash": "09c07d78a3cf415edf4997da96cdbc40514b2a8b56c7b5e19adeb3d4d273c9bc",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-34a9d35fa903e0a9fd1e51a809f4eee6",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "9c7960037032522df87109eb784cf40d08643abd913e1a5c5475829ffe4dda0c",
+    "artifactSetSha256": "df2fb5e68cd1d5e66ce61eee468933aad05c415c8fef20d5c734e4d4cc4d03a0",
+    "rawOutputSha256": "27e2c3dc299ed5947ea16f6cdf401a4888099f48b7f43cfc610b85c4335b30f7",
+    "outputSha256": "4c244fb7f5f2938aff7d035b7669e9de4c5399c2f372fd2bf4dd4c436743ac83",
+    "finishedAt": "2026-07-10T14:18:42.550Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "light-donor-DZO838rIfHO",
+      "storyEventId": "event-ai-harry-potter-balenciaga-remake",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": false,
+      "reason": "The candidate fits the recognizable-fiction-with-visible-AI-twist concept: the artifacts show a Harry Potter scene rebuilt in a visible Balenciaga-style AI remix. It is not a duplicate by the task ledger. I marked sourceUsable=false because the inner creator watermark is visible inside the scene, and the packet says that such marks must be rejected unless an approved crop removes them; no approved crop is provided here.",
+      "factualClaims": [
+        {
+          "claim": "The source is an Instagram reel on the candidate URL with the claimed story event id event-ai-harry-potter-balenciaga-remake.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The concept boundary is recognizable fiction rebuilt with a visible AI twist.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The donor discovery describes a recognizable Harry Potter scene rebuilt in a Balenciaga AI style.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The candidate source hash is not listed in knownSourceSha256.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event id is not listed in knownStoryEventIds.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "A creator watermark is visible inside the scene frames.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-donor-DZULhPeI62U",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.instagram.com/reel/DZULhPeI62U/",
+    "contentSha256": "f4c3251b5acc1dd853f2c09cf972f86b959433c8a06341ecefc907dfd1acfb33",
+    "profileHash": "09c07d78a3cf415edf4997da96cdbc40514b2a8b56c7b5e19adeb3d4d273c9bc",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-c245d34eab8a8df1bee81f2adf3af5fc",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "dc5636329cc6aeb3b72479d94d0f171a0c358e5c3c5b5a18a794414fc9436f3c",
+    "artifactSetSha256": "b2b89f6c9551f9eb52cf3e0b4d8806a3b51bea74742196442fda1dd6e7fddaa8",
+    "rawOutputSha256": "5ceeb78b5f544ef4935d7d07dd12b4360d47fd2a595836a773d56676cf36049a",
+    "outputSha256": "e5af46c180f565fe0c31affae88e1f22a85deb71e887dcf08d70966608024620",
+    "finishedAt": "2026-07-10T14:18:39.932Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-donor-DZULhPeI62U",
+      "storyEventId": "event-ai-gladiator-fat-remake",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source matches the channel boundary: it is a recognizable Gladiator remake with a visible AI-style comedic transformation. It is not listed in the known source hash ledger or known story-event ledger, and the media decodes cleanly.",
+      "factualClaims": [
+        {
+          "claim": "The source is a recognizable Gladiator arena remake with a comedic AI transformation.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The donor header is outside the central scene, so the content appears crop-safe enough for source fit review.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source media decoded successfully with no decode error.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The candidate source hash is not listed in knownSourceSha256.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The claimed story event is not listed in knownStoryEventIds.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "concept-contract"
+          ]
+        }
+      ]
+    }
+  }
+]

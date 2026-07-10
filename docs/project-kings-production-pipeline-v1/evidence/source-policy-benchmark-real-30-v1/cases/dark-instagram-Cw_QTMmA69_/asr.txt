@@ -1,0 +1,7 @@
+status=speech_detected
+tool=openai-whisper-cli
+model=tiny
+language=nn
+transcript=Thank you very much for your onswer, my dear! Thank you very much, thank you very much...
+segment_01={"start":0,"end":2,"text":"Thank you very much for your onswer, my dear!","noSpeechProbability":0.5487061738967896,"averageLogProbability":-2.4611615781430847}
+segment_02={"start":6.8,"end":11.24,"text":"Thank you very much, thank you very much...","noSpeechProbability":0.5487061738967896,"averageLogProbability":-2.4611615781430847}

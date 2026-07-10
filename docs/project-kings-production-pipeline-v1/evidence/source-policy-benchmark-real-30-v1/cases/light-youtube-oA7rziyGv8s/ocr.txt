@@ -1,0 +1,66 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 0.602s]
+Sirangea/ll
+J fil
+YE
+we
+ad ™~
+|
+hy
+e 2
+=
+~~
+COUNCIL
+]
+TODAY
+[source-key-frame-02 @ 2.358s]
+~ @
+ae
+oe —
+=
+hd
+\ 27/7
+STanga/Nl
+BT
+A\ LOT OF
+[source-key-frame-03 @ 4.114s]
+-€’ ——"
+L-
+a
+me
+—
+a
+Roe 7)
+ay A
+Strange all
+[source-key-frame-04 @ 5.920s]
+ay
+|
+Le
+i
+mt
+eS
+Ih
++
+eo
+ay
+—e
+~
+‘|
+—
+i.
+MM
+i
+pe
+da
+a
+—_
+Sirangeall
+CU
+[source-key-frame-05 @ 7.676s]
+Swangel
+ANY, INFLUENCE
+[source-key-frame-06 @ 9.432s]
+"

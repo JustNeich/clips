@@ -1,0 +1,72 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 2.056s]
+Panty
+er
+aN
+SN
+> o
+‘| ae, }
+> h
+SS
+ea
+“9
+h
+>
+— |
+\.
+[source-key-frame-02 @ 8.054s]
+Parts?)
+——
+~
+tae
+ff
+hd |
+1
+d
+D
+[source-key-frame-03 @ 14.052s]
+Party9)
+ih.
+¥
+AY
+we
+[source-key-frame-04 @ 20.222s]
+Parts?)
+~
+a ae
+——
+¥
+-™
+=
+A |
+Li
+—_—
+4
+a
+=
+[source-key-frame-05 @ 26.220s]
+Parts?)
+ht
+——-
+\
+ad
+;
+Za
+x
+—_
+—
+|
+s\
+\ ~
+».s
+™
+[source-key-frame-06 @ 32.218s]
+Party?)
+——
+Re eS.
+SS
+4
+>
+— al

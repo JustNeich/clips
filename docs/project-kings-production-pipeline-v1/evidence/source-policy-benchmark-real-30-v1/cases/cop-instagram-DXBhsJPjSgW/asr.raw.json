@@ -1,0 +1,113 @@
+{
+  "status": "speech_detected",
+  "model": "tiny",
+  "language": "en",
+  "text": "Tonight, you get in charge with homicide, but it's all good. Yeah, it's all good. Okay, I don't know you, I know you, I know you. You can try this on the side by do it well. Okay. Okay. Okay. We ask him to try this on. We're asking him to help. We're asking him to do it. We're asking him to do it. We're asking him to do it. We're asking him to do it. So, like I said, I'm going to do it. And we're doing bed in the south, so we're going to remain in the hospital fair.",
+  "segments": [
+    {
+      "start": 0,
+      "end": 3,
+      "text": "Tonight, you get in charge with homicide, but it's all good.",
+      "noSpeechProbability": 0.216582253575325,
+      "averageLogProbability": -0.9692748525868291
+    },
+    {
+      "start": 21,
+      "end": 22,
+      "text": "Yeah, it's all good.",
+      "noSpeechProbability": 0.216582253575325,
+      "averageLogProbability": -0.9692748525868291
+    },
+    {
+      "start": 24,
+      "end": 26,
+      "text": "Okay, I don't know you, I know you, I know you.",
+      "noSpeechProbability": 0.216582253575325,
+      "averageLogProbability": -0.9692748525868291
+    },
+    {
+      "start": 26,
+      "end": 33,
+      "text": "You can try this on the side by do it well.",
+      "noSpeechProbability": 0.7512359023094177,
+      "averageLogProbability": -0.6719966215245864
+    },
+    {
+      "start": 33,
+      "end": 35,
+      "text": "Okay.",
+      "noSpeechProbability": 0.7512359023094177,
+      "averageLogProbability": -0.6719966215245864
+    },
+    {
+      "start": 35,
+      "end": 36,
+      "text": "Okay.",
+      "noSpeechProbability": 0.7512359023094177,
+      "averageLogProbability": -0.6719966215245864
+    },
+    {
+      "start": 36,
+      "end": 38,
+      "text": "Okay.",
+      "noSpeechProbability": 0.7512359023094177,
+      "averageLogProbability": -0.6719966215245864
+    },
+    {
+      "start": 38,
+      "end": 40,
+      "text": "We ask him to try this on.",
+      "noSpeechProbability": 0.7512359023094177,
+      "averageLogProbability": -0.6719966215245864
+    },
+    {
+      "start": 40,
+      "end": 41,
+      "text": "We're asking him to help.",
+      "noSpeechProbability": 0.7512359023094177,
+      "averageLogProbability": -0.6719966215245864
+    },
+    {
+      "start": 41,
+      "end": 43,
+      "text": "We're asking him to do it.",
+      "noSpeechProbability": 0.7512359023094177,
+      "averageLogProbability": -0.6719966215245864
+    },
+    {
+      "start": 43,
+      "end": 45,
+      "text": "We're asking him to do it.",
+      "noSpeechProbability": 0.7512359023094177,
+      "averageLogProbability": -0.6719966215245864
+    },
+    {
+      "start": 45,
+      "end": 47,
+      "text": "We're asking him to do it.",
+      "noSpeechProbability": 0.7512359023094177,
+      "averageLogProbability": -0.6719966215245864
+    },
+    {
+      "start": 47,
+      "end": 50,
+      "text": "We're asking him to do it.",
+      "noSpeechProbability": 0.7512359023094177,
+      "averageLogProbability": -0.6719966215245864
+    },
+    {
+      "start": 50,
+      "end": 53,
+      "text": "So, like I said, I'm going to do it.",
+      "noSpeechProbability": 0.7512359023094177,
+      "averageLogProbability": -0.6719966215245864
+    },
+    {
+      "start": 53,
+      "end": 58.2,
+      "text": "And we're doing bed in the south, so we're going to remain in the hospital fair.",
+      "noSpeechProbability": 0.17865635454654694,
+      "averageLogProbability": -0.6075608212014904
+    }
+  ]
+}

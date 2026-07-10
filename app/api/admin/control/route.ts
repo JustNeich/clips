@@ -102,6 +102,49 @@ import { findLatestStage2Event } from "../../../../lib/chat-workflow";
 import { buildDefaultStage3RenderSnapshot } from "../../../../lib/stage3-default-snapshot";
 import { CHANNEL_STORY_TEMPLATE_ID } from "../../../../lib/stage3-template";
 import type { Stage3RenderPlan, Stage3StateSnapshot } from "../../../../app/components/types";
+import {
+  cancelProductionRun,
+  createReplacementProductionItem,
+  getProductionItem,
+  getProductionProfile,
+  getProductionRun,
+  isProductionProfileExplicitlyApproved,
+  listAgentAttempts,
+  listProductionEvents,
+  listProductionOutbox,
+  listPublicVerifications,
+  ProductionStoreError,
+  requeueProductionItemRevision
+} from "../../../../lib/portfolio-production-store";
+import {
+  getPortfolioProductionRun,
+  reconcilePortfolioProductionRun,
+  startPortfolioProductionRun,
+  validatePortfolioProductionProfile,
+  PORTFOLIO_PIPELINE_FEATURE_FLAG,
+  PORTFOLIO_PIPELINE_POST_CANARY_FEATURE_FLAG,
+  PROJECT_KINGS_PUBLISH_POLICY_ID
+} from "../../../../lib/portfolio-production-orchestrator";
+import { buildPortfolioLiveProfileValidator } from "../../../../lib/portfolio-production-live-preflight";
+import { schedulePortfolioProductionLiveBackgroundRun } from "../../../../lib/portfolio-production-live-background-runtime";
+import {
+  approveProjectKingsPilotProfile,
+  prepareProjectKingsPilotProfiles,
+  resolveProjectKingsPilotProfilesForRun
+} from "../../../../lib/project-kings/pilot-profile-store";
+import {
+  approveCurrentProjectKingsSourcePolicy
+} from "../../../../lib/project-kings/source-policy-approval-store";
+import {
+  PROJECT_KINGS_SOURCE_DESIGNATIONS_SHA256,
+  PROJECT_KINGS_SOURCE_POLICY_SHA256,
+  PROJECT_KINGS_SOURCE_POLICY_VERSION
+} from "../../../../lib/project-kings/source-rights-sensitive-policy";
+import {
+  ProjectKingsPortfolioDaemonInputError,
+  releaseProjectKingsPortfolioDaemon,
+  tickProjectKingsPortfolioDaemon
+} from "../../../../lib/project-kings/portfolio-daemon";
 
 export const runtime = "nodejs";
 
@@ -155,6 +198,17 @@ const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
   clips_owner_list_stage3_workers: "worker:admin",
   clips_owner_pair_stage3_worker: "worker:admin",
   clips_owner_run_video_pipeline: "pipeline:run",
+  clips_owner_prepare_production_profiles: "control:write",
+  clips_owner_approve_production_profile: "control:write",
+  clips_owner_approve_source_policy: "control:write",
+  clips_owner_validate_production_profile: "control:write",
+  clips_owner_start_portfolio_run: "control:write",
+  clips_owner_get_portfolio_run: "flow:read",
+  clips_owner_reconcile_portfolio_run: "control:write",
+  clips_owner_retry_production_item: "control:write",
+  clips_owner_cancel_portfolio_run: "control:write",
+  clips_owner_tick_portfolio_daemon: "control:write",
+  clips_owner_release_portfolio_daemon: "control:write",
   clips_owner_run_copscopes_daily_pool: "pipeline:run",
   // AGENT-ONLY tools. Additive; the human manual flow does not use these.
   clips_owner_run_agent_pipeline: "pipeline:run",
@@ -510,6 +564,105 @@ function listWorkspacePublicationCounts(workspaceId: string): Record<string, num
   return Object.fromEntries(rows.map((row) => [String(row.status), Number(row.count)]));
 }
 
+function percentile(values: number[], ratio: number): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * ratio) - 1))] ?? null;
+}
+
+function buildPortfolioOwnerResponse(runId: string, workspaceId: string) {
+  const summary = getPortfolioProductionRun(runId);
+  if (summary.run.workspaceId !== workspaceId) {
+    throw new Response(JSON.stringify({ error: "Portfolio run not found." }), { status: 404 });
+  }
+  const attempts = listAgentAttempts({ runId });
+  const durations = attempts
+    .map((attempt) => attempt.durationMs)
+    .filter((value): value is number => typeof value === "number");
+  const outbox = listProductionOutbox({ runId });
+  const events = listProductionEvents({ runId });
+  const verifications = summary.items.flatMap((item) => listPublicVerifications(item.id));
+  const roleMetrics = Object.fromEntries(
+    [...new Set(attempts.map((attempt) => attempt.role))].sort().map((role) => {
+      const roleAttempts = attempts.filter((attempt) => attempt.role === role);
+      const roleDurations = roleAttempts
+        .map((attempt) => attempt.durationMs)
+        .filter((value): value is number => typeof value === "number");
+      return [role, {
+        calls: roleAttempts.length,
+        passed: roleAttempts.filter((attempt) => attempt.status === "passed").length,
+        failed: roleAttempts.filter((attempt) => attempt.status === "failed").length,
+        durationP50Ms: percentile(roleDurations, 0.5),
+        durationP95Ms: percentile(roleDurations, 0.95),
+        inputTokens: roleAttempts.reduce((sum, attempt) => sum + (attempt.inputTokens ?? 0), 0),
+        outputTokens: roleAttempts.reduce((sum, attempt) => sum + (attempt.outputTokens ?? 0), 0),
+        costMicros: roleAttempts.reduce((sum, attempt) => sum + (attempt.costMicros ?? 0), 0),
+        costUnits: [...new Set(roleAttempts.map((attempt) => attempt.costUnit).filter(Boolean))]
+      }];
+    })
+  );
+  return {
+    ...summary,
+    nextWakeAt:
+      summary.channels
+        .map((channel) => channel.nextSlotAt)
+        .filter((value): value is string => Boolean(value))
+        .sort()[0] ?? null,
+    metrics: {
+      agentCalls: attempts.length,
+      inputTokens: attempts.reduce((sum, attempt) => sum + (attempt.inputTokens ?? 0), 0),
+      cachedInputTokens: attempts.reduce((sum, attempt) => sum + (attempt.cachedInputTokens ?? 0), 0),
+      outputTokens: attempts.reduce((sum, attempt) => sum + (attempt.outputTokens ?? 0), 0),
+      reasoningOutputTokens: attempts.reduce(
+        (sum, attempt) => sum + (attempt.reasoningOutputTokens ?? 0),
+        0
+      ),
+      // Codex inputTokens already includes its cached-input subset; do not
+      // double-count cachedInputTokens in the July-9 comparable total.
+      logicalTokenEvents: attempts.reduce(
+        (sum, attempt) => sum + (attempt.inputTokens ?? 0) + (attempt.outputTokens ?? 0),
+        0
+      ),
+      costByUnit: {
+        codexCreditsMicros: attempts
+          .filter((attempt) => attempt.costUnit === "codex_credits")
+          .reduce((sum, attempt) => sum + (attempt.costMicros ?? 0), 0),
+        usdMicros: attempts
+          .filter((attempt) => attempt.costUnit === "usd")
+          .reduce((sum, attempt) => sum + (attempt.costMicros ?? 0), 0),
+        unknownAttempts: attempts.filter(
+          (attempt) => attempt.costMicros === null || attempt.costUnit === null
+        ).length
+      },
+      byRole: roleMetrics,
+      durationP50Ms: percentile(durations, 0.5),
+      durationP95Ms: percentile(durations, 0.95),
+      outbox: {
+        pending: outbox.filter((entry) => entry.status === "pending").length,
+        processing: outbox.filter((entry) => entry.status === "processing").length,
+        delivered: outbox.filter((entry) => entry.status === "delivered").length,
+        dead: outbox.filter((entry) => entry.status === "dead").length
+      },
+      retries: outbox.reduce((sum, entry) => sum + Math.max(0, entry.attempts - 1), 0),
+      retryReasons: outbox
+        .filter((entry) => entry.attempts > 1 || entry.lastError || entry.deadLetterCode)
+        .map((entry) => ({
+          outboxId: entry.id,
+          productionItemId: entry.productionItemId,
+          eventKind: entry.eventKind,
+          attempts: entry.attempts,
+          maxAttempts: entry.maxAttempts,
+          status: entry.status,
+          lastError: entry.lastError,
+          deadLetterCode: entry.deadLetterCode,
+          nextAttemptAt: entry.status === "pending" ? entry.availableAt : null
+        })),
+      publicVerificationAttempts: verifications.length,
+      events: events.length
+    }
+  };
+}
+
 async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: string, input: Record<string, unknown>) {
   if (tool === "clips_owner_status") {
     const channels = await listChannels(auth.workspace.id, false);
@@ -528,6 +681,420 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
 
   if (tool === "clips_owner_get_integrations_readiness") {
     return summarizeIntegrations(auth.workspace.id);
+  }
+
+  if (tool === "clips_owner_tick_portfolio_daemon") {
+    const profileIds = resolveStringArray(input.profileIds) ?? [];
+    const mode = resolveString(input.mode);
+    if (mode !== "shadow" && mode !== "live") {
+      throw new Response(JSON.stringify({ error: "mode shadow|live is required." }), { status: 400 });
+    }
+    const canaryPolicyRaw = resolveString(input.canaryPolicy);
+    if (canaryPolicyRaw && canaryPolicyRaw !== "first_item_per_channel_public_verified" && canaryPolicyRaw !== "none") {
+      throw new Response(JSON.stringify({ error: "canaryPolicy must be first_item_per_channel_public_verified|none." }), {
+        status: 400
+      });
+    }
+    const canaryPolicy = canaryPolicyRaw === "first_item_per_channel_public_verified" || canaryPolicyRaw === "none"
+      ? canaryPolicyRaw
+      : undefined;
+    if (mode !== "live" && canaryPolicy === "first_item_per_channel_public_verified") {
+      throw new Response(JSON.stringify({
+        error: `${mode} runs always require canaryPolicy=none.`,
+        code: "canary_policy_invalid"
+      }), { status: 400 });
+    }
+    const leaseOwner = auth.actor === "mcp_machine"
+      ? `mcp-machine:${auth.credential.machineId}`
+      : `owner-session:${auth.user.id}`;
+    return tickProjectKingsPortfolioDaemon({
+      workspaceId: auth.workspace.id,
+      leaseOwner,
+      leaseToken: resolveString(input.leaseToken),
+      profileIds,
+      mode,
+      canaryPolicy,
+      timezone: resolveString(input.timezone),
+      repoCwd: process.cwd(),
+      manifestPath: process.env.PORTFOLIO_PIPELINE_ROUTE_MANIFEST_PATH?.trim() || null
+    });
+  }
+
+  if (tool === "clips_owner_release_portfolio_daemon") {
+    const leaseToken = resolveString(input.leaseToken);
+    if (!leaseToken) {
+      throw new Response(JSON.stringify({ error: "leaseToken is required." }), { status: 400 });
+    }
+    const result = releaseProjectKingsPortfolioDaemon({
+      workspaceId: auth.workspace.id,
+      leaseToken
+    });
+    if (result.released) {
+      auditControl({
+        auth,
+        action: "owner_control.portfolio_daemon.released",
+        entityType: "production_daemon_runtime",
+        entityId: result.daemonId,
+        status: result.status,
+        payload: { stoppedRuntimes: result.stoppedRuntimes }
+      });
+    }
+    return result;
+  }
+
+  if (tool === "clips_owner_validate_production_profile") {
+    const profileId = resolveString(input.profileId);
+    const version = resolveNumber(input.version);
+    if (!profileId || !version) {
+      throw new Response(JSON.stringify({ error: "profileId and version are required." }), { status: 400 });
+    }
+    const profile = getProductionProfile(profileId);
+    if (!profile || profile.workspaceId !== auth.workspace.id || profile.version !== version) {
+      throw new Response(JSON.stringify({ error: "Production profile not found." }), { status: 404 });
+    }
+    return validatePortfolioProductionProfile(profile, {
+      validateLiveProfile: buildPortfolioLiveProfileValidator({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id
+      })
+    });
+  }
+
+  if (tool === "clips_owner_prepare_production_profiles") {
+    const profiles = prepareProjectKingsPilotProfiles({ workspaceId: auth.workspace.id });
+    const profileList = Object.values(profiles);
+    auditControl({
+      auth,
+      action: "owner_control.production_profiles.prepared",
+      entityType: "production_profile_set",
+      entityId: profileList.map((profile) => profile.profileHash).sort().join(":"),
+      status: "prepared",
+      payload: {
+        profiles: profileList.map((profile) => ({
+          profileId: profile.id,
+          channelId: profile.channelId,
+          version: profile.version,
+          profileHash: profile.profileHash,
+          status: profile.status
+        }))
+      }
+    });
+    return { profiles };
+  }
+
+  if (tool === "clips_owner_approve_source_policy") {
+    const policyVersion = resolveString(input.policyVersion);
+    const policySha256 = resolveString(input.policySha256);
+    const sourceDesignationsSha256 = resolveString(input.sourceDesignationsSha256);
+    const ownerAuthorizationEvidenceSha256 = resolveString(input.ownerAuthorizationEvidenceSha256);
+    if (
+      !policyVersion ||
+      !policySha256 ||
+      !sourceDesignationsSha256 ||
+      !ownerAuthorizationEvidenceSha256
+    ) {
+      throw new Response(JSON.stringify({
+        error:
+          "policyVersion, policySha256, sourceDesignationsSha256 and ownerAuthorizationEvidenceSha256 are required."
+      }), { status: 400 });
+    }
+    const result = approveCurrentProjectKingsSourcePolicy({
+      workspaceId: auth.workspace.id,
+      ownerUserId: auth.user.id,
+      policyVersion,
+      policySha256,
+      sourceDesignationsSha256,
+      ownerAuthorizationEvidenceSha256
+    });
+    auditControl({
+      auth,
+      action: "owner_control.source_policy.approved",
+      entityType: "project_kings_source_policy_approval",
+      entityId: result.approval.id,
+      status: result.approval.status,
+      payload: {
+        existing: result.existing,
+        policyVersion: result.approval.policyVersion,
+        policySha256: result.approval.policySha256,
+        sourceDesignationsSha256: result.approval.sourceDesignationsSha256,
+        approvalSha256: result.approval.approvalSha256,
+        currentPolicyMatches:
+          result.approval.policyVersion === PROJECT_KINGS_SOURCE_POLICY_VERSION &&
+          result.approval.policySha256 === PROJECT_KINGS_SOURCE_POLICY_SHA256 &&
+          result.approval.sourceDesignationsSha256 === PROJECT_KINGS_SOURCE_DESIGNATIONS_SHA256
+      }
+    });
+    return result;
+  }
+
+  if (tool === "clips_owner_approve_production_profile") {
+    const profileId = resolveString(input.profileId);
+    const version = resolveNumber(input.version);
+    const profileHash = resolveString(input.profileHash);
+    const targetStatus = resolveString(input.targetStatus);
+    if (
+      !profileId ||
+      !version ||
+      !profileHash ||
+      (targetStatus !== "shadow" && targetStatus !== "active")
+    ) {
+      throw new Response(JSON.stringify({
+        error: "profileId, version, profileHash and targetStatus shadow|active are required."
+      }), { status: 400 });
+    }
+    const profile = approveProjectKingsPilotProfile({
+      workspaceId: auth.workspace.id,
+      approvedByUserId: auth.user.id,
+      profileId,
+      expectedVersion: version,
+      expectedProfileHash: profileHash,
+      targetStatus
+    });
+    auditControl({
+      auth,
+      action: "owner_control.production_profile.approved",
+      entityType: "production_profile",
+      entityId: profile.id,
+      channelId: profile.channelId,
+      status: profile.status,
+      payload: {
+        version: profile.version,
+        profileHash: profile.profileHash,
+        approvalScope: profile.approvalScope,
+        approvalBindingSha256: profile.approvalBindingSha256
+      }
+    });
+    return { profile };
+  }
+
+  if (tool === "clips_owner_start_portfolio_run") {
+    const logicalDate = resolveString(input.logicalDate);
+    const mode = resolveString(input.mode);
+    const targetPerChannel = resolveNumber(input.targetPerChannel) ?? 3;
+    const publishPolicyId = resolveString(input.publishPolicyId) ?? PROJECT_KINGS_PUBLISH_POLICY_ID;
+    const canaryPolicyRaw = resolveString(input.canaryPolicy);
+    if (!logicalDate || (mode !== "simulation" && mode !== "shadow" && mode !== "live")) {
+      throw new Response(JSON.stringify({ error: "logicalDate and mode simulation|shadow|live are required." }), {
+        status: 400
+      });
+    }
+    if (targetPerChannel !== 3) {
+      throw new Response(JSON.stringify({ error: "Project Kings pilot targetPerChannel must equal 3." }), {
+        status: 400
+      });
+    }
+    if (canaryPolicyRaw && canaryPolicyRaw !== "first_item_per_channel_public_verified" && canaryPolicyRaw !== "none") {
+      throw new Response(JSON.stringify({ error: "canaryPolicy must be first_item_per_channel_public_verified|none." }), {
+        status: 400
+      });
+    }
+    const canaryPolicy = canaryPolicyRaw === "first_item_per_channel_public_verified" || canaryPolicyRaw === "none"
+      ? canaryPolicyRaw
+      : undefined;
+    if (mode !== "live" && canaryPolicy === "first_item_per_channel_public_verified") {
+      throw new Response(JSON.stringify({
+        error: `${mode} runs always require canaryPolicy=none.`,
+        code: "canary_policy_invalid"
+      }), { status: 400 });
+    }
+    if (
+      mode === "live" &&
+      canaryPolicy === "none" &&
+      process.env.PORTFOLIO_PIPELINE_POST_CANARY_ENABLED !== "1"
+    ) {
+      throw new Response(JSON.stringify({
+        error: "Live canaryPolicy=none requires PORTFOLIO_PIPELINE_POST_CANARY_ENABLED=1.",
+        code: "post_canary_feature_flag_disabled"
+      }), { status: 409 });
+    }
+    const requestedProfileIds = resolveStringArray(input.profileIds);
+    const selectedProfiles = requestedProfileIds?.length
+      ? requestedProfileIds.map((profileId) => {
+          const profile = getProductionProfile(profileId);
+          if (!profile || profile.workspaceId !== auth.workspace.id) {
+            throw new ProductionStoreError("not_found", "Production profile not found in this workspace.", {
+              profileId
+            });
+          }
+          return profile;
+        })
+      : Object.values(resolveProjectKingsPilotProfilesForRun({
+          workspaceId: auth.workspace.id,
+          mode
+        }));
+    if (mode === "live" && selectedProfiles.some((profile) => !isProductionProfileExplicitlyApproved(profile, "live"))) {
+      throw new ProductionStoreError(
+        "invalid_transition",
+        "Live run requires explicitly approved, hash-bound active production profiles."
+      );
+    }
+    if (mode === "shadow" && selectedProfiles.some((profile) => !isProductionProfileExplicitlyApproved(profile, "shadow"))) {
+      throw new ProductionStoreError(
+        "invalid_transition",
+        "Shadow run requires explicitly approved, hash-bound shadow or active production profiles."
+      );
+    }
+    const profileIds = selectedProfiles.map((profile) => profile.id);
+    const result = await startPortfolioProductionRun(
+      {
+        workspaceId: auth.workspace.id,
+        profileIds,
+        logicalDate,
+        mode,
+        targetPerChannel,
+        publishPolicyId,
+        canaryPolicy,
+        idempotencyKey: resolveString(input.idempotencyKey)
+      },
+      {
+        validateLiveProfile: buildPortfolioLiveProfileValidator({
+          workspaceId: auth.workspace.id,
+          userId: auth.user.id
+        }),
+        featureFlagEnabled: (flag) =>
+          flag === PORTFOLIO_PIPELINE_FEATURE_FLAG
+            ? process.env.PORTFOLIO_PIPELINE_V1_ENABLED === "1"
+            : flag === PORTFOLIO_PIPELINE_POST_CANARY_FEATURE_FLAG &&
+              process.env.PORTFOLIO_PIPELINE_POST_CANARY_ENABLED === "1"
+      }
+    );
+    auditControl({
+      auth,
+      action: "owner_control.portfolio_run.started",
+      entityType: "production_run",
+      entityId: result.run.id,
+      status: result.run.status,
+      payload: { mode, logicalDate, targetPerChannel, canaryPolicy: result.canaryPolicy, existing: result.existing }
+    });
+    const background = await schedulePortfolioProductionLiveBackgroundRun({
+      runId: result.run.id,
+      workspaceId: auth.workspace.id,
+      userId: auth.user.id
+    });
+    return { ...result, background };
+  }
+
+  if (tool === "clips_owner_get_portfolio_run") {
+    const runId = resolveString(input.runId);
+    if (!runId) {
+      throw new Response(JSON.stringify({ error: "runId is required." }), { status: 400 });
+    }
+    return buildPortfolioOwnerResponse(runId, auth.workspace.id);
+  }
+
+  if (tool === "clips_owner_reconcile_portfolio_run") {
+    const runId = resolveString(input.runId);
+    const expectedVersion = resolveNumber(input.expectedVersion);
+    if (!runId) {
+      throw new Response(JSON.stringify({ error: "runId is required." }), { status: 400 });
+    }
+    const run = getProductionRun(runId);
+    if (!run || run.workspaceId !== auth.workspace.id) {
+      throw new Response(JSON.stringify({ error: "Portfolio run not found." }), { status: 404 });
+    }
+    if (expectedVersion !== undefined && expectedVersion !== run.version) {
+      throw new Response(
+        JSON.stringify({ error: "Portfolio run version is stale.", code: "stale_version", actualVersion: run.version }),
+        { status: 409 }
+      );
+    }
+    const result = reconcilePortfolioProductionRun({
+      runId,
+      leaseOwner: `owner-control:${auth.user.id}`
+    });
+    const background = await schedulePortfolioProductionLiveBackgroundRun({
+      runId,
+      workspaceId: auth.workspace.id,
+      userId: auth.user.id
+    });
+    return { ...result, detail: buildPortfolioOwnerResponse(runId, auth.workspace.id), background };
+  }
+
+  if (tool === "clips_owner_retry_production_item") {
+    const runId = resolveString(input.runId);
+    const itemId = resolveString(input.itemId);
+    const expectedVersion = resolveNumber(input.expectedVersion);
+    const reason = resolveString(input.reason);
+    if (!runId || !itemId || expectedVersion === undefined || !reason) {
+      throw new Response(
+        JSON.stringify({ error: "runId, itemId, expectedVersion and reason are required." }),
+        { status: 400 }
+      );
+    }
+    const run = getProductionRun(runId);
+    const item = getProductionItem(itemId);
+    if (!run || run.workspaceId !== auth.workspace.id || !item || item.runId !== runId) {
+      throw new Response(JSON.stringify({ error: "Production item not found." }), { status: 404 });
+    }
+    if (item.version !== expectedVersion) {
+      throw new Response(
+        JSON.stringify({ error: "Production item version is stale.", code: "stale_version", actualVersion: item.version }),
+        { status: 409 }
+      );
+    }
+    let retried;
+    let retryIntent = null;
+    if (item.state === "rework" && item.resumeState) {
+      const revisionIntent = [...listProductionOutbox({
+        runId,
+        productionItemId: item.id
+      })].reverse().find((entry) => entry.eventKind === "revision.requested");
+      if (!revisionIntent) {
+        throw new Response(JSON.stringify({
+          error: "Rework item has no durable revision intent to retry.",
+          code: "retry_intent_missing"
+        }), { status: 409 });
+      }
+      const requeued = requeueProductionItemRevision({
+        itemId: item.id,
+        expectedItemVersion: item.version,
+        outboxId: revisionIntent.id,
+        reason
+      });
+      retried = requeued.item;
+      retryIntent = {
+        outboxId: requeued.outbox.id,
+        dedupeKey: requeued.outbox.dedupeKey,
+        status: requeued.outbox.status,
+        requeued: requeued.requeued
+      };
+    } else if (item.state === "failed" || item.state === "replaced" || item.state === "quarantined") {
+      retried = createReplacementProductionItem({
+        replacedItemId: item.id,
+        expectedVersion: item.version
+      });
+    } else {
+      throw new Response(
+        JSON.stringify({ error: `Item state ${item.state} is not owner-retryable.`, code: "invalid_transition" }),
+        { status: 409 }
+      );
+    }
+    reconcilePortfolioProductionRun({
+      runId,
+      leaseOwner: `owner-retry:${auth.user.id}`
+    });
+    const background = await schedulePortfolioProductionLiveBackgroundRun({
+      runId,
+      workspaceId: auth.workspace.id,
+      userId: auth.user.id
+    });
+    return { accepted: true, item: retried, retryIntent, background };
+  }
+
+  if (tool === "clips_owner_cancel_portfolio_run") {
+    const runId = resolveString(input.runId);
+    const expectedVersion = resolveNumber(input.expectedVersion);
+    const reason = resolveString(input.reason);
+    if (!runId || expectedVersion === undefined || !reason) {
+      throw new Response(JSON.stringify({ error: "runId, expectedVersion and reason are required." }), {
+        status: 400
+      });
+    }
+    const run = getProductionRun(runId);
+    if (!run || run.workspaceId !== auth.workspace.id) {
+      throw new Response(JSON.stringify({ error: "Portfolio run not found." }), { status: 404 });
+    }
+    return cancelProductionRun({ runId, expectedVersion, reason });
   }
 
   if (tool === "clips_owner_list_channels") {
@@ -1535,12 +2102,39 @@ export async function POST(request: Request): Promise<Response> {
     const result = await handleOwnerTool(auth, request, tool, input);
     const accepted =
       (tool === "clips_owner_run_video_pipeline" && (result as { dryRun?: boolean }).dryRun !== true) ||
+      tool === "clips_owner_start_portfolio_run" ||
+      tool === "clips_owner_reconcile_portfolio_run" ||
+      tool === "clips_owner_retry_production_item" ||
+      tool === "clips_owner_cancel_portfolio_run" ||
+      tool === "clips_owner_tick_portfolio_daemon" ||
       (tool === "clips_owner_render_video" &&
         (result as { job?: { status?: string } }).job?.status !== "completed");
     return Response.json(result, { status: accepted ? 202 : 200 });
   } catch (error) {
     if (error instanceof Response) {
       return error;
+    }
+    if (error instanceof ProductionStoreError) {
+      const status =
+        error.code === "not_found"
+          ? 404
+          : error.code === "stale_version" ||
+              error.code === "invalid_transition" ||
+              error.code === "lease_conflict" ||
+              error.code === "idempotency_conflict" ||
+              error.code === "uniqueness_conflict" ||
+              error.code === "source_conflict" ||
+              error.code === "source_budget_exhausted" ||
+              error.code === "external_effect_conflict"
+            ? 409
+            : 400;
+      return Response.json(
+        { error: error.message, code: error.code, details: error.details },
+        { status }
+      );
+    }
+    if (error instanceof ProjectKingsPortfolioDaemonInputError) {
+      return Response.json({ error: error.message, code: "invalid_input" }, { status: 400 });
     }
     const publicationError = toPublicationMutationErrorPayload(error, "Owner control action failed.");
     if (publicationError.body.code !== "UNKNOWN") {

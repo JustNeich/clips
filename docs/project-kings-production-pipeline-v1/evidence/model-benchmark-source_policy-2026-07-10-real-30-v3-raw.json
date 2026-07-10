@@ -1,0 +1,1155 @@
+{
+  "schemaVersion": "project-kings-source-policy-model-raw-evidence-v1",
+  "benchmarkVersion": "project-kings-source-policy-real-30-2026-07-10-v3",
+  "stageRole": "source_policy",
+  "createdAt": "2026-07-10T17:02:23.401Z",
+  "datasetSha256": "6a600bb0d30d60df10982d3026e84688006164e8627fd0fcb2f5fb9e6cb76e28",
+  "annotationsSha256": "271114e953589bd8337c58d12819175929d83572318bd9221c43823c92a9db25",
+  "benchmarkEvidenceSha256": "384aedef0a81c2432a1520e21804cfde6c5b0da10a7548464814577565479c92",
+  "outcome": "blocked",
+  "error": "No model route passed the benchmark policy.",
+  "callCount": 60,
+  "calls": [
+    {
+      "caseId": "dark-instagram-BtDnmx6HRr_",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "13fc56937a54ec360e0d446c314e5e5c582c44f7763882e086fd43aed54dac7c",
+      "startedAt": "2026-07-10T16:36:49.619Z",
+      "durationMs": 23472.843958,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"dark-instagram-BtDnmx6HRr_\",\"contentSha256\":\"45ea01bf3172459c55b6d5e19b2115d5f3b42ce95ab24dc4aa3bb8d66fa12bfb\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The frames show an adult with a tiger in a wooded area, with no visible gore, severe injury, crime accusation, identifiable minor, or recognizable public figure/synthetic impersonation. OCR and ASR add no disqualifying claims.\"}",
+      "outputSha256": "b7b701b9160902a6bb12afd4e8beea00953cbb8ad8844bb80460fd57a0c56f4a",
+      "usage": {
+        "inputTokens": 62323,
+        "cachedInputTokens": 30464,
+        "outputTokens": 977,
+        "reasoningOutputTokens": 593
+      },
+      "error": null
+    },
+    {
+      "caseId": "dark-instagram-C-0YpsCAODv",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "624128d1fd2c7bda367c669a2257b4fe8cebd0f1843c364b4bb91932753576c6",
+      "startedAt": "2026-07-10T16:37:13.092Z",
+      "durationMs": 13557.279417,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"dark-instagram-C-0YpsCAODv\",\"contentSha256\":\"dec174acdfc1b12da01a4a656ad9bec3c7a472296eefd72049b82e0512ece27e\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The supplied frames show a smiling adult woman posing with a chimpanzee in a forested setting, with no gore, injury, crime claim, or public-figure impersonation visible. OCR/ASR do not add any sensitive-incident evidence.\"}",
+      "outputSha256": "f3aa3f4b8fcc7055759b0324dd4c62dbd459b51528093e1e26004a9bdd45f13b",
+      "usage": {
+        "inputTokens": 32999,
+        "cachedInputTokens": 2432,
+        "outputTokens": 409,
+        "reasoningOutputTokens": 198
+      },
+      "error": null
+    },
+    {
+      "caseId": "dark-instagram-C9gLu79MklN",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "8bc731483d2dcf136ea78009bc50c7abd5849eb78174ca41f7b1c4ced1393072",
+      "startedAt": "2026-07-10T16:37:26.650Z",
+      "durationMs": 30984.7585,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"dark-instagram-C9gLu79MklN\",\"contentSha256\":\"82107e983588a0a45ba3ad69454fa7fa7674e7c83debe5570eaf741857fae102\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The frames show a small monkey playing/climbing in a home; there is no gore, severe injury, or death imagery. The OCR is unreadable gibberish and the ASR is casual speech with no serious accusation, crime claim, or misconduct allegation. No identifiable human minor appears in a sensitive incident, and there is no recognizable politician/public figure or synthetic impersonation.\"}",
+      "outputSha256": "d87111e0c2ea586a68d8b9f8dad90b94a2f81195b59c98a8fba4d664ee589be6",
+      "usage": {
+        "inputTokens": 67096,
+        "cachedInputTokens": 33536,
+        "outputTokens": 960,
+        "reasoningOutputTokens": 488
+      },
+      "error": null
+    },
+    {
+      "caseId": "dark-instagram-CsYa4skNBjP",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "9d7ce056c021d860118158fbaede6c60c5f41c758d61251039087d05294bfbd0",
+      "startedAt": "2026-07-10T16:37:57.635Z",
+      "durationMs": 22585.830583,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"dark-instagram-CsYa4skNBjP\",\"contentSha256\":\"89af6f204684fc9304b0a08481c3ae1df7ae9aa11e1a4c656020dc3dc495eef5\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The ordered frames show an adult feeding large lions with a bottle in a grassy outdoor enclosure. There is no visible gore, severe injury, dismemberment, or death imagery; no accusation or allegation text or speech; no identifiable minor in a sensitive incident; and no recognizable politician or public figure with synthetic/impersonated media. OCR and ASR do not add any conflicting evidence.\"}",
+      "outputSha256": "bbb2fb24ff516def3f65f1b24897e40ccaa4dcbf1667d52e8c33f12a692d46c3",
+      "usage": {
+        "inputTokens": 66042,
+        "cachedInputTokens": 43264,
+        "outputTokens": 607,
+        "reasoningOutputTokens": 247
+      },
+      "error": null
+    },
+    {
+      "caseId": "dark-instagram-Cw_QTMmA69_",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "b0171024c7a9b2fa646cf015b2dfb59a5fc858cff498a06dfdad0c2ffc0ab850",
+      "startedAt": "2026-07-10T16:38:20.222Z",
+      "durationMs": 19683.502458,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"dark-instagram-Cw_QTMmA69_\",\"contentSha256\":\"b9afa27653b60ad2364551beb83b0a76dbc9af5a5d3eefd27a58a2d19e96939b\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"All six frames show an adult interacting calmly with a lion at a safari setting; there is no gore, injury, crime allegation, minor, or recognizable public figure impersonation. OCR and ASR contain no sensitive claims.\"}",
+      "outputSha256": "4e570963bcc4faf758beb3eb3fbd909eb4ceb627b6333202714b6818e70bc6db",
+      "usage": {
+        "inputTokens": 69277,
+        "cachedInputTokens": 33536,
+        "outputTokens": 610,
+        "reasoningOutputTokens": 240
+      },
+      "error": null
+    },
+    {
+      "caseId": "dark-instagram-Cxb0DmpJ7oM",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "2f5c7ce59b063d05767226a20b1094eb61e3c70405a9f85dd1fef7002cb7960f",
+      "startedAt": "2026-07-10T16:38:39.905Z",
+      "durationMs": 15357.689958,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"dark-instagram-Cxb0DmpJ7oM\",\"contentSha256\":\"0438717607aad46859cd008d49276a8e0e93d0a1d2fe21e7073f4c5ad734f0b7\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The frames show an adult holding a small animal wrapped in a towel in a kitchen. There is no gore, severe injury, death imagery, accusation text or speech, identifiable human minor in a sensitive incident, or recognizable public figure/synthetic impersonation.\"}",
+      "outputSha256": "1a15cd79cace41a14ad32c4ab59518cfac51436cae5d5e8fd2bf59cd68901faf",
+      "usage": {
+        "inputTokens": 32992,
+        "cachedInputTokens": 2432,
+        "outputTokens": 461,
+        "reasoningOutputTokens": 245
+      },
+      "error": null
+    },
+    {
+      "caseId": "dark-instagram-DIUYX9QStl3",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "b8397564ee96d6041555cff26c55382a9e8316741cf2955ba2bb4f5f3437fd87",
+      "startedAt": "2026-07-10T16:38:55.263Z",
+      "durationMs": 20305.141708,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"dark-instagram-DIUYX9QStl3\",\"contentSha256\":\"373c5ac04ca129f3bee910245be74cdcb56f6c291af09994a8376f6e7d4ede41\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The frames show an adult man in a pool with a chimpanzee/ape in a playful embrace. There is no gore, severe injury, death imagery, accusation text, identifiable minor, or recognizable politician/public figure; OCR and ASR also do not add any sensitive allegation or identity evidence.\"}",
+      "outputSha256": "bfa44ef875f8008f9c554e0ebda3254767f7edc8229dac4bf35c71b6c52dfe0a",
+      "usage": {
+        "inputTokens": 68756,
+        "cachedInputTokens": 33536,
+        "outputTokens": 756,
+        "reasoningOutputTokens": 289
+      },
+      "error": null
+    },
+    {
+      "caseId": "dark-instagram-DKM66d2tamf",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "5b60cce134018cfbdc8baf479459b24aa28b4d63b785ab044201018a526d04e6",
+      "startedAt": "2026-07-10T16:39:15.569Z",
+      "durationMs": 23593.89475,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"dark-instagram-DKM66d2tamf\",\"contentSha256\":\"08759736b752ed0321f5e92f58862c4261e91bfa4accf78b9ce0ccf8ea4cc0d1\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The key frames show an adult person handling a tiger outdoors; there is no visible gore, severe injury, or death imagery. The OCR and ASR artifacts do not provide any allegation of crime or misconduct, there is no identifiable minor in a sensitive incident, and no recognizable public figure or synthetic impersonation is evidenced.\"}",
+      "outputSha256": "21877e5b0c5b50df6325896467d14969b9648f2ecf20532421135815ec67d6f8",
+      "usage": {
+        "inputTokens": 66783,
+        "cachedInputTokens": 43776,
+        "outputTokens": 820,
+        "reasoningOutputTokens": 459
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DW0w8RMjY3Y",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "d3a5d6c94e31977a2519e8e90c7af18b68563da2bcf3b5851f466593e03fe37b",
+      "startedAt": "2026-07-10T16:39:39.163Z",
+      "durationMs": 35905.729583,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DW0w8RMjY3Y\",\"contentSha256\":\"14c9bacf4d5efcde8137970a94975e71769a8770380eb10c59b5b053e7b27048\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The frames show police bodycam footage of an adult driver wearing upside-down sunglasses and behaving oddly; there is no gore, severe injury, or minor involvement. The packet also contains a precise 0.34 BAC claim in the overlay, but no breath test, admission, or official statement in the supplied evidence to support that exact allegation.\"}",
+      "outputSha256": "5f4f6c021556969be507e6d4de55bc973751b69f16b245405ed297a88466ad05",
+      "usage": {
+        "inputTokens": 108451,
+        "cachedInputTokens": 68224,
+        "outputTokens": 1095,
+        "reasoningOutputTokens": 545
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DW5s3qoDbHC",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "5089ba7ecea046482b8a3be9cef69514357ddbd1c3b3ae4a3a01a7677da95c77",
+      "startedAt": "2026-07-10T16:40:15.069Z",
+      "durationMs": 26119.03225,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DW5s3qoDbHC\",\"contentSha256\":\"a333d0f614de8d88f29c246c34aa42bb9218b327e5893d3a8cd6304a56c01a9d\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The frames show a meme-style police bodycam clip with adult officers and an adult suspect, with no visible gore, injury, or child involvement. The captions and dialogue are humorous and do not make a serious unsupported accusation beyond the visible police encounter. There is no recognizable politician or public figure and no sign of synthetic impersonation.\"}",
+      "outputSha256": "eaa28e7267d84730354230c0845c877f838977919f923a0a131c92678641baa5",
+      "usage": {
+        "inputTokens": 34799,
+        "cachedInputTokens": 2432,
+        "outputTokens": 696,
+        "reasoningOutputTokens": 465
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DWjH5fWjBnt",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "9145933e9b139ffb8e38b722cb5ff9722fef7ae99eb6f097b86242c0c5f4063e",
+      "startedAt": "2026-07-10T16:40:41.188Z",
+      "durationMs": 13609.243125,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DWjH5fWjBnt\",\"contentSha256\":\"94e12f40757e74cc9926231726b9df86f93eff0c9046792e033b82b190d4a5c3\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The frames show a police chase with a grappler bumper and no gore, no injured person, no minor, and no recognizable public figure. OCR/ASR only reinforce the captioning and do not add unsupported crime claims beyond the depicted chase scene.\"}",
+      "outputSha256": "11e47ce4567f37a5f0b7be772b9db60de4d4a4f3aa669abb1e5a8a7531f452e1",
+      "usage": {
+        "inputTokens": 33009,
+        "cachedInputTokens": 2432,
+        "outputTokens": 485,
+        "reasoningOutputTokens": 270
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DWnxlyIDcoK",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "6296b507c8193928f83befe8499dd776a20473133a22d4ccd7bebb7af4b2a711",
+      "startedAt": "2026-07-10T16:40:54.798Z",
+      "durationMs": 25914.811542,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DWnxlyIDcoK\",\"contentSha256\":\"49dd483449878265613f19b57bcdf0da2af201d765adccaf813e1397c5c14fd1\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"No graphic violence or minors are visible in the supplied frames. The ASR includes a serious allegation that a police officer assaulted the speaker, but the packet provides no supporting evidence for that claim, so unsupported_allegation is present. The clip does not show a recognizable public figure or signs of synthetic impersonation.\"}",
+      "outputSha256": "a4b2f6b617c47ef51a2b86804868c4e6324b48bef27c2b3f4a73996edb61f0cc",
+      "usage": {
+        "inputTokens": 69002,
+        "cachedInputTokens": 33536,
+        "outputTokens": 939,
+        "reasoningOutputTokens": 580
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DWwSVVOjMqO",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "028479ed76dbd327b54a90dd6576205b40a30c75a93ff053b63552ffa22470ac",
+      "startedAt": "2026-07-10T16:41:20.713Z",
+      "durationMs": 32481.153125,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DWwSVVOjMqO\",\"contentSha256\":\"0e8f65beb75324d243eb59832b80227286d501db4b4815e682bb14874d03b95e\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The packet shows a crash scene with fire and police/bodycam context, but no gore or dismemberment. The OCR/ASR support a racing/crash narrative, with no clear unsupported serious accusation, no identifiable minor in the sensitive incident, and no recognizable public figure or synthetic impersonation.\"}",
+      "outputSha256": "0e64858d3b8f527d568c612fc91ff19f55113771a0451fb37ee6aa6dc0685c83",
+      "usage": {
+        "inputTokens": 70246,
+        "cachedInputTokens": 43776,
+        "outputTokens": 1273,
+        "reasoningOutputTokens": 770
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DXBhsJPjSgW",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "90aae9615f765967b9293243e48d6c646ca4ccee5e5f50aa4d8341cab799b56a",
+      "startedAt": "2026-07-10T16:41:53.194Z",
+      "durationMs": 18774.082917,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DXBhsJPjSgW\",\"contentSha256\":\"00104eabefd531eee16dff7a3c5a230e22d39758815e70b8685c30cd59248151\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The frames show a meme-style hospital scene and a burning car, but no gore, dismemberment, or severe open injury. The caption claims a woman “finds out her charges” while in the hospital, which is a serious criminal-charge allegation without supporting evidence in the supplied packet. The person shown appears to be an adult woman, with no identifiable minor present. There is no recognizable public figure and no indication of synthetic or impersonated political/public-figure media.\"}",
+      "outputSha256": "7f3dee49ce9f3eefaa2ff408f4927a0181df0d0f0da90b5759bdca2f9615c42b",
+      "usage": {
+        "inputTokens": 32998,
+        "cachedInputTokens": 12672,
+        "outputTokens": 768,
+        "reasoningOutputTokens": 515
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DXHx529DVb0",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "ca5ef3deafc25b589c17e27cbfe54b989b78fd096155ad99fe82507e82606709",
+      "startedAt": "2026-07-10T16:42:11.969Z",
+      "durationMs": 14891.043,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DXHx529DVb0\",\"contentSha256\":\"b687a8fcf77ebfb7d44e88239a652acebd22f92f9f2a49d82e9385eb989b5dbf\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The frames show a police bodycam-style pursuit and collision aftermath with vehicle damage, but no visible gore, dismemberment, or severe open injury. The text presents a news-style claim about a trooper receiving a Medal of Valor after stopping a wrong-way driver, which is not a serious unsupported allegation in the sense of accusing someone of misconduct without evidence. No minor is identifiable in the incident, and there is no recognizable public figure or synthetic impersonation.\"}",
+      "outputSha256": "bca70f84f52bdbae3c93657f9a40b0f655a7315779259ca0a812a7c139a8c211",
+      "usage": {
+        "inputTokens": 33004,
+        "cachedInputTokens": 12672,
+        "outputTokens": 544,
+        "reasoningOutputTokens": 289
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DXNBoz7jYmd",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "7f6d6f38bb48326b25b3092e193b587e8b8200199800854de8f6a7f246c7e703",
+      "startedAt": "2026-07-10T16:42:26.860Z",
+      "durationMs": 32267.051584,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DXNBoz7jYmd\",\"contentSha256\":\"b295ef42328b54ed3eee861df2ae163c3415b93c758fc67accd90debd43adcbf\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The packet shows a police chase with damaged cars, but no gore or severe injury. The OCR repeatedly claims a \\\"Wild Chase With 2 Teens in Stolen Hyundai,\\\" yet the supplied frames and ASR do not verify theft or the teens claim, so that serious allegation is unsupported. No identifiable minor is shown, and there is no recognizable public figure or synthetic impersonation.\"}",
+      "outputSha256": "5066b110b6652c96c650576e725f86fbd092d3ca386d385c583078c420ae2fd0",
+      "usage": {
+        "inputTokens": 104131,
+        "cachedInputTokens": 72832,
+        "outputTokens": 1360,
+        "reasoningOutputTokens": 754
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DXOzkCdjMue",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "903d660368109ce35f6bf6d798d8f8795eb7646683bab1db7d8b7111ecf9cf5d",
+      "startedAt": "2026-07-10T16:42:59.127Z",
+      "durationMs": 19868.301584,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DXOzkCdjMue\",\"contentSha256\":\"a3bb5e65330abe53850dfefdb4dba04bb2d53b56610d0e1fa8bfe1112ac35da7\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The frames show a police chase with an adult clinging to a moving car; there is no visible gore or severe injury, no identifiable minor, and no recognizable public figure or synthetic impersonation. The captioned allegation is supported by the visible conduct in the supplied packet.\"}",
+      "outputSha256": "28fdd73df7d9a90ab335f07ad9947335ffaa0ef5c6350474733858c68e4e5cc9",
+      "usage": {
+        "inputTokens": 34805,
+        "cachedInputTokens": 9600,
+        "outputTokens": 558,
+        "reasoningOutputTokens": 341
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DXUPExpjCs2",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "52460e0488ff8069527fb78495b2c8d475f1c805d4901260360bf4a16e4e569f",
+      "startedAt": "2026-07-10T16:43:18.996Z",
+      "durationMs": 22890.755041,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DXUPExpjCs2\",\"contentSha256\":\"b26e2f107d94290ecc1283d2f33eb001484ec04f77ab7de983e99a3e1a4512ea\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"present\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The frames show officers assisting an infant during an apparent choking emergency, with OCR and ASR both matching that narrative. There is no visible gore or severe injury, no evidence of a false crime or misconduct claim, and no recognizable public figure or synthetic impersonation.\"}",
+      "outputSha256": "dc90f6d4fd9fd84112f55196dfcfb6501e9bb989490c1117fa4e7ad7bce50ee3",
+      "usage": {
+        "inputTokens": 69361,
+        "cachedInputTokens": 43776,
+        "outputTokens": 724,
+        "reasoningOutputTokens": 341
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-1diIRo4sHtk",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "48eebf722b5a46e0552e27cde9adf4dd75f6cb0b1e693c5a46af24758a4297b9",
+      "startedAt": "2026-07-10T16:43:41.887Z",
+      "durationMs": 26285.141834,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-1diIRo4sHtk\",\"contentSha256\":\"c8a55d94d4fb2a2c03971890b40ab8fd35bf19c21dce68277cc6adb325643424\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The ordered frames depict a stylized Harry Potter-themed, AI-like fantasy montage with no visible gore, severe injury, or death imagery. The OCR text is playful and non-accusatory, and the ASR contains only short non-factual fragments, so there is no serious unsupported allegation. The young-looking fictional character is not shown in a violence/crime/exploitation or severe-emergency incident. The images do not show a recognizable real politician or public figure being impersonated.\"}",
+      "outputSha256": "15d26bdedb5f7f05d93eb95391e6d3ba27fb4f98512f6706023a481ec1c501a9",
+      "usage": {
+        "inputTokens": 68027,
+        "cachedInputTokens": 40192,
+        "outputTokens": 1067,
+        "reasoningOutputTokens": 663
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-6IlkA1MLVYA",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "051692b23385230affcf8311a4fadfe06064b38cc597ac42d95cfa5c1f61fabd",
+      "startedAt": "2026-07-10T16:44:08.172Z",
+      "durationMs": 28711.970583,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-6IlkA1MLVYA\",\"contentSha256\":\"8e1a9c7430bccce5d04f30081c87f3ed56236e92ad7b11cea6ff373977e3040b\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The ordered frames show stylized synthetic superhero/action imagery and social-media UI badges, with no gore, no identifiable minor in a sensitive incident, no serious accusation, and no recognizable real politician/public figure being impersonated.\"}",
+      "outputSha256": "0ee99ccdcbaf84590ed319000ca96e995fc921ff11dca9fea3c973cb920263b2",
+      "usage": {
+        "inputTokens": 33003,
+        "cachedInputTokens": 12672,
+        "outputTokens": 724,
+        "reasoningOutputTokens": 516
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-6QIdqyFoxFE",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "8e19dd0be378d6248ae95c1fc45d19c6aae4cfb327bf341bde6d5cf3c48a9bc6",
+      "startedAt": "2026-07-10T16:44:36.885Z",
+      "durationMs": 20748.3645,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-6QIdqyFoxFE\",\"contentSha256\":\"c0bcb0b58f55fb8c8630f143c5469159aab08c7b2c883ac801bf4707b4d9df58\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"Frames show a Harry Potter film montage with overlaid part labels and OCR text like \\\"Part 9\\\" and \\\"iPhone 17\\\". There is no gore or severe injury, no serious allegation being asserted, the minors are in a non-sensitive fictional scene, and the footage appears to be ordinary film material rather than a synthetic public-figure impersonation.\"}",
+      "outputSha256": "a9dc1f0ad8be24510c2162444e29341f9df05d7704606585d0ef6211cede6c98",
+      "usage": {
+        "inputTokens": 68470,
+        "cachedInputTokens": 43776,
+        "outputTokens": 751,
+        "reasoningOutputTokens": 359
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-BwIaEb5vGDo",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "661d8cec8c9f448cf597c4f0fed8530bbafd18b74cac5a12997d397424f1d1e8",
+      "startedAt": "2026-07-10T16:44:57.633Z",
+      "durationMs": 20109.341167,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-BwIaEb5vGDo\",\"contentSha256\":\"0c500e91711a6ec9cbf3bb8ad1f498f04f9de23b460d0cc0c9f10ebdc32de47f\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The frames show a stylized Star Wars-like scene with a masked armored character and Grogu; there is no gore or severe injury, no serious allegation or claim, no identifiable minor in a sensitive incident, and no recognizable real politician/public figure being impersonated or synthetically altered. OCR is non-substantive and ASR reports no speech.\"}",
+      "outputSha256": "a613732ef3e50a56ccc5082c80bd95b01b76470b4266aae013d3149560d96690",
+      "usage": {
+        "inputTokens": 60861,
+        "cachedInputTokens": 40704,
+        "outputTokens": 833,
+        "reasoningOutputTokens": 439
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-EYkw1ELHXq0",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "9a77608656eedd4aa0ba9f701df5a17078d6d9c80ec1f8b48d85febee007b23a",
+      "startedAt": "2026-07-10T16:45:17.743Z",
+      "durationMs": 23951.184375,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-EYkw1ELHXq0\",\"contentSha256\":\"ecd8da65c9d4cc2d0e8dbd49c8c32df17918b0df57c067b148a94226115847e2\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\",\"source-policy-metadata\"],\"reason\":\"The frames show a stylized, apparently synthetic Star Wars-like montage featuring a recognizable actor likeness in staged scenes, which supports the public-figure deepfake class. There is no visible gore, severe injury, or dismemberment. No identifiable minor appears in a violent, abusive, exploitative, or severe emergency context. The captions and scenes do not show a serious unsupported accusation, crime allegation, or misconduct claim.\"}",
+      "outputSha256": "464b38a73aabb70b4ac48a3c88ea07de7afddcb1ed1e084324dc944938c298ed",
+      "usage": {
+        "inputTokens": 33002,
+        "cachedInputTokens": 12672,
+        "outputTokens": 768,
+        "reasoningOutputTokens": 516
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-J6tw2l128YE",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "2dee5c3671ca0771432349243a3136b425cffb388716b2dc2a063a611f171b34",
+      "startedAt": "2026-07-10T16:45:41.694Z",
+      "durationMs": 23136.002709,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-J6tw2l128YE\",\"contentSha256\":\"0add34915f9235de87c6d9d3426fb03b2d0461b3e80dd0b488080af337531750\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The supplied frames show black-and-white fantasy/Harry Potter-style scenes with no visible gore, severe injury, or death imagery, so graphic_violence is absent. There is no claim of crime, violence, or misconduct in the frames, OCR, or ASR, so unsupported_allegation is absent. The people shown appear to be adults or fictional characters in harmless posed scenes, not identifiable minors in a sensitive incident, so minor_in_sensitive_incident is absent. The packet does not show a recognizable real politician or public figure, nor evidence of impersonation of one, so realistic_political_or_public_figure_deepfake is absent.\"}",
+      "outputSha256": "510b2cc141c342b45e780f6ef8ee6983e91cba45a4f6bf86a38418100e380d54",
+      "usage": {
+        "inputTokens": 34802,
+        "cachedInputTokens": 9600,
+        "outputTokens": 566,
+        "reasoningOutputTokens": 276
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-V-xIvJs0Jbo",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "ff2f0c1beb9e45c947a8abf818dd21450d753bedd192d307df53a6f3daa02098",
+      "startedAt": "2026-07-10T16:46:04.831Z",
+      "durationMs": 22818.478333,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-V-xIvJs0Jbo\",\"contentSha256\":\"e060a47731e4bb1b08067218929b75120929b968750cd8693485cbe938822e74\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The frames show a clearly edited Harry Potter scene with Donald Trump’s recognizable face composited into the footage, which makes the public-figure deepfake signal present. There is no visible gore or severe injury, no serious unsupported accusation, and the young characters are present but not shown in a clear violent/criminal/exploitative incident.\"}",
+      "outputSha256": "8a75707e882c5008ad740b8d431c79ffbc2a3e25b1ce626e071f166b9fed9a7e",
+      "usage": {
+        "inputTokens": 73076,
+        "cachedInputTokens": 43776,
+        "outputTokens": 975,
+        "reasoningOutputTokens": 660
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-WkEyab1jINA",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "a1e801587bdf9ad2816086330778cfc9e4a58c04bbfdd398fce4ef3c7fef9ee0",
+      "startedAt": "2026-07-10T16:46:27.649Z",
+      "durationMs": 18267.805792,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-WkEyab1jINA\",\"contentSha256\":\"89a4c8e0d517bc828748b868c8a3758f25c69ab1802254cec428da1e16529270\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The frames are a Harry Potter scene with Donald Trump's face realistically composited onto a character, which satisfies the public-figure deepfake signal. There is no visible gore or severe injury, and the minor characters are in a harmless fictional scene rather than a sensitive incident. The OCR/ASR do not add any serious allegation of crime or misconduct.\"}",
+      "outputSha256": "378f8de1195b811068e1eddc344e558b260f2f1cf767c8c34ac3d60cd97325df",
+      "usage": {
+        "inputTokens": 33413,
+        "cachedInputTokens": 12672,
+        "outputTokens": 745,
+        "reasoningOutputTokens": 516
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-XPKBwhDPxk0",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "eba8a3794a96c036e205b23f8b7da131978fda0ce4764be67b0efffb6a9a5b7a",
+      "startedAt": "2026-07-10T16:46:45.917Z",
+      "durationMs": 16049.819125,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-XPKBwhDPxk0\",\"contentSha256\":\"9a0d618a504dc4765cb5f2e047fd4f940205b1d60eb371cea70a8094a26220d9\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The ordered frames show a stylized sci-fi/Star Wars-like armored character montage with decorative 'Like' and 'Subscribe' text and 'For Glitch and Giggles' OCR; there is no visible gore, serious accusation, identifiable minor in a sensitive incident, or recognizable public figure/realistic impersonation.\"}",
+      "outputSha256": "84102d3ebdfa688a1a676e878142ad31aef900abf9fff5fc37ddb00cfb96300e",
+      "usage": {
+        "inputTokens": 33002,
+        "cachedInputTokens": 12672,
+        "outputTokens": 497,
+        "reasoningOutputTokens": 271
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-fj6CXk2KTIs",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "cdd8e23b30a27eda3f8928a0d51f625390494c1d9311ed366207881dde5e6c6f",
+      "startedAt": "2026-07-10T16:47:01.968Z",
+      "durationMs": 25045.329042,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-fj6CXk2KTIs\",\"contentSha256\":\"842ca7347b6d4fd35e32c71565fcb1d317f978aec625d2c6067bd53141b052dd\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The frames show a Marvel/Iron Man comparison meme with visible AI-labeled altered versions of a recognizable actor likeness (Robert Downey Jr. / Tony Stark), which fits a realistic public-figure deepfake. There is no gore, no crime allegation, and no minor in a sensitive incident.\"}",
+      "outputSha256": "63b346a411285eb0f1d557fec7b1fb1b7a2c490048e7a7448d25fca854dd945c",
+      "usage": {
+        "inputTokens": 32994,
+        "cachedInputTokens": 2432,
+        "outputTokens": 1068,
+        "reasoningOutputTokens": 849
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-n9kD935iROw",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "6496406473c14c312a0f0cb3a48ed84ebd82e0e946a6078e4314cb42f3c367a0",
+      "startedAt": "2026-07-10T16:47:27.013Z",
+      "durationMs": 16387.332834,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-n9kD935iROw\",\"contentSha256\":\"5a59e6927e5265ff2272d9c538446f7f4585a47949785be19653debca63b855c\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The ordered frames show a dark cinematic close-up of a single person with no visible gore, severe injury, dismemberment, or death imagery, so graphic violence is absent. There is no accusation, claim, or allegation of crime, violence, or misconduct in the supplied frames, OCR, or ASR, so unsupported allegation is absent. No identifiable minor is shown participating in any sensitive incident, so minor in sensitive incident is absent. The clip appears to be ordinary film footage of a person in character, not a synthetic impersonation of a real public figure, so realistic political or public figure deepfake is absent.\"}",
+      "outputSha256": "ea4678c809712552d52b14fde8e0f5836f43fd913031e31dac75608a98ef3d00",
+      "usage": {
+        "inputTokens": 33018,
+        "cachedInputTokens": 12672,
+        "outputTokens": 575,
+        "reasoningOutputTokens": 291
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-oA7rziyGv8s",
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "promptSha256": "235c0addaf3328d0d05bfb53e2c3455c07b60ba0da4db0a7b52b6aff70c5a113",
+      "startedAt": "2026-07-10T16:47:43.401Z",
+      "durationMs": 26027.027625,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-oA7rziyGv8s\",\"contentSha256\":\"3e4b7ea026b323a1cbcd957bff6e90f9ae8c852022aa4dc89b61f69a9792f287\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The frames show a stylized sci-fi council-room scene with seated adults and no gore, injury, or death imagery. OCR/ASR only contain light dialogue about a council meeting and \\\"bad influence,\\\" which is not a serious unsupported accusation. No identifiable minor appears in a sensitive incident, and although the scene looks synthetic, the supplied evidence does not clearly show a recognizable real public figure being impersonated.\"}",
+      "outputSha256": "878a3322b34108f884b26ec7e7c5d2bc4c9063e19095d8c885c9f315e3f56643",
+      "usage": {
+        "inputTokens": 67928,
+        "cachedInputTokens": 43264,
+        "outputTokens": 1106,
+        "reasoningOutputTokens": 704
+      },
+      "error": null
+    },
+    {
+      "caseId": "dark-instagram-BtDnmx6HRr_",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "13fc56937a54ec360e0d446c314e5e5c582c44f7763882e086fd43aed54dac7c",
+      "startedAt": "2026-07-10T16:48:09.428Z",
+      "durationMs": 18357.514,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"dark-instagram-BtDnmx6HRr_\",\"contentSha256\":\"45ea01bf3172459c55b6d5e19b2115d5f3b42ce95ab24dc4aa3bb8d66fa12bfb\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The ordered frames show a big cat attacking or grappling with an apparently adult person, but no visible gore, severe open injury, dismemberment, or graphic death imagery. No OCR or ASR evidence in the supplied packet indicates any accusation of crime or misconduct. No identifiable minor is shown participating in the incident. No recognizable politician or public figure appears, and there is no evidence of synthetic or impersonated media.\"}",
+      "outputSha256": "404c243337255f8fbf9c6442045ead34f7e3e4a3cd1907343491826ad6eac132",
+      "usage": {
+        "inputTokens": 29900,
+        "cachedInputTokens": 2432,
+        "outputTokens": 473,
+        "reasoningOutputTokens": 224
+      },
+      "error": null
+    },
+    {
+      "caseId": "dark-instagram-C-0YpsCAODv",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "624128d1fd2c7bda367c669a2257b4fe8cebd0f1843c364b4bb91932753576c6",
+      "startedAt": "2026-07-10T16:48:27.786Z",
+      "durationMs": 27771.418417,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"dark-instagram-C-0YpsCAODv\",\"contentSha256\":\"dec174acdfc1b12da01a4a656ad9bec3c7a472296eefd72049b82e0512ece27e\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"Across all six key frames, the video shows a woman posing and waving with a chimpanzee in a wooded setting. No gore, severe injury, death, crime, abuse, exploitation, or emergency is visible. OCR does not add any sensitive claim, and ASR contains only benign song-like speech with no accusation. No identifiable minor is involved in any sensitive incident, and there is no sign of synthetic media or any recognizable public figure.\"}",
+      "outputSha256": "5cdff22d8b7c85f9b2b6ca3cbd5d2268120e38ffc42bf582a2b9e3601d1d726c",
+      "usage": {
+        "inputTokens": 69173,
+        "cachedInputTokens": 33024,
+        "outputTokens": 866,
+        "reasoningOutputTokens": 278
+      },
+      "error": null
+    },
+    {
+      "caseId": "dark-instagram-C9gLu79MklN",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "8bc731483d2dcf136ea78009bc50c7abd5849eb78174ca41f7b1c4ced1393072",
+      "startedAt": "2026-07-10T16:48:55.558Z",
+      "durationMs": 17426.171333,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"dark-instagram-C9gLu79MklN\",\"contentSha256\":\"82107e983588a0a45ba3ad69454fa7fa7674e7c83debe5570eaf741857fae102\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The ordered key frames show a small monkey indoors interacting with a person offering food and moving around furniture. No gore, severe injury, or death imagery is visible. No allegation, accusation, or claim of misconduct appears in the supplied evidence. No identifiable minor is shown participating in violence, crime, exploitation, abuse, or a severe emergency. No recognizable politician or other public figure appears, and there is no evidence of synthetic impersonation or deepfake media.\"}",
+      "outputSha256": "9975f422b787a30a46c6f7ec38258d25698d8ec8ee3e72b14f64a06f21f9b51a",
+      "usage": {
+        "inputTokens": 33356,
+        "cachedInputTokens": 2432,
+        "outputTokens": 447,
+        "reasoningOutputTokens": 197
+      },
+      "error": null
+    },
+    {
+      "caseId": "dark-instagram-CsYa4skNBjP",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "9d7ce056c021d860118158fbaede6c60c5f41c758d61251039087d05294bfbd0",
+      "startedAt": "2026-07-10T16:49:12.984Z",
+      "durationMs": 19421.562166,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"dark-instagram-CsYa4skNBjP\",\"contentSha256\":\"89af6f204684fc9304b0a08481c3ae1df7ae9aa11e1a4c656020dc3dc495eef5\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The ordered key frames show an adult feeding a lion while lying on grass. No gore, severe injury, or graphic death is visible. No accusation or claim of crime or misconduct appears in the supplied evidence. No identifiable minor is shown in a sensitive incident. No recognizable public figure or evidence of synthetic/impersonated media is present.\"}",
+      "outputSha256": "1995e35334eda581de3f4158f7980aecfa331a6d4373ebb9b869a8df4cd13cc5",
+      "usage": {
+        "inputTokens": 33343,
+        "cachedInputTokens": 13184,
+        "outputTokens": 436,
+        "reasoningOutputTokens": 207
+      },
+      "error": null
+    },
+    {
+      "caseId": "dark-instagram-Cw_QTMmA69_",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "b0171024c7a9b2fa646cf015b2dfb59a5fc858cff498a06dfdad0c2ffc0ab850",
+      "startedAt": "2026-07-10T16:49:32.406Z",
+      "durationMs": 16251.353208,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"dark-instagram-Cw_QTMmA69_\",\"contentSha256\":\"b9afa27653b60ad2364551beb83b0a76dbc9af5a5d3eefd27a58a2d19e96939b\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The supplied key frames show an adult interacting closely with a lion in a safari setting. No frame shows gore, severe injury, or graphic death imagery. No accusation of crime or misconduct appears in the visible packet context. No identifiable minor is shown in a sensitive incident. No recognizable politician or other public figure appears, and there is no sign of synthetic impersonation or deepfake media.\"}",
+      "outputSha256": "6cdbdfd4d1461c8cfcbfb602d74656bd65c142ac16c620b8f8e59143ff11fd98",
+      "usage": {
+        "inputTokens": 33354,
+        "cachedInputTokens": 13184,
+        "outputTokens": 457,
+        "reasoningOutputTokens": 217
+      },
+      "error": null
+    },
+    {
+      "caseId": "dark-instagram-Cxb0DmpJ7oM",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "2f5c7ce59b063d05767226a20b1094eb61e3c70405a9f85dd1fef7002cb7960f",
+      "startedAt": "2026-07-10T16:49:48.658Z",
+      "durationMs": 21540.163875,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"dark-instagram-Cxb0DmpJ7oM\",\"contentSha256\":\"0438717607aad46859cd008d49276a8e0e93d0a1d2fe21e7073f4c5ad734f0b7\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"unknown\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"unknown\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The ordered key frames show a person gently holding a small animal wrapped in a towel in a normal indoor setting, with no gore, severe injury, abuse, crime, or emergency visible, so graphic violence is absent and minor in a sensitive incident is absent. Unsupported allegation is unknown because the packet here does not provide the actual OCR or ASR text contents needed to rule out or confirm any serious accusation in captions or speech. Realistic political or public figure deepfake is unknown because the frames appear to show a recognizable public figure, but from these still frames alone and without fuller source evidence, the packet does not let me distinguish authentic footage from possible synthetic or impersonated media.\"}",
+      "outputSha256": "53832fd02101df70c9abe021658e871d5d3b241375dc94c49854f1c46d545212",
+      "usage": {
+        "inputTokens": 33344,
+        "cachedInputTokens": 13184,
+        "outputTokens": 744,
+        "reasoningOutputTokens": 446
+      },
+      "error": null
+    },
+    {
+      "caseId": "dark-instagram-DIUYX9QStl3",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "b8397564ee96d6041555cff26c55382a9e8316741cf2955ba2bb4f5f3437fd87",
+      "startedAt": "2026-07-10T16:50:10.198Z",
+      "durationMs": 46474.658833,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"dark-instagram-DIUYX9QStl3\",\"contentSha256\":\"373c5ac04ca129f3bee910245be74cdcb56f6c291af09994a8376f6e7d4ede41\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"Across the ordered key frames, the content shows an adult man and a chimpanzee calmly interacting in water. No gore, severe injury, or graphic death imagery is visible, so graphic violence is absent. No accusation of crime, violence, or misconduct is stated in the supplied visual evidence packet, and no such allegation is established through OCR or ASR evidence provided here, so unsupported allegation is absent. No identifiable minor appears in a violent, criminal, exploitative, abusive, or severe emergency context, so minor in sensitive incident is absent. The media appears to be ordinary footage of an unidentified person rather than a recognizable politician or public figure, and there is no evidence of synthetic manipulation or impersonation, so realistic political or public figure deepfake is absent.\"}",
+      "outputSha256": "fcac852471a93011a1433a37abb2810e0935480aacaafdea77dbb8aa3519cac4",
+      "usage": {
+        "inputTokens": 32975,
+        "cachedInputTokens": 30592,
+        "outputTokens": 494,
+        "reasoningOutputTokens": 182
+      },
+      "error": null
+    },
+    {
+      "caseId": "dark-instagram-DKM66d2tamf",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "5b60cce134018cfbdc8baf479459b24aa28b4d63b785ab044201018a526d04e6",
+      "startedAt": "2026-07-10T16:50:56.673Z",
+      "durationMs": 22651.205583,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"dark-instagram-DKM66d2tamf\",\"contentSha256\":\"08759736b752ed0321f5e92f58862c4261e91bfa4accf78b9ce0ccf8ea4cc0d1\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"unknown\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"Frames show an adult interacting playfully with a tiger; no gore, severe injury, dismemberment, or graphic death imagery is visible, so graphic violence is absent. No identifiable minor is shown, and no violence, crime, exploitation, abuse, or severe emergency involving a minor is visible, so minor in sensitive incident is absent. No recognizable politician or other public figure appears, and nothing in the frames indicates synthetic impersonation, so realistic political/public figure deepfake is absent. Unsupported allegation is unknown because the OCR and ASR artifact contents are not provided here, so any accusation conveyed in on-screen text or speech cannot be ruled out from the supplied packet view.\"}",
+      "outputSha256": "301d183503a1ea490c7c88f5fcf11b662fba19942765ef8604b20d55af7ccb76",
+      "usage": {
+        "inputTokens": 33343,
+        "cachedInputTokens": 13184,
+        "outputTokens": 755,
+        "reasoningOutputTokens": 459
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DW0w8RMjY3Y",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "d3a5d6c94e31977a2519e8e90c7af18b68563da2bcf3b5851f466593e03fe37b",
+      "startedAt": "2026-07-10T16:51:19.325Z",
+      "durationMs": 37978.493958,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DW0w8RMjY3Y\",\"contentSha256\":\"14c9bacf4d5efcde8137970a94975e71769a8770380eb10c59b5b053e7b27048\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The key frames, OCR, and ASR show non-graphic police/bodycam-style footage of an adult woman during an impairment-related encounter, with no gore, no minor, and no public figure or synthetic impersonation. Unsupported allegation is present because the on-screen text claims a precise '0.34 BAC,' while the supplied packet only supports concern about possible impairment and odd behavior; it does not provide a test result, admission, or official recorded statement establishing that exact BAC.\"}",
+      "outputSha256": "c5f31a2e507e0696226323223d767a893d7667143163ca7615e55d723a4b07c7",
+      "usage": {
+        "inputTokens": 70120,
+        "cachedInputTokens": 33536,
+        "outputTokens": 949,
+        "reasoningOutputTokens": 351
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DW5s3qoDbHC",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "5089ba7ecea046482b8a3be9cef69514357ddbd1c3b3ae4a3a01a7677da95c77",
+      "startedAt": "2026-07-10T16:51:57.303Z",
+      "durationMs": 44464.859667,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DW5s3qoDbHC\",\"contentSha256\":\"a333d0f614de8d88f29c246c34aa42bb9218b327e5893d3a8cd6304a56c01a9d\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\",\"source-policy-metadata\"],\"reason\":\"The packet shows a real police bodycam-style traffic stop and foot chase ending in handcuffing, with no gore or severe injury visible. The people shown appear to be adults, and no identifiable minor is present. No recognizable politician or other public figure appears, and nothing indicates synthetic or impersonated media. The accusation content is limited to visibly supported conduct and a recorded officer statement about a citation for driving on a suspended license, so no unsupported serious allegation is established by this packet.\"}",
+      "outputSha256": "426f3515b4da42b5a02672c06d43327e1e17b8d126c9ca9de7dd26ff68a80f9d",
+      "usage": {
+        "inputTokens": 73846,
+        "cachedInputTokens": 35584,
+        "outputTokens": 881,
+        "reasoningOutputTokens": 443
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DWjH5fWjBnt",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "9145933e9b139ffb8e38b722cb5ff9722fef7ae99eb6f097b86242c0c5f4063e",
+      "startedAt": "2026-07-10T16:52:41.769Z",
+      "durationMs": 29009.789708,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DWjH5fWjBnt\",\"contentSha256\":\"94e12f40757e74cc9926231726b9df86f93eff0c9046792e033b82b190d4a5c3\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The ordered frames show non-graphic police pursuit equipment footage of a grappler device deploying onto a pickup truck wheel, with no visible gore or severe injury. OCR identifies the clip as explanatory police bodycam-style footage about using a grappler bumper to end a chase, and ASR reports no speech. No minor is visible, no recognizable public figure or synthetic impersonation appears, and the on-screen claim is directly supported by the depicted action rather than making an unsupported accusation.\"}",
+      "outputSha256": "e0d66afcfc0c28722ab45183cd5a7ffec39d928dbba1315e18d5816831348dd1",
+      "usage": {
+        "inputTokens": 73275,
+        "cachedInputTokens": 35584,
+        "outputTokens": 796,
+        "reasoningOutputTokens": 281
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DWnxlyIDcoK",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "6296b507c8193928f83befe8499dd776a20473133a22d4ccd7bebb7af4b2a711",
+      "startedAt": "2026-07-10T16:53:10.779Z",
+      "durationMs": 31469.623,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DWnxlyIDcoK\",\"contentSha256\":\"49dd483449878265613f19b57bcdf0da2af201d765adccaf813e1397c5c14fd1\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"Key frames, OCR, and ASR show a bodycam-style traffic/parking confrontation between adults with no gore, severe injury, or minors. The packet includes a serious accusation of assault/misconduct by a police officer (ASR: 'I was just assaulted by police officer' and related captions/title framing) without visible proof of that assault, a direct admission, or an official recorded statement establishing that specific allegation, so unsupportedAllegation is present. No recognizable public figure or evidence of synthetic impersonation appears.\"}",
+      "outputSha256": "ea0ea3795c3442e7eea6bd9bb2cab358d5047f6bb5ab5c1d872eef5a2f6eba53",
+      "usage": {
+        "inputTokens": 70236,
+        "cachedInputTokens": 44288,
+        "outputTokens": 1107,
+        "reasoningOutputTokens": 503
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DWwSVVOjMqO",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "028479ed76dbd327b54a90dd6576205b40a30c75a93ff053b63552ffa22470ac",
+      "startedAt": "2026-07-10T16:53:42.249Z",
+      "durationMs": 39896.943625,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DWwSVVOjMqO\",\"contentSha256\":\"0e8f65beb75324d243eb59832b80227286d501db4b4815e682bb14874d03b95e\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"Key frames and OCR show a real crash scene with fire and police detention, but no visible gore, open injury, or graphic death imagery. The 'street race crash' claim is supported by the depicted crash/fire scene and the ASR includes an apparent admission to racing, so unsupported allegation is not present. No identifiable minor is shown participating in the incident, and nothing suggests synthetic or impersonated depiction of a recognizable public figure.\"}",
+      "outputSha256": "a3845825058ba75831ca131396b0c2b8f18ac88cceec12daca6241f0c0b2c3c1",
+      "usage": {
+        "inputTokens": 106208,
+        "cachedInputTokens": 77440,
+        "outputTokens": 880,
+        "reasoningOutputTokens": 290
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DXBhsJPjSgW",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "90aae9615f765967b9293243e48d6c646ca4ccee5e5f50aa4d8341cab799b56a",
+      "startedAt": "2026-07-10T16:54:22.146Z",
+      "durationMs": 35706.849917,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DXBhsJPjSgW\",\"contentSha256\":\"00104eabefd531eee16dff7a3c5a230e22d39758815e70b8685c30cd59248151\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"Frames and OCR show a hospital patient and a burning vehicle, but no visible gore, open injury, dismemberment, or graphic death imagery, so graphic violence is absent. The patient appears adult, and no identifiable minor is shown in any sensitive incident, so minor_in_sensitive_incident is absent. No politician, actor, or other public figure appears, and nothing suggests synthetic impersonation, so realistic_political_or_public_figure_deepfake is absent. Unsupported_allegation is present because the overlay and ASR indicate the woman is being told she is charged with homicide, which is a serious crime allegation, but the supplied packet does not include visible proof of the homicide, an admission, or a named authority statement establishing that charge.\"}",
+      "outputSha256": "8242a1d68816d1533dec77297d87fc82bb5ee47c0a46af6dc43a87567074c7b3",
+      "usage": {
+        "inputTokens": 70628,
+        "cachedInputTokens": 44288,
+        "outputTokens": 1203,
+        "reasoningOutputTokens": 557
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DXHx529DVb0",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "ca5ef3deafc25b589c17e27cbfe54b989b78fd096155ad99fe82507e82606709",
+      "startedAt": "2026-07-10T16:54:57.853Z",
+      "durationMs": 20233.408459,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DXHx529DVb0\",\"contentSha256\":\"b687a8fcf77ebfb7d44e88239a652acebd22f92f9f2a49d82e9385eb989b5dbf\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The packet shows dashcam-style frames and a damaged state trooper vehicle, but no visible gore, open injury, or death, so graphic violence is absent. The on-screen claim that a trooper received a Medal of Valor after stopping a fleeing wrong-way driver is a serious misconduct allegation; the supplied frames do not clearly show the alleged wrong-way fleeing conduct, and no supporting admission or recorded named-authority statement is provided in the packet, so unsupported allegation is present. No identifiable minor appears in the sensitive incident. No recognizable public figure or evidence of synthetic impersonation appears.\"}",
+      "outputSha256": "f6e56967b38f505a1cb6d7e73aaa141f999e5aa1c6dcf2089878a1f04eb6684e",
+      "usage": {
+        "inputTokens": 35154,
+        "cachedInputTokens": 14208,
+        "outputTokens": 607,
+        "reasoningOutputTokens": 329
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DXNBoz7jYmd",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "7f6d6f38bb48326b25b3092e193b587e8b8200199800854de8f6a7f246c7e703",
+      "startedAt": "2026-07-10T16:55:18.087Z",
+      "durationMs": 23156.636084,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DXNBoz7jYmd\",\"contentSha256\":\"b295ef42328b54ed3eee861df2ae163c3415b93c758fc67accd90debd43adcbf\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"present\",\"minorInSensitiveIncident\":\"unknown\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\",\"source-policy-metadata\"],\"reason\":\"The key frames show a police-style vehicle pursuit and stop, but no gore, severe open injury, or graphic death imagery, so graphic violence is absent. The on-screen text/OCR states 'Wild Chase With 2 Teens in Stolen Hyundai,' which is a serious crime allegation; the supplied frames show a chase and damaged car but do not establish that the vehicle was stolen or that the occupants were teens, and no supporting official statement, admission, or direct proof is supplied, so unsupported allegation is present. Minor involvement cannot be confirmed from the frames because no participant is clearly identifiable as a minor, while the teen claim appears only as unsupported overlay text, so minor in sensitive incident remains unknown. There is no recognizable public figure and no indication of synthetic or impersonated media, so realistic public-figure deepfake is absent.\"}",
+      "outputSha256": "2275dc1a9df6d2f710eb6856e1b79f2eeb22bb935e0835518f1297b9a60a9186",
+      "usage": {
+        "inputTokens": 33356,
+        "cachedInputTokens": 2432,
+        "outputTokens": 797,
+        "reasoningOutputTokens": 470
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DXOzkCdjMue",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "903d660368109ce35f6bf6d798d8f8795eb7646683bab1db7d8b7111ecf9cf5d",
+      "startedAt": "2026-07-10T16:55:41.244Z",
+      "durationMs": 34326.5755,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DXOzkCdjMue\",\"contentSha256\":\"a3bb5e65330abe53850dfefdb4dba04bb2d53b56610d0e1fa8bfe1112ac35da7\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The ordered frames and OCR show a non-graphic police-chase clip with a person clinging to a moving car door; no gore or severe injury is visible. The 'fleeing police' framing is supported by the depicted chase context and police-footage presentation rather than being an unsupported accusation. No identifiable minor appears in the incident, and no recognizable public figure or synthetic/deepfake media is shown.\"}",
+      "outputSha256": "ad6b56bbc1a9d181bc9378a2d4d6579766c197ff7ddc6dc0a8c251b523dd7be9",
+      "usage": {
+        "inputTokens": 69721,
+        "cachedInputTokens": 44288,
+        "outputTokens": 1072,
+        "reasoningOutputTokens": 484
+      },
+      "error": null
+    },
+    {
+      "caseId": "cop-instagram-DXUPExpjCs2",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "52460e0488ff8069527fb78495b2c8d475f1c805d4901260360bf4a16e4e569f",
+      "startedAt": "2026-07-10T16:56:15.571Z",
+      "durationMs": 25145.901708,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"cop-instagram-DXUPExpjCs2\",\"contentSha256\":\"b26e2f107d94290ecc1283d2f33eb001484ec04f77ab7de983e99a3e1a4512ea\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"present\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"Key frames and OCR depict labeled police bodycam footage of troopers responding to a choking infant, and ASR captures urgent emergency-response speech. No gore, open injury, or graphic death imagery is shown, so graphic violence is absent. The packet supports the depicted emergency event itself rather than making an unsupported accusation, so unsupported allegation is absent. A minor infant is visibly involved in a severe medical emergency, so minor_in_sensitive_incident is present. No recognizable public figure or evidence of synthetic/impersonated media appears, so realistic_political_or_public_figure_deepfake is absent.\"}",
+      "outputSha256": "dae2f162b0bbaa41bcb8ef0de669c0850eefcffc76aaecb8bf8182a8b4b6b60f",
+      "usage": {
+        "inputTokens": 69338,
+        "cachedInputTokens": 43776,
+        "outputTokens": 723,
+        "reasoningOutputTokens": 197
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-1diIRo4sHtk",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "48eebf722b5a46e0552e27cde9adf4dd75f6cb0b1e693c5a46af24758a4297b9",
+      "startedAt": "2026-07-10T16:56:40.717Z",
+      "durationMs": 17844.38275,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-1diIRo4sHtk\",\"contentSha256\":\"c8a55d94d4fb2a2c03971890b40ab8fd35bf19c21dce68277cc6adb325643424\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The supplied key frames and OCR/ASR show a comedic Hogwarts-themed selfie montage with no gore, severe injury, crime, abuse, or emergency, and no spoken or written accusation of misconduct. The visuals appear synthetically staged and consistently depict a recognizable Harry Potter/Daniel Radcliffe-like public-figure likeness in new scenes, so realistic public-figure deepfake is present.\"}",
+      "outputSha256": "91dc0e9581518e71d9eece27bb47d3bdba853dcb42b795b434a44bc83b7ed49e",
+      "usage": {
+        "inputTokens": 33350,
+        "cachedInputTokens": 13184,
+        "outputTokens": 469,
+        "reasoningOutputTokens": 231
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-6IlkA1MLVYA",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "051692b23385230affcf8311a4fadfe06064b38cc597ac42d95cfa5c1f61fabd",
+      "startedAt": "2026-07-10T16:56:58.561Z",
+      "durationMs": 33694.578292,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-6IlkA1MLVYA\",\"contentSha256\":\"8e1a9c7430bccce5d04f30081c87f3ed56236e92ad7b11cea6ff373977e3040b\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The supplied key frames show stylized/synthetic superhero-themed imagery with rank badges and subscribe/like overlays, and the ASR reports no speech. There is no visible gore, open injury, dismemberment, or graphic death imagery, so graphic violence is absent. There are no spoken or written accusations of crime, violence, or misconduct, so unsupported allegation is absent. No identifiable minor appears in a sensitive incident; the depicted characters appear adult or non-human, so minor in sensitive incident is absent. The media appears synthetic/stylized, but the recognizable figures are fictional superhero characters rather than a real politician, actor, or other public figure, so realistic political or public figure deepfake is absent.\"}",
+      "outputSha256": "6114818b292234d2b2524468ee11bf9507d7fc4bc2ceb98ef75f6ef30665ef94",
+      "usage": {
+        "inputTokens": 69385,
+        "cachedInputTokens": 44288,
+        "outputTokens": 1071,
+        "reasoningOutputTokens": 427
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-6QIdqyFoxFE",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "8e19dd0be378d6248ae95c1fc45d19c6aae4cfb327bf341bde6d5cf3c48a9bc6",
+      "startedAt": "2026-07-10T16:57:32.256Z",
+      "durationMs": 28211.620709,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-6QIdqyFoxFE\",\"contentSha256\":\"c0bcb0b58f55fb8c8630f143c5469159aab08c7b2c883ac801bf4707b4d9df58\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"present\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The supplied frames show no gore, open injury, or graphic death imagery, so graphic violence is absent. There is no spoken or written serious accusation of crime or misconduct in the packet, so unsupported allegation is absent. The frames depict recognizable Harry Potter child/teen characters in a staged synthetic sequence that includes physical assault between them, making minor-in-sensitive-incident present. The visuals also appear to be synthetic/newly staged scenes using recognizable likenesses of public figures/actors associated with Harry Potter, so realistic political or public figure deepfake is present.\"}",
+      "outputSha256": "17c4e13c68b24a92dc88ed2ed88a84cc4460ba428235e100008f401e33309f84",
+      "usage": {
+        "inputTokens": 69634,
+        "cachedInputTokens": 44288,
+        "outputTokens": 962,
+        "reasoningOutputTokens": 318
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-BwIaEb5vGDo",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "661d8cec8c9f448cf597c4f0fed8530bbafd18b74cac5a12997d397424f1d1e8",
+      "startedAt": "2026-07-10T16:58:00.468Z",
+      "durationMs": 28583.12525,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-BwIaEb5vGDo\",\"contentSha256\":\"0c500e91711a6ec9cbf3bb8ad1f498f04f9de23b460d0cc0c9f10ebdc32de47f\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The ordered frames show a non-graphic, playful Star Wars-themed scene with a Mandalorian-style helmet, Grogu/Baby Yoda, and an unidentified woman. There is no gore or severe injury, no accusation of crime or misconduct, and no minor involved in a sensitive incident. The media appears stylized or synthetic, but no recognizable real politician or public figure is depicted or impersonated.\"}",
+      "outputSha256": "569b70a100dc4946a4f76ad9c9a27c433729329f9ba41bc384f2f4393fe4e6e3",
+      "usage": {
+        "inputTokens": 31707,
+        "cachedInputTokens": 2432,
+        "outputTokens": 504,
+        "reasoningOutputTokens": 257
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-EYkw1ELHXq0",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "9a77608656eedd4aa0ba9f701df5a17078d6d9c80ec1f8b48d85febee007b23a",
+      "startedAt": "2026-07-10T16:58:29.052Z",
+      "durationMs": 22309.765417,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-EYkw1ELHXq0\",\"contentSha256\":\"ecd8da65c9d4cc2d0e8dbd49c8c32df17918b0df57c067b148a94226115847e2\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The supplied key frames and OCR show a stylized selfie-style montage of Anakin/Padme in fictional Star Wars settings, including battle scenes and intimate scenes, with no visible gore, open injury, or graphic death, so graphic violence is absent. There is no serious accusation of crime, violence, or misconduct directed at a real person; the captions are personal/status-style statements, so unsupported allegation is absent. No identifiable minor is shown participating in violence, crime, exploitation, abuse, or severe emergency, so minor in sensitive incident is absent. The visuals appear synthetic/staged rather than authentic footage, and they use recognizable likenesses associated with public figures/actors from Star Wars, so realistic political or public figure deepfake is present.\"}",
+      "outputSha256": "29bd795d7f56dd4d97c623bee468bc2197f4d4009fbaa2f29acf710815ef144b",
+      "usage": {
+        "inputTokens": 33351,
+        "cachedInputTokens": 13184,
+        "outputTokens": 625,
+        "reasoningOutputTokens": 314
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-J6tw2l128YE",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "2dee5c3671ca0771432349243a3136b425cffb388716b2dc2a063a611f171b34",
+      "startedAt": "2026-07-10T16:58:51.362Z",
+      "durationMs": 19242.572667,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-J6tw2l128YE\",\"contentSha256\":\"0add34915f9235de87c6d9d3426fb03b2d0461b3e80dd0b488080af337531750\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The supplied key frames show stylized black-and-white scenes with recognizable Harry Potter film character likenesses in implausible staged situations, indicating synthetic or impersonated depictions of public figures/actors, so realisticPoliticalOrPublicFigureDeepfake is present. No frame shows gore, severe injury, dismemberment, or graphic death, so graphicViolence is absent. The packet shows no accusation text or audio about crime or misconduct, so unsupportedAllegation is absent. Although one young-looking character appears, the frames do not show violence, abuse, exploitation, crime, or severe emergency involving an identifiable minor, so minorInSensitiveIncident is absent.\"}",
+      "outputSha256": "ceb51f704dfb9601c732b481bb0e90562a947c4c45e531cd8ef2c2055c56ea62",
+      "usage": {
+        "inputTokens": 33353,
+        "cachedInputTokens": 2432,
+        "outputTokens": 588,
+        "reasoningOutputTokens": 298
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-V-xIvJs0Jbo",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "ff2f0c1beb9e45c947a8abf818dd21450d753bedd192d307df53a6f3daa02098",
+      "startedAt": "2026-07-10T16:59:10.605Z",
+      "durationMs": 30429.2305,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-V-xIvJs0Jbo\",\"contentSha256\":\"e060a47731e4bb1b08067218929b75120929b968750cd8693485cbe938822e74\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\",\"source-policy-metadata\"],\"reason\":\"Key frames and ASR show a non-graphic parody scene in a Harry Potter setting with a recognizable Donald Trump likeness inserted into staged fictional footage, which supports realistic_political_or_public_figure_deepfake as present. No frame shows gore, severe injury, or graphic death, so graphic_violence is absent. The dialogue contains insults and comedic lines about a rat, dog, and characters, but no serious unsupported accusation of crime, violence, or misconduct, so unsupported_allegation is absent. Although the scene includes young Harry Potter characters, the supplied frames and transcript do not show an identifiable minor participating in violence, crime, exploitation, abuse, or a severe emergency, so minor_in_sensitive_incident is absent.\"}",
+      "outputSha256": "2d1b8172748519ae929c899c388984c993072465b1dd94febe8eeb7c13107be9",
+      "usage": {
+        "inputTokens": 70552,
+        "cachedInputTokens": 43776,
+        "outputTokens": 1033,
+        "reasoningOutputTokens": 389
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-WkEyab1jINA",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "a1e801587bdf9ad2816086330778cfc9e4a58c04bbfdd398fce4ef3c7fef9ee0",
+      "startedAt": "2026-07-10T16:59:41.034Z",
+      "durationMs": 31631.791,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-WkEyab1jINA\",\"contentSha256\":\"89a4c8e0d517bc828748b868c8a3758f25c69ab1802254cec428da1e16529270\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The key frames show a recognizable depiction of Donald Trump composited into Harry Potter scenes, so realistic_political_or_public_figure_deepfake is present. No frame shows gore, dismemberment, or graphic injury, so graphic_violence is absent. The OCR and ASR show comic dialogue and insults but no serious unsupported accusation of crime or misconduct, so unsupported_allegation is absent. Several school-age characters appear, but the supplied frames and transcript do not show them participating in violence, crime, exploitation, abuse, or a severe emergency, so minor_in_sensitive_incident is absent.\"}",
+      "outputSha256": "dfbb77996edf6580be30054c15dba5e512154c336d30dfe93737134dfef37613",
+      "usage": {
+        "inputTokens": 70848,
+        "cachedInputTokens": 33536,
+        "outputTokens": 1132,
+        "reasoningOutputTokens": 447
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-XPKBwhDPxk0",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "eba8a3794a96c036e205b23f8b7da131978fda0ce4764be67b0efffb6a9a5b7a",
+      "startedAt": "2026-07-10T17:00:12.666Z",
+      "durationMs": 42834.685,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-XPKBwhDPxk0\",\"contentSha256\":\"9a0d618a504dc4765cb5f2e047fd4f940205b1d60eb371cea70a8094a26220d9\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"unknown\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\",\"source-policy-metadata\"],\"reason\":\"The ordered frames show stylized sci-fi armored characters and title/end-card graphics, with no visible gore, severe injury, minors, or recognizable real public figures. The depicted characters appear fictional rather than a real politician or celebrity. Unsupported allegation remains unknown because the packet here does not provide the actual OCR/ASR text content needed to rule out or confirm any spoken or written accusation.\"}",
+      "outputSha256": "7a297771a401a68c412922961aab0a08ee1914de61ace5b37db85309a96cf1aa",
+      "usage": {
+        "inputTokens": 33360,
+        "cachedInputTokens": 13184,
+        "outputTokens": 745,
+        "reasoningOutputTokens": 502
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-fj6CXk2KTIs",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "cdd8e23b30a27eda3f8928a0d51f625390494c1d9311ed366207881dde5e6c6f",
+      "startedAt": "2026-07-10T17:00:55.502Z",
+      "durationMs": 25532.726334,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-fj6CXk2KTIs\",\"contentSha256\":\"842ca7347b6d4fd35e32c71565fcb1d317f978aec625d2c6067bd53141b052dd\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"absent\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The key frames show a non-graphic transformation comparison between Marvel footage and AI-made imitation content labeled 'mine with Ai.' No gore, severe injury, crime allegation, or minor in a sensitive incident is shown. The synthetic side imitates Iron Man-style scenes, but the supplied evidence does not show a clearly recognizable real public figure being synthetically depicted or impersonated; the authentic Marvel actor appears in film footage, while the AI side shows a different person-like figure rather than a clear Robert Downey Jr. deepfake.\"}",
+      "outputSha256": "54f4531bc65c854fdc86b5c9c8acf53132b53ecbcf38c8c2ee2fec72a80c49f7",
+      "usage": {
+        "inputTokens": 35144,
+        "cachedInputTokens": 2432,
+        "outputTokens": 706,
+        "reasoningOutputTokens": 441
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-n9kD935iROw",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "6496406473c14c312a0f0cb3a48ed84ebd82e0e946a6078e4314cb42f3c367a0",
+      "startedAt": "2026-07-10T17:01:21.035Z",
+      "durationMs": 32154.251167,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-n9kD935iROw\",\"contentSha256\":\"5a59e6927e5265ff2272d9c538446f7f4585a47949785be19653debca63b855c\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"unknown\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\"],\"reason\":\"The six key frames show a wounded-looking but non-graphic adult male in a dark vehicle-like setting, with no visible gore, dismemberment, death imagery, minors, or criminal/misconduct allegations in the visuals, OCR, or ASR. The face appears recognizable as a real public figure/actor likeness from film footage, but the supplied packet does not let me reliably determine whether this is authentic footage, simple redub/parody, or synthetic alteration, so deepfake status remains unknown.\"}",
+      "outputSha256": "fddb868a1ade270297cfb80abe4771ec1d109c34bd1a88f74f8801d424b6bfe6",
+      "usage": {
+        "inputTokens": 69392,
+        "cachedInputTokens": 44288,
+        "outputTokens": 1031,
+        "reasoningOutputTokens": 462
+      },
+      "error": null
+    },
+    {
+      "caseId": "light-youtube-oA7rziyGv8s",
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "promptSha256": "235c0addaf3328d0d05bfb53e2c3455c07b60ba0da4db0a7b52b6aff70c5a113",
+      "startedAt": "2026-07-10T17:01:53.189Z",
+      "durationMs": 30208.956958,
+      "outcome": "returned",
+      "rawOutput": "{\"candidateId\":\"light-youtube-oA7rziyGv8s\",\"contentSha256\":\"3e4b7ea026b323a1cbcd957bff6e90f9ae8c852022aa4dc89b61f69a9792f287\",\"signals\":{\"graphicViolence\":\"absent\",\"unsupportedAllegation\":\"absent\",\"minorInSensitiveIncident\":\"absent\",\"realisticPoliticalOrPublicFigureDeepfake\":\"present\"},\"evidenceArtifactIds\":[\"source-key-frame-01\",\"source-key-frame-02\",\"source-key-frame-03\",\"source-key-frame-04\",\"source-key-frame-05\",\"source-key-frame-06\",\"source-policy-ocr\",\"source-policy-asr\",\"source-policy-metadata\"],\"reason\":\"Key frames, OCR, and ASR show a non-graphic synthetic Star Wars-style council skit with no visible injury, crime, abuse, or emergency. The spoken line about someone not having a 'bad influence' is a joking, non-specific remark rather than a serious unsupported accusation. No identifiable minor is involved in any sensitive incident. The video appears AI-generated, and it includes recognizable public-figure likenesses from the Star Wars films, so realistic public-figure deepfake is present.\"}",
+      "outputSha256": "53b72af9a87a126978d2f237a7d3dae4db1711d6aad32bf57dba93e2dcc86279",
+      "usage": {
+        "inputTokens": 69644,
+        "cachedInputTokens": 44288,
+        "outputTokens": 1028,
+        "reasoningOutputTokens": 392
+      },
+      "error": null
+    }
+  ],
+  "rawEvidenceSha256": "c04f3164b34be53e1e21adab192db67e19c3fda8035477515c86ed39bc6afa62"
+}

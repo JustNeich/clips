@@ -1,0 +1,110 @@
+{
+  "schemaVersion": "project-kings-replay-evidence-v1",
+  "scenarioId": "historical-july-9",
+  "runId": "pk-replay-historical-july-9-2026-07-09-v1",
+  "runIdKind": "deterministic-business-alias",
+  "logicalDate": "2026-07-09",
+  "clock": {
+    "startedAt": "2026-07-11T10:00:00.000Z",
+    "finishedAt": "2026-07-11T10:00:45.000Z",
+    "logicalDurationMs": 45000,
+    "ticks": 45
+  },
+  "sourceEvidence": {
+    "baselineFile": "docs/project-kings-production-pipeline-v1/evidence/baseline-2026-07-09.json",
+    "baselineFileSha256": "d4b5d5db64ac51300baa0f0532d88dcc511e0df043aa567beae09665adbb8eee",
+    "sourceSessionId": "2d727ac3-f1f8-4a8b-8f80-ea5d9325d2c5",
+    "rootTranscriptSha256": "4d8063bd531f58fed41b7048f25051a2ca845734778e1612cad48de744a4aea9",
+    "subagentTranscriptSetSha256": "678169b08545d44bca628f10f56f0e95a90a438ead60854adabfb2580c349ac0",
+    "logicalClockBasis": "one_tick_per_durable_outbox_attempt"
+  },
+  "injections": [
+    {
+      "at": "2026-07-11T10:00:00.000Z",
+      "kind": "historical-input-replay",
+      "detail": "July 9 evidence is replayed through a shadow 3x3 run; upload adapters are absent."
+    }
+  ],
+  "assertions": [
+    {
+      "name": "baseline accepted output",
+      "pass": true,
+      "expected": 2,
+      "actual": 2
+    },
+    {
+      "name": "baseline target",
+      "pass": true,
+      "expected": 9,
+      "actual": 9
+    },
+    {
+      "name": "baseline operator-intensive duration",
+      "pass": true,
+      "expected": 21600000,
+      "actual": 21600000
+    },
+    {
+      "name": "replay created nine logical items",
+      "pass": true,
+      "expected": 9,
+      "actual": 9
+    },
+    {
+      "name": "shadow replay completed",
+      "pass": true,
+      "expected": "completed",
+      "actual": "completed"
+    },
+    {
+      "name": "all nine reached final approval",
+      "pass": true,
+      "expected": 9,
+      "actual": 9
+    },
+    {
+      "name": "no publication identity",
+      "pass": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "zero replay model or polling tokens",
+      "pass": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "zero dead outbox records",
+      "pass": true,
+      "expected": 0,
+      "actual": 0
+    }
+  ],
+  "metrics": {
+    "historical": {
+      "operatorIntensiveWindowMs": 21600000,
+      "logicalTokenEvents": 209829700,
+      "acceptedPublicVideos": 2,
+      "targetVideos": 9,
+      "logicalTokenEventsPerPublicVideo": 106875972
+    },
+    "replay": {
+      "targetItems": 9,
+      "finalApprovedItems": 9,
+      "agentAttempts": 45,
+      "reasoningTokens": 0,
+      "pollingAndModelTokens": 0,
+      "deliveredOutboxEvents": 45,
+      "retriedOutboxEvents": 0,
+      "deadOutboxEvents": 0
+    }
+  },
+  "externalEffects": {
+    "networkRequests": 0,
+    "youtubeUploadRequests": 0,
+    "publicVideosCreated": 0
+  },
+  "outcome": "pass",
+  "evidenceSha256": "5a3b56477b2ed67219a616f904ac3060f737e1c4cdca3ccb76b0b0fcc6834d99"
+}

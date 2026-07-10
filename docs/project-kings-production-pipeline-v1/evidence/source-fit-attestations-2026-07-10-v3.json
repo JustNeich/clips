@@ -1,0 +1,486 @@
+[
+  {
+    "candidateId": "dark-positive-BtDnmx6HRr_",
+    "profileKey": "dark-joy-boy",
+    "sourceUrl": "https://www.instagram.com/reel/BtDnmx6HRr_/",
+    "contentSha256": "45ea01bf3172459c55b6d5e19b2115d5f3b42ce95ab24dc4aa3bb8d66fa12bfb",
+    "profileHash": "4ab92f87f51b7f5bf8636bfd0b52511a4665ffec05c37b260070ae7acb7238d5",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-31e356a81ce6003051734709f3c58229",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "bc768c3c54b7de19307d4ea73247fb149ed87a7ab80a97d2501830f8f58fef66",
+    "artifactSetSha256": "941e47561bbaaba0a8d84cc52f9a0dc63148b3c72e7fddf65f9da91ae94dbf24",
+    "rawOutputSha256": "ed2de7b4a308fd326e4e3704cfb72971ac1a13607be9ed56aced74ae27a6676d",
+    "outputSha256": "ddd427cb0f18aa7932c52fd9a062d86cd1db0cdc8f1642079c0164ab060a9199",
+    "finishedAt": "2026-07-10T12:31:20.200Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "dark-positive-BtDnmx6HRr_",
+      "storyEventId": "event-man-wrestles-and-hugs-tiger",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source matches the exotic-animal close-contact concept: a man and a tiger visibly chase, embrace, and roll together in one continuous interaction. The candidate is not marked as a duplicate by the task's authoritative known-source or known-event lists.",
+      "factualClaims": [
+        {
+          "claim": "The video shows a man and a large tiger in close physical contact with an affectionate payoff.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The clip is a single continuous interaction rather than a compilation or unrelated montage.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source video hash is not listed in packet.task.knownSourceSha256.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The claimed story event is not listed in packet.task.knownStoryEventIds.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "dark-positive-C-0YpsCAODv",
+    "profileKey": "dark-joy-boy",
+    "sourceUrl": "https://www.instagram.com/reel/C-0YpsCAODv/",
+    "contentSha256": "dec174acdfc1b12da01a4a656ad9bec3c7a472296eefd72049b82e0512ece27e",
+    "profileHash": "4ab92f87f51b7f5bf8636bfd0b52511a4665ffec05c37b260070ae7acb7238d5",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-6345e461163f09178ff5d173318e2c56",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "79a6cf046d169f18421d02dbb3a2de348e9e633cc388094144cc482e11713911",
+    "artifactSetSha256": "5c1fc79b769d2f85fb22ad0a1cfbac29fb7a117ce9d46c64361313b41c510895",
+    "rawOutputSha256": "72f2cb99cc008c8c1adfed8103882062451295170f24000899440828547ce35d",
+    "outputSha256": "510d5ae93db8af5ab09497f283eaa6e8bfe66472b3a9d6ca4c81abd6981a177d",
+    "finishedAt": "2026-07-10T12:31:30.720Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "dark-positive-C-0YpsCAODv",
+      "storyEventId": "event-chimpanzee-waves-from-womans-shoulders",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": true,
+      "sourceUsable": true,
+      "reason": "The clip matches the exotic-animal contact concept and the visual claim is supported, but the claimed story event is already listed in the knownStoryEventIds duplicate ledger, so it must be rejected as a duplicate event.",
+      "factualClaims": [
+        {
+          "claim": "A chimpanzee hangs from a woman's shoulders while both smile and wave at the camera.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The candidate uses the story event id event-chimpanzee-waves-from-womans-shoulders.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "dark-positive-C9gLu79MklN",
+    "profileKey": "dark-joy-boy",
+    "sourceUrl": "https://www.instagram.com/reel/C9gLu79MklN/",
+    "contentSha256": "82107e983588a0a45ba3ad69454fa7fa7674e7c83debe5570eaf741857fae102",
+    "profileHash": "4ab92f87f51b7f5bf8636bfd0b52511a4665ffec05c37b260070ae7acb7238d5",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-93c38bfd73d8c6b2e32f44a6ebf93d6e",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "89d58e98a48b8e46067e7b46631d8bb43eb057828e3a6e23ce09857a2b39d9fc",
+    "artifactSetSha256": "0ea5ced31e2b9b378dd9ee218c295c02b4f26ae1ebbf0042358779c31985ff32",
+    "rawOutputSha256": "2d32084b6151f46f715881dbcfe8bde3e2df039b7ee1c5b69cdca923c078ab30",
+    "outputSha256": "9f544ecc83330c17083e667a3313c72ce0eb1f843c94afb6cd57668c4f5e3a3c",
+    "finishedAt": "2026-07-10T12:31:24.196Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "dark-positive-C9gLu79MklN",
+      "storyEventId": "event-owner-feeds-and-plays-with-spider-monkey",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The Reel matches the concept: a person is in close, continuous contact with an exotic animal, specifically a spider monkey, and the visible interaction is feeding/playing with no compilation or off-concept content. The candidate is not marked duplicate by the authoritative known-source or known-event lists.",
+      "factualClaims": [
+        {
+          "claim": "The source shows a hand-raised spider monkey in continuous close contact with an owner.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The interaction is feeding and playful contact rather than a compilation or unrelated animal footage.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The concept requires one continuous visible interaction with an exotic animal, which this source satisfies.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The candidate source SHA is not present in the task's knownSourceSha256 list.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The claimed story event is not present in the task's knownStoryEventIds list.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "dark-positive-CsYa4skNBjP",
+    "profileKey": "dark-joy-boy",
+    "sourceUrl": "https://www.instagram.com/reel/CsYa4skNBjP/",
+    "contentSha256": "89af6f204684fc9304b0a08481c3ae1df7ae9aa11e1a4c656020dc3dc495eef5",
+    "profileHash": "4ab92f87f51b7f5bf8636bfd0b52511a4665ffec05c37b260070ae7acb7238d5",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-e3d1693ca582189d4e9ea9c679334128",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "edd138c76a37c0049c96cfac8ba82f9333db56f880d6ebe01392efef1833d6ee",
+    "artifactSetSha256": "882659dca8592b68119e5433f99d2c977580c352dd2771dd130781b75b00b7fb",
+    "rawOutputSha256": "b69d3bfe078d6ca5dd60d32e3df647dd44690172612d5fc93bc0f5f70f2f4bdb",
+    "outputSha256": "8d9160f1c2643ccddbccfc6e48abe56c6403e9866c7545f7cac7ac45e57dfe76",
+    "finishedAt": "2026-07-10T12:31:34.620Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "dark-positive-CsYa4skNBjP",
+      "storyEventId": "event-man-bottle-feeds-lion",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The Reel matches the channel concept: a man is visibly bottle-feeding a large lion in a close, continuous, emotionally readable interaction. The source is usable, and the task's authoritative duplicate lists do not mark this video hash or story event as already used.",
+      "factualClaims": [
+        {
+          "claim": "The candidate shows a man bottle-feeding a large lion in close contact.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The interaction is continuous and centered on human-animal contact rather than a montage or unrelated footage.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source video hash is not listed in knownSourceSha256.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event is not listed in knownStoryEventIds.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-positive-DW0w8RMjY3Y",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DW0w8RMjY3Y/",
+    "contentSha256": "14c9bacf4d5efcde8137970a94975e71769a8770380eb10c59b5b053e7b27048",
+    "profileHash": "2d4c0437cbf71dfb40263d6ffabda7aa82910b11b7ca686bd7df4fe405b99080",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-0fc772c393eaa2b3f8214480e2633926",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "888c6ec09f412bb52745c5ccee41d68b864fa851ab45122c7a106a48722ed72b",
+    "artifactSetSha256": "9f80b13b5a0607d97158f184e556295696a14abddff724cdee415dfc6279a1dd",
+    "rawOutputSha256": "f4013312fc059b024286d0d3a110fe421bdc62a2c627573dd31e2739b8848ae4",
+    "outputSha256": "22de63d516e3a984bfa699c53d36adfd60a68c54c45b8a36318e61ffa63e2ac2",
+    "finishedAt": "2026-07-10T12:31:40.729Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "cop-positive-DW0w8RMjY3Y",
+      "storyEventId": "event-marysville-drive-through-stop",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": true,
+      "sourceUsable": false,
+      "reason": "The Reel fits the police bodycam/dashcam concept and the visible footage matches the claimed drive-through traffic stop incident. However, the story event is already present in the known-story-event ledger, so this candidate is a duplicate event and not usable for selection.",
+      "factualClaims": [
+        {
+          "claim": "The source is a real Instagram Reel with SHA-256 14c9bacf4d5efcde8137970a94975e71769a8770380eb10c59b5b053e7b27048.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The footage shows a continuous visible police incident involving a drive-through traffic stop.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The candidate claims story event id event-marysville-drive-through-stop.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event is already in the known story event list.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-positive-DWwSVVOjMqO",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DWwSVVOjMqO/",
+    "contentSha256": "0e8f65beb75324d243eb59832b80227286d501db4b4815e682bb14874d03b95e",
+    "profileHash": "2d4c0437cbf71dfb40263d6ffabda7aa82910b11b7ca686bd7df4fe405b99080",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-35dc37acb90445fbb5cad2d0397a1543",
+    "model": "gpt-5.4",
+    "reasoningLevel": "low",
+    "promptSha256": "171e4f23492e7f6eb375a10ffba46646c80e0f4a0dd6be802915cc16c27d3e25",
+    "artifactSetSha256": "72ec86ade0885f51415aff9edb4e26792e993e6c09fb309802244e8ca67d2d04",
+    "rawOutputSha256": "2218f2311c187dab0255d12f463e271b0cf019c1f5cae7f341a7e251bddc69c3",
+    "outputSha256": "beb6dd22792e91ee39eca8ceaad7d05aadef451cd83712c2c8fd56aa1dc8a9bd",
+    "finishedAt": "2026-07-10T12:32:04.772Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "cop-positive-DWwSVVOjMqO",
+      "storyEventId": "event-farmington-street-race-burning-car-rescue",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source fits the channel concept: it shows a real US police incident with visible bodycam/dashcam-style footage, a street-race crash, a burning vehicle, and an apparent rescue outcome. The claimed event matches the source metadata and key frames. The candidate source hash does not appear in the task knownSourceSha256 list, and the claimed story event id does not appear in the task knownStoryEventIds list, so there is no duplicate under the explicit ledger rules.",
+      "factualClaims": [
+        {
+          "claim": "The footage matches the concept of visible US police incident footage with a concrete outcome.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The claimed story event is event-farmington-street-race-burning-car-rescue.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "concept-contract"
+          ]
+        },
+        {
+          "claim": "The candidate source is not a duplicate video under the task ledger because its source hash is absent from knownSourceSha256.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The candidate source is not a duplicate event under the task ledger because its story event id is absent from knownStoryEventIds.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-positive-DXOzkCdjMue",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DXOzkCdjMue/",
+    "contentSha256": "a3bb5e65330abe53850dfefdb4dba04bb2d53b56610d0e1fa8bfe1112ac35da7",
+    "profileHash": "2d4c0437cbf71dfb40263d6ffabda7aa82910b11b7ca686bd7df4fe405b99080",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-948379d7751b1caa83f12bf3f05d4b76",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "500975c0ec691b4d40cfac84bbe59ee256f7540f3467983a5560bc49d00b2be3",
+    "artifactSetSha256": "0f23a698921fef6c090e739622cfeaa2f960285c6117c42863daa0bf1abf01d8",
+    "rawOutputSha256": "e0978d7ae6b12e2663556c64a4f9f5d59823311fc525e70f93a6230f5794ccb3",
+    "outputSha256": "64ace81d73ad34fa42d59c7dbe6edebb09b20a78b011f42cfafea959487ef5c6",
+    "finishedAt": "2026-07-10T12:31:48.197Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "cop-positive-DXOzkCdjMue",
+      "storyEventId": "event-domestic-violence-suspect-jumps-moving-car",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source matches the channel boundary: it is real police dashcam/bodycam-style footage, and the visible action is a suspect jumping onto a moving vehicle while fleeing police. The candidate source hash is not listed in knownSourceSha256, and the claimed story event is not listed in knownStoryEventIds, so neither duplicate gate is triggered.",
+      "factualClaims": [
+        {
+          "claim": "The source is an Instagram Reel in the police bodycam/dashcam incident category.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The footage shows a suspect clinging to or jumping onto a moving car while fleeing police.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The candidate is not a duplicate video under the supplied duplicate ledger.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The candidate is not a duplicate story event under the supplied duplicate ledger.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract",
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-positive-DXUPExpjCs2",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DXUPExpjCs2/",
+    "contentSha256": "b26e2f107d94290ecc1283d2f33eb001484ec04f77ab7de983e99a3e1a4512ea",
+    "profileHash": "2d4c0437cbf71dfb40263d6ffabda7aa82910b11b7ca686bd7df4fe405b99080",
+    "liveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+    "agentAttemptId": "source-fit-128fa83ab4da6bf2f7152b7703bd6ca2",
+    "model": "gpt-5.4-mini",
+    "reasoningLevel": "low",
+    "promptSha256": "1599666f1be00e54ed7ee6607ac423414418fb8643ff491fa3d4b9b5b1ae9029",
+    "artifactSetSha256": "3f0bae96b33619d1758efa47d9357225627406592a381aff34ac06e129ed7aad",
+    "rawOutputSha256": "94f60e12bb5868c8d7bbf82039c12f0d82413f6962bca7f34a2e015a531222a6",
+    "outputSha256": "3a0de483a0989162bf003f7261e5fcc3b55119909bdda2d36c4f424cf8df88b4",
+    "finishedAt": "2026-07-10T12:31:56.515Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "cop-positive-DXUPExpjCs2",
+      "storyEventId": "event-maryland-troopers-infant-rescue",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source matches the channel boundary: real US police bodycam footage with a visible rescue outcome. Metadata and key frames support the claim that troopers are urgently helping a choking infant. The source hash is not in the known duplicate ledger, and the claimed story event is not in the known story-event duplicate list.",
+      "factualClaims": [
+        {
+          "claim": "The reel shows real police bodycam footage from an Instagram source.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "Maryland troopers are visibly providing urgent aid to a choking infant.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The footage contains a visible rescue outcome rather than commentary or a static scene.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  }
+]

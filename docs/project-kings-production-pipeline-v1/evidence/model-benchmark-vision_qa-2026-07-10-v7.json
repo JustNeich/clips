@@ -1,0 +1,440 @@
+{
+  "schemaVersion": "project-kings-model-benchmark-evidence-v1",
+  "benchmarkVersion": "project-kings-stage-models-2026-07-10-v7",
+  "stageRole": "vision_qa",
+  "createdAt": "2026-07-10T11:36:43.702Z",
+  "bounds": {
+    "maxCases": 120,
+    "maxCandidates": 12,
+    "maxExecutions": 240,
+    "actualExecutions": 9
+  },
+  "dataset": {
+    "datasetId": "project-kings-vision-qa",
+    "datasetVersion": "v3",
+    "datasetSha256": "32f78450a91dba76663f7d91ced5084c48632bface7b0d2c022fdb3454986fce",
+    "promptSetSha256": "c5360f50ffca6f6897db01cc4e886e79eef03dea056d276372a65a8967be56ec",
+    "outputSchemaSha256": "3a45a226d7654b48996e88bf4fa89b4b8ef4e721c527cf9eb701875ffe458bd7",
+    "sampleSize": 3
+  },
+  "qualityEvaluator": {
+    "evaluatorId": "project-kings-stage-quality",
+    "evaluatorVersion": "v1",
+    "implementationSha256": "f11bc8992e22b02971a00487c4fb79637c9ae54a44679baeccfeddb313c8951f",
+    "configSha256": "9d8f31faf4b28846f6b02e32f57cdbc66652e28f9e9edaedbce5bfbd38beee57"
+  },
+  "executionContract": {
+    "registrySha256": "4bd1cb98b553b54cb856f9841c358ea02e8c05e8c00284c8ad9cfa3af55ef1a7",
+    "policySha256": "8b6c625bbce10409e3cf94bf03a9fb66df1bced32cfb65204d1e47de94473d40",
+    "schemaValidationMethod": "strict-production-agent-output-v1",
+    "qualityAggregationMethod": "mean-passed-evaluator-score-v1",
+    "p95Method": "nearest-rank-p95-v1",
+    "costMethod": "uncached-input-plus-cached-input-plus-total-output-v1",
+    "reasoningTokensDoubleCounted": false
+  },
+  "pricing": [
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 18.75,
+      "cachedInputPerMillionTokens": 1.875,
+      "outputPerMillionTokens": 113,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10.json",
+      "verifiedAt": "2026-07-10T10:25:00.000Z",
+      "sourceSha256": "8eecae97c60246ccdfe6acc3c3b17071131ca2a2ef3104d866d427933a11638c"
+    },
+    {
+      "routeId": "codex:gpt-5.4",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 62.5,
+      "cachedInputPerMillionTokens": 6.25,
+      "outputPerMillionTokens": 375,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10.json",
+      "verifiedAt": "2026-07-10T10:25:00.000Z",
+      "sourceSha256": "8eecae97c60246ccdfe6acc3c3b17071131ca2a2ef3104d866d427933a11638c"
+    }
+  ],
+  "candidates": [
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "provider": "codex",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "low",
+      "samples": [
+        {
+          "caseId": "vision-clean",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "f5524fc8086e788bd86f88f98b2a09047713920a045e0ea9860a2a3d904f60ad",
+          "startedAt": "2026-07-10T11:32:41.298Z",
+          "durationMs": 13439.521833,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "defects=0",
+              "defectCodes=none",
+              "conceptMatch=true",
+              "foreignCaptionsVisible=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 55167,
+            "cachedInputTokens": 27904,
+            "outputTokens": 452,
+            "reasoningOutputTokens": 161
+          },
+          "cost": 0.61457725,
+          "costUnit": "codex_credits",
+          "outputSha256": "2495ca10aa54cfb904a378183f392c53541cc1b18b6bd8441e7aa94946051412",
+          "error": null
+        },
+        {
+          "caseId": "vision-hardsub",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "a1d32b695891ea6c6d5de77f3cac19bd754ab9f475fccc578eb3c9aeac05f22b",
+          "startedAt": "2026-07-10T11:32:54.738Z",
+          "durationMs": 16505.061541,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "defects=1",
+              "defectCodes=foreign_captions",
+              "conceptMatch=true",
+              "foreignCaptionsVisible=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 51057,
+            "cachedInputTokens": 36096,
+            "outputTokens": 656,
+            "reasoningOutputTokens": 349
+          },
+          "cost": 0.42232675,
+          "costUnit": "codex_credits",
+          "outputSha256": "3522447cd2cdd7dec2a1aacd1eb4802f491f2158d9e98fbfb3c1b4600628107d",
+          "error": null
+        },
+        {
+          "caseId": "vision-offconcept",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "3bdc263450dd98921eabef64976ab49ca530ca12a1492d70b07dacf349baf5e4",
+          "startedAt": "2026-07-10T11:33:11.243Z",
+          "durationMs": 14359.0385,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "defects=4",
+              "defectCodes=concept_mismatch,missing_payoff,main_event_lost,cta",
+              "conceptMatch=false",
+              "foreignCaptionsVisible=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24322,
+            "cachedInputTokens": 2432,
+            "outputTokens": 761,
+            "reasoningOutputTokens": 417
+          },
+          "cost": 0.5009905,
+          "costUnit": "codex_credits",
+          "outputSha256": "435a2de619d7fc506a6d137cfd92addb67531b10eba9e085a2c1eb713dab0430",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 3,
+        "schemaSuccessRate": 1,
+        "qualityScore": 1,
+        "qualityPassRate": 1,
+        "p95LatencyMs": 16505.061541,
+        "meanCost": 0.5126315,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": true,
+        "selectorBenchmark": {
+          "benchmarkVersion": "project-kings-stage-models-2026-07-10-v7",
+          "routeId": "codex:gpt-5.4-mini",
+          "reasoningEffort": "low",
+          "sampleSize": 3,
+          "qualityScore": 1,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 16505.061541,
+          "meanCost": 0.5126315,
+          "costUnit": "codex_credits"
+        }
+      }
+    },
+    {
+      "routeId": "codex:gpt-5.4",
+      "provider": "codex",
+      "model": "gpt-5.4",
+      "reasoningEffort": "low",
+      "samples": [
+        {
+          "caseId": "vision-clean",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "f5524fc8086e788bd86f88f98b2a09047713920a045e0ea9860a2a3d904f60ad",
+          "startedAt": "2026-07-10T11:33:25.603Z",
+          "durationMs": 30800.131292,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "defects=0",
+              "defectCodes=none",
+              "conceptMatch=true",
+              "foreignCaptionsVisible=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 111227,
+            "cachedInputTokens": 92160,
+            "outputTokens": 991,
+            "reasoningOutputTokens": 200
+          },
+          "cost": 2.1393125,
+          "costUnit": "codex_credits",
+          "outputSha256": "2495ca10aa54cfb904a378183f392c53541cc1b18b6bd8441e7aa94946051412",
+          "error": null
+        },
+        {
+          "caseId": "vision-hardsub",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "a1d32b695891ea6c6d5de77f3cac19bd754ab9f475fccc578eb3c9aeac05f22b",
+          "startedAt": "2026-07-10T11:33:56.403Z",
+          "durationMs": 36983.285625,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "defects=3",
+              "defectCodes=concept_mismatch,foreign_captions,main_event_lost",
+              "conceptMatch=false",
+              "foreignCaptionsVisible=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 89495,
+            "cachedInputTokens": 56960,
+            "outputTokens": 1132,
+            "reasoningOutputTokens": 436
+          },
+          "cost": 2.8139375,
+          "costUnit": "codex_credits",
+          "outputSha256": "3d9f2546027e1188f70399fc964abb93d3cf6baa5cc5d146761e29138775ce21",
+          "error": null
+        },
+        {
+          "caseId": "vision-offconcept",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "3bdc263450dd98921eabef64976ab49ca530ca12a1492d70b07dacf349baf5e4",
+          "startedAt": "2026-07-10T11:34:33.387Z",
+          "durationMs": 27336.187208,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "defects=4",
+              "defectCodes=concept_mismatch,foreign_captions,cta,donor_ui",
+              "conceptMatch=false",
+              "foreignCaptionsVisible=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 55789,
+            "cachedInputTokens": 15616,
+            "outputTokens": 1082,
+            "reasoningOutputTokens": 437
+          },
+          "cost": 3.0141625,
+          "costUnit": "codex_credits",
+          "outputSha256": "18ca5ac0a1d3ef0bddb0153fe27bbc33a994c1372b1a06f054972c9d8dad68f0",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 3,
+        "schemaSuccessRate": 1,
+        "qualityScore": 1,
+        "qualityPassRate": 1,
+        "p95LatencyMs": 36983.285625,
+        "meanCost": 2.655804166667,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": true,
+        "selectorBenchmark": {
+          "benchmarkVersion": "project-kings-stage-models-2026-07-10-v7",
+          "routeId": "codex:gpt-5.4",
+          "reasoningEffort": "low",
+          "sampleSize": 3,
+          "qualityScore": 1,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 36983.285625,
+          "meanCost": 2.655804166667,
+          "costUnit": "codex_credits"
+        }
+      }
+    },
+    {
+      "routeId": "codex:gpt-5.4",
+      "provider": "codex",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "samples": [
+        {
+          "caseId": "vision-clean",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "f5524fc8086e788bd86f88f98b2a09047713920a045e0ea9860a2a3d904f60ad",
+          "startedAt": "2026-07-10T11:35:00.723Z",
+          "durationMs": 25896.516667,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "defects=0",
+              "defectCodes=none",
+              "conceptMatch=true",
+              "foreignCaptionsVisible=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 89323,
+            "cachedInputTokens": 64128,
+            "outputTokens": 855,
+            "reasoningOutputTokens": 208
+          },
+          "cost": 2.2961125,
+          "costUnit": "codex_credits",
+          "outputSha256": "2495ca10aa54cfb904a378183f392c53541cc1b18b6bd8441e7aa94946051412",
+          "error": null
+        },
+        {
+          "caseId": "vision-hardsub",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "a1d32b695891ea6c6d5de77f3cac19bd754ab9f475fccc578eb3c9aeac05f22b",
+          "startedAt": "2026-07-10T11:35:26.620Z",
+          "durationMs": 32797.93425,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "defects=1",
+              "defectCodes=foreign_captions",
+              "conceptMatch=true",
+              "foreignCaptionsVisible=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 81922,
+            "cachedInputTokens": 30848,
+            "outputTokens": 1166,
+            "reasoningOutputTokens": 463
+          },
+          "cost": 3.822175,
+          "costUnit": "codex_credits",
+          "outputSha256": "6f5035623c854bc6c4e50f5c803a2e298d19c8d1fb32a13b588e90078e37939e",
+          "error": null
+        },
+        {
+          "caseId": "vision-offconcept",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "3bdc263450dd98921eabef64976ab49ca530ca12a1492d70b07dacf349baf5e4",
+          "startedAt": "2026-07-10T11:35:59.418Z",
+          "durationMs": 44283.79475,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "defects=4",
+              "defectCodes=concept_mismatch,donor_ui,cta,foreign_captions",
+              "conceptMatch=false",
+              "foreignCaptionsVisible=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 83710,
+            "cachedInputTokens": 64128,
+            "outputTokens": 1941,
+            "reasoningOutputTokens": 1139
+          },
+          "cost": 2.35255,
+          "costUnit": "codex_credits",
+          "outputSha256": "d593cd23d5e0c331d30cfd39819f7d022a7bdc66b6c8aaf678237a71cc652198",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 3,
+        "schemaSuccessRate": 1,
+        "qualityScore": 1,
+        "qualityPassRate": 1,
+        "p95LatencyMs": 44283.79475,
+        "meanCost": 2.8236125,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": true,
+        "selectorBenchmark": {
+          "benchmarkVersion": "project-kings-stage-models-2026-07-10-v7",
+          "routeId": "codex:gpt-5.4",
+          "reasoningEffort": "medium",
+          "sampleSize": 3,
+          "qualityScore": 1,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 44283.79475,
+          "meanCost": 2.8236125,
+          "costUnit": "codex_credits"
+        }
+      }
+    }
+  ],
+  "selection": {
+    "primary": {
+      "routeId": "codex:gpt-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "low"
+    },
+    "fallback": {
+      "routeId": "codex:gpt-5.4",
+      "model": "gpt-5.4",
+      "reasoningEffort": "low"
+    }
+  },
+  "selectionError": null,
+  "selectionRejections": [],
+  "evidenceSha256": "8b212c97e57ad38b80f7b2379743b7f799f33f326727658a6c9c6cc53d5f7c17"
+}

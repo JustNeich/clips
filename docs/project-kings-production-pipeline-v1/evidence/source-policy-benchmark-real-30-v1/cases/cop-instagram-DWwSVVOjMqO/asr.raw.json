@@ -1,0 +1,162 @@
+{
+  "status": "speech_detected",
+  "model": "tiny",
+  "language": "en",
+  "text": "The party Lay on the ground, lay on the ground. Hey, you guys need to go back to your cars unless you saw what happened. I did! I was coming behind there, man! Okay, well, I wasn't aware of that, okay? That's how they did. Go wait in there. I will go. We will send somebody to talk to you. Ma'am, can we talk to you? Yeah, thanks. So you were the one in the Red Super? Yeah. But you guys behind your back, can you please? Yeah, I was so racing. Is that you? What? Is that him? Yeah.",
+  "segments": [
+    {
+      "start": 0,
+      "end": 16.36,
+      "text": "The",
+      "noSpeechProbability": 0.3531733751296997,
+      "averageLogProbability": -3.1173596382141113
+    },
+    {
+      "start": 16.36,
+      "end": 28.1,
+      "text": "party",
+      "noSpeechProbability": 0.3531733751296997,
+      "averageLogProbability": -3.1173596382141113
+    },
+    {
+      "start": 28.1,
+      "end": 30.1,
+      "text": "Lay on the ground, lay on the ground.",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 30.1,
+      "end": 32.1,
+      "text": "Hey, you guys need to go back to your cars",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 32.1,
+      "end": 33.1,
+      "text": "unless you saw what happened.",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 33.1,
+      "end": 34.1,
+      "text": "I did!",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 34.1,
+      "end": 36.1,
+      "text": "I was coming behind there, man!",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 36.1,
+      "end": 38.1,
+      "text": "Okay, well, I wasn't aware of that, okay?",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 38.1,
+      "end": 39.1,
+      "text": "That's how they did.",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 39.1,
+      "end": 40.1,
+      "text": "Go wait in there.",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 40.1,
+      "end": 41.1,
+      "text": "I will go.",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 41.1,
+      "end": 42.1,
+      "text": "We will send somebody to talk to you.",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 42.1,
+      "end": 43.1,
+      "text": "Ma'am, can we talk to you?",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 43.1,
+      "end": 44.1,
+      "text": "Yeah, thanks.",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 44.1,
+      "end": 45.1,
+      "text": "So you were the one in the Red Super?",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 45.1,
+      "end": 46.1,
+      "text": "Yeah.",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 46.1,
+      "end": 47.1,
+      "text": "But you guys behind your back, can you please?",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 47.1,
+      "end": 48.1,
+      "text": "Yeah, I was so racing.",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 48.1,
+      "end": 49.1,
+      "text": "Is that you?",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 49.1,
+      "end": 50.1,
+      "text": "What?",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 50.1,
+      "end": 51.1,
+      "text": "Is that him?",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    },
+    {
+      "start": 51.1,
+      "end": 52.1,
+      "text": "Yeah.",
+      "noSpeechProbability": 0.2281676083803177,
+      "averageLogProbability": -0.318701611008755
+    }
+  ]
+}

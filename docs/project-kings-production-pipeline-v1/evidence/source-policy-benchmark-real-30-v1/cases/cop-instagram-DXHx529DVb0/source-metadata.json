@@ -1,0 +1,130 @@
+{
+  "schemaVersion": "project-kings-source-policy-case-metadata-v1",
+  "caseId": "cop-instagram-DXHx529DVb0",
+  "profileKey": "copscopes-x2e",
+  "sourceUrl": "https://www.instagram.com/reel/DXHx529DVb0/",
+  "mediaRelativePath": ".data/project-kings/source-candidates/cop/instagram/DXHx529DVb0.mp4",
+  "contentSha256": "b687a8fcf77ebfb7d44e88239a652acebd22f92f9f2a49d82e9385eb989b5dbf",
+  "durationSec": 21.5,
+  "container": "mov,mp4,m4a,3gp,3g2,mj2",
+  "audioStreams": [
+    {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_long_name": "AAC (Advanced Audio Coding)",
+      "profile": "LC",
+      "codec_type": "audio",
+      "codec_tag_string": "mp4a",
+      "codec_tag": "0x6134706d",
+      "mime_codec_string": "mp4a.40.2",
+      "sample_fmt": "fltp",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "bits_per_sample": 0,
+      "initial_padding": 0,
+      "id": "0x2",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "time_base": "1/48000",
+      "start_pts": 0,
+      "start_time": "0.000000",
+      "duration_ts": 1031040,
+      "duration": "21.480000",
+      "bit_rate": "115248",
+      "nb_frames": "1008",
+      "extradata_size": 5,
+      "disposition": {
+        "default": 1,
+        "dub": 0,
+        "original": 0,
+        "comment": 0,
+        "lyrics": 0,
+        "karaoke": 0,
+        "forced": 0,
+        "hearing_impaired": 0,
+        "visual_impaired": 0,
+        "clean_effects": 0,
+        "attached_pic": 0,
+        "timed_thumbnails": 0,
+        "non_diegetic": 0,
+        "captions": 0,
+        "descriptions": 0,
+        "metadata": 0,
+        "dependent": 0,
+        "still_image": 0,
+        "multilayer": 0
+      },
+      "tags": {
+        "language": "und",
+        "handler_name": "SoundHandler"
+      }
+    }
+  ],
+  "policyVersion": "project-kings-source-rights-sensitive-policy-v2",
+  "policySha256": "b6664c4364c4a3b172a1f1d653e3d100604e98f5ef1b33857324691fa894eb39",
+  "extraction": {
+    "ffmpegVersion": "ffmpeg version 8.1 Copyright (c) 2000-2026 the FFmpeg developers",
+    "ffprobeVersion": "ffprobe version 8.1 Copyright (c) 2007-2026 the FFmpeg developers",
+    "frameRatios": [
+      0.06,
+      0.235,
+      0.41,
+      0.59,
+      0.765,
+      0.94
+    ],
+    "orderedFrames": [
+      {
+        "artifactId": "source-key-frame-01",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/frames/source-key-frame-01.jpg",
+        "timestampMs": 1290,
+        "sha256": "e1e894c79e33c58423b5be843abbc4caf540d591bf3831f40393ec9c56ae9e5a"
+      },
+      {
+        "artifactId": "source-key-frame-02",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/frames/source-key-frame-02.jpg",
+        "timestampMs": 5052,
+        "sha256": "0670b593bd0ca81a0dde7d57bea7e6236c66a90cc9f89137a93ead343870cbb1"
+      },
+      {
+        "artifactId": "source-key-frame-03",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/frames/source-key-frame-03.jpg",
+        "timestampMs": 8815,
+        "sha256": "19906fdc82948c3a53454383edbe07f1ac49a1e93de8d648e51760372eb3e70d"
+      },
+      {
+        "artifactId": "source-key-frame-04",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/frames/source-key-frame-04.jpg",
+        "timestampMs": 12685,
+        "sha256": "e274f2ec1b6d4170fb53d43a38bfd5ac260ef64603f2fc1f24938e1c520dfa55"
+      },
+      {
+        "artifactId": "source-key-frame-05",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/frames/source-key-frame-05.jpg",
+        "timestampMs": 16448,
+        "sha256": "a43bf8c9b6c9a8a44a7233a7c985bd585df7bde49fbad3e917c9e2be6a084704"
+      },
+      {
+        "artifactId": "source-key-frame-06",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/frames/source-key-frame-06.jpg",
+        "timestampMs": 20210,
+        "sha256": "d6e8df33f875462ffc0211002b3c92061c41d4329183b46a877398ee9f4f8ae4"
+      }
+    ]
+  },
+  "ocr": {
+    "tool": "tesseract 5.5.2",
+    "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/ocr.txt",
+    "sha256": "81d83fbfdac77826e627e5628c851b4e503374604c3e50e37681661043e90407"
+  },
+  "asr": {
+    "tool": "openai-whisper-cli",
+    "model": "tiny",
+    "status": "speech_detected",
+    "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/asr.txt",
+    "sha256": "0d62fc286e0968954a7e3655eb82e0d0fb424d6d9c5c60beb75ce63bf63976b9",
+    "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/cop-instagram-DXHx529DVb0/asr.raw.json",
+    "rawSha256": "a1c6a27d8f9091b828448da87118b09e56bcf9ab9aabc34aed11fc44404a5682"
+  }
+}

@@ -1,0 +1,118 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 0.687s]
+G
+o%
++"
+‘=a
+nN
+J
+I ST)
+—
+———<
+ae
+——
+——
+=<
+—
+~~
+“>
+—2
+eee...
+Pe.
+[source-key-frame-02 @ 2.691s]
+‘
+7
+a
+~
+B
+A,
+—_——sl
+7
+=
+se
+——
+—_
+———
+>
+i
+~
+7
++ Ne
+[source-key-frame-03 @ 4.694s]
+|
+)
+“aH
+a
+ao
+I, =
+9
+—=
+aS
+~—
+'
+——
+—"
+€ +
+=
+—_
+[source-key-frame-04 @ 6.755s]
+Ss
+am
+i
+—-
+—
+=
+a
+ee
+Ba)
+i
+ee
+-
+=e
+a
+~
+“w
+e
+wh
+} selina
+is
+ie
+[source-key-frame-05 @ 8.758s]
+ay
+.
+ers
+=
+——— eS
+——
+4
+Po
+i
+a
+s.)
+apccsininiemesion
+S
+\
+—
+a
+=——
+=
+—_ _-
+Smell =
+af
+a
+AZ)
+é
+[source-key-frame-06 @ 10.762s]
+ae
+\\,
+oe
+a=
++*
+\,
+no?
+eS
+- —
+EE
+ri

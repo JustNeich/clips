@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "retrievedAt": "2026-07-10T10:25:00.000Z",
+  "source": "https://help.openai.com/en/articles/20001106-codex-rate-card-2",
+  "unit": "codex_credits_per_1m_tokens",
+  "rates": {
+    "gpt-5.4": {
+      "input": 62.5,
+      "cachedInput": 6.25,
+      "output": 375
+    },
+    "gpt-5.4-mini": {
+      "input": 18.75,
+      "cachedInput": 1.875,
+      "output": 113
+    }
+  },
+  "note": "The official rate card expresses Codex consumption in credits, not USD. Benchmark evidence therefore records codex_credits and does not invent a cash conversion."
+}

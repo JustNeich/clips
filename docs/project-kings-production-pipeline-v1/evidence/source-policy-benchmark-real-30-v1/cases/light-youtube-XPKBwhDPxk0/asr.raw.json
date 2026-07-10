@@ -1,0 +1,36 @@
+{
+  "status": "speech_detected",
+  "model": "tiny",
+  "language": "en",
+  "text": "Your best-car armor is so polished I can see my own reflection giving me a thumbs-up. This is the way. There appears to be a malfunction. This is the way. This is the way to the repair shop.",
+  "segments": [
+    {
+      "start": 0,
+      "end": 5,
+      "text": "Your best-car armor is so polished I can see my own reflection giving me a thumbs-up.",
+      "noSpeechProbability": 0.1425163447856903,
+      "averageLogProbability": -0.21406643731253489
+    },
+    {
+      "start": 5,
+      "end": 7,
+      "text": "This is the way.",
+      "noSpeechProbability": 0.1425163447856903,
+      "averageLogProbability": -0.21406643731253489
+    },
+    {
+      "start": 7,
+      "end": 9,
+      "text": "There appears to be a malfunction.",
+      "noSpeechProbability": 0.1425163447856903,
+      "averageLogProbability": -0.21406643731253489
+    },
+    {
+      "start": 13,
+      "end": 16,
+      "text": "This is the way. This is the way to the repair shop.",
+      "noSpeechProbability": 0.1425163447856903,
+      "averageLogProbability": -0.21406643731253489
+    }
+  ]
+}

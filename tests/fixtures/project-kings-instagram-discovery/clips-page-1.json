@@ -1,0 +1,40 @@
+{
+  "items": [
+    {
+      "media": {
+        "pk": "10001",
+        "code": "NEW_One-1",
+        "caption": {
+          "text": "  First   line\r\n\r\n\r\nSecond\tline  "
+        },
+        "play_count": "12345",
+        "taken_at": 1783663200
+      }
+    },
+    {
+      "media": {
+        "pk": "10002",
+        "code": "KNOWN1",
+        "caption": {
+          "text": "Already known"
+        },
+        "view_count": 222,
+        "taken_at": "1783663260"
+      }
+    },
+    {
+      "media": {
+        "pk": "10003",
+        "code": "bad shortcode!",
+        "caption": {
+          "text": "Invalid item"
+        }
+      }
+    }
+  ],
+  "paging_info": {
+    "more_available": true,
+    "max_id": "cursor-page-2"
+  },
+  "status": "ok"
+}

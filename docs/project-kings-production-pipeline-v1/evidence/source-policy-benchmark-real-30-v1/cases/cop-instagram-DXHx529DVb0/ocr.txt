@@ -1,0 +1,117 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 1.290s]
+COPSCOPES #
+Police Bodycam Footage
+Trooper receives Medal of Valor after
+stopping fleeing wrong way driver:
+REC
+———
+—
+[ nemeened
+a
+=
+Li" \ \
+man Fe
+[source-key-frame-02 @ 5.052s]
+COPSCOPES #
+Police Bodycam Footage
+Trooper receives Medal of Valor after
+stopping fleeing wrong way driver:
+rep
+ee
+“
+af
+tae
+» «#
+€
+«>
+eae?
+<>
+a
+“es
+F¢
+a>
+ant
+a
+a €
+i
+Set ad
+oe
+,
+a
+e%
+i
+—
+ae
+ee \ oe
+elittii)
+MB
+[source-key-frame-03 @ 8.815s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Trooper receives Medal of Valor after
+stopping fleeing wrong way driver:
+.
+p
+[source-key-frame-04 @ 12.685s]
+COPSCOPES #
+Police Bodycam Footage
+Trooper receives Medal of Valor after
+stopping fleeing wrong way driver:
+Sop
+Pe
+i
+Bi
+ie
+—
+a
+poe
+atte ce
+~<a Oe
+A W\
+a
+ee —
+—
+a
+LEP a dm 3
+[source-key-frame-05 @ 16.448s]
+COPSCOPES #
+Police Bodycam Footage
+=
+Trooper receives Medal of Valor after
+stopping fleeing wrong way driver:
+a
+36
+i
+_——
+= ae 7
+AE fas a
+Share this clip
+[source-key-frame-06 @ 20.210s]
+COPSCOPES #
+Police Bodycam Footage
+Trooper receives Medal of Valor after
+stopping fleeing wrong way driver:
+‘=
+es
+Wa
+a
+ww
+~~
+\ i
+—
+aS
+— et
+ae
+Te
+—Z-
+a=
+Cad
+oo indir
+Ay |
+el
+_ =
+Share this clip

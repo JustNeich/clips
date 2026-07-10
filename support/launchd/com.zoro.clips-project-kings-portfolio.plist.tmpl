@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Source template for the Mac mini/Zoro Project Kings portfolio supervisor.
+  The installer snapshots the standalone daemon into a content-addressed
+  release directory and binds the exact non-secret config hash. The service
+  never executes a mutable repository checkout and never embeds credentials.
+
+  Installation only copies a validated plist to ~/Library/LaunchAgents. It does
+  not load or arm the service. Deliberate activation remains a separate owner
+  action after shadow/live gates have passed.
+-->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.zoro.clips-project-kings-portfolio</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>{{NODE_BIN}}</string>
+      <string>{{DAEMON_RUNTIME}}</string>
+      <string>run</string>
+      <string>--config</string>
+      <string>{{USER_HOME}}/.config/assistant/project-kings-portfolio.env</string>
+      <string>--expected-config-sha256</string>
+      <string>{{CONFIG_SHA256}}</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>{{RUNTIME_DIR}}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+      <key>TZ</key>
+      <string>Europe/Moscow</string>
+    </dict>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+    <key>ExitTimeOut</key>
+    <integer>30</integer>
+    <key>StandardOutPath</key>
+    <string>{{USER_HOME}}/Library/Logs/com.zoro.clips-project-kings-portfolio/stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{USER_HOME}}/Library/Logs/com.zoro.clips-project-kings-portfolio/stderr.log</string>
+  </dict>
+</plist>

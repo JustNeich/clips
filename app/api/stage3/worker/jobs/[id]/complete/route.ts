@@ -18,6 +18,7 @@ import {
   appendStage3JobEvent,
   completeStage3Job,
   getStage3Job,
+  getStage3JobLatestWorkerLease,
   heartbeatStage3Job,
   type Stage3JobRecord
 } from "../../../../../../../lib/stage3-job-store";
@@ -30,6 +31,10 @@ import {
   getRenderExportByStage3JobId
 } from "../../../../../../../lib/publication-store";
 import { touchStage3WorkerHeartbeat } from "../../../../../../../lib/stage3-worker-store";
+import {
+  parseProductionSemanticJobPayloadJson,
+  parseProductionSemanticJobResultJson
+} from "../../../../../../../lib/project-kings/production-semantic-job-contract";
 
 export const runtime = "nodejs";
 
@@ -375,6 +380,33 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       return Response.json({ error: "Stage 3 job not found." }, { status: 404 });
     }
     if (current.status === "completed") {
+      if (current.kind === "production-semantic") {
+        try {
+          const payload = parseProductionSemanticJobPayloadJson(current.payloadJson);
+          if (!current.resultJson?.trim()) throw new Error("Completed semantic job has no resultJson.");
+          parseProductionSemanticJobResultJson(current.resultJson, payload);
+        } catch (error) {
+          return Response.json(
+            {
+              error: error instanceof Error ? error.message : "Stored production semantic completion is invalid.",
+              code: "production_semantic_completion_invalid"
+            },
+            { status: 422 }
+          );
+        }
+        const completedLease = getStage3JobLatestWorkerLease(current.id);
+        if (
+          current.userId !== auth.userId ||
+          !completedLease ||
+          completedLease.workerId !== auth.worker.id ||
+          Date.parse(completedLease.leaseUntil) <= Date.now()
+        ) {
+          return Response.json(
+            { error: "Completed production semantic job is not replayable by this worker." },
+            { status: 409 }
+          );
+        }
+      }
       await recoverCompletedRenderExportIfNeeded(current);
       return Response.json(
         buildStage3JobEnvelope(current, buildCompletedArtifactUrl(current)),
@@ -384,12 +416,24 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     if (current.assignedWorkerId !== auth.worker.id) {
       return Response.json({ error: "Stage 3 job is not leased by this worker." }, { status: 409 });
     }
+    if (current.kind === "production-semantic") {
+      const leaseExpiresAt = current.leaseUntil ? Date.parse(current.leaseUntil) : Number.NaN;
+      if (current.userId !== auth.userId || !Number.isFinite(leaseExpiresAt) || leaseExpiresAt <= Date.now()) {
+        return Response.json({ error: "Production semantic job lease is not active for this worker." }, { status: 409 });
+      }
+    }
     heartbeatStage3Job(id, auth.worker.id, DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS);
     touchStage3WorkerHeartbeat({
       workerId: auth.worker.id
     });
 
     const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
+    if (current.kind === "production-semantic" && !contentType.includes("application/json")) {
+      return Response.json(
+        { error: "Production semantic completion accepts result-only application/json." },
+        { status: 400 }
+      );
+    }
     const contentLength = parseContentLength(request);
     if (contentLength !== null && contentLength > MAX_WORKER_ARTIFACT_BYTES + MAX_WORKER_RESULT_JSON_BYTES) {
       return Response.json({ error: "Stage 3 completion payload is too large." }, { status: 413 });
@@ -483,6 +527,27 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
         }
       } finally {
         await fs.rm(artifactFile.cleanupDir, { recursive: true, force: true }).catch(() => undefined);
+      }
+    }
+
+    if (current.kind === "production-semantic") {
+      if (artifactInput || artifactFile) {
+        return Response.json({ error: "Production semantic jobs must not upload an artifact." }, { status: 400 });
+      }
+      if (!resultJson?.trim()) {
+        return Response.json({ error: "Production semantic jobs require a non-empty resultJson." }, { status: 400 });
+      }
+      try {
+        const payload = parseProductionSemanticJobPayloadJson(current.payloadJson);
+        parseProductionSemanticJobResultJson(resultJson, payload);
+      } catch (error) {
+        return Response.json(
+          {
+            error: error instanceof Error ? error.message : "Production semantic result binding is invalid.",
+            code: "production_semantic_completion_invalid"
+          },
+          { status: 422 }
+        );
       }
     }
 

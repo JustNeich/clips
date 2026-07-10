@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>{{LABEL}}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{NODE_PATH}}</string>
+    <string>{{BUNDLE_PATH}}</string>
+    <string>--instance</string>
+    <string>{{INSTANCE}}</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PROJECT_KINGS_SEMANTIC_WORKER_ENABLED</key>
+    <string>1</string>
+    <key>PROJECT_KINGS_SEMANTIC_WORKER_CONFIG_PATH</key>
+    <string>{{WORKER_CONFIG_PATH}}</string>
+    <key>PROJECT_KINGS_SEMANTIC_CODEX_HOME</key>
+    <string>{{CODEX_HOME}}</string>
+    <key>PROJECT_KINGS_SEMANTIC_ROUTE_MANIFEST_PATH</key>
+    <string>{{ROUTE_MANIFEST_PATH}}</string>
+    <key>PROJECT_KINGS_SEMANTIC_WORK_ROOT</key>
+    <string>{{WORK_ROOT}}</string>
+    <key>PROJECT_KINGS_SEMANTIC_SPOOL_ROOT</key>
+    <string>{{SPOOL_ROOT}}</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>WorkingDirectory</key>
+  <string>{{WORK_ROOT}}</string>
+  <key>StandardOutPath</key>
+  <string>{{STDOUT_PATH}}</string>
+  <key>StandardErrorPath</key>
+  <string>{{STDERR_PATH}}</string>
+</dict>
+</plist>

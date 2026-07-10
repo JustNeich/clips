@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { buildCodexExecArgs } from "../lib/codex-runner";
+import { buildCodexExecArgs, parseCodexExecUsage } from "../lib/codex-runner";
 import { copyCodexExecImagesToDirectory } from "../lib/viral-shorts-worker/executor";
 
 test("Stage 2 Codex exec uses isolated writable cwd for schema and output files", () => {
@@ -56,6 +56,48 @@ test("Codex exec keeps read-only sandbox when no isolated execution cwd is provi
     "/srv/app"
   ]);
   assert.equal(built.args.includes("--add-dir"), false);
+});
+
+test("Codex exec can request JSON usage events without changing the default contract", () => {
+  const built = buildCodexExecArgs({
+    imagePaths: [],
+    outputSchemaPath: "/tmp/schema.json",
+    outputMessagePath: "/tmp/output.json",
+    cwd: "/srv/app",
+    jsonEvents: true,
+    ignoreUserConfig: true,
+    ignoreRules: true
+  });
+
+  assert.ok(built.args.includes("--json"));
+  assert.ok(built.args.includes("--ignore-user-config"));
+  assert.ok(built.args.includes("--ignore-rules"));
+});
+
+test("Codex JSONL usage parser ignores diagnostics and reads turn.completed", () => {
+  assert.deepEqual(
+    parseCodexExecUsage(
+      [
+        "diagnostic line",
+        JSON.stringify({ type: "thread.started", thread_id: "thread-1" }),
+        JSON.stringify({
+          type: "turn.completed",
+          usage: {
+            input_tokens: 120,
+            cached_input_tokens: 80,
+            output_tokens: 20,
+            reasoning_output_tokens: 7
+          }
+        })
+      ].join("\n")
+    ),
+    {
+      inputTokens: 120,
+      cachedInputTokens: 80,
+      outputTokens: 20,
+      reasoningOutputTokens: 7
+    }
+  );
 });
 
 test("Stage 2 copies Codex image inputs into the isolated execution cwd", async () => {

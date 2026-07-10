@@ -1,0 +1,1258 @@
+{
+  "schemaVersion": "project-kings-model-benchmark-evidence-v1",
+  "benchmarkVersion": "project-kings-source_search-real-30-v1",
+  "stageRole": "source_search",
+  "createdAt": "2026-07-10T17:12:56.415Z",
+  "bounds": {
+    "maxCases": 120,
+    "maxCandidates": 12,
+    "maxExecutions": 240,
+    "actualExecutions": 60
+  },
+  "dataset": {
+    "datasetId": "project-kings-source-search-real-30",
+    "datasetVersion": "real-30-v1",
+    "datasetSha256": "b4423597620d52303f28d6d2527e21b94875070aefadacb1d2243ae5ce544710",
+    "promptSetSha256": "26ff2d1f605da6559bcfda31721066cb1924ae070546e64d41453ea860dad2c2",
+    "outputSchemaSha256": "0f54a440b7a72bcff7795027cc8b0e7ec82fc46abe048e5d1af847700f569b67",
+    "sampleSize": 30
+  },
+  "qualityEvaluator": {
+    "evaluatorId": "project-kings-remaining-semantic-real-30",
+    "evaluatorVersion": "v1",
+    "implementationSha256": "7e3631c66107cc1259a4703a188fe551682c58d3eee0a6c069e1473dc09a1546",
+    "configSha256": "bf806b0899b00694465b4941406243d83ac68b1770d3bdfae72b42f89d56d7c3"
+  },
+  "executionContract": {
+    "registrySha256": "4bd1cb98b553b54cb856f9841c358ea02e8c05e8c00284c8ad9cfa3af55ef1a7",
+    "policySha256": "654523293fa8c0af14d7f1d330b7c820ee214cfc857ae28d2bc0cd49bf2624fc",
+    "schemaValidationMethod": "strict-production-agent-output-v1",
+    "qualityAggregationMethod": "mean-passed-evaluator-score-v1",
+    "p95Method": "nearest-rank-p95-v1",
+    "costMethod": "uncached-input-plus-cached-input-plus-total-output-v1",
+    "reasoningTokensDoubleCounted": false
+  },
+  "pricing": [
+    {
+      "routeId": "codex:gpt-5.4",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 62.5,
+      "cachedInputPerMillionTokens": 6.25,
+      "outputPerMillionTokens": 375,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10.json",
+      "verifiedAt": "2026-07-10T10:25:00.000Z",
+      "sourceSha256": "8eecae97c60246ccdfe6acc3c3b17071131ca2a2ef3104d866d427933a11638c"
+    },
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 18.75,
+      "cachedInputPerMillionTokens": 1.875,
+      "outputPerMillionTokens": 113,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10.json",
+      "verifiedAt": "2026-07-10T10:25:00.000Z",
+      "sourceSha256": "8eecae97c60246ccdfe6acc3c3b17071131ca2a2ef3104d866d427933a11638c"
+    }
+  ],
+  "candidates": [
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "provider": "codex",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "low",
+      "samples": [
+        {
+          "caseId": "source-search-01-BtDnmx6HRr_",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "bec7ab74da4308a7029a9aff36340694f72f92c83e79f965efc583be0527a110",
+          "startedAt": "2026-07-10T17:06:08.842Z",
+          "durationMs": 12770.191125,
+          "schemaValid": true,
+          "quality": {
+            "label": "FOUND",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FOUND",
+              "actual=FOUND",
+              "candidateIds=candidate-BtDnmx6HRr_"
+            ]
+          },
+          "usage": {
+            "inputTokens": 67040,
+            "cachedInputTokens": 45184,
+            "outputTokens": 507,
+            "reasoningOutputTokens": 163
+          },
+          "cost": 0.551811,
+          "costUnit": "codex_credits",
+          "outputSha256": "fed781364b52a43a9857895c8cc0a76f0dbfad03ffe1804417fcc37672cba5fe",
+          "error": null
+        },
+        {
+          "caseId": "source-search-02-C-0YpsCAODv",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "297eccda6cc30cd04eead5bea1cfe01dacb6dc7d32d281153036d784d3cd63c9",
+          "startedAt": "2026-07-10T17:06:21.613Z",
+          "durationMs": 8464.220708,
+          "schemaValid": true,
+          "quality": {
+            "label": "FOUND",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FOUND",
+              "actual=FOUND",
+              "candidateIds=candidate-C-0YpsCAODv"
+            ]
+          },
+          "usage": {
+            "inputTokens": 46390,
+            "cachedInputTokens": 22272,
+            "outputTokens": 324,
+            "reasoningOutputTokens": 84
+          },
+          "cost": 0.5305845,
+          "costUnit": "codex_credits",
+          "outputSha256": "5680ac07892c640b93dc971555f7460ba86a9ed3c706a148719d00837444ee8f",
+          "error": null
+        },
+        {
+          "caseId": "source-search-03-C9gLu79MklN",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "82fd6a7f6f08ac44b16810f447e32478eeaa4a2657c69a46e8e84e8806b20421",
+          "startedAt": "2026-07-10T17:06:30.077Z",
+          "durationMs": 12332.927875,
+          "schemaValid": true,
+          "quality": {
+            "label": "FOUND",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FOUND",
+              "actual=FOUND",
+              "candidateIds=candidate-C9gLu79MklN"
+            ]
+          },
+          "usage": {
+            "inputTokens": 66966,
+            "cachedInputTokens": 45184,
+            "outputTokens": 488,
+            "reasoningOutputTokens": 134
+          },
+          "cost": 0.5482765,
+          "costUnit": "codex_credits",
+          "outputSha256": "653d467c49194355642e2ed6b88e055d25020a53253b081a793a7ef65af39dba",
+          "error": null
+        },
+        {
+          "caseId": "source-search-04-CsYa4skNBjP",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "f55f53cb3e77c064d5d9a3036d94f35497381b7b77ca7356bbe3c7c66f5c37b0",
+          "startedAt": "2026-07-10T17:06:42.410Z",
+          "durationMs": 16874.467125,
+          "schemaValid": true,
+          "quality": {
+            "label": "FOUND",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FOUND",
+              "actual=FOUND",
+              "candidateIds=candidate-CsYa4skNBjP"
+            ]
+          },
+          "usage": {
+            "inputTokens": 43094,
+            "cachedInputTokens": 22272,
+            "outputTokens": 435,
+            "reasoningOutputTokens": 172
+          },
+          "cost": 0.4813275,
+          "costUnit": "codex_credits",
+          "outputSha256": "1353523d4fb0ff0c3a14ce21dae87628c6f86ab92393d96fe4b1107253864893",
+          "error": null
+        },
+        {
+          "caseId": "source-search-05-Cw_QTMmA69_",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "075a9b37a121a193aa6b4bdad089b4179f2a5aee115da4366a8e1893430f81f3",
+          "startedAt": "2026-07-10T17:06:59.285Z",
+          "durationMs": 9611.594625,
+          "schemaValid": true,
+          "quality": {
+            "label": "FOUND",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FOUND",
+              "actual=FOUND",
+              "candidateIds=candidate-Cw_QTMmA69_"
+            ]
+          },
+          "usage": {
+            "inputTokens": 43114,
+            "cachedInputTokens": 22272,
+            "outputTokens": 348,
+            "reasoningOutputTokens": 73
+          },
+          "cost": 0.4718715,
+          "costUnit": "codex_credits",
+          "outputSha256": "3aa639ed018287b17cfc89886019288823d295b1420dc1cfe9f19cf6d220db53",
+          "error": null
+        },
+        {
+          "caseId": "source-search-06-Cxb0DmpJ7oM",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "76bc48f956612a84f9e4fcc3981a0888fa14072b6463edc89f3ecfab09d8b8c6",
+          "startedAt": "2026-07-10T17:07:08.897Z",
+          "durationMs": 12179.498334,
+          "schemaValid": true,
+          "quality": {
+            "label": "FOUND",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FOUND",
+              "actual=FOUND",
+              "candidateIds=candidate-Cxb0DmpJ7oM"
+            ]
+          },
+          "usage": {
+            "inputTokens": 46413,
+            "cachedInputTokens": 22272,
+            "outputTokens": 470,
+            "reasoningOutputTokens": 222
+          },
+          "cost": 0.54751375,
+          "costUnit": "codex_credits",
+          "outputSha256": "92a24e653b29410366537f9ee17536761a504fc88aaaf2b9d1c0426ab180d6d5",
+          "error": null
+        },
+        {
+          "caseId": "source-search-07-DIUYX9QStl3",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "9aed5cd5b5df03d6c74d9c7b8c01468832cb5d48370e091d962f2f8a146e3504",
+          "startedAt": "2026-07-10T17:07:21.076Z",
+          "durationMs": 12172.724833,
+          "schemaValid": true,
+          "quality": {
+            "label": "FOUND",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FOUND",
+              "actual=FOUND",
+              "candidateIds=candidate-DIUYX9QStl3"
+            ]
+          },
+          "usage": {
+            "inputTokens": 43241,
+            "cachedInputTokens": 32512,
+            "outputTokens": 327,
+            "reasoningOutputTokens": 53
+          },
+          "cost": 0.29907975,
+          "costUnit": "codex_credits",
+          "outputSha256": "3e38a4647fe1850b5c3874ccff77d696d545aa7896e874a7e7fb8131c29cf19c",
+          "error": null
+        },
+        {
+          "caseId": "source-search-08-DKM66d2tamf",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "f259139eccf0819646b1f850110cad585907fd8830ad5399eacad948cb233182",
+          "startedAt": "2026-07-10T17:07:33.249Z",
+          "durationMs": 11456.720791,
+          "schemaValid": true,
+          "quality": {
+            "label": "FOUND",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FOUND",
+              "actual=FOUND",
+              "candidateIds=candidate-DKM66d2tamf"
+            ]
+          },
+          "usage": {
+            "inputTokens": 43135,
+            "cachedInputTokens": 32512,
+            "outputTokens": 365,
+            "reasoningOutputTokens": 80
+          },
+          "cost": 0.30138625,
+          "costUnit": "codex_credits",
+          "outputSha256": "ddc3da5f1de034b96a516246dfb672d07a657d898e38e7ceb1332e07f4943a25",
+          "error": null
+        },
+        {
+          "caseId": "source-search-09-DW0w8RMjY3Y",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "e97dc820f5f85f47afece0843c4a5a4669e12dc44874ca4080f2f986912a4137",
+          "startedAt": "2026-07-10T17:07:44.706Z",
+          "durationMs": 17511.268541,
+          "schemaValid": true,
+          "quality": {
+            "label": "FOUND",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=NO_MATCH",
+              "actual=FOUND",
+              "candidateIds=candidate-DW0w8RMjY3Y"
+            ]
+          },
+          "usage": {
+            "inputTokens": 47206,
+            "cachedInputTokens": 32512,
+            "outputTokens": 575,
+            "reasoningOutputTokens": 310
+          },
+          "cost": 0.4014475,
+          "costUnit": "codex_credits",
+          "outputSha256": "3aff6243f1936a28516250b8bb6d3043cb09ba671731719bdab296919aa8c48b",
+          "error": null
+        },
+        {
+          "caseId": "source-search-10-DW5s3qoDbHC",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "dc7919ba6bc0250fcf6b07431d1292fe5a60aab37ff0c96cae3346005b119cfd",
+          "startedAt": "2026-07-10T17:08:02.217Z",
+          "durationMs": 26004.228625,
+          "schemaValid": true,
+          "quality": {
+            "label": "FOUND",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FOUND",
+              "actual=FOUND",
+              "candidateIds=candidate-DW5s3qoDbHC"
+            ]
+          },
+          "usage": {
+            "inputTokens": 67235,
+            "cachedInputTokens": 34944,
+            "outputTokens": 511,
+            "reasoningOutputTokens": 155
+          },
+          "cost": 0.72871925,
+          "costUnit": "codex_credits",
+          "outputSha256": "fc1784d2c74ee0b9a8a115e2949c7217c64d5f49133f80c5c29362baf0feb90b",
+          "error": null
+        },
+        {
+          "caseId": "source-search-11-DWjH5fWjBnt",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "635f0abe5fac3567d523c630fb3665f2dcdfb479c31c0083774ce8f2b1aa8891",
+          "startedAt": "2026-07-10T17:08:28.222Z",
+          "durationMs": 14398.536292,
+          "schemaValid": true,
+          "quality": {
+            "label": "FOUND",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FOUND",
+              "actual=FOUND",
+              "candidateIds=candidate-DWjH5fWjBnt"
+            ]
+          },
+          "usage": {
+            "inputTokens": 43144,
+            "cachedInputTokens": 22272,
+            "outputTokens": 358,
+            "reasoningOutputTokens": 94
+          },
+          "cost": 0.473564,
+          "costUnit": "codex_credits",
+          "outputSha256": "a291fd8b97166685769aa7175c5c6d524ead482734a8a54fa2ed008bb9b0cc5b",
+          "error": null
+        },
+        {
+          "caseId": "source-search-12-DWnxlyIDcoK",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "7f482112376dee0f97148d5fdcf261277d5e597c7134343153f50665fefae805",
+          "startedAt": "2026-07-10T17:08:42.620Z",
+          "durationMs": 16783.888291,
+          "schemaValid": true,
+          "quality": {
+            "label": "NO_MATCH",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=NO_MATCH",
+              "actual=NO_MATCH",
+              "candidateIds=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 42434,
+            "cachedInputTokens": 32000,
+            "outputTokens": 238,
+            "reasoningOutputTokens": 80
+          },
+          "cost": 0.2825315,
+          "costUnit": "codex_credits",
+          "outputSha256": "9853f350df5bd7835646bc23690ad7fe02b846d549b35f173a15b116d582b7c8",
+          "error": null
+        },
+        {
+          "caseId": "source-search-13-DWwSVVOjMqO",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "8ff54ff4dc7b8a5834b2e64d1ba471589f2169636712cee285a628be66a3857b",
+          "startedAt": "2026-07-10T17:08:59.404Z",
+          "durationMs": 13572.665416,
+          "schemaValid": true,
+          "quality": {
+            "label": "NO_MATCH",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=NO_MATCH",
+              "actual=NO_MATCH",
+              "candidateIds=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 67243,
+            "cachedInputTokens": 55424,
+            "outputTokens": 622,
+            "reasoningOutputTokens": 366
+          },
+          "cost": 0.39581225,
+          "costUnit": "codex_credits",
+          "outputSha256": "9853f350df5bd7835646bc23690ad7fe02b846d549b35f173a15b116d582b7c8",
+          "error": null
+        },
+        {
+          "caseId": "source-search-14-DXBhsJPjSgW",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "89c4bfc71d128c24d9812e8c6f7a0804ef788295f9876f415862c67523ebd063",
+          "startedAt": "2026-07-10T17:09:12.977Z",
+          "durationMs": 7208.407666,
+          "schemaValid": true,
+          "quality": {
+            "label": "NO_MATCH",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=NO_MATCH",
+              "actual=NO_MATCH",
+              "candidateIds=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 43153,
+            "cachedInputTokens": 32512,
+            "outputTokens": 255,
+            "reasoningOutputTokens": 95
+          },
+          "cost": 0.28929375,
+          "costUnit": "codex_credits",
+          "outputSha256": "9853f350df5bd7835646bc23690ad7fe02b846d549b35f173a15b116d582b7c8",
+          "error": null
+        },
+        {
+          "caseId": "source-search-15-DXHx529DVb0",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "8f435abc7131060fc6e82793aa4f580ac6ff22ebe7940543258b5f4c38cf5c5b",
+          "startedAt": "2026-07-10T17:09:20.185Z",
+          "durationMs": 13354.599834,
+          "schemaValid": true,
+          "quality": {
+            "label": "FOUND",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FOUND",
+              "actual=FOUND",
+              "candidateIds=candidate-DXHx529DVb0"
+            ]
+          },
+          "usage": {
+            "inputTokens": 67159,
+            "cachedInputTokens": 55424,
+            "outputTokens": 527,
+            "reasoningOutputTokens": 153
+          },
+          "cost": 0.38350225,
+          "costUnit": "codex_credits",
+          "outputSha256": "079e436ead8fc6c06488e68f6f16d66e3a41a7045265547cbcfd7d4e1ca6384a",
+          "error": null
+        },
+        {
+          "caseId": "source-search-16-DXNBoz7jYmd",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "3ca07cc0cd685078cf8825558a0bf8353c4dcbe5038b70baea7cded23a6422d2",
+          "startedAt": "2026-07-10T17:09:33.540Z",
+          "durationMs": 15023.961625,
+          "schemaValid": true,
+          "quality": {
+            "label": "FOUND",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FOUND",
+              "actual=FOUND",
+              "candidateIds=candidate-DXNBoz7jYmd"
+            ]
+          },
+          "usage": {
+            "inputTokens": 43160,
+            "cachedInputTokens": 32512,
+            "outputTokens": 419,
+            "reasoningOutputTokens": 117
+          },
+          "cost": 0.307957,
+          "costUnit": "codex_credits",
+          "outputSha256": "72d7feaee2b69fe2629bbe29ae74d1dbc06e9840649e35b1660a45289c84fc3c",
+          "error": null
+        },
+        {
+          "caseId": "source-search-17-DXOzkCdjMue",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "52bd8e26deb21b9e71da13d24e2fd25bc646f155468ac175f76c2ca7d7b8b7de",
+          "startedAt": "2026-07-10T17:09:48.564Z",
+          "durationMs": 9315.475292,
+          "schemaValid": true,
+          "quality": {
+            "label": "FOUND",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FOUND",
+              "actual=FOUND",
+              "candidateIds=candidate-DXOzkCdjMue"
+            ]
+          },
+          "usage": {
+            "inputTokens": 43154,
+            "cachedInputTokens": 22272,
+            "outputTokens": 373,
+            "reasoningOutputTokens": 104
+          },
+          "cost": 0.4754465,
+          "costUnit": "codex_credits",
+          "outputSha256": "a70520ab8ea4669cd5f9ba2945baca1fc5da82d65e273ad218b53ce12c072e8f",
+          "error": null
+        },
+        {
+          "caseId": "source-search-18-DXUPExpjCs2",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "b5c6e0b9a2663b13f19af55f437c8f7533e1345bc6dd0acad170c05667944b5e",
+          "startedAt": "2026-07-10T17:09:57.880Z",
+          "durationMs": 12558.249708,
+          "schemaValid": true,
+          "quality": {
+            "label": "FOUND",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FOUND",
+              "actual=FOUND",
+              "candidateIds=candidate-DXUPExpjCs2"
+            ]
+          },
+          "usage": {
+            "inputTokens": 43121,
+            "cachedInputTokens": 22272,
+            "outputTokens": 386,
+            "reasoningOutputTokens": 136
+          },
+          "cost": 0.47629675,
+          "costUnit": "codex_credits",
+          "outputSha256": "c989cac0cbbf891a5cb193539eafa4dfbf2c6c732fcf0e394636a08605600453",
+          "error": null
+        },
+        {
+          "caseId": "source-search-19-1diIRo4sHtk",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "864ac999086821911aba4254f65ef1c171f13d17d6cf3461d85c399f7fb20238",
+          "startedAt": "2026-07-10T17:10:10.438Z",
+          "durationMs": 7408.733083,
+          "schemaValid": true,
+          "quality": {
+            "label": "NO_MATCH",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=NO_MATCH",
+              "actual=NO_MATCH",
+              "candidateIds=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 42722,
+            "cachedInputTokens": 22272,
+            "outputTokens": 274,
+            "reasoningOutputTokens": 119
+          },
+          "cost": 0.4561595,
+          "costUnit": "codex_credits",
+          "outputSha256": "9853f350df5bd7835646bc23690ad7fe02b846d549b35f173a15b116d582b7c8",
+          "error": null
+        },
+        {
+          "caseId": "source-search-20-6IlkA1MLVYA",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "2e07e568dc68c72626b49ec067d939174f7fecd4b3c713f381100d187c2fada7",
+          "startedAt": "2026-07-10T17:10:17.847Z",
+          "durationMs": 15030.231583,
+          "schemaValid": true,
+          "quality": {
+            "label": "NO_MATCH",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=NO_MATCH",
+              "actual=NO_MATCH",
+              "candidateIds=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 71225,
+            "cachedInputTokens": 55936,
+            "outputTokens": 585,
+            "reasoningOutputTokens": 341
+          },
+          "cost": 0.45765375,
+          "costUnit": "codex_credits",
+          "outputSha256": "9853f350df5bd7835646bc23690ad7fe02b846d549b35f173a15b116d582b7c8",
+          "error": null
+        },
+        {
+          "caseId": "source-search-21-6QIdqyFoxFE",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "cae5e6fed716bf2c9653b984c99b7ff0dc38ffef29f1cf361b6f2ed4ba63d214",
+          "startedAt": "2026-07-10T17:10:32.877Z",
+          "durationMs": 11349.472584,
+          "schemaValid": true,
+          "quality": {
+            "label": "FOUND",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FOUND",
+              "actual=FOUND",
+              "candidateIds=candidate-6QIdqyFoxFE"
+            ]
+          },
+          "usage": {
+            "inputTokens": 45528,
+            "cachedInputTokens": 32512,
+            "outputTokens": 321,
+            "reasoningOutputTokens": 64
+          },
+          "cost": 0.341283,
+          "costUnit": "codex_credits",
+          "outputSha256": "077d44230307d5e9a09700a5021d00e1d82586f7e496e51b51fa0ca9bf2a530b",
+          "error": null
+        },
+        {
+          "caseId": "source-search-22-BwIaEb5vGDo",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "6f9ceafba5c11a331bf34c94d69cd949ade88c7b27e67efe0aa2ad55d5fcd212",
+          "startedAt": "2026-07-10T17:10:44.227Z",
+          "durationMs": 12590.570583,
+          "schemaValid": true,
+          "quality": {
+            "label": "FOUND",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FOUND",
+              "actual=FOUND",
+              "candidateIds=candidate-BwIaEb5vGDo"
+            ]
+          },
+          "usage": {
+            "inputTokens": 66278,
+            "cachedInputTokens": 54912,
+            "outputTokens": 556,
+            "reasoningOutputTokens": 200
+          },
+          "cost": 0.3789005,
+          "costUnit": "codex_credits",
+          "outputSha256": "26c2c665796fc0912a970d3fffbe9f80ae92e9a7bf8beb49b5436f6f63987b45",
+          "error": null
+        },
+        {
+          "caseId": "source-search-23-EYkw1ELHXq0",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "3765d3c32ce8289b68c4081adf1d65e4e4afed64025afc7f2f9446349819fecb",
+          "startedAt": "2026-07-10T17:10:56.817Z",
+          "durationMs": 3589.20525,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:10:56.984460Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:10:56.984478Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:10:56.984479Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:10:56.984480Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:10:56.984482Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-24-J6tw2l128YE",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "46e4a3a356597e90f56bdcf85485a026fbfd279f54abafdc0d11e7d94986fe6f",
+          "startedAt": "2026-07-10T17:11:00.407Z",
+          "durationMs": 2131.187917,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:00.531545Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:00.531562Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:00.531564Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:00.531565Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:00.531566Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-25-V-xIvJs0Jbo",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "c9ea4afa05474f17a1dabd8fb746125901c3054e300cc6889825fef8a0b51007",
+          "startedAt": "2026-07-10T17:11:02.538Z",
+          "durationMs": 2488.593084,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:02.678531Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:02.678544Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:02.678546Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:02.678547Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:02.678548Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-26-WkEyab1jINA",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "5868b34df26eb43b90a8ca73c43625b551ff0f446dd8637d7987335b19b6530c",
+          "startedAt": "2026-07-10T17:11:05.026Z",
+          "durationMs": 2321.571209,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:05.157195Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:05.157215Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:05.157217Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:05.157218Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:05.157220Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-27-XPKBwhDPxk0",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "6d3b6e722e5192ac6642c5a93333bd1961f130208865929fd2f4570f65cee671",
+          "startedAt": "2026-07-10T17:11:07.348Z",
+          "durationMs": 2496.092,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:07.469937Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:07.469952Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:07.469954Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:07.469955Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:07.469956Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-28-fj6CXk2KTIs",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "76a2f30739cc90eefec731ecaf4a512a736191a33447937dee96582e77977c27",
+          "startedAt": "2026-07-10T17:11:09.844Z",
+          "durationMs": 1869.419333,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:09.967999Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:09.968014Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:09.968016Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:09.968017Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:09.968018Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-29-n9kD935iROw",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "014fb2cc4448ab84040c416e70913a06e34b6f86b1e79143ee0b4648943127e8",
+          "startedAt": "2026-07-10T17:11:11.714Z",
+          "durationMs": 2151.987375,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:11.845538Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:11.845551Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:11.845553Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:11.845554Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:11.845555Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-30-oA7rziyGv8s",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "dcb189728cd20688ebfabd53bbe61bd1d8584320730ab14d2023911010a28e48",
+          "startedAt": "2026-07-10T17:11:13.866Z",
+          "durationMs": 3950.353541,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:14.055266Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:14.055288Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:14.055290Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:14.055291Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:14.055292Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 30,
+        "schemaSuccessRate": 0.733333333333,
+        "qualityScore": 0.7,
+        "qualityPassRate": 0.7,
+        "p95LatencyMs": 17511.268541,
+        "meanCost": null,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": false,
+        "selectorBenchmark": null
+      }
+    },
+    {
+      "routeId": "codex:gpt-5.4",
+      "provider": "codex",
+      "model": "gpt-5.4",
+      "reasoningEffort": "low",
+      "samples": [
+        {
+          "caseId": "source-search-01-BtDnmx6HRr_",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "bec7ab74da4308a7029a9aff36340694f72f92c83e79f965efc583be0527a110",
+          "startedAt": "2026-07-10T17:11:17.816Z",
+          "durationMs": 2558.828917,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:17.959763Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:17.959776Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:17.959778Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:17.959779Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:17.959780Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-02-C-0YpsCAODv",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "297eccda6cc30cd04eead5bea1cfe01dacb6dc7d32d281153036d784d3cd63c9",
+          "startedAt": "2026-07-10T17:11:20.375Z",
+          "durationMs": 2114.542,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:20.504711Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:20.504724Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:20.504725Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:20.504726Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:20.504727Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-03-C9gLu79MklN",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "82fd6a7f6f08ac44b16810f447e32478eeaa4a2657c69a46e8e84e8806b20421",
+          "startedAt": "2026-07-10T17:11:22.490Z",
+          "durationMs": 2189.820708,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:22.608795Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:22.608812Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:22.608813Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:22.608814Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:22.608815Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-04-CsYa4skNBjP",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "f55f53cb3e77c064d5d9a3036d94f35497381b7b77ca7356bbe3c7c66f5c37b0",
+          "startedAt": "2026-07-10T17:11:24.680Z",
+          "durationMs": 5545.064083,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:24.824775Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:24.824788Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:24.824790Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:24.824791Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:24.824792Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-05-Cw_QTMmA69_",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "075a9b37a121a193aa6b4bdad089b4179f2a5aee115da4366a8e1893430f81f3",
+          "startedAt": "2026-07-10T17:11:30.225Z",
+          "durationMs": 2227.375334,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:30.360107Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:30.360121Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:30.360123Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:30.360124Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:30.360125Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-06-Cxb0DmpJ7oM",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "76bc48f956612a84f9e4fcc3981a0888fa14072b6463edc89f3ecfab09d8b8c6",
+          "startedAt": "2026-07-10T17:11:32.452Z",
+          "durationMs": 2781.941917,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:32.593952Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:32.593966Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:32.593967Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:32.593968Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:32.593969Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-07-DIUYX9QStl3",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "9aed5cd5b5df03d6c74d9c7b8c01468832cb5d48370e091d962f2f8a146e3504",
+          "startedAt": "2026-07-10T17:11:35.234Z",
+          "durationMs": 4323.689625,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:35.368352Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:35.368366Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:35.368367Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:35.368368Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:35.368369Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-08-DKM66d2tamf",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "f259139eccf0819646b1f850110cad585907fd8830ad5399eacad948cb233182",
+          "startedAt": "2026-07-10T17:11:39.558Z",
+          "durationMs": 3285.338125,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:39.678290Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:39.678305Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:39.678306Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:39.678308Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:39.678309Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-09-DW0w8RMjY3Y",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "e97dc820f5f85f47afece0843c4a5a4669e12dc44874ca4080f2f986912a4137",
+          "startedAt": "2026-07-10T17:11:42.843Z",
+          "durationMs": 2220.759375,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:42.970913Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:42.970928Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:42.970930Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:42.970931Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:42.970932Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-10-DW5s3qoDbHC",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "dc7919ba6bc0250fcf6b07431d1292fe5a60aab37ff0c96cae3346005b119cfd",
+          "startedAt": "2026-07-10T17:11:45.064Z",
+          "durationMs": 3103.413709,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:45.210233Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:45.210249Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:45.210250Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:45.210251Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:45.210252Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-11-DWjH5fWjBnt",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "635f0abe5fac3567d523c630fb3665f2dcdfb479c31c0083774ce8f2b1aa8891",
+          "startedAt": "2026-07-10T17:11:48.167Z",
+          "durationMs": 2420.35575,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:48.286963Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:48.286978Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:48.286979Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:48.286981Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:48.286982Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-12-DWnxlyIDcoK",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "7f482112376dee0f97148d5fdcf261277d5e597c7134343153f50665fefae805",
+          "startedAt": "2026-07-10T17:11:50.588Z",
+          "durationMs": 2354.079875,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:50.709885Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:50.709899Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:50.709901Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:50.709902Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:50.709903Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-13-DWwSVVOjMqO",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "8ff54ff4dc7b8a5834b2e64d1ba471589f2169636712cee285a628be66a3857b",
+          "startedAt": "2026-07-10T17:11:52.942Z",
+          "durationMs": 2665.38125,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:53.168525Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:53.168540Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:53.168541Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:53.168542Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:53.168544Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-14-DXBhsJPjSgW",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "89c4bfc71d128c24d9812e8c6f7a0804ef788295f9876f415862c67523ebd063",
+          "startedAt": "2026-07-10T17:11:55.607Z",
+          "durationMs": 2319.449917,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:55.751218Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:55.751231Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:55.751233Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:55.751234Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:55.751235Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-15-DXHx529DVb0",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "8f435abc7131060fc6e82793aa4f580ac6ff22ebe7940543258b5f4c38cf5c5b",
+          "startedAt": "2026-07-10T17:11:57.927Z",
+          "durationMs": 2313.473208,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:11:58.064510Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:11:58.064523Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:11:58.064525Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:11:58.064526Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:11:58.064527Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-16-DXNBoz7jYmd",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "3ca07cc0cd685078cf8825558a0bf8353c4dcbe5038b70baea7cded23a6422d2",
+          "startedAt": "2026-07-10T17:12:00.240Z",
+          "durationMs": 8233.85275,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:12:00.419801Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:12:00.419813Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:12:00.419814Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:12:00.419815Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:12:00.419816Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-17-DXOzkCdjMue",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "52bd8e26deb21b9e71da13d24e2fd25bc646f155468ac175f76c2ca7d7b8b7de",
+          "startedAt": "2026-07-10T17:12:08.474Z",
+          "durationMs": 16371.4565,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:12:08.592746Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:12:08.592761Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:12:08.592763Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:12:08.592764Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:12:08.592766Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-18-DXUPExpjCs2",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "b5c6e0b9a2663b13f19af55f437c8f7533e1345bc6dd0acad170c05667944b5e",
+          "startedAt": "2026-07-10T17:12:24.846Z",
+          "durationMs": 2179.72725,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:12:24.980758Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:12:24.980772Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:12:24.980774Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:12:24.980775Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:12:24.980777Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-19-1diIRo4sHtk",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "864ac999086821911aba4254f65ef1c171f13d17d6cf3461d85c399f7fb20238",
+          "startedAt": "2026-07-10T17:12:27.025Z",
+          "durationMs": 2959.893041,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:12:27.176591Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:12:27.176603Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:12:27.176604Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:12:27.176605Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:12:27.176606Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-20-6IlkA1MLVYA",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "2e07e568dc68c72626b49ec067d939174f7fecd4b3c713f381100d187c2fada7",
+          "startedAt": "2026-07-10T17:12:29.985Z",
+          "durationMs": 2262.66475,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:12:30.112805Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:12:30.112820Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:12:30.112822Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:12:30.112824Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:12:30.112825Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-21-6QIdqyFoxFE",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "cae5e6fed716bf2c9653b984c99b7ff0dc38ffef29f1cf361b6f2ed4ba63d214",
+          "startedAt": "2026-07-10T17:12:32.248Z",
+          "durationMs": 2982.769625,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:12:32.385218Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:12:32.385232Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:12:32.385234Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:12:32.385236Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:12:32.385237Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-22-BwIaEb5vGDo",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "6f9ceafba5c11a331bf34c94d69cd949ade88c7b27e67efe0aa2ad55d5fcd212",
+          "startedAt": "2026-07-10T17:12:35.231Z",
+          "durationMs": 2550.369625,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:12:35.379453Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:12:35.379467Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:12:35.379469Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:12:35.379470Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:12:35.379471Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-23-EYkw1ELHXq0",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "3765d3c32ce8289b68c4081adf1d65e4e4afed64025afc7f2f9446349819fecb",
+          "startedAt": "2026-07-10T17:12:37.781Z",
+          "durationMs": 2176.881167,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:12:37.908788Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:12:37.908803Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:12:37.908805Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:12:37.908806Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:12:37.908808Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-24-J6tw2l128YE",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "46e4a3a356597e90f56bdcf85485a026fbfd279f54abafdc0d11e7d94986fe6f",
+          "startedAt": "2026-07-10T17:12:39.958Z",
+          "durationMs": 2364.471334,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:12:40.099561Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:12:40.099578Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:12:40.099580Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:12:40.099581Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:12:40.099582Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-25-V-xIvJs0Jbo",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "c9ea4afa05474f17a1dabd8fb746125901c3054e300cc6889825fef8a0b51007",
+          "startedAt": "2026-07-10T17:12:42.323Z",
+          "durationMs": 3050.677375,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:12:42.446419Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:12:42.446437Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:12:42.446439Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:12:42.446440Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:12:42.446441Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-26-WkEyab1jINA",
+          "expectedQualityLabel": "FOUND",
+          "promptSha256": "5868b34df26eb43b90a8ca73c43625b551ff0f446dd8637d7987335b19b6530c",
+          "startedAt": "2026-07-10T17:12:45.373Z",
+          "durationMs": 2197.988334,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:12:45.493245Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:12:45.493261Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:12:45.493263Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:12:45.493264Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:12:45.493265Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-27-XPKBwhDPxk0",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "6d3b6e722e5192ac6642c5a93333bd1961f130208865929fd2f4570f65cee671",
+          "startedAt": "2026-07-10T17:12:47.571Z",
+          "durationMs": 2010.9705,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:12:47.709029Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:12:47.709047Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:12:47.709049Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:12:47.709050Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:12:47.709052Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-28-fj6CXk2KTIs",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "76a2f30739cc90eefec731ecaf4a512a736191a33447937dee96582e77977c27",
+          "startedAt": "2026-07-10T17:12:49.582Z",
+          "durationMs": 1954.829333,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:12:49.708847Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:12:49.708865Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:12:49.708867Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:12:49.708868Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:12:49.708870Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-29-n9kD935iROw",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "014fb2cc4448ab84040c416e70913a06e34b6f86b1e79143ee0b4648943127e8",
+          "startedAt": "2026-07-10T17:12:51.537Z",
+          "durationMs": 2327.654333,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:12:51.674393Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:12:51.674409Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:12:51.674410Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:12:51.674412Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:12:51.674413Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        },
+        {
+          "caseId": "source-search-30-oA7rziyGv8s",
+          "expectedQualityLabel": "NO_MATCH",
+          "promptSha256": "dcb189728cd20688ebfabd53bbe61bd1d8584320730ab14d2023911010a28e48",
+          "startedAt": "2026-07-10T17:12:53.865Z",
+          "durationMs": 2549.798166,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "2026-07-10T17:12:53.992064Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/bootstrap-dashboard/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 119\n2026-07-10T17:12:53.992082Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/create-task/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 370\n2026-07-10T17:12:53.992083Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/clips-mcp/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 123\n2026-07-10T17:12:53.992085Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/source-researcher/SKILL.md: invalid YAML: mapping values are not allowed in this context at line 2 column 272\n2026-07-10T17:12:53.992086Z ERROR codex_core::session: failed to load skill /Users/neich/.codex/skills/alfred/SKILL.md: invalid YAML: mapping values are not all"
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 30,
+        "schemaSuccessRate": 0,
+        "qualityScore": 0,
+        "qualityPassRate": 0,
+        "p95LatencyMs": 8233.85275,
+        "meanCost": null,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": false,
+        "selectorBenchmark": null
+      }
+    }
+  ],
+  "selection": null,
+  "selectionError": "No model route passed the benchmark policy.",
+  "selectionRejections": [
+    {
+      "routeId": "codex:gpt-5.4",
+      "reason": "no benchmark result"
+    },
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "reason": "no benchmark result"
+    }
+  ],
+  "evidenceSha256": "944b10f4104cfe93d7268cc14c4444411d6fff20f8d9b1b701df8aa2e76984cb"
+}

@@ -1,0 +1,1873 @@
+{
+  "schemaVersion": "project-kings-migration-rehearsal-v1",
+  "rehearsalId": "migration-f4ba825c5d2b87f2ac710ba4",
+  "sourceSnapshot": {
+    "fileName": "project-kings-production-snapshot-20260710T160634Z.db",
+    "sha256": "f4ba825c5d2b87f2ac710ba4438f81d726cc37848452911964e832cf6e4aedb7",
+    "bytes": 2040438784,
+    "classification": "production_snapshot",
+    "preconditionNote": null
+  },
+  "startedAt": "2026-07-10T16:19:21.001Z",
+  "finishedAt": "2026-07-10T16:19:37.704Z",
+  "durationMs": 16701,
+  "originalSnapshotUnchanged": true,
+  "restoreMethod": "discard isolated copy; original snapshot is never opened by application migrations",
+  "acceptanceEligible": true,
+  "before": {
+    "integrity": [
+      "ok"
+    ],
+    "foreignKeyIssues": [],
+    "tables": [
+      {
+        "name": "audit_log",
+        "rowCount": 248859,
+        "sqlSha256": "e1da855c0b3d758535c5e4a070933072bdba567fa4d5333a0cc12e5b103dd736"
+      },
+      {
+        "name": "auth_sessions",
+        "rowCount": 257,
+        "sqlSha256": "0852857931eafa029c8bc52525f337a2fde24b6c6948a33cb6691ff3a4284a7c"
+      },
+      {
+        "name": "channel_access",
+        "rowCount": 24,
+        "sqlSha256": "c50cf56a8a39ce25d6b2a7ba504fc330aa89c1ecaf6e997d3358a698622bd0e6"
+      },
+      {
+        "name": "channel_assets",
+        "rowCount": 289,
+        "sqlSha256": "50445394e9361f8db6c820638ee176efde1aaa990bd6559fe06d3468014ce6e1"
+      },
+      {
+        "name": "channel_editorial_feedback_events",
+        "rowCount": 892,
+        "sqlSha256": "f94a7537f2907a3691fd9b795ddd6247a649cf3b6517ac92f408368b67a6e9cc"
+      },
+      {
+        "name": "channel_publication_events",
+        "rowCount": 3577,
+        "sqlSha256": "464b4a75f9cf83d680f649aa7d25bd29a3fbe15cbf423ce9a07bd2b159c28af7"
+      },
+      {
+        "name": "channel_publications",
+        "rowCount": 1355,
+        "sqlSha256": "6a2ee2b537f960649285cff1c0efb40ac774548db34ff49ea8ecc9f6a6864e95"
+      },
+      {
+        "name": "channel_publish_integrations",
+        "rowCount": 20,
+        "sqlSha256": "fc22d6258bad7e527315fb5b4f08b6c1d1cba1d1f6474564fef7ca24c6d70833"
+      },
+      {
+        "name": "channel_publish_settings",
+        "rowCount": 17,
+        "sqlSha256": "d39d3fcbc74c13b4531560cb09d2cdae14d993046e9be45db25b141720f9431f"
+      },
+      {
+        "name": "channel_style_discovery_runs",
+        "rowCount": 14,
+        "sqlSha256": "f71ec3086a91d1c3fc0d731493bd56e422cdd32704c6916f79b902ff1c8b7a23"
+      },
+      {
+        "name": "channel_youtube_oauth_states",
+        "rowCount": 0,
+        "sqlSha256": "3994d7f7ac2ae109e05134c259e4dbcb9792f8144946e36c2d480da73d261eca"
+      },
+      {
+        "name": "channels",
+        "rowCount": 26,
+        "sqlSha256": "ef6ff6411ff8e0dfa5b3b297091edba2171585928fe4d5a4a900efa2fb2c9112"
+      },
+      {
+        "name": "chat_drafts",
+        "rowCount": 1447,
+        "sqlSha256": "eb16d9d407c1106296859731fc83bb8e187775c5fd6e89feb622dabd98907d68"
+      },
+      {
+        "name": "chat_events",
+        "rowCount": 9285,
+        "sqlSha256": "d2f677d2c8291e683ce7c1ca525455a2b2b0f9316be5ac2278fa5b57e88bd93d"
+      },
+      {
+        "name": "chat_threads",
+        "rowCount": 1519,
+        "sqlSha256": "786cf6d4a1d722d5adf019f7febec376794903505e11c953dc46ff680d5e0949"
+      },
+      {
+        "name": "copscopes_daily_run_items",
+        "rowCount": 66,
+        "sqlSha256": "0651e929ddaab842935c1a7f3c48739e31a0b999205fabefbba7bdb1a39a874a"
+      },
+      {
+        "name": "copscopes_daily_runs",
+        "rowCount": 21,
+        "sqlSha256": "6ae58445d20fe425b8d356082958df3f423af113219f302c784a9b59ca66c067"
+      },
+      {
+        "name": "copscopes_source_categories",
+        "rowCount": 60,
+        "sqlSha256": "10c1e1c802086f04bc6fc22292d4b99342b6102bf884376bb6832774c1481064"
+      },
+      {
+        "name": "copscopes_source_reels",
+        "rowCount": 224,
+        "sqlSha256": "4dbf52598759eb01611842b0e1cc506a6059e70f5d9b897c525b74af0820ec54"
+      },
+      {
+        "name": "mcp_access_tokens",
+        "rowCount": 13,
+        "sqlSha256": "2542c736acaab2b9f73fc93952e6c30fef426717d1651d2c8445baac2073b29f"
+      },
+      {
+        "name": "mcp_machine_credentials",
+        "rowCount": 4,
+        "sqlSha256": "a1ce3b5e72feaeae55474f7d2f58bbce5a80ddca88412e3da3aee3ca9091ee63"
+      },
+      {
+        "name": "render_exports",
+        "rowCount": 1872,
+        "sqlSha256": "b40ac132cddc71843631ccf5d4ef5bfec507435e4e1532de6c6de97e735a482e"
+      },
+      {
+        "name": "source_decompositions",
+        "rowCount": 7,
+        "sqlSha256": "06b42c8087da6ef01ad781d2b5ba1190227acfbdc6def4539f14fa299739cbc3"
+      },
+      {
+        "name": "source_jobs",
+        "rowCount": 1515,
+        "sqlSha256": "1d498db58899e2c65327cb8ac68efac212c6f3e48267c06ec6189d54dbb0a35a"
+      },
+      {
+        "name": "stage2_runs",
+        "rowCount": 2635,
+        "sqlSha256": "96e4202907197598c65cbf8b73b51c465dc12552d889f5eba11ca7b9e9c5c324"
+      },
+      {
+        "name": "stage3_job_artifacts",
+        "rowCount": 18654,
+        "sqlSha256": "56c33c3d0a75650171f988de7bfa5ba1af96fbdc5eb55847163bef9bbd7347e4"
+      },
+      {
+        "name": "stage3_job_events",
+        "rowCount": 123272,
+        "sqlSha256": "d392b4b5b4ec441cd2365435aa221940938ef4618a9984647676be73ba8fd815"
+      },
+      {
+        "name": "stage3_jobs",
+        "rowCount": 21537,
+        "sqlSha256": "445e9ad385857039024576598af234408b90024956a98960525c411c07dd774a"
+      },
+      {
+        "name": "stage3_worker_tokens",
+        "rowCount": 1484,
+        "sqlSha256": "f9b653afa4950de5b81cb513a04fc2016a2326a061c30dbf7e1614c7c25ce22d"
+      },
+      {
+        "name": "stage3_workers",
+        "rowCount": 565,
+        "sqlSha256": "28fd789c0be8a2133ad7c9901191cda666c0fcd8ebd46f80cd056fdc15dff152"
+      },
+      {
+        "name": "users",
+        "rowCount": 21,
+        "sqlSha256": "4bd5e54fe7b3eede599f82339c76f4c3a78e3b790d988ca5c3a3c98b46222bd4"
+      },
+      {
+        "name": "workspace_anthropic_integrations",
+        "rowCount": 0,
+        "sqlSha256": "fc981041ccfd2986584e56c46ad1c60f833546e82074b0a997aab5f681d89164"
+      },
+      {
+        "name": "workspace_codex_integrations",
+        "rowCount": 1,
+        "sqlSha256": "7a57d1740ec9cb2e7d5ce1e776518111e7de4724a624873c47ba199af5a9b8c1"
+      },
+      {
+        "name": "workspace_invites",
+        "rowCount": 3,
+        "sqlSha256": "b610a8ac0dba533662b1ca70b325520771ae8623faed53ffd88d8fdf593a4a5f"
+      },
+      {
+        "name": "workspace_members",
+        "rowCount": 20,
+        "sqlSha256": "a01c505d2f4f4d802e3fe2a2461875a8022c1eea769766224e9e2f30cff8f8af"
+      },
+      {
+        "name": "workspace_openrouter_integrations",
+        "rowCount": 1,
+        "sqlSha256": "bf3fc18d1211bac608e0440e9505a6c482ac358aeee8b9f46960e64e82ba5ef5"
+      },
+      {
+        "name": "workspace_templates",
+        "rowCount": 88,
+        "sqlSha256": "d37cc51a4c6bd2e19b3bfe90c5d9ff452e31fdb664086a817a83926fdfa0b558"
+      },
+      {
+        "name": "workspaces",
+        "rowCount": 1,
+        "sqlSha256": "7f56b3b15857d16f58f21a4dd2065c8a979c1f2ad93c0e71756b504bf6a08fdf"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "idx_audit_log_channel_created",
+        "table": "audit_log",
+        "sqlSha256": "6f88aeeb91c12de79dee4e415a128429f7f18d41dbeb47ea183bb77fec769940"
+      },
+      {
+        "name": "idx_audit_log_chat_created",
+        "table": "audit_log",
+        "sqlSha256": "00f8cb623e64ef1fc444930a350b14a250f7991a75b968c671eceae49a7bcfd0"
+      },
+      {
+        "name": "idx_audit_log_stage_status",
+        "table": "audit_log",
+        "sqlSha256": "79241624ed6265b0681d0b5ef1c969b81cb8cefabdf8c5667388d0b9d1cbf006"
+      },
+      {
+        "name": "idx_audit_log_workspace_created",
+        "table": "audit_log",
+        "sqlSha256": "0b86e9d8121faf2eea817e92d7279d932f3b683b5eb3704b37f74c4c80dfd36f"
+      },
+      {
+        "name": "idx_auth_sessions_user",
+        "table": "auth_sessions",
+        "sqlSha256": "376cac603edb59d682b8c365f853c44f0385962476a986a2d21699c4df907456"
+      },
+      {
+        "name": "idx_channel_access_channel",
+        "table": "channel_access",
+        "sqlSha256": "a013f6e5d7996aaf9ce1751c8dab65510a2777c569aac59bbb0195ec7bb0960d"
+      },
+      {
+        "name": "idx_channel_access_user",
+        "table": "channel_access",
+        "sqlSha256": "45f4de3ec5f271af966f98a7997b6572e7ca349490994947c63b746f2f171db5"
+      },
+      {
+        "name": "idx_channel_access_user_active",
+        "table": "channel_access",
+        "sqlSha256": "390d6eed661c53ffb2d6b169413de88f29774b48209e6e95d463d0326a9a68eb"
+      },
+      {
+        "name": "idx_channel_assets_channel_kind",
+        "table": "channel_assets",
+        "sqlSha256": "755c22bb8e409e6c7dc95ead34a8a0febd7aef9a67963141d6a6b512c4f5238a"
+      },
+      {
+        "name": "idx_channel_editorial_feedback_channel",
+        "table": "channel_editorial_feedback_events",
+        "sqlSha256": "db232f8990e21d31cb9bb71ab9214190ed39858b406352b1cc311ffd1e77b3a5"
+      },
+      {
+        "name": "idx_channel_editorial_feedback_workspace",
+        "table": "channel_editorial_feedback_events",
+        "sqlSha256": "c3d121c130dcf2b13bd662eaa11f63bb861a1b9c3338157043c504f1a824a993"
+      },
+      {
+        "name": "idx_channel_publication_events_publication",
+        "table": "channel_publication_events",
+        "sqlSha256": "f973fa563260b2863a054e33abc35c4da6fd957b2faed9b5fe0933ab6e7073bf"
+      },
+      {
+        "name": "idx_channel_publications_channel_scheduled",
+        "table": "channel_publications",
+        "sqlSha256": "a21110b45de0b751c771d68b8e61d2fc3031336099e61990476c85d579995f71"
+      },
+      {
+        "name": "idx_channel_publications_chat_updated",
+        "table": "channel_publications",
+        "sqlSha256": "461ddc1cdca75586c12826a18faff9a48ea24bfdbe28008ea1e137012f2dc14e"
+      },
+      {
+        "name": "idx_channel_publications_status_upload_ready",
+        "table": "channel_publications",
+        "sqlSha256": "762277e16efb5f5020539e750c9a456a136e15cda90338aded7e0116ea30833a"
+      },
+      {
+        "name": "idx_channel_publish_integrations_channel",
+        "table": "channel_publish_integrations",
+        "sqlSha256": "4465d215bc0de1d72d9c0a80cfdbe801d3d7cac2e1fb7d11ff7926a9c36bdaaa"
+      },
+      {
+        "name": "idx_channel_publish_settings_channel",
+        "table": "channel_publish_settings",
+        "sqlSha256": "1da66bf71b42a5dc0a662bb36480babf440bb8823aab7fb543ab3453b531c5cb"
+      },
+      {
+        "name": "idx_channel_style_discovery_runs_creator_fingerprint",
+        "table": "channel_style_discovery_runs",
+        "sqlSha256": "fd40d7aee93a8b8e4f359e1be339d17d5954130c29af91db1e305b54cb3bebd1"
+      },
+      {
+        "name": "idx_channel_style_discovery_runs_status_created",
+        "table": "channel_style_discovery_runs",
+        "sqlSha256": "e62fe05199255e6bcb685e9751cc63e10b5dc504ae6cdc5967c145dfe431e38e"
+      },
+      {
+        "name": "idx_channel_style_discovery_runs_workspace_updated",
+        "table": "channel_style_discovery_runs",
+        "sqlSha256": "cb54f04416f8d6e16e25d301b0a33df6c9e7cd700a6f1376e963d8e7e60963e7"
+      },
+      {
+        "name": "idx_channel_youtube_oauth_states_expires",
+        "table": "channel_youtube_oauth_states",
+        "sqlSha256": "17f0c374e84ca257224f0ec111f6442b0b0cb2466015ac4a3946bf0a38440efc"
+      },
+      {
+        "name": "idx_channels_workspace",
+        "table": "channels",
+        "sqlSha256": "ad44ca59de8ab0d110aa37ea9cc916c4b84125d79675f5b64139cee54557b1f7"
+      },
+      {
+        "name": "idx_chat_drafts_thread_user",
+        "table": "chat_drafts",
+        "sqlSha256": "79ea952edcfa8a750123f2df354de10cb066f19f0d4f2f2f20351d000fdd75a9"
+      },
+      {
+        "name": "idx_chat_drafts_user",
+        "table": "chat_drafts",
+        "sqlSha256": "15572383bb29ce6986759327c5da581e7bb88032819471d314c44ebb944624b1"
+      },
+      {
+        "name": "idx_chat_events_thread",
+        "table": "chat_events",
+        "sqlSha256": "6b02b0e121617ea5d6a9e5426b08f53ce546f4d8c090098f41b25665d772a1e1"
+      },
+      {
+        "name": "idx_chat_threads_channel",
+        "table": "chat_threads",
+        "sqlSha256": "dc13ab9ff3190ec6dcd1cd567b2a2a659c18d9a9dcd503e9e9572c2a92569197"
+      },
+      {
+        "name": "idx_chat_threads_workspace",
+        "table": "chat_threads",
+        "sqlSha256": "4bc7d1c0e93027c2bb2b813aa07d68ce54edec1e64eb1716612c617f59ef353d"
+      },
+      {
+        "name": "idx_copscopes_categories_channel_status",
+        "table": "copscopes_source_categories",
+        "sqlSha256": "99c915c4d1cae9bb211de42f8af75c83cf847a94ceb65375ffac806ac3496cb8"
+      },
+      {
+        "name": "idx_copscopes_daily_run_items_run",
+        "table": "copscopes_daily_run_items",
+        "sqlSha256": "ae6315550e888587fa8fb91eed39a03225453203ec264a515fd20a051268b9f1"
+      },
+      {
+        "name": "idx_copscopes_daily_runs_channel_created",
+        "table": "copscopes_daily_runs",
+        "sqlSha256": "2efd9d293fac95ee119e25ed2d60049bfbdac3f76f11f3733f38023a218fd840"
+      },
+      {
+        "name": "idx_copscopes_reels_channel_category_status",
+        "table": "copscopes_source_reels",
+        "sqlSha256": "d4d48e432c188f1ef1e737dd8d0e969381a0fa1eaaaae1439f803654d0e7a00d"
+      },
+      {
+        "name": "idx_copscopes_reels_shortcode",
+        "table": "copscopes_source_reels",
+        "sqlSha256": "bfd5a15bb57636b452b92270e738fc4660b1d095796c296435652c40758fb9ae"
+      },
+      {
+        "name": "idx_mcp_access_tokens_owner",
+        "table": "mcp_access_tokens",
+        "sqlSha256": "1230035d5fe653321cac924cbb123338b9563a77a95012cfd7b8076b01bf4e41"
+      },
+      {
+        "name": "idx_mcp_access_tokens_workspace",
+        "table": "mcp_access_tokens",
+        "sqlSha256": "7f8484e9dd92dde61ad6f997794d3b35b2678c7f9d38a7db12cbf0fe57f322e6"
+      },
+      {
+        "name": "idx_mcp_machine_credentials_active_machine",
+        "table": "mcp_machine_credentials",
+        "sqlSha256": "71a581849552f99734ef2f9c94eda7d295c4c87024715384c4194bbed3a188ec"
+      },
+      {
+        "name": "idx_mcp_machine_credentials_machine",
+        "table": "mcp_machine_credentials",
+        "sqlSha256": "7d43c2052d6d149b8a952822d336e3a5ae3acb2d9f9e4129297a88147ca58f94"
+      },
+      {
+        "name": "idx_mcp_machine_credentials_owner",
+        "table": "mcp_machine_credentials",
+        "sqlSha256": "0e1c774f0994036cee2560be29702c8e1bf14c0f5a3d90090efd6fb6366571d0"
+      },
+      {
+        "name": "idx_mcp_machine_credentials_workspace",
+        "table": "mcp_machine_credentials",
+        "sqlSha256": "0a89f0a43d68a9a6af252a5695db8864946db016f173e07716319d7b7a822894"
+      },
+      {
+        "name": "idx_render_exports_chat_created",
+        "table": "render_exports",
+        "sqlSha256": "9c83dac78a66775792ff9be3a13bfe283f9ba9aac8be40c532804a9063a04bba"
+      },
+      {
+        "name": "idx_source_decompositions_chat",
+        "table": "source_decompositions",
+        "sqlSha256": "cf70b5bfa0fc4048f5bd96c71ff91916dbeb176485723c08316909f01c4ba97b"
+      },
+      {
+        "name": "idx_source_jobs_chat_created",
+        "table": "source_jobs",
+        "sqlSha256": "c45d268baf4a1cce9bd0a0b0d0726df074ba947c98ed29b90acc54fb91978a16"
+      },
+      {
+        "name": "idx_source_jobs_status_created",
+        "table": "source_jobs",
+        "sqlSha256": "fcbabea57689e1c12f32a596f2c0393c7d43705445c32e1999689ec279ef38c1"
+      },
+      {
+        "name": "idx_source_jobs_workspace_updated",
+        "table": "source_jobs",
+        "sqlSha256": "7f12eadb0d834cd28720db47fb155dd15c8b89c1aa177c79215f0eb97e2099d6"
+      },
+      {
+        "name": "idx_stage2_runs_chat_created",
+        "table": "stage2_runs",
+        "sqlSha256": "9f14f626ccd4c50994858f60b328ad02d1acdd217ae072fea027968b9d5bb035"
+      },
+      {
+        "name": "idx_stage2_runs_status_created",
+        "table": "stage2_runs",
+        "sqlSha256": "e135e2313d7c5fdd1b95644d692190c666288897bde3ad69358a423c01a5ba57"
+      },
+      {
+        "name": "idx_stage2_runs_workspace_updated",
+        "table": "stage2_runs",
+        "sqlSha256": "8671c32ccdf3e6d799e8586e18bb38a451ac15904a5cc1d642b8ee6e921621c9"
+      },
+      {
+        "name": "idx_stage3_job_artifacts_job",
+        "table": "stage3_job_artifacts",
+        "sqlSha256": "65259f609b94cb0128021d4167755d6af47b3ce156348e37b75828ea047d3c70"
+      },
+      {
+        "name": "idx_stage3_job_events_job",
+        "table": "stage3_job_events",
+        "sqlSha256": "96d2cb9ffa92b285b3c23230a87db21b7200e2fb76432eba89e66756608920c6"
+      },
+      {
+        "name": "idx_stage3_jobs_execution",
+        "table": "stage3_jobs",
+        "sqlSha256": "4d9b3a3d3b38ed049b5aba9e6051b4218b686fca8eb503ad513e2ea0286dbb83"
+      },
+      {
+        "name": "idx_stage3_jobs_kind_target_dedupe",
+        "table": "stage3_jobs",
+        "sqlSha256": "5dd194a0d7a5ba41633eaa42194a8e098dc1ef2e1f2a20bf1f91b31212492d5a"
+      },
+      {
+        "name": "idx_stage3_jobs_status",
+        "table": "stage3_jobs",
+        "sqlSha256": "5e29f12fcc214174759df979e6787ade1852efb38b0bc418aa4ffedf08fef86e"
+      },
+      {
+        "name": "idx_stage3_jobs_worker",
+        "table": "stage3_jobs",
+        "sqlSha256": "e6267f7eda93992e35326555af9f7cbec4a5b24335782857ad0fb7186cc2ece2"
+      },
+      {
+        "name": "idx_stage3_jobs_workspace",
+        "table": "stage3_jobs",
+        "sqlSha256": "9600913863e1247d8395129570bbd8754d77f3ac77fc0ccb575918de421c4e7c"
+      },
+      {
+        "name": "idx_stage3_worker_tokens_worker",
+        "table": "stage3_worker_tokens",
+        "sqlSha256": "def6513e5614e394d13223a46f0fcef0be393f403640fd8ddf1d8fa6659d924b"
+      },
+      {
+        "name": "idx_stage3_workers_user",
+        "table": "stage3_workers",
+        "sqlSha256": "669413780746031036356fb80588b2f3b281ece29f34964c44c5367f4b4198a1"
+      },
+      {
+        "name": "idx_workspace_members_workspace",
+        "table": "workspace_members",
+        "sqlSha256": "6252703e1f5bad3fa3f17f299c15edaa371355d2c173c1f0f58dbfa5f259a815"
+      },
+      {
+        "name": "idx_workspace_templates_workspace_active_updated",
+        "table": "workspace_templates",
+        "sqlSha256": "9f54eed15a98f0c75ecf54f935ef833e8c22fff590468ab5c8581447fbe4e075"
+      },
+      {
+        "name": "idx_workspace_templates_workspace_created",
+        "table": "workspace_templates",
+        "sqlSha256": "772bb6bc95063e078aa86997c61580265e6f095b0645e8da3c1ae55ce968a693"
+      },
+      {
+        "name": "idx_workspace_templates_workspace_updated",
+        "table": "workspace_templates",
+        "sqlSha256": "a79293eff86708e6c2deb96cb137a9f5eab3745e1389cab8737f8becab94193c"
+      }
+    ],
+    "databaseBytes": 2040438784,
+    "pageCount": 498154,
+    "pageSize": 4096
+  },
+  "after": {
+    "integrity": [
+      "ok"
+    ],
+    "foreignKeyIssues": [],
+    "tables": [
+      {
+        "name": "agent_attempts",
+        "rowCount": 0,
+        "sqlSha256": "a8e0195ce9a0e8dc17f39c82bd424107043c2e94abfe4d9c585ac0c625c1fa65"
+      },
+      {
+        "name": "audit_log",
+        "rowCount": 248859,
+        "sqlSha256": "e1da855c0b3d758535c5e4a070933072bdba567fa4d5333a0cc12e5b103dd736"
+      },
+      {
+        "name": "auth_sessions",
+        "rowCount": 257,
+        "sqlSha256": "0852857931eafa029c8bc52525f337a2fde24b6c6948a33cb6691ff3a4284a7c"
+      },
+      {
+        "name": "channel_access",
+        "rowCount": 24,
+        "sqlSha256": "c50cf56a8a39ce25d6b2a7ba504fc330aa89c1ecaf6e997d3358a698622bd0e6"
+      },
+      {
+        "name": "channel_assets",
+        "rowCount": 289,
+        "sqlSha256": "50445394e9361f8db6c820638ee176efde1aaa990bd6559fe06d3468014ce6e1"
+      },
+      {
+        "name": "channel_editorial_feedback_events",
+        "rowCount": 892,
+        "sqlSha256": "f94a7537f2907a3691fd9b795ddd6247a649cf3b6517ac92f408368b67a6e9cc"
+      },
+      {
+        "name": "channel_publication_events",
+        "rowCount": 3577,
+        "sqlSha256": "464b4a75f9cf83d680f649aa7d25bd29a3fbe15cbf423ce9a07bd2b159c28af7"
+      },
+      {
+        "name": "channel_publications",
+        "rowCount": 1355,
+        "sqlSha256": "6a2ee2b537f960649285cff1c0efb40ac774548db34ff49ea8ecc9f6a6864e95"
+      },
+      {
+        "name": "channel_publish_integrations",
+        "rowCount": 20,
+        "sqlSha256": "fc22d6258bad7e527315fb5b4f08b6c1d1cba1d1f6474564fef7ca24c6d70833"
+      },
+      {
+        "name": "channel_publish_settings",
+        "rowCount": 17,
+        "sqlSha256": "d39d3fcbc74c13b4531560cb09d2cdae14d993046e9be45db25b141720f9431f"
+      },
+      {
+        "name": "channel_source_candidates",
+        "rowCount": 0,
+        "sqlSha256": "7154a32ec27e6f5eb81af8c9292853b12fd80eabeed1cde071fb34dc6d24d5ba"
+      },
+      {
+        "name": "channel_style_discovery_runs",
+        "rowCount": 14,
+        "sqlSha256": "f71ec3086a91d1c3fc0d731493bd56e422cdd32704c6916f79b902ff1c8b7a23"
+      },
+      {
+        "name": "channel_youtube_oauth_states",
+        "rowCount": 0,
+        "sqlSha256": "3994d7f7ac2ae109e05134c259e4dbcb9792f8144946e36c2d480da73d261eca"
+      },
+      {
+        "name": "channels",
+        "rowCount": 26,
+        "sqlSha256": "ef6ff6411ff8e0dfa5b3b297091edba2171585928fe4d5a4a900efa2fb2c9112"
+      },
+      {
+        "name": "chat_drafts",
+        "rowCount": 1447,
+        "sqlSha256": "eb16d9d407c1106296859731fc83bb8e187775c5fd6e89feb622dabd98907d68"
+      },
+      {
+        "name": "chat_events",
+        "rowCount": 9285,
+        "sqlSha256": "d2f677d2c8291e683ce7c1ca525455a2b2b0f9316be5ac2278fa5b57e88bd93d"
+      },
+      {
+        "name": "chat_threads",
+        "rowCount": 1519,
+        "sqlSha256": "786cf6d4a1d722d5adf019f7febec376794903505e11c953dc46ff680d5e0949"
+      },
+      {
+        "name": "copscopes_daily_run_items",
+        "rowCount": 66,
+        "sqlSha256": "0651e929ddaab842935c1a7f3c48739e31a0b999205fabefbba7bdb1a39a874a"
+      },
+      {
+        "name": "copscopes_daily_runs",
+        "rowCount": 21,
+        "sqlSha256": "6ae58445d20fe425b8d356082958df3f423af113219f302c784a9b59ca66c067"
+      },
+      {
+        "name": "copscopes_source_categories",
+        "rowCount": 60,
+        "sqlSha256": "10c1e1c802086f04bc6fc22292d4b99342b6102bf884376bb6832774c1481064"
+      },
+      {
+        "name": "copscopes_source_reels",
+        "rowCount": 224,
+        "sqlSha256": "4dbf52598759eb01611842b0e1cc506a6059e70f5d9b897c525b74af0820ec54"
+      },
+      {
+        "name": "mcp_access_tokens",
+        "rowCount": 13,
+        "sqlSha256": "2542c736acaab2b9f73fc93952e6c30fef426717d1651d2c8445baac2073b29f"
+      },
+      {
+        "name": "mcp_machine_credentials",
+        "rowCount": 4,
+        "sqlSha256": "a1ce3b5e72feaeae55474f7d2f58bbce5a80ddca88412e3da3aee3ca9091ee63"
+      },
+      {
+        "name": "production_daemon_runtime",
+        "rowCount": 0,
+        "sqlSha256": "3acab6bd62cfd1fe1fbaa47c13d16c0347f3fd738e16a66376a718028f62d7f5"
+      },
+      {
+        "name": "production_events",
+        "rowCount": 0,
+        "sqlSha256": "9720c0d18d9b0e2ef500b3239fb7f0345b4311fc11ef77ef0ce19972ae19c437"
+      },
+      {
+        "name": "production_items",
+        "rowCount": 0,
+        "sqlSha256": "52d032cb64489743cb55048a37dcbd53e98bf34c2c8e0e5955136eb8d16d88d0"
+      },
+      {
+        "name": "production_outbox",
+        "rowCount": 0,
+        "sqlSha256": "dcd919fa01cdf9acc80b679a56db523f79771bd41d4f9f8e8422b323add57f07"
+      },
+      {
+        "name": "production_profiles",
+        "rowCount": 0,
+        "sqlSha256": "c2c483e1d972996fb893b1a412415618fee5c688f7518c48cc9a0ddba8821fb1"
+      },
+      {
+        "name": "production_run_channels",
+        "rowCount": 0,
+        "sqlSha256": "0afe08966ae060d43e85e9585f32c69b7910873ade3edadb6d4e638b1cb6dc26"
+      },
+      {
+        "name": "production_runs",
+        "rowCount": 0,
+        "sqlSha256": "b369ba78c6f32ffe2a75b946dbf75e6160b5c4699b1f534ab1e4cc04e2816be5"
+      },
+      {
+        "name": "production_semantic_input_reservations",
+        "rowCount": 0,
+        "sqlSha256": "aa04781bcd3ee27ea6780e5cee7e6ec3b932d53c66dbf209981b54533ecfb200"
+      },
+      {
+        "name": "project_kings_source_policy_approvals",
+        "rowCount": 0,
+        "sqlSha256": "502f0a86b9b87914faaf270c525be8ccd1c14e4b8d56cd6bc293a97c66ee9daa"
+      },
+      {
+        "name": "public_verifications",
+        "rowCount": 0,
+        "sqlSha256": "efb80a7ae397ae010a1b6068035727dbeca38c78c72378245c045d54a1df4427"
+      },
+      {
+        "name": "quality_verdicts",
+        "rowCount": 0,
+        "sqlSha256": "986ae917550c60ae6cbd2e9aacc4e7c105c7ba7224b216ac4a066b7d0de50131"
+      },
+      {
+        "name": "render_exports",
+        "rowCount": 1872,
+        "sqlSha256": "b40ac132cddc71843631ccf5d4ef5bfec507435e4e1532de6c6de97e735a482e"
+      },
+      {
+        "name": "source_decompositions",
+        "rowCount": 7,
+        "sqlSha256": "06b42c8087da6ef01ad781d2b5ba1190227acfbdc6def4539f14fa299739cbc3"
+      },
+      {
+        "name": "source_jobs",
+        "rowCount": 1515,
+        "sqlSha256": "1d498db58899e2c65327cb8ac68efac212c6f3e48267c06ec6189d54dbb0a35a"
+      },
+      {
+        "name": "stage2_runs",
+        "rowCount": 2635,
+        "sqlSha256": "96e4202907197598c65cbf8b73b51c465dc12552d889f5eba11ca7b9e9c5c324"
+      },
+      {
+        "name": "stage3_job_artifacts",
+        "rowCount": 18654,
+        "sqlSha256": "56c33c3d0a75650171f988de7bfa5ba1af96fbdc5eb55847163bef9bbd7347e4"
+      },
+      {
+        "name": "stage3_job_events",
+        "rowCount": 123272,
+        "sqlSha256": "d392b4b5b4ec441cd2365435aa221940938ef4618a9984647676be73ba8fd815"
+      },
+      {
+        "name": "stage3_jobs",
+        "rowCount": 21537,
+        "sqlSha256": "445e9ad385857039024576598af234408b90024956a98960525c411c07dd774a"
+      },
+      {
+        "name": "stage3_worker_tokens",
+        "rowCount": 1484,
+        "sqlSha256": "f9b653afa4950de5b81cb513a04fc2016a2326a061c30dbf7e1614c7c25ce22d"
+      },
+      {
+        "name": "stage3_workers",
+        "rowCount": 565,
+        "sqlSha256": "28fd789c0be8a2133ad7c9901191cda666c0fcd8ebd46f80cd056fdc15dff152"
+      },
+      {
+        "name": "users",
+        "rowCount": 21,
+        "sqlSha256": "4bd5e54fe7b3eede599f82339c76f4c3a78e3b790d988ca5c3a3c98b46222bd4"
+      },
+      {
+        "name": "workspace_anthropic_integrations",
+        "rowCount": 0,
+        "sqlSha256": "fc981041ccfd2986584e56c46ad1c60f833546e82074b0a997aab5f681d89164"
+      },
+      {
+        "name": "workspace_codex_integrations",
+        "rowCount": 1,
+        "sqlSha256": "7a57d1740ec9cb2e7d5ce1e776518111e7de4724a624873c47ba199af5a9b8c1"
+      },
+      {
+        "name": "workspace_invites",
+        "rowCount": 3,
+        "sqlSha256": "b610a8ac0dba533662b1ca70b325520771ae8623faed53ffd88d8fdf593a4a5f"
+      },
+      {
+        "name": "workspace_members",
+        "rowCount": 20,
+        "sqlSha256": "a01c505d2f4f4d802e3fe2a2461875a8022c1eea769766224e9e2f30cff8f8af"
+      },
+      {
+        "name": "workspace_openrouter_integrations",
+        "rowCount": 1,
+        "sqlSha256": "bf3fc18d1211bac608e0440e9505a6c482ac358aeee8b9f46960e64e82ba5ef5"
+      },
+      {
+        "name": "workspace_templates",
+        "rowCount": 88,
+        "sqlSha256": "d37cc51a4c6bd2e19b3bfe90c5d9ff452e31fdb664086a817a83926fdfa0b558"
+      },
+      {
+        "name": "workspaces",
+        "rowCount": 1,
+        "sqlSha256": "7f56b3b15857d16f58f21a4dd2065c8a979c1f2ad93c0e71756b504bf6a08fdf"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "idx_agent_attempts_run_item",
+        "table": "agent_attempts",
+        "sqlSha256": "419cc545dad12a7537215085217b08e920e2c9262a56f6c99569c0fc861ff280"
+      },
+      {
+        "name": "idx_agent_attempts_stage3_job",
+        "table": "agent_attempts",
+        "sqlSha256": "cae4b9eff78efd2d7ca337b2cf88deefb1b90b24905e5509f7c2a3dc01b378a0"
+      },
+      {
+        "name": "idx_audit_log_channel_created",
+        "table": "audit_log",
+        "sqlSha256": "6f88aeeb91c12de79dee4e415a128429f7f18d41dbeb47ea183bb77fec769940"
+      },
+      {
+        "name": "idx_audit_log_chat_created",
+        "table": "audit_log",
+        "sqlSha256": "00f8cb623e64ef1fc444930a350b14a250f7991a75b968c671eceae49a7bcfd0"
+      },
+      {
+        "name": "idx_audit_log_stage_status",
+        "table": "audit_log",
+        "sqlSha256": "79241624ed6265b0681d0b5ef1c969b81cb8cefabdf8c5667388d0b9d1cbf006"
+      },
+      {
+        "name": "idx_audit_log_workspace_created",
+        "table": "audit_log",
+        "sqlSha256": "0b86e9d8121faf2eea817e92d7279d932f3b683b5eb3704b37f74c4c80dfd36f"
+      },
+      {
+        "name": "idx_auth_sessions_user",
+        "table": "auth_sessions",
+        "sqlSha256": "376cac603edb59d682b8c365f853c44f0385962476a986a2d21699c4df907456"
+      },
+      {
+        "name": "idx_channel_access_channel",
+        "table": "channel_access",
+        "sqlSha256": "a013f6e5d7996aaf9ce1751c8dab65510a2777c569aac59bbb0195ec7bb0960d"
+      },
+      {
+        "name": "idx_channel_access_user",
+        "table": "channel_access",
+        "sqlSha256": "45f4de3ec5f271af966f98a7997b6572e7ca349490994947c63b746f2f171db5"
+      },
+      {
+        "name": "idx_channel_access_user_active",
+        "table": "channel_access",
+        "sqlSha256": "390d6eed661c53ffb2d6b169413de88f29774b48209e6e95d463d0326a9a68eb"
+      },
+      {
+        "name": "idx_channel_assets_channel_kind",
+        "table": "channel_assets",
+        "sqlSha256": "755c22bb8e409e6c7dc95ead34a8a0febd7aef9a67963141d6a6b512c4f5238a"
+      },
+      {
+        "name": "idx_channel_editorial_feedback_channel",
+        "table": "channel_editorial_feedback_events",
+        "sqlSha256": "db232f8990e21d31cb9bb71ab9214190ed39858b406352b1cc311ffd1e77b3a5"
+      },
+      {
+        "name": "idx_channel_editorial_feedback_workspace",
+        "table": "channel_editorial_feedback_events",
+        "sqlSha256": "c3d121c130dcf2b13bd662eaa11f63bb861a1b9c3338157043c504f1a824a993"
+      },
+      {
+        "name": "idx_channel_publication_events_publication",
+        "table": "channel_publication_events",
+        "sqlSha256": "f973fa563260b2863a054e33abc35c4da6fd957b2faed9b5fe0933ab6e7073bf"
+      },
+      {
+        "name": "idx_channel_publications_channel_scheduled",
+        "table": "channel_publications",
+        "sqlSha256": "a21110b45de0b751c771d68b8e61d2fc3031336099e61990476c85d579995f71"
+      },
+      {
+        "name": "idx_channel_publications_chat_updated",
+        "table": "channel_publications",
+        "sqlSha256": "461ddc1cdca75586c12826a18faff9a48ea24bfdbe28008ea1e137012f2dc14e"
+      },
+      {
+        "name": "idx_channel_publications_status_upload_ready",
+        "table": "channel_publications",
+        "sqlSha256": "762277e16efb5f5020539e750c9a456a136e15cda90338aded7e0116ea30833a"
+      },
+      {
+        "name": "idx_channel_publish_integrations_channel",
+        "table": "channel_publish_integrations",
+        "sqlSha256": "4465d215bc0de1d72d9c0a80cfdbe801d3d7cac2e1fb7d11ff7926a9c36bdaaa"
+      },
+      {
+        "name": "idx_channel_publish_settings_channel",
+        "table": "channel_publish_settings",
+        "sqlSha256": "1da66bf71b42a5dc0a662bb36480babf440bb8823aab7fb543ab3453b531c5cb"
+      },
+      {
+        "name": "idx_channel_source_candidates_buffer",
+        "table": "channel_source_candidates",
+        "sqlSha256": "890f1d7638ac8b54c56c95c7dea19c617528f5182e2f1bdfec959a938291249b"
+      },
+      {
+        "name": "idx_channel_source_candidates_content",
+        "table": "channel_source_candidates",
+        "sqlSha256": "3b39c742257200825abe84dca56a9e5cd1a48649f232df8df378cfae47dfbfc0"
+      },
+      {
+        "name": "idx_channel_source_candidates_event",
+        "table": "channel_source_candidates",
+        "sqlSha256": "d3dbc965f4190bd5b226d96304f4ba531cd3d2748167c0be05b593a5fbcda918"
+      },
+      {
+        "name": "idx_channel_source_candidates_qualified_buffer",
+        "table": "channel_source_candidates",
+        "sqlSha256": "01b57cb3f3a0427af4025c8aeffc4efee7d2ef31cab0a46c97f3e5cb3f0de213"
+      },
+      {
+        "name": "idx_channel_style_discovery_runs_creator_fingerprint",
+        "table": "channel_style_discovery_runs",
+        "sqlSha256": "fd40d7aee93a8b8e4f359e1be339d17d5954130c29af91db1e305b54cb3bebd1"
+      },
+      {
+        "name": "idx_channel_style_discovery_runs_status_created",
+        "table": "channel_style_discovery_runs",
+        "sqlSha256": "e62fe05199255e6bcb685e9751cc63e10b5dc504ae6cdc5967c145dfe431e38e"
+      },
+      {
+        "name": "idx_channel_style_discovery_runs_workspace_updated",
+        "table": "channel_style_discovery_runs",
+        "sqlSha256": "cb54f04416f8d6e16e25d301b0a33df6c9e7cd700a6f1376e963d8e7e60963e7"
+      },
+      {
+        "name": "idx_channel_youtube_oauth_states_expires",
+        "table": "channel_youtube_oauth_states",
+        "sqlSha256": "17f0c374e84ca257224f0ec111f6442b0b0cb2466015ac4a3946bf0a38440efc"
+      },
+      {
+        "name": "idx_channels_workspace",
+        "table": "channels",
+        "sqlSha256": "ad44ca59de8ab0d110aa37ea9cc916c4b84125d79675f5b64139cee54557b1f7"
+      },
+      {
+        "name": "idx_chat_drafts_thread_user",
+        "table": "chat_drafts",
+        "sqlSha256": "79ea952edcfa8a750123f2df354de10cb066f19f0d4f2f2f20351d000fdd75a9"
+      },
+      {
+        "name": "idx_chat_drafts_user",
+        "table": "chat_drafts",
+        "sqlSha256": "15572383bb29ce6986759327c5da581e7bb88032819471d314c44ebb944624b1"
+      },
+      {
+        "name": "idx_chat_events_thread",
+        "table": "chat_events",
+        "sqlSha256": "6b02b0e121617ea5d6a9e5426b08f53ce546f4d8c090098f41b25665d772a1e1"
+      },
+      {
+        "name": "idx_chat_threads_channel",
+        "table": "chat_threads",
+        "sqlSha256": "dc13ab9ff3190ec6dcd1cd567b2a2a659c18d9a9dcd503e9e9572c2a92569197"
+      },
+      {
+        "name": "idx_chat_threads_workspace",
+        "table": "chat_threads",
+        "sqlSha256": "4bc7d1c0e93027c2bb2b813aa07d68ce54edec1e64eb1716612c617f59ef353d"
+      },
+      {
+        "name": "idx_copscopes_categories_channel_status",
+        "table": "copscopes_source_categories",
+        "sqlSha256": "99c915c4d1cae9bb211de42f8af75c83cf847a94ceb65375ffac806ac3496cb8"
+      },
+      {
+        "name": "idx_copscopes_daily_run_items_run",
+        "table": "copscopes_daily_run_items",
+        "sqlSha256": "ae6315550e888587fa8fb91eed39a03225453203ec264a515fd20a051268b9f1"
+      },
+      {
+        "name": "idx_copscopes_daily_runs_channel_created",
+        "table": "copscopes_daily_runs",
+        "sqlSha256": "2efd9d293fac95ee119e25ed2d60049bfbdac3f76f11f3733f38023a218fd840"
+      },
+      {
+        "name": "idx_copscopes_reels_channel_category_status",
+        "table": "copscopes_source_reels",
+        "sqlSha256": "d4d48e432c188f1ef1e737dd8d0e969381a0fa1eaaaae1439f803654d0e7a00d"
+      },
+      {
+        "name": "idx_copscopes_reels_shortcode",
+        "table": "copscopes_source_reels",
+        "sqlSha256": "bfd5a15bb57636b452b92270e738fc4660b1d095796c296435652c40758fb9ae"
+      },
+      {
+        "name": "idx_mcp_access_tokens_owner",
+        "table": "mcp_access_tokens",
+        "sqlSha256": "1230035d5fe653321cac924cbb123338b9563a77a95012cfd7b8076b01bf4e41"
+      },
+      {
+        "name": "idx_mcp_access_tokens_workspace",
+        "table": "mcp_access_tokens",
+        "sqlSha256": "7f8484e9dd92dde61ad6f997794d3b35b2678c7f9d38a7db12cbf0fe57f322e6"
+      },
+      {
+        "name": "idx_mcp_machine_credentials_active_machine",
+        "table": "mcp_machine_credentials",
+        "sqlSha256": "71a581849552f99734ef2f9c94eda7d295c4c87024715384c4194bbed3a188ec"
+      },
+      {
+        "name": "idx_mcp_machine_credentials_machine",
+        "table": "mcp_machine_credentials",
+        "sqlSha256": "7d43c2052d6d149b8a952822d336e3a5ae3acb2d9f9e4129297a88147ca58f94"
+      },
+      {
+        "name": "idx_mcp_machine_credentials_owner",
+        "table": "mcp_machine_credentials",
+        "sqlSha256": "0e1c774f0994036cee2560be29702c8e1bf14c0f5a3d90090efd6fb6366571d0"
+      },
+      {
+        "name": "idx_mcp_machine_credentials_workspace",
+        "table": "mcp_machine_credentials",
+        "sqlSha256": "0a89f0a43d68a9a6af252a5695db8864946db016f173e07716319d7b7a822894"
+      },
+      {
+        "name": "idx_production_daemon_runtime_lease",
+        "table": "production_daemon_runtime",
+        "sqlSha256": "dc0b4d368b92399fcc56c01ff1ab9e6313b809f1269d4fd11522873277d806f3"
+      },
+      {
+        "name": "idx_production_events_item_created",
+        "table": "production_events",
+        "sqlSha256": "ceda950784ef682962803cb715085041d7a8e09156cefb437c7729d4a5363078"
+      },
+      {
+        "name": "idx_production_events_run_created",
+        "table": "production_events",
+        "sqlSha256": "e1ee29b3b1b5e75ff777266544db8979b542707478313b59117ccee37c542037"
+      },
+      {
+        "name": "idx_production_items_lease",
+        "table": "production_items",
+        "sqlSha256": "a8466023c3ceebfc494c79ba32477ec052d8280b69d8d1db6e50e955beea91c3"
+      },
+      {
+        "name": "idx_production_items_one_current_generation",
+        "table": "production_items",
+        "sqlSha256": "3c5ef5a81c16c45938761b4ad1dd4c95def512a25355a3cc489184d1b1150936"
+      },
+      {
+        "name": "idx_production_items_run_state",
+        "table": "production_items",
+        "sqlSha256": "6bc786b56b74cf710b8ddfeb4c5d81c2315d1e93209fc78337bf94dce0ca1693"
+      },
+      {
+        "name": "idx_production_outbox_claim",
+        "table": "production_outbox",
+        "sqlSha256": "2284b21d6078ecaf9861433a5a4312bb418788079c69249ea105e67e166a4b3d"
+      },
+      {
+        "name": "idx_production_outbox_item_dedupe",
+        "table": "production_outbox",
+        "sqlSha256": "5bd457fb486f5861b8f375bd753bdc1051086bdc861d7feef19499168e39ba59"
+      },
+      {
+        "name": "idx_production_profiles_channel_status",
+        "table": "production_profiles",
+        "sqlSha256": "26ec38692ee662c7b71f427bb492a977a662d467655ab7ddccf3dd29e66708c3"
+      },
+      {
+        "name": "idx_production_run_channels_run",
+        "table": "production_run_channels",
+        "sqlSha256": "00e000764fcf70fa667978baca5a3dc0138393fdee3d36d42222721bb61bdd9f"
+      },
+      {
+        "name": "idx_production_runs_request_idempotency",
+        "table": "production_runs",
+        "sqlSha256": "c1e90130f3e396201d19eba700cd9c90c315321e42ac256549be5858b8d3accc"
+      },
+      {
+        "name": "idx_production_runs_status_updated",
+        "table": "production_runs",
+        "sqlSha256": "7634bc19c095fe847f635320dca19444c4688854a1ccaa836911b8ee21ff8646"
+      },
+      {
+        "name": "idx_production_semantic_input_reservations_key",
+        "table": "production_semantic_input_reservations",
+        "sqlSha256": "62b7cf5ffe0e06a4514f4c52d2b13b7da52e82186c0a0ffb8113631c1050c8ea"
+      },
+      {
+        "name": "idx_project_kings_source_policy_approvals_current",
+        "table": "project_kings_source_policy_approvals",
+        "sqlSha256": "229842a6bfedbd7419010112c90d281156e391838300d9b9bdf8e2941fdcfee8"
+      },
+      {
+        "name": "idx_public_verifications_item_checked",
+        "table": "public_verifications",
+        "sqlSha256": "8273988ebdec33c42c9c55a2d1757f433ae63eaf974d13656800525a8514392c"
+      },
+      {
+        "name": "idx_public_verifications_one_success",
+        "table": "public_verifications",
+        "sqlSha256": "b11ae7b7939795c87d891c907104f9f83d2282b1c220dc64a8f68bc9b16a7038"
+      },
+      {
+        "name": "idx_quality_verdicts_item_gate_hash",
+        "table": "quality_verdicts",
+        "sqlSha256": "ee213f9effeada0af2e78b62b10da8af0c6d54237668328c0bb9d1bf513b975c"
+      },
+      {
+        "name": "idx_render_exports_chat_created",
+        "table": "render_exports",
+        "sqlSha256": "9c83dac78a66775792ff9be3a13bfe283f9ba9aac8be40c532804a9063a04bba"
+      },
+      {
+        "name": "idx_source_decompositions_chat",
+        "table": "source_decompositions",
+        "sqlSha256": "cf70b5bfa0fc4048f5bd96c71ff91916dbeb176485723c08316909f01c4ba97b"
+      },
+      {
+        "name": "idx_source_jobs_chat_created",
+        "table": "source_jobs",
+        "sqlSha256": "c45d268baf4a1cce9bd0a0b0d0726df074ba947c98ed29b90acc54fb91978a16"
+      },
+      {
+        "name": "idx_source_jobs_status_created",
+        "table": "source_jobs",
+        "sqlSha256": "fcbabea57689e1c12f32a596f2c0393c7d43705445c32e1999689ec279ef38c1"
+      },
+      {
+        "name": "idx_source_jobs_workspace_updated",
+        "table": "source_jobs",
+        "sqlSha256": "7f12eadb0d834cd28720db47fb155dd15c8b89c1aa177c79215f0eb97e2099d6"
+      },
+      {
+        "name": "idx_stage2_runs_chat_created",
+        "table": "stage2_runs",
+        "sqlSha256": "9f14f626ccd4c50994858f60b328ad02d1acdd217ae072fea027968b9d5bb035"
+      },
+      {
+        "name": "idx_stage2_runs_status_created",
+        "table": "stage2_runs",
+        "sqlSha256": "e135e2313d7c5fdd1b95644d692190c666288897bde3ad69358a423c01a5ba57"
+      },
+      {
+        "name": "idx_stage2_runs_workspace_updated",
+        "table": "stage2_runs",
+        "sqlSha256": "8671c32ccdf3e6d799e8586e18bb38a451ac15904a5cc1d642b8ee6e921621c9"
+      },
+      {
+        "name": "idx_stage3_job_artifacts_job",
+        "table": "stage3_job_artifacts",
+        "sqlSha256": "65259f609b94cb0128021d4167755d6af47b3ce156348e37b75828ea047d3c70"
+      },
+      {
+        "name": "idx_stage3_job_events_job",
+        "table": "stage3_job_events",
+        "sqlSha256": "96d2cb9ffa92b285b3c23230a87db21b7200e2fb76432eba89e66756608920c6"
+      },
+      {
+        "name": "idx_stage3_jobs_execution",
+        "table": "stage3_jobs",
+        "sqlSha256": "4d9b3a3d3b38ed049b5aba9e6051b4218b686fca8eb503ad513e2ea0286dbb83"
+      },
+      {
+        "name": "idx_stage3_jobs_kind_target_dedupe",
+        "table": "stage3_jobs",
+        "sqlSha256": "5dd194a0d7a5ba41633eaa42194a8e098dc1ef2e1f2a20bf1f91b31212492d5a"
+      },
+      {
+        "name": "idx_stage3_jobs_status",
+        "table": "stage3_jobs",
+        "sqlSha256": "5e29f12fcc214174759df979e6787ade1852efb38b0bc418aa4ffedf08fef86e"
+      },
+      {
+        "name": "idx_stage3_jobs_worker",
+        "table": "stage3_jobs",
+        "sqlSha256": "e6267f7eda93992e35326555af9f7cbec4a5b24335782857ad0fb7186cc2ece2"
+      },
+      {
+        "name": "idx_stage3_jobs_workspace",
+        "table": "stage3_jobs",
+        "sqlSha256": "9600913863e1247d8395129570bbd8754d77f3ac77fc0ccb575918de421c4e7c"
+      },
+      {
+        "name": "idx_stage3_worker_tokens_worker",
+        "table": "stage3_worker_tokens",
+        "sqlSha256": "def6513e5614e394d13223a46f0fcef0be393f403640fd8ddf1d8fa6659d924b"
+      },
+      {
+        "name": "idx_stage3_workers_user",
+        "table": "stage3_workers",
+        "sqlSha256": "669413780746031036356fb80588b2f3b281ece29f34964c44c5367f4b4198a1"
+      },
+      {
+        "name": "idx_workspace_members_workspace",
+        "table": "workspace_members",
+        "sqlSha256": "6252703e1f5bad3fa3f17f299c15edaa371355d2c173c1f0f58dbfa5f259a815"
+      },
+      {
+        "name": "idx_workspace_templates_workspace_active_updated",
+        "table": "workspace_templates",
+        "sqlSha256": "9f54eed15a98f0c75ecf54f935ef833e8c22fff590468ab5c8581447fbe4e075"
+      },
+      {
+        "name": "idx_workspace_templates_workspace_created",
+        "table": "workspace_templates",
+        "sqlSha256": "772bb6bc95063e078aa86997c61580265e6f095b0645e8da3c1ae55ce968a693"
+      },
+      {
+        "name": "idx_workspace_templates_workspace_updated",
+        "table": "workspace_templates",
+        "sqlSha256": "a79293eff86708e6c2deb96cb137a9f5eab3745e1389cab8737f8becab94193c"
+      }
+    ],
+    "databaseBytes": 2040438784,
+    "pageCount": 498220,
+    "pageSize": 4096
+  },
+  "idempotentAfter": {
+    "integrity": [
+      "ok"
+    ],
+    "foreignKeyIssues": [],
+    "tables": [
+      {
+        "name": "agent_attempts",
+        "rowCount": 0,
+        "sqlSha256": "a8e0195ce9a0e8dc17f39c82bd424107043c2e94abfe4d9c585ac0c625c1fa65"
+      },
+      {
+        "name": "audit_log",
+        "rowCount": 248859,
+        "sqlSha256": "e1da855c0b3d758535c5e4a070933072bdba567fa4d5333a0cc12e5b103dd736"
+      },
+      {
+        "name": "auth_sessions",
+        "rowCount": 257,
+        "sqlSha256": "0852857931eafa029c8bc52525f337a2fde24b6c6948a33cb6691ff3a4284a7c"
+      },
+      {
+        "name": "channel_access",
+        "rowCount": 24,
+        "sqlSha256": "c50cf56a8a39ce25d6b2a7ba504fc330aa89c1ecaf6e997d3358a698622bd0e6"
+      },
+      {
+        "name": "channel_assets",
+        "rowCount": 289,
+        "sqlSha256": "50445394e9361f8db6c820638ee176efde1aaa990bd6559fe06d3468014ce6e1"
+      },
+      {
+        "name": "channel_editorial_feedback_events",
+        "rowCount": 892,
+        "sqlSha256": "f94a7537f2907a3691fd9b795ddd6247a649cf3b6517ac92f408368b67a6e9cc"
+      },
+      {
+        "name": "channel_publication_events",
+        "rowCount": 3577,
+        "sqlSha256": "464b4a75f9cf83d680f649aa7d25bd29a3fbe15cbf423ce9a07bd2b159c28af7"
+      },
+      {
+        "name": "channel_publications",
+        "rowCount": 1355,
+        "sqlSha256": "6a2ee2b537f960649285cff1c0efb40ac774548db34ff49ea8ecc9f6a6864e95"
+      },
+      {
+        "name": "channel_publish_integrations",
+        "rowCount": 20,
+        "sqlSha256": "fc22d6258bad7e527315fb5b4f08b6c1d1cba1d1f6474564fef7ca24c6d70833"
+      },
+      {
+        "name": "channel_publish_settings",
+        "rowCount": 17,
+        "sqlSha256": "d39d3fcbc74c13b4531560cb09d2cdae14d993046e9be45db25b141720f9431f"
+      },
+      {
+        "name": "channel_source_candidates",
+        "rowCount": 0,
+        "sqlSha256": "7154a32ec27e6f5eb81af8c9292853b12fd80eabeed1cde071fb34dc6d24d5ba"
+      },
+      {
+        "name": "channel_style_discovery_runs",
+        "rowCount": 14,
+        "sqlSha256": "f71ec3086a91d1c3fc0d731493bd56e422cdd32704c6916f79b902ff1c8b7a23"
+      },
+      {
+        "name": "channel_youtube_oauth_states",
+        "rowCount": 0,
+        "sqlSha256": "3994d7f7ac2ae109e05134c259e4dbcb9792f8144946e36c2d480da73d261eca"
+      },
+      {
+        "name": "channels",
+        "rowCount": 26,
+        "sqlSha256": "ef6ff6411ff8e0dfa5b3b297091edba2171585928fe4d5a4a900efa2fb2c9112"
+      },
+      {
+        "name": "chat_drafts",
+        "rowCount": 1447,
+        "sqlSha256": "eb16d9d407c1106296859731fc83bb8e187775c5fd6e89feb622dabd98907d68"
+      },
+      {
+        "name": "chat_events",
+        "rowCount": 9285,
+        "sqlSha256": "d2f677d2c8291e683ce7c1ca525455a2b2b0f9316be5ac2278fa5b57e88bd93d"
+      },
+      {
+        "name": "chat_threads",
+        "rowCount": 1519,
+        "sqlSha256": "786cf6d4a1d722d5adf019f7febec376794903505e11c953dc46ff680d5e0949"
+      },
+      {
+        "name": "copscopes_daily_run_items",
+        "rowCount": 66,
+        "sqlSha256": "0651e929ddaab842935c1a7f3c48739e31a0b999205fabefbba7bdb1a39a874a"
+      },
+      {
+        "name": "copscopes_daily_runs",
+        "rowCount": 21,
+        "sqlSha256": "6ae58445d20fe425b8d356082958df3f423af113219f302c784a9b59ca66c067"
+      },
+      {
+        "name": "copscopes_source_categories",
+        "rowCount": 60,
+        "sqlSha256": "10c1e1c802086f04bc6fc22292d4b99342b6102bf884376bb6832774c1481064"
+      },
+      {
+        "name": "copscopes_source_reels",
+        "rowCount": 224,
+        "sqlSha256": "4dbf52598759eb01611842b0e1cc506a6059e70f5d9b897c525b74af0820ec54"
+      },
+      {
+        "name": "mcp_access_tokens",
+        "rowCount": 13,
+        "sqlSha256": "2542c736acaab2b9f73fc93952e6c30fef426717d1651d2c8445baac2073b29f"
+      },
+      {
+        "name": "mcp_machine_credentials",
+        "rowCount": 4,
+        "sqlSha256": "a1ce3b5e72feaeae55474f7d2f58bbce5a80ddca88412e3da3aee3ca9091ee63"
+      },
+      {
+        "name": "production_daemon_runtime",
+        "rowCount": 0,
+        "sqlSha256": "3acab6bd62cfd1fe1fbaa47c13d16c0347f3fd738e16a66376a718028f62d7f5"
+      },
+      {
+        "name": "production_events",
+        "rowCount": 0,
+        "sqlSha256": "9720c0d18d9b0e2ef500b3239fb7f0345b4311fc11ef77ef0ce19972ae19c437"
+      },
+      {
+        "name": "production_items",
+        "rowCount": 0,
+        "sqlSha256": "52d032cb64489743cb55048a37dcbd53e98bf34c2c8e0e5955136eb8d16d88d0"
+      },
+      {
+        "name": "production_outbox",
+        "rowCount": 0,
+        "sqlSha256": "dcd919fa01cdf9acc80b679a56db523f79771bd41d4f9f8e8422b323add57f07"
+      },
+      {
+        "name": "production_profiles",
+        "rowCount": 0,
+        "sqlSha256": "c2c483e1d972996fb893b1a412415618fee5c688f7518c48cc9a0ddba8821fb1"
+      },
+      {
+        "name": "production_run_channels",
+        "rowCount": 0,
+        "sqlSha256": "0afe08966ae060d43e85e9585f32c69b7910873ade3edadb6d4e638b1cb6dc26"
+      },
+      {
+        "name": "production_runs",
+        "rowCount": 0,
+        "sqlSha256": "b369ba78c6f32ffe2a75b946dbf75e6160b5c4699b1f534ab1e4cc04e2816be5"
+      },
+      {
+        "name": "production_semantic_input_reservations",
+        "rowCount": 0,
+        "sqlSha256": "aa04781bcd3ee27ea6780e5cee7e6ec3b932d53c66dbf209981b54533ecfb200"
+      },
+      {
+        "name": "project_kings_source_policy_approvals",
+        "rowCount": 0,
+        "sqlSha256": "502f0a86b9b87914faaf270c525be8ccd1c14e4b8d56cd6bc293a97c66ee9daa"
+      },
+      {
+        "name": "public_verifications",
+        "rowCount": 0,
+        "sqlSha256": "efb80a7ae397ae010a1b6068035727dbeca38c78c72378245c045d54a1df4427"
+      },
+      {
+        "name": "quality_verdicts",
+        "rowCount": 0,
+        "sqlSha256": "986ae917550c60ae6cbd2e9aacc4e7c105c7ba7224b216ac4a066b7d0de50131"
+      },
+      {
+        "name": "render_exports",
+        "rowCount": 1872,
+        "sqlSha256": "b40ac132cddc71843631ccf5d4ef5bfec507435e4e1532de6c6de97e735a482e"
+      },
+      {
+        "name": "source_decompositions",
+        "rowCount": 7,
+        "sqlSha256": "06b42c8087da6ef01ad781d2b5ba1190227acfbdc6def4539f14fa299739cbc3"
+      },
+      {
+        "name": "source_jobs",
+        "rowCount": 1515,
+        "sqlSha256": "1d498db58899e2c65327cb8ac68efac212c6f3e48267c06ec6189d54dbb0a35a"
+      },
+      {
+        "name": "stage2_runs",
+        "rowCount": 2635,
+        "sqlSha256": "96e4202907197598c65cbf8b73b51c465dc12552d889f5eba11ca7b9e9c5c324"
+      },
+      {
+        "name": "stage3_job_artifacts",
+        "rowCount": 18654,
+        "sqlSha256": "56c33c3d0a75650171f988de7bfa5ba1af96fbdc5eb55847163bef9bbd7347e4"
+      },
+      {
+        "name": "stage3_job_events",
+        "rowCount": 123272,
+        "sqlSha256": "d392b4b5b4ec441cd2365435aa221940938ef4618a9984647676be73ba8fd815"
+      },
+      {
+        "name": "stage3_jobs",
+        "rowCount": 21537,
+        "sqlSha256": "445e9ad385857039024576598af234408b90024956a98960525c411c07dd774a"
+      },
+      {
+        "name": "stage3_worker_tokens",
+        "rowCount": 1484,
+        "sqlSha256": "f9b653afa4950de5b81cb513a04fc2016a2326a061c30dbf7e1614c7c25ce22d"
+      },
+      {
+        "name": "stage3_workers",
+        "rowCount": 565,
+        "sqlSha256": "28fd789c0be8a2133ad7c9901191cda666c0fcd8ebd46f80cd056fdc15dff152"
+      },
+      {
+        "name": "users",
+        "rowCount": 21,
+        "sqlSha256": "4bd5e54fe7b3eede599f82339c76f4c3a78e3b790d988ca5c3a3c98b46222bd4"
+      },
+      {
+        "name": "workspace_anthropic_integrations",
+        "rowCount": 0,
+        "sqlSha256": "fc981041ccfd2986584e56c46ad1c60f833546e82074b0a997aab5f681d89164"
+      },
+      {
+        "name": "workspace_codex_integrations",
+        "rowCount": 1,
+        "sqlSha256": "7a57d1740ec9cb2e7d5ce1e776518111e7de4724a624873c47ba199af5a9b8c1"
+      },
+      {
+        "name": "workspace_invites",
+        "rowCount": 3,
+        "sqlSha256": "b610a8ac0dba533662b1ca70b325520771ae8623faed53ffd88d8fdf593a4a5f"
+      },
+      {
+        "name": "workspace_members",
+        "rowCount": 20,
+        "sqlSha256": "a01c505d2f4f4d802e3fe2a2461875a8022c1eea769766224e9e2f30cff8f8af"
+      },
+      {
+        "name": "workspace_openrouter_integrations",
+        "rowCount": 1,
+        "sqlSha256": "bf3fc18d1211bac608e0440e9505a6c482ac358aeee8b9f46960e64e82ba5ef5"
+      },
+      {
+        "name": "workspace_templates",
+        "rowCount": 88,
+        "sqlSha256": "d37cc51a4c6bd2e19b3bfe90c5d9ff452e31fdb664086a817a83926fdfa0b558"
+      },
+      {
+        "name": "workspaces",
+        "rowCount": 1,
+        "sqlSha256": "7f56b3b15857d16f58f21a4dd2065c8a979c1f2ad93c0e71756b504bf6a08fdf"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "idx_agent_attempts_run_item",
+        "table": "agent_attempts",
+        "sqlSha256": "419cc545dad12a7537215085217b08e920e2c9262a56f6c99569c0fc861ff280"
+      },
+      {
+        "name": "idx_agent_attempts_stage3_job",
+        "table": "agent_attempts",
+        "sqlSha256": "cae4b9eff78efd2d7ca337b2cf88deefb1b90b24905e5509f7c2a3dc01b378a0"
+      },
+      {
+        "name": "idx_audit_log_channel_created",
+        "table": "audit_log",
+        "sqlSha256": "6f88aeeb91c12de79dee4e415a128429f7f18d41dbeb47ea183bb77fec769940"
+      },
+      {
+        "name": "idx_audit_log_chat_created",
+        "table": "audit_log",
+        "sqlSha256": "00f8cb623e64ef1fc444930a350b14a250f7991a75b968c671eceae49a7bcfd0"
+      },
+      {
+        "name": "idx_audit_log_stage_status",
+        "table": "audit_log",
+        "sqlSha256": "79241624ed6265b0681d0b5ef1c969b81cb8cefabdf8c5667388d0b9d1cbf006"
+      },
+      {
+        "name": "idx_audit_log_workspace_created",
+        "table": "audit_log",
+        "sqlSha256": "0b86e9d8121faf2eea817e92d7279d932f3b683b5eb3704b37f74c4c80dfd36f"
+      },
+      {
+        "name": "idx_auth_sessions_user",
+        "table": "auth_sessions",
+        "sqlSha256": "376cac603edb59d682b8c365f853c44f0385962476a986a2d21699c4df907456"
+      },
+      {
+        "name": "idx_channel_access_channel",
+        "table": "channel_access",
+        "sqlSha256": "a013f6e5d7996aaf9ce1751c8dab65510a2777c569aac59bbb0195ec7bb0960d"
+      },
+      {
+        "name": "idx_channel_access_user",
+        "table": "channel_access",
+        "sqlSha256": "45f4de3ec5f271af966f98a7997b6572e7ca349490994947c63b746f2f171db5"
+      },
+      {
+        "name": "idx_channel_access_user_active",
+        "table": "channel_access",
+        "sqlSha256": "390d6eed661c53ffb2d6b169413de88f29774b48209e6e95d463d0326a9a68eb"
+      },
+      {
+        "name": "idx_channel_assets_channel_kind",
+        "table": "channel_assets",
+        "sqlSha256": "755c22bb8e409e6c7dc95ead34a8a0febd7aef9a67963141d6a6b512c4f5238a"
+      },
+      {
+        "name": "idx_channel_editorial_feedback_channel",
+        "table": "channel_editorial_feedback_events",
+        "sqlSha256": "db232f8990e21d31cb9bb71ab9214190ed39858b406352b1cc311ffd1e77b3a5"
+      },
+      {
+        "name": "idx_channel_editorial_feedback_workspace",
+        "table": "channel_editorial_feedback_events",
+        "sqlSha256": "c3d121c130dcf2b13bd662eaa11f63bb861a1b9c3338157043c504f1a824a993"
+      },
+      {
+        "name": "idx_channel_publication_events_publication",
+        "table": "channel_publication_events",
+        "sqlSha256": "f973fa563260b2863a054e33abc35c4da6fd957b2faed9b5fe0933ab6e7073bf"
+      },
+      {
+        "name": "idx_channel_publications_channel_scheduled",
+        "table": "channel_publications",
+        "sqlSha256": "a21110b45de0b751c771d68b8e61d2fc3031336099e61990476c85d579995f71"
+      },
+      {
+        "name": "idx_channel_publications_chat_updated",
+        "table": "channel_publications",
+        "sqlSha256": "461ddc1cdca75586c12826a18faff9a48ea24bfdbe28008ea1e137012f2dc14e"
+      },
+      {
+        "name": "idx_channel_publications_status_upload_ready",
+        "table": "channel_publications",
+        "sqlSha256": "762277e16efb5f5020539e750c9a456a136e15cda90338aded7e0116ea30833a"
+      },
+      {
+        "name": "idx_channel_publish_integrations_channel",
+        "table": "channel_publish_integrations",
+        "sqlSha256": "4465d215bc0de1d72d9c0a80cfdbe801d3d7cac2e1fb7d11ff7926a9c36bdaaa"
+      },
+      {
+        "name": "idx_channel_publish_settings_channel",
+        "table": "channel_publish_settings",
+        "sqlSha256": "1da66bf71b42a5dc0a662bb36480babf440bb8823aab7fb543ab3453b531c5cb"
+      },
+      {
+        "name": "idx_channel_source_candidates_buffer",
+        "table": "channel_source_candidates",
+        "sqlSha256": "890f1d7638ac8b54c56c95c7dea19c617528f5182e2f1bdfec959a938291249b"
+      },
+      {
+        "name": "idx_channel_source_candidates_content",
+        "table": "channel_source_candidates",
+        "sqlSha256": "3b39c742257200825abe84dca56a9e5cd1a48649f232df8df378cfae47dfbfc0"
+      },
+      {
+        "name": "idx_channel_source_candidates_event",
+        "table": "channel_source_candidates",
+        "sqlSha256": "d3dbc965f4190bd5b226d96304f4ba531cd3d2748167c0be05b593a5fbcda918"
+      },
+      {
+        "name": "idx_channel_source_candidates_qualified_buffer",
+        "table": "channel_source_candidates",
+        "sqlSha256": "01b57cb3f3a0427af4025c8aeffc4efee7d2ef31cab0a46c97f3e5cb3f0de213"
+      },
+      {
+        "name": "idx_channel_style_discovery_runs_creator_fingerprint",
+        "table": "channel_style_discovery_runs",
+        "sqlSha256": "fd40d7aee93a8b8e4f359e1be339d17d5954130c29af91db1e305b54cb3bebd1"
+      },
+      {
+        "name": "idx_channel_style_discovery_runs_status_created",
+        "table": "channel_style_discovery_runs",
+        "sqlSha256": "e62fe05199255e6bcb685e9751cc63e10b5dc504ae6cdc5967c145dfe431e38e"
+      },
+      {
+        "name": "idx_channel_style_discovery_runs_workspace_updated",
+        "table": "channel_style_discovery_runs",
+        "sqlSha256": "cb54f04416f8d6e16e25d301b0a33df6c9e7cd700a6f1376e963d8e7e60963e7"
+      },
+      {
+        "name": "idx_channel_youtube_oauth_states_expires",
+        "table": "channel_youtube_oauth_states",
+        "sqlSha256": "17f0c374e84ca257224f0ec111f6442b0b0cb2466015ac4a3946bf0a38440efc"
+      },
+      {
+        "name": "idx_channels_workspace",
+        "table": "channels",
+        "sqlSha256": "ad44ca59de8ab0d110aa37ea9cc916c4b84125d79675f5b64139cee54557b1f7"
+      },
+      {
+        "name": "idx_chat_drafts_thread_user",
+        "table": "chat_drafts",
+        "sqlSha256": "79ea952edcfa8a750123f2df354de10cb066f19f0d4f2f2f20351d000fdd75a9"
+      },
+      {
+        "name": "idx_chat_drafts_user",
+        "table": "chat_drafts",
+        "sqlSha256": "15572383bb29ce6986759327c5da581e7bb88032819471d314c44ebb944624b1"
+      },
+      {
+        "name": "idx_chat_events_thread",
+        "table": "chat_events",
+        "sqlSha256": "6b02b0e121617ea5d6a9e5426b08f53ce546f4d8c090098f41b25665d772a1e1"
+      },
+      {
+        "name": "idx_chat_threads_channel",
+        "table": "chat_threads",
+        "sqlSha256": "dc13ab9ff3190ec6dcd1cd567b2a2a659c18d9a9dcd503e9e9572c2a92569197"
+      },
+      {
+        "name": "idx_chat_threads_workspace",
+        "table": "chat_threads",
+        "sqlSha256": "4bc7d1c0e93027c2bb2b813aa07d68ce54edec1e64eb1716612c617f59ef353d"
+      },
+      {
+        "name": "idx_copscopes_categories_channel_status",
+        "table": "copscopes_source_categories",
+        "sqlSha256": "99c915c4d1cae9bb211de42f8af75c83cf847a94ceb65375ffac806ac3496cb8"
+      },
+      {
+        "name": "idx_copscopes_daily_run_items_run",
+        "table": "copscopes_daily_run_items",
+        "sqlSha256": "ae6315550e888587fa8fb91eed39a03225453203ec264a515fd20a051268b9f1"
+      },
+      {
+        "name": "idx_copscopes_daily_runs_channel_created",
+        "table": "copscopes_daily_runs",
+        "sqlSha256": "2efd9d293fac95ee119e25ed2d60049bfbdac3f76f11f3733f38023a218fd840"
+      },
+      {
+        "name": "idx_copscopes_reels_channel_category_status",
+        "table": "copscopes_source_reels",
+        "sqlSha256": "d4d48e432c188f1ef1e737dd8d0e969381a0fa1eaaaae1439f803654d0e7a00d"
+      },
+      {
+        "name": "idx_copscopes_reels_shortcode",
+        "table": "copscopes_source_reels",
+        "sqlSha256": "bfd5a15bb57636b452b92270e738fc4660b1d095796c296435652c40758fb9ae"
+      },
+      {
+        "name": "idx_mcp_access_tokens_owner",
+        "table": "mcp_access_tokens",
+        "sqlSha256": "1230035d5fe653321cac924cbb123338b9563a77a95012cfd7b8076b01bf4e41"
+      },
+      {
+        "name": "idx_mcp_access_tokens_workspace",
+        "table": "mcp_access_tokens",
+        "sqlSha256": "7f8484e9dd92dde61ad6f997794d3b35b2678c7f9d38a7db12cbf0fe57f322e6"
+      },
+      {
+        "name": "idx_mcp_machine_credentials_active_machine",
+        "table": "mcp_machine_credentials",
+        "sqlSha256": "71a581849552f99734ef2f9c94eda7d295c4c87024715384c4194bbed3a188ec"
+      },
+      {
+        "name": "idx_mcp_machine_credentials_machine",
+        "table": "mcp_machine_credentials",
+        "sqlSha256": "7d43c2052d6d149b8a952822d336e3a5ae3acb2d9f9e4129297a88147ca58f94"
+      },
+      {
+        "name": "idx_mcp_machine_credentials_owner",
+        "table": "mcp_machine_credentials",
+        "sqlSha256": "0e1c774f0994036cee2560be29702c8e1bf14c0f5a3d90090efd6fb6366571d0"
+      },
+      {
+        "name": "idx_mcp_machine_credentials_workspace",
+        "table": "mcp_machine_credentials",
+        "sqlSha256": "0a89f0a43d68a9a6af252a5695db8864946db016f173e07716319d7b7a822894"
+      },
+      {
+        "name": "idx_production_daemon_runtime_lease",
+        "table": "production_daemon_runtime",
+        "sqlSha256": "dc0b4d368b92399fcc56c01ff1ab9e6313b809f1269d4fd11522873277d806f3"
+      },
+      {
+        "name": "idx_production_events_item_created",
+        "table": "production_events",
+        "sqlSha256": "ceda950784ef682962803cb715085041d7a8e09156cefb437c7729d4a5363078"
+      },
+      {
+        "name": "idx_production_events_run_created",
+        "table": "production_events",
+        "sqlSha256": "e1ee29b3b1b5e75ff777266544db8979b542707478313b59117ccee37c542037"
+      },
+      {
+        "name": "idx_production_items_lease",
+        "table": "production_items",
+        "sqlSha256": "a8466023c3ceebfc494c79ba32477ec052d8280b69d8d1db6e50e955beea91c3"
+      },
+      {
+        "name": "idx_production_items_one_current_generation",
+        "table": "production_items",
+        "sqlSha256": "3c5ef5a81c16c45938761b4ad1dd4c95def512a25355a3cc489184d1b1150936"
+      },
+      {
+        "name": "idx_production_items_run_state",
+        "table": "production_items",
+        "sqlSha256": "6bc786b56b74cf710b8ddfeb4c5d81c2315d1e93209fc78337bf94dce0ca1693"
+      },
+      {
+        "name": "idx_production_outbox_claim",
+        "table": "production_outbox",
+        "sqlSha256": "2284b21d6078ecaf9861433a5a4312bb418788079c69249ea105e67e166a4b3d"
+      },
+      {
+        "name": "idx_production_outbox_item_dedupe",
+        "table": "production_outbox",
+        "sqlSha256": "5bd457fb486f5861b8f375bd753bdc1051086bdc861d7feef19499168e39ba59"
+      },
+      {
+        "name": "idx_production_profiles_channel_status",
+        "table": "production_profiles",
+        "sqlSha256": "26ec38692ee662c7b71f427bb492a977a662d467655ab7ddccf3dd29e66708c3"
+      },
+      {
+        "name": "idx_production_run_channels_run",
+        "table": "production_run_channels",
+        "sqlSha256": "00e000764fcf70fa667978baca5a3dc0138393fdee3d36d42222721bb61bdd9f"
+      },
+      {
+        "name": "idx_production_runs_request_idempotency",
+        "table": "production_runs",
+        "sqlSha256": "c1e90130f3e396201d19eba700cd9c90c315321e42ac256549be5858b8d3accc"
+      },
+      {
+        "name": "idx_production_runs_status_updated",
+        "table": "production_runs",
+        "sqlSha256": "7634bc19c095fe847f635320dca19444c4688854a1ccaa836911b8ee21ff8646"
+      },
+      {
+        "name": "idx_production_semantic_input_reservations_key",
+        "table": "production_semantic_input_reservations",
+        "sqlSha256": "62b7cf5ffe0e06a4514f4c52d2b13b7da52e82186c0a0ffb8113631c1050c8ea"
+      },
+      {
+        "name": "idx_project_kings_source_policy_approvals_current",
+        "table": "project_kings_source_policy_approvals",
+        "sqlSha256": "229842a6bfedbd7419010112c90d281156e391838300d9b9bdf8e2941fdcfee8"
+      },
+      {
+        "name": "idx_public_verifications_item_checked",
+        "table": "public_verifications",
+        "sqlSha256": "8273988ebdec33c42c9c55a2d1757f433ae63eaf974d13656800525a8514392c"
+      },
+      {
+        "name": "idx_public_verifications_one_success",
+        "table": "public_verifications",
+        "sqlSha256": "b11ae7b7939795c87d891c907104f9f83d2282b1c220dc64a8f68bc9b16a7038"
+      },
+      {
+        "name": "idx_quality_verdicts_item_gate_hash",
+        "table": "quality_verdicts",
+        "sqlSha256": "ee213f9effeada0af2e78b62b10da8af0c6d54237668328c0bb9d1bf513b975c"
+      },
+      {
+        "name": "idx_render_exports_chat_created",
+        "table": "render_exports",
+        "sqlSha256": "9c83dac78a66775792ff9be3a13bfe283f9ba9aac8be40c532804a9063a04bba"
+      },
+      {
+        "name": "idx_source_decompositions_chat",
+        "table": "source_decompositions",
+        "sqlSha256": "cf70b5bfa0fc4048f5bd96c71ff91916dbeb176485723c08316909f01c4ba97b"
+      },
+      {
+        "name": "idx_source_jobs_chat_created",
+        "table": "source_jobs",
+        "sqlSha256": "c45d268baf4a1cce9bd0a0b0d0726df074ba947c98ed29b90acc54fb91978a16"
+      },
+      {
+        "name": "idx_source_jobs_status_created",
+        "table": "source_jobs",
+        "sqlSha256": "fcbabea57689e1c12f32a596f2c0393c7d43705445c32e1999689ec279ef38c1"
+      },
+      {
+        "name": "idx_source_jobs_workspace_updated",
+        "table": "source_jobs",
+        "sqlSha256": "7f12eadb0d834cd28720db47fb155dd15c8b89c1aa177c79215f0eb97e2099d6"
+      },
+      {
+        "name": "idx_stage2_runs_chat_created",
+        "table": "stage2_runs",
+        "sqlSha256": "9f14f626ccd4c50994858f60b328ad02d1acdd217ae072fea027968b9d5bb035"
+      },
+      {
+        "name": "idx_stage2_runs_status_created",
+        "table": "stage2_runs",
+        "sqlSha256": "e135e2313d7c5fdd1b95644d692190c666288897bde3ad69358a423c01a5ba57"
+      },
+      {
+        "name": "idx_stage2_runs_workspace_updated",
+        "table": "stage2_runs",
+        "sqlSha256": "8671c32ccdf3e6d799e8586e18bb38a451ac15904a5cc1d642b8ee6e921621c9"
+      },
+      {
+        "name": "idx_stage3_job_artifacts_job",
+        "table": "stage3_job_artifacts",
+        "sqlSha256": "65259f609b94cb0128021d4167755d6af47b3ce156348e37b75828ea047d3c70"
+      },
+      {
+        "name": "idx_stage3_job_events_job",
+        "table": "stage3_job_events",
+        "sqlSha256": "96d2cb9ffa92b285b3c23230a87db21b7200e2fb76432eba89e66756608920c6"
+      },
+      {
+        "name": "idx_stage3_jobs_execution",
+        "table": "stage3_jobs",
+        "sqlSha256": "4d9b3a3d3b38ed049b5aba9e6051b4218b686fca8eb503ad513e2ea0286dbb83"
+      },
+      {
+        "name": "idx_stage3_jobs_kind_target_dedupe",
+        "table": "stage3_jobs",
+        "sqlSha256": "5dd194a0d7a5ba41633eaa42194a8e098dc1ef2e1f2a20bf1f91b31212492d5a"
+      },
+      {
+        "name": "idx_stage3_jobs_status",
+        "table": "stage3_jobs",
+        "sqlSha256": "5e29f12fcc214174759df979e6787ade1852efb38b0bc418aa4ffedf08fef86e"
+      },
+      {
+        "name": "idx_stage3_jobs_worker",
+        "table": "stage3_jobs",
+        "sqlSha256": "e6267f7eda93992e35326555af9f7cbec4a5b24335782857ad0fb7186cc2ece2"
+      },
+      {
+        "name": "idx_stage3_jobs_workspace",
+        "table": "stage3_jobs",
+        "sqlSha256": "9600913863e1247d8395129570bbd8754d77f3ac77fc0ccb575918de421c4e7c"
+      },
+      {
+        "name": "idx_stage3_worker_tokens_worker",
+        "table": "stage3_worker_tokens",
+        "sqlSha256": "def6513e5614e394d13223a46f0fcef0be393f403640fd8ddf1d8fa6659d924b"
+      },
+      {
+        "name": "idx_stage3_workers_user",
+        "table": "stage3_workers",
+        "sqlSha256": "669413780746031036356fb80588b2f3b281ece29f34964c44c5367f4b4198a1"
+      },
+      {
+        "name": "idx_workspace_members_workspace",
+        "table": "workspace_members",
+        "sqlSha256": "6252703e1f5bad3fa3f17f299c15edaa371355d2c173c1f0f58dbfa5f259a815"
+      },
+      {
+        "name": "idx_workspace_templates_workspace_active_updated",
+        "table": "workspace_templates",
+        "sqlSha256": "9f54eed15a98f0c75ecf54f935ef833e8c22fff590468ab5c8581447fbe4e075"
+      },
+      {
+        "name": "idx_workspace_templates_workspace_created",
+        "table": "workspace_templates",
+        "sqlSha256": "772bb6bc95063e078aa86997c61580265e6f095b0645e8da3c1ae55ce968a693"
+      },
+      {
+        "name": "idx_workspace_templates_workspace_updated",
+        "table": "workspace_templates",
+        "sqlSha256": "a79293eff86708e6c2deb96cb137a9f5eab3745e1389cab8737f8becab94193c"
+      }
+    ],
+    "databaseBytes": 2040709120,
+    "pageCount": 498220,
+    "pageSize": 4096
+  },
+  "result": "pass",
+  "evidenceSha256": "400b26abdbc819fb192bb8bb1a9a488f229212d82e9feac20be813f55626838c"
+}

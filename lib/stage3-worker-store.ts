@@ -118,7 +118,8 @@ function normalizeCurrentJobKind(value: string | null | undefined): Stage3JobKin
     value === "render" ||
     value === "editing-proxy" ||
     value === "source-download" ||
-    value === "agent-media-step"
+    value === "agent-media-step" ||
+    value === "production-semantic"
   ) {
     return value;
   }

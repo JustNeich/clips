@@ -1,0 +1,50 @@
+{
+  "status": "speech_detected",
+  "model": "tiny",
+  "language": "en",
+  "text": "Officer Jones here, so the attendant that we drive through was concerned about your well-being. He thought you might be impaired or out of the influence of something. Maybe you realize your sunglasses are on upside down? Yeah, they're upside down. On a scale of zero to ten and zero being you're completely sober and ten being your pass-up. You can drop where you can grab.",
+  "segments": [
+    {
+      "start": 0,
+      "end": 6.4,
+      "text": "Officer Jones here, so the attendant that we drive through was concerned about your",
+      "noSpeechProbability": 0.14684434235095978,
+      "averageLogProbability": -0.4450735686927713
+    },
+    {
+      "start": 6.4,
+      "end": 10.64,
+      "text": "well-being. He thought you might be impaired or out of the influence of something.",
+      "noSpeechProbability": 0.14684434235095978,
+      "averageLogProbability": -0.4450735686927713
+    },
+    {
+      "start": 12.64,
+      "end": 15.280000000000001,
+      "text": "Maybe you realize your sunglasses are on upside down?",
+      "noSpeechProbability": 0.14684434235095978,
+      "averageLogProbability": -0.4450735686927713
+    },
+    {
+      "start": 17.12,
+      "end": 18.72,
+      "text": "Yeah, they're upside down.",
+      "noSpeechProbability": 0.14684434235095978,
+      "averageLogProbability": -0.4450735686927713
+    },
+    {
+      "start": 18.72,
+      "end": 22.96,
+      "text": "On a scale of zero to ten and zero being you're completely sober and ten being your pass-up.",
+      "noSpeechProbability": 0.14684434235095978,
+      "averageLogProbability": -0.4450735686927713
+    },
+    {
+      "start": 22.96,
+      "end": 24.32,
+      "text": "You can drop where you can grab.",
+      "noSpeechProbability": 0.14684434235095978,
+      "averageLogProbability": -0.4450735686927713
+    }
+  ]
+}

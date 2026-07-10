@@ -1,0 +1,216 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 2.424s]
+V
+——
+\
+\, Good
+orning fro
+m . /
+YN
+V
+4
+YS five-s peice clo
+OF
+Js
+—
+=
+A
+(Z
+a
+\
+BN
+SN
+Se
+v¥-
+‘NX
+~
+Ss
+Se
+~OS,
+[source-key-frame-02 @ 9.493s]
+m\Y
+A
+_
+m
+pt
+4
+fy
+‘Shoutoutt
+tO)
+or'the
+st agan
+VeNNVI
+ever
+Mi
+hs.
+—
+ny)
+ye
+=
+Nv
+)
+(SN
+7
+NS
+‘>
+\
+:
+<j
+i
+mg
+3
+| O
+[source-key-frame-03 @ 16.562s]
+We
+g)
+>.
+b)
+©
+ing my fj
+form-h
+Ss in chocolate
+Np leaad
+Gn
+ane
+‘dd /.
+f
+ij
+ap
+(S
+3
+£¥
+A\
+AX >
+PAN, Z
+WN
+oe
+fg
+SS
+oo
+9
+e%
+rz
+I~ ®
+———
+~~
+23
+ou
+“en A )
+~“)
+so!
+a
+&
+fa
+4g @ ny
+A
+AY
+<a
+( ie)
+Om)
+a
+w2®
+\y
+LY
+ae
+7%
+in”
+Ps
+my
+[source-key-frame-04 @ 23.832s]
+>
+XS
+y
+j
+rey
+g/
+re
+l
+IF:
+yaa
+ij
+F
+t[<s j
+=H)
+7
+qd
+al)
+B
+_—
+WW
+hi
+U
+2258
+44.
+1
+x
+yy -
+a 4
+re
+a.
+} Aa
+=
+&
+1)
+im? 7
+fn
+Ts
+Lan
+PE
+his aes smells like antler HOOKS
+ndipure chaos, and i'm he
+Or it!
+~
+TANS
+ace
+r~)
+Vine
+Wy
+WY
+— "4
+~
+“aw
+4
+|
+7, Ft
+[source-key-frame-05 @ 30.901s]
+ff
+>» 3
+~~
+re"
+raf
+Fe
+le
+sy
+BX.
+_
+hoe
+~@
+— ae,
+be
+\
+>)
+ssa
+] +.
+iS)
+—-
+.
+=
+oy
+@
+z
+7%
+_ Gryffin
+dorit .
+[source-key-frame-06 @ 37.970s]
+Tiny
+©} (Ko) look oKo}| Y ile
+se
+tlyah
+oldinglonwor dear life
+~
+<==
+zi
+le -
+4)

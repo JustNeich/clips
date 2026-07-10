@@ -1,0 +1,130 @@
+{
+  "schemaVersion": "project-kings-source-policy-case-metadata-v1",
+  "caseId": "dark-instagram-C-0YpsCAODv",
+  "profileKey": "dark-joy-boy",
+  "sourceUrl": "https://www.instagram.com/reel/C-0YpsCAODv/",
+  "mediaRelativePath": ".data/project-kings/source-candidates/dark/instagram/C-0YpsCAODv.mp4",
+  "contentSha256": "dec174acdfc1b12da01a4a656ad9bec3c7a472296eefd72049b82e0512ece27e",
+  "durationSec": 7.223,
+  "container": "mov,mp4,m4a,3gp,3g2,mj2",
+  "audioStreams": [
+    {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_long_name": "AAC (Advanced Audio Coding)",
+      "profile": "LC",
+      "codec_type": "audio",
+      "codec_tag_string": "mp4a",
+      "codec_tag": "0x6134706d",
+      "mime_codec_string": "mp4a.40.2",
+      "sample_fmt": "fltp",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "bits_per_sample": 0,
+      "initial_padding": 0,
+      "id": "0x2",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "time_base": "1/48000",
+      "start_pts": 0,
+      "start_time": "0.000000",
+      "duration_ts": 346704,
+      "duration": "7.223000",
+      "bit_rate": "128876",
+      "nb_frames": "340",
+      "extradata_size": 5,
+      "disposition": {
+        "default": 1,
+        "dub": 0,
+        "original": 0,
+        "comment": 0,
+        "lyrics": 0,
+        "karaoke": 0,
+        "forced": 0,
+        "hearing_impaired": 0,
+        "visual_impaired": 0,
+        "clean_effects": 0,
+        "attached_pic": 0,
+        "timed_thumbnails": 0,
+        "non_diegetic": 0,
+        "captions": 0,
+        "descriptions": 0,
+        "metadata": 0,
+        "dependent": 0,
+        "still_image": 0,
+        "multilayer": 0
+      },
+      "tags": {
+        "language": "und",
+        "handler_name": "SoundHandler"
+      }
+    }
+  ],
+  "policyVersion": "project-kings-source-rights-sensitive-policy-v2",
+  "policySha256": "b6664c4364c4a3b172a1f1d653e3d100604e98f5ef1b33857324691fa894eb39",
+  "extraction": {
+    "ffmpegVersion": "ffmpeg version 8.1 Copyright (c) 2000-2026 the FFmpeg developers",
+    "ffprobeVersion": "ffprobe version 8.1 Copyright (c) 2007-2026 the FFmpeg developers",
+    "frameRatios": [
+      0.06,
+      0.235,
+      0.41,
+      0.59,
+      0.765,
+      0.94
+    ],
+    "orderedFrames": [
+      {
+        "artifactId": "source-key-frame-01",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/frames/source-key-frame-01.jpg",
+        "timestampMs": 433,
+        "sha256": "2e18bca961409e1a37e5728c0ea13b25e9331ff0c4c6188cb0802d451af9558f"
+      },
+      {
+        "artifactId": "source-key-frame-02",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/frames/source-key-frame-02.jpg",
+        "timestampMs": 1697,
+        "sha256": "168412f1aafdb3f7dcd9354c799539b568820a8ec7b175959ad893a8ab835315"
+      },
+      {
+        "artifactId": "source-key-frame-03",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/frames/source-key-frame-03.jpg",
+        "timestampMs": 2961,
+        "sha256": "8b23a20a05d71b79d2a5547764870d5135be85b7bb02268b14cc2480e4458d69"
+      },
+      {
+        "artifactId": "source-key-frame-04",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/frames/source-key-frame-04.jpg",
+        "timestampMs": 4262,
+        "sha256": "c04b2f8e7bd741d8dee17425dcb286daaef807fba263407e9e203c6188830d8a"
+      },
+      {
+        "artifactId": "source-key-frame-05",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/frames/source-key-frame-05.jpg",
+        "timestampMs": 5526,
+        "sha256": "c68c8eba88fd380716c0c1a580ec3a12f9fed8e1239cf07d7e35e65f5b54cb27"
+      },
+      {
+        "artifactId": "source-key-frame-06",
+        "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/frames/source-key-frame-06.jpg",
+        "timestampMs": 6790,
+        "sha256": "8d0e831177f98cb59ca67aa9762f695ccff564a8de56afad04cc8faf8f365c10"
+      }
+    ]
+  },
+  "ocr": {
+    "tool": "tesseract 5.5.2",
+    "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/ocr.txt",
+    "sha256": "06db62b9d96604484c8e0f7b84ef8649b82690094b5bca9ca3bfc335214f8d49"
+  },
+  "asr": {
+    "tool": "openai-whisper-cli",
+    "model": "tiny",
+    "status": "speech_detected",
+    "relativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/asr.txt",
+    "sha256": "ff048afe90faa11b09009218506b872151dede6e203ee18e231638b6d6c017ed",
+    "rawRelativePath": "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/cases/dark-instagram-C-0YpsCAODv/asr.raw.json",
+    "rawSha256": "b0e33df4335c7fdee0a0bbe8085667248e7d995a5817a2831ae441d9f3f8737e"
+  }
+}

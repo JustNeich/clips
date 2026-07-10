@@ -1,0 +1,32 @@
+status=text_detected
+tool=tesseract 5.5.2
+language=eng
+[source-key-frame-01 @ 0.481s]
+a |
+ry -
+Wi
+evel
+[source-key-frame-02 @ 1.883s]
+<no_text_detected>
+[source-key-frame-03 @ 3.286s]
+<no_text_detected>
+[source-key-frame-04 @ 4.728s]
+\ Ds
+De
+f\\
+[source-key-frame-05 @ 6.131s]
+WK
+aaa
+4
+|
+<=
+y
+/ ) ee
+8 ah i
+\
+Veo
+[source-key-frame-06 @ 7.533s]
+ww
+=e /
+ee
+Ail

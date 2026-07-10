@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-07-10T12:56:20.000Z",
+  "credentialsChanged": false,
+  "newLoginRequired": false,
+  "route": {
+    "surface": "authenticated Clips owner session",
+    "executor": "Mac mini/Zoro source-download worker",
+    "provider": "ytDlp"
+  },
+  "attempts": [
+    {
+      "sourceUrl": "https://www.instagram.com/reel/DXY_ED7jSey/",
+      "outcome": "failed",
+      "failureClass": "source_specific_worker_timeout",
+      "httpStatus": 503,
+      "timeoutSec": 300,
+      "action": "The candidate was not admitted and the quality gates were not weakened."
+    },
+    {
+      "sourceUrl": "https://www.instagram.com/reel/DWnxlyIDcoK/",
+      "outcome": "passed",
+      "httpStatus": 200,
+      "contentType": "video/mp4",
+      "contentLength": 12007643,
+      "artifact": {
+        "relativePath": ".data/project-kings/source-candidates/cop/instagram/DWnxlyIDcoK.mp4",
+        "sha256": "49dd483449878265613f19b57bcdf0da2af201d765adccaf813e1397c5c14fd1",
+        "width": 1080,
+        "height": 1920,
+        "durationSec": 34.966667,
+        "videoCodec": "h264",
+        "audioCodec": "aac",
+        "fullDecode": "pass"
+      },
+      "sourceFit": {
+        "outcome": "passed",
+        "model": "gpt-5.4-mini",
+        "reasoning": "low",
+        "attestationFile": "source-fit-attestations-2026-07-10-v5.json"
+      }
+    }
+  ],
+  "bufferResult": {
+    "readinessFile": "source-buffer-readiness-2026-07-10-v7.json",
+    "darkJoyBoy": 6,
+    "lightKingdom": 6,
+    "copScopes": 6,
+    "ready": true
+  }
+}

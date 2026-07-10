@@ -1,0 +1,22 @@
+{
+  "status": "speech_detected",
+  "model": "tiny",
+  "language": "ja",
+  "text": "モンキンググレフェンド",
+  "segments": [
+    {
+      "start": 0,
+      "end": 16.6,
+      "text": "モンキング",
+      "noSpeechProbability": 0.437332421541214,
+      "averageLogProbability": -2.993565423148019
+    },
+    {
+      "start": 30,
+      "end": 32,
+      "text": "グレフェンド",
+      "noSpeechProbability": 0.1271137148141861,
+      "averageLogProbability": -0.718033492565155
+    }
+  ]
+}

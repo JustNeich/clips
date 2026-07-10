@@ -37,6 +37,7 @@ pnpm-debug.log*
 /output
 /.playwright-cli
 /.stage3-worker-runtime
+/.project-kings-semantic-worker-runtime
 # Local Assistant runtime state (Brain / telegram cache) — must never enter this repo
 /.assistant/
 *.tsbuildinfo
