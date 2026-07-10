@@ -8,7 +8,7 @@ export type CodexCreditRate = Readonly<{
 
 export const PROJECT_KINGS_CODEX_CREDIT_RATE_CARD = Object.freeze({
   evidenceDate: "2026-07-10",
-  source: "https://help.openai.com/en/articles/20001106-codex-rate-card-2",
+  source: "https://help.openai.com/en/articles/20001106-codex-rate-card",
   unit: "codex_credits" as const,
   models: Object.freeze({
     "gpt-5.4": Object.freeze({
@@ -20,6 +20,11 @@ export const PROJECT_KINGS_CODEX_CREDIT_RATE_CARD = Object.freeze({
       inputPerMillionTokens: 18.75,
       cachedInputPerMillionTokens: 1.875,
       outputPerMillionTokens: 113
+    }),
+    "gpt-5.6-luna": Object.freeze({
+      inputPerMillionTokens: 25,
+      cachedInputPerMillionTokens: 2.5,
+      outputPerMillionTokens: 150
     })
   })
 });

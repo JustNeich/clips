@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "retrievedAt": "2026-07-10T18:20:00.000Z",
+  "source": "https://help.openai.com/en/articles/20001106-codex-rate-card",
+  "unit": "codex_credits_per_1m_tokens",
+  "rates": {
+    "gpt-5.4": {
+      "input": 62.5,
+      "cachedInput": 6.25,
+      "output": 375
+    },
+    "gpt-5.4-mini": {
+      "input": 18.75,
+      "cachedInput": 1.875,
+      "output": 113
+    },
+    "gpt-5.6-luna": {
+      "input": 25,
+      "cachedInput": 2.5,
+      "output": 150
+    }
+  },
+  "note": "The official rate card expresses Codex consumption in credits, not USD. Benchmark evidence therefore records codex_credits and does not invent a cash conversion. v2 adds GPT-5.6 Luna (rate card row 'GPT-5.6 Luna': 25 / 2.50 / 150 credits per 1M input / cached input / output tokens), captured from the live help-center page on 2026-07-10 after verifying gpt-5.6-luna availability on codex-cli 0.144.1. gpt-5.4 rates are unchanged from the v1 capture."
+}

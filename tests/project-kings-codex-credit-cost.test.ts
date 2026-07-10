@@ -26,7 +26,12 @@ test("uses the frozen official Codex credit rate per model", () => {
     cachedInputPerMillionTokens: 6.25,
     outputPerMillionTokens: 375
   });
-  assert.throws(() => getProjectKingsCodexCreditRate("gpt-5.6-luna"), /No frozen Codex credit rate/);
+  assert.deepEqual(getProjectKingsCodexCreditRate("gpt-5.6-luna"), {
+    inputPerMillionTokens: 25,
+    cachedInputPerMillionTokens: 2.5,
+    outputPerMillionTokens: 150
+  });
+  assert.throws(() => getProjectKingsCodexCreditRate("gpt-5.6"), /No frozen Codex credit rate/);
 });
 
 test("rejects internally inconsistent usage", () => {

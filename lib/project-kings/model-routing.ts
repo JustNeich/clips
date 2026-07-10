@@ -58,9 +58,12 @@ export type SelectedModelRoute = Readonly<{
   benchmark: ModelBenchmarkResult;
 }>;
 
+export type ModelSelectionFallbackMode = "distinct_route" | "same_route_reasoning";
+
 export type ModelSelection = Readonly<{
   primary: SelectedModelRoute;
   fallback: SelectedModelRoute;
+  fallbackMode: ModelSelectionFallbackMode;
   policy: ModelSelectionPolicy;
 }>;
 
@@ -366,6 +369,7 @@ export function selectBenchmarkedModelRoutes(input: {
   validateSelectionPolicy(input.policy);
   const rejections: ModelSelectionRejection[] = [];
   const candidates: SelectedModelRoute[] = [];
+  const passingByRoute = new Map<string, SelectedModelRoute[]>();
 
   for (const route of input.registry.routes) {
     const routeReasons: string[] = [];
@@ -434,14 +438,12 @@ export function selectBenchmarkedModelRoutes(input: {
     if (passingBenchmarks.length === 0) {
       continue;
     }
-    candidates.push(
-      chooseByCostThenSpeed(
-        passingBenchmarks.map((benchmark) => ({
-          route,
-          benchmark
-        }))
-      )
-    );
+    const routePassing = passingBenchmarks.map((benchmark) => ({
+      route,
+      benchmark
+    }));
+    passingByRoute.set(route.routeId, routePassing);
+    candidates.push(chooseByCostThenSpeed(routePassing));
   }
 
   if (candidates.length === 0) {
@@ -454,9 +456,26 @@ export function selectBenchmarkedModelRoutes(input: {
     (candidate) => candidate.route.routeId !== primary.route.routeId && allowedFallbacks.has(candidate.route.routeId)
   );
   if (fallbackCandidates.length === 0) {
-    throw new ModelSelectionError(
-      `Primary route ${primary.route.routeId} has no distinct benchmark-qualified fallback.`,
-      rejections
+    // Owner-approved degraded mode (2026-07-10): when no distinct route passes the
+    // policy, the same route may serve as fallback at a different benchmark-qualified
+    // reasoning effort. The selection records fallbackMode so manifests and audits see
+    // that model-outage resilience is NOT provided by this pair.
+    const sameRouteAlternatives = (passingByRoute.get(primary.route.routeId) ?? []).filter(
+      (candidate) => candidate.benchmark.reasoningEffort !== primary.benchmark.reasoningEffort
+    );
+    if (sameRouteAlternatives.length === 0) {
+      throw new ModelSelectionError(
+        `Primary route ${primary.route.routeId} has no distinct benchmark-qualified fallback.`,
+        rejections
+      );
+    }
+    return deepFreeze(
+      structuredClone({
+        primary,
+        fallback: chooseByCostThenSpeed(sameRouteAlternatives),
+        fallbackMode: "same_route_reasoning" as const,
+        policy: input.policy
+      })
     );
   }
   const fallback = chooseByCostThenSpeed(fallbackCandidates);
@@ -464,6 +483,7 @@ export function selectBenchmarkedModelRoutes(input: {
     structuredClone({
       primary,
       fallback,
+      fallbackMode: "distinct_route" as const,
       policy: input.policy
     })
   );
@@ -473,6 +493,14 @@ const CODEX_REPO_EVIDENCE = [
   "lib/workspace-codex-models.ts lists gpt-5.4 and gpt-5.4-mini for multimodal Stage 2 routes",
   "tests/codex-runner.test.ts verifies gpt-5.4-mini with --image and --output-schema",
   "lib/stage2-prompt-specs.ts exposes low, medium, high, and x-high reasoning",
+  "lib/codex-runner.ts defaults each execution timeout to 480000 ms"
+] as const;
+
+const LUNA_LIVE_PROBE_EVIDENCE = [
+  "2026-07-10 live probe on codex-cli 0.144.1: `codex exec --model gpt-5.6-luna` returned OK on this ChatGPT account (0.131.0-alpha.22 rejected the model; gpt-5.6 and gpt-5.6-mini remain unsupported for ChatGPT accounts)",
+  "2026-07-10 live probe: `codex exec --model gpt-5.6-luna --image <real dataset key frame>` returned a correct visual answer",
+  "2026-07-10 live probe: `codex exec --model gpt-5.6-luna --output-schema` returned schema-valid JSON",
+  "OpenAI Codex rate card (captured 2026-07-10 in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10-v2.json) lists GPT-5.6 Luna at 25/2.50/150 credits per 1M input/cached/output tokens",
   "lib/codex-runner.ts defaults each execution timeout to 480000 ms"
 ] as const;
 
@@ -494,7 +522,7 @@ export const PROJECT_KINGS_V1_MODEL_REGISTRY = defineModelRegistry([
         outputPerMillionTokens: null
       },
       timeoutMs: 8 * 60_000,
-      fallbackRouteIds: ["codex:gpt-5.4-mini"]
+      fallbackRouteIds: ["codex:gpt-5.4-mini", "codex:gpt-5.6-luna"]
     },
     evidence: CODEX_REPO_EVIDENCE
   },
@@ -515,8 +543,29 @@ export const PROJECT_KINGS_V1_MODEL_REGISTRY = defineModelRegistry([
         outputPerMillionTokens: null
       },
       timeoutMs: 8 * 60_000,
-      fallbackRouteIds: ["codex:gpt-5.4"]
+      fallbackRouteIds: ["codex:gpt-5.4", "codex:gpt-5.6-luna"]
     },
     evidence: CODEX_REPO_EVIDENCE
+  },
+  {
+    routeId: "codex:gpt-5.6-luna",
+    provider: "codex",
+    model: "gpt-5.6-luna",
+    capabilities: {
+      vision: true,
+      jsonSchema: true,
+      reasoningEfforts: MODEL_REASONING_EFFORTS,
+      contextWindowTokens: null,
+      cost: {
+        source: "benchmark-required",
+        costUnit: null,
+        inputPerMillionTokens: null,
+        cachedInputPerMillionTokens: null,
+        outputPerMillionTokens: null
+      },
+      timeoutMs: 8 * 60_000,
+      fallbackRouteIds: ["codex:gpt-5.4", "codex:gpt-5.4-mini"]
+    },
+    evidence: LUNA_LIVE_PROBE_EVIDENCE
   }
 ]);

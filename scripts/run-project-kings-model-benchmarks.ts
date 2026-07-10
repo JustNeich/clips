@@ -38,7 +38,10 @@ const EVIDENCE_ROOT = path.join(
   REPO_ROOT,
   "docs/project-kings-production-pipeline-v1/evidence"
 );
-const RATE_CARD_PATH = path.join(EVIDENCE_ROOT, "codex-rate-card-2026-07-10.json");
+const RATE_CARD_PATH = path.join(EVIDENCE_ROOT, "codex-rate-card-2026-07-10-v2.json");
+const RATE_CARD_VERIFIED_AT = "2026-07-10T18:20:00.000Z";
+const RATE_CARD_SOURCE =
+  "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10-v2.json";
 const BENCHMARK_VERSION = "project-kings-stage-models-2026-07-10-v9";
 const BENCHMARK_EVIDENCE_VERSION = "v9";
 const SOURCE_POLICY_BENCHMARK_VERSION =
@@ -695,8 +698,8 @@ async function main(): Promise<void> {
         inputPerMillionTokens: 18.75,
         cachedInputPerMillionTokens: 1.875,
         outputPerMillionTokens: 113,
-        source: "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10.json",
-        verifiedAt: "2026-07-10T10:25:00.000Z",
+        source: RATE_CARD_SOURCE,
+        verifiedAt: RATE_CARD_VERIFIED_AT,
         sourceSha256: sha256(rateCardBytes)
       },
       {
@@ -705,8 +708,18 @@ async function main(): Promise<void> {
         inputPerMillionTokens: 62.5,
         cachedInputPerMillionTokens: 6.25,
         outputPerMillionTokens: 375,
-        source: "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10.json",
-        verifiedAt: "2026-07-10T10:25:00.000Z",
+        source: RATE_CARD_SOURCE,
+        verifiedAt: RATE_CARD_VERIFIED_AT,
+        sourceSha256: sha256(rateCardBytes)
+      },
+      {
+        routeId: "codex:gpt-5.6-luna",
+        costUnit: "codex_credits",
+        inputPerMillionTokens: 25,
+        cachedInputPerMillionTokens: 2.5,
+        outputPerMillionTokens: 150,
+        source: RATE_CARD_SOURCE,
+        verifiedAt: RATE_CARD_VERIFIED_AT,
         sourceSha256: sha256(rateCardBytes)
       }
     ];
@@ -773,10 +786,13 @@ async function main(): Promise<void> {
             }
           }
         : baseInvoker;
+      // Owner directive 2026-07-10: source_policy real-30-v4 runs on gpt-5.6-luna
+      // (low+medium give primary + same-route fallback); gpt-5.4 low/medium/high
+      // already failed the 30/30 gate in real-30-v2/v3.
       const candidates = role === "source_policy"
         ? [
-            { routeId: "codex:gpt-5.4-mini", reasoningEffort: "high" as const },
-            { routeId: "codex:gpt-5.4", reasoningEffort: "high" as const }
+            { routeId: "codex:gpt-5.6-luna", reasoningEffort: "low" as const },
+            { routeId: "codex:gpt-5.6-luna", reasoningEffort: "medium" as const }
           ]
         : role === "revision"
         ? [

@@ -38,7 +38,8 @@ const EVIDENCE_ROOT = path.join(
   REPO_ROOT,
   "docs/project-kings-production-pipeline-v1/evidence"
 );
-const RATE_CARD_PATH = path.join(EVIDENCE_ROOT, "codex-rate-card-2026-07-10.json");
+const RATE_CARD_PATH = path.join(EVIDENCE_ROOT, "codex-rate-card-2026-07-10-v2.json");
+const RATE_CARD_VERIFIED_AT = "2026-07-10T18:20:00.000Z";
 
 function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
@@ -90,15 +91,17 @@ function candidatesForRole(role: RemainingSemanticBenchmarkRole): Array<{
   routeId: string;
   reasoningEffort: ModelReasoningEffort;
 }> {
+  // Owner directive 2026-07-10: the production candidate pool is gpt-5.6-luna;
+  // two reasoning efforts of the same route provide primary + same-route fallback.
   const defaults: Record<RemainingSemanticBenchmarkRole, string> = {
-    source_search: "codex:gpt-5.4-mini:low,codex:gpt-5.4:low",
-    source_fit: "codex:gpt-5.4-mini:low,codex:gpt-5.4:low",
-    caption: "codex:gpt-5.4-mini:low,codex:gpt-5.4:medium",
-    montage_planner: "codex:gpt-5.4-mini:low,codex:gpt-5.4:low"
+    source_search: "codex:gpt-5.6-luna:low,codex:gpt-5.6-luna:medium",
+    source_fit: "codex:gpt-5.6-luna:low,codex:gpt-5.6-luna:medium",
+    caption: "codex:gpt-5.6-luna:low,codex:gpt-5.6-luna:medium",
+    montage_planner: "codex:gpt-5.6-luna:low,codex:gpt-5.6-luna:medium"
   };
   const raw = process.env.PROJECT_KINGS_REMAINING_BENCHMARK_CANDIDATES?.trim() || defaults[role];
   const result = raw.split(",").map((entry) => {
-    const match = /^(codex:gpt-5\.4(?:-mini)?):(low|medium|high|x-high)$/.exec(entry.trim());
+    const match = /^(codex:gpt-5\.4(?:-mini)?|codex:gpt-5\.6-luna):(low|medium|high|x-high)$/.exec(entry.trim());
     if (!match) throw new Error(`Invalid remaining-role benchmark candidate ${entry}.`);
     return { routeId: match[1]!, reasoningEffort: match[2]! as ModelReasoningEffort };
   });
@@ -174,8 +177,8 @@ async function main(): Promise<void> {
         inputPerMillionTokens: rate.input,
         cachedInputPerMillionTokens: rate.cachedInput,
         outputPerMillionTokens: rate.output,
-        source: "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10.json",
-        verifiedAt: "2026-07-10T10:25:00.000Z",
+        source: "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10-v2.json",
+        verifiedAt: RATE_CARD_VERIFIED_AT,
         sourceSha256: sha256(rateCardBytes)
       };
     });

@@ -269,10 +269,9 @@ test("continuity buffer enforces 6 through 12 unique proven events", () => {
   );
 });
 
-test("Project Kings registry records only repo-confirmed current Codex vision routes", () => {
+test("Project Kings registry records only availability-verified Codex vision routes", () => {
   const models = PROJECT_KINGS_V1_MODEL_REGISTRY.routes.map((route) => route.model);
-  assert.deepEqual(models, ["gpt-5.4", "gpt-5.4-mini"]);
-  assert.equal(models.some((model) => model.includes("5.6") || model.includes("luna")), false);
+  assert.deepEqual(models, ["gpt-5.4", "gpt-5.4-mini", "gpt-5.6-luna"]);
   for (const route of PROJECT_KINGS_V1_MODEL_REGISTRY.routes) {
     assert.equal(route.capabilities.vision, true);
     assert.equal(route.capabilities.jsonSchema, true);
@@ -280,7 +279,16 @@ test("Project Kings registry records only repo-confirmed current Codex vision ro
     assert.equal(route.capabilities.contextWindowTokens, null);
     assert.equal(route.capabilities.cost.source, "benchmark-required");
     assert.equal(route.capabilities.timeoutMs, 480_000);
-    assert.ok(route.evidence.some((entry) => entry.includes("workspace-codex-models")));
+    if (route.model === "gpt-5.6-luna") {
+      // gpt-5.6-luna is registered only with recorded live availability probes
+      // (2026-07-10, codex-cli 0.144.1: text, --image, and --output-schema).
+      assert.ok(route.evidence.some((entry) => entry.includes("live probe")));
+      assert.ok(route.evidence.some((entry) => entry.includes("--image")));
+      assert.ok(route.evidence.some((entry) => entry.includes("--output-schema")));
+      assert.ok(route.evidence.some((entry) => entry.includes("rate card")));
+    } else {
+      assert.ok(route.evidence.some((entry) => entry.includes("workspace-codex-models")));
+    }
   }
 });
 
@@ -295,7 +303,38 @@ test("benchmark selection chooses faster route when its cost is less than 10 per
   });
   assert.equal(selection.primary.route.routeId, "codex:gpt-5.4-mini");
   assert.equal(selection.fallback.route.routeId, "codex:gpt-5.4");
+  assert.equal(selection.fallbackMode, "distinct_route");
   assert.equal(Object.isFrozen(selection), true);
+});
+
+test("same-route reasoning fallback is used only when no distinct route qualifies and is labeled", () => {
+  const lowFloorPolicy = { ...DEFAULT_SELECTION_POLICY, minimumReasoning: "low" as const };
+  const selection = selectBenchmarkedModelRoutes({
+    registry: PROJECT_KINGS_V1_MODEL_REGISTRY,
+    policy: lowFloorPolicy,
+    benchmarks: [
+      benchmark({ routeId: "codex:gpt-5.6-luna", reasoningEffort: "low", meanCost: 0.01, p95LatencyMs: 3_000 }),
+      benchmark({ routeId: "codex:gpt-5.6-luna", reasoningEffort: "medium", meanCost: 0.02, p95LatencyMs: 6_000 })
+    ]
+  });
+  assert.equal(selection.primary.route.routeId, "codex:gpt-5.6-luna");
+  assert.equal(selection.primary.benchmark.reasoningEffort, "low");
+  assert.equal(selection.fallback.route.routeId, "codex:gpt-5.6-luna");
+  assert.equal(selection.fallback.benchmark.reasoningEffort, "medium");
+  assert.equal(selection.fallbackMode, "same_route_reasoning");
+
+  const distinct = selectBenchmarkedModelRoutes({
+    registry: PROJECT_KINGS_V1_MODEL_REGISTRY,
+    policy: lowFloorPolicy,
+    benchmarks: [
+      benchmark({ routeId: "codex:gpt-5.6-luna", reasoningEffort: "low", meanCost: 0.01, p95LatencyMs: 3_000 }),
+      benchmark({ routeId: "codex:gpt-5.6-luna", reasoningEffort: "medium", meanCost: 0.02, p95LatencyMs: 6_000 }),
+      benchmark({ routeId: "codex:gpt-5.4-mini", reasoningEffort: "low", meanCost: 0.05, p95LatencyMs: 4_000 })
+    ]
+  });
+  assert.equal(distinct.primary.route.routeId, "codex:gpt-5.6-luna");
+  assert.equal(distinct.fallback.route.routeId, "codex:gpt-5.4-mini");
+  assert.equal(distinct.fallbackMode, "distinct_route");
 });
 
 test("benchmark selection keeps the cheapest route when the cost difference is exactly 10 percent", () => {

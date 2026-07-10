@@ -1,0 +1,1210 @@
+{
+  "schemaVersion": "project-kings-remaining-semantic-benchmark-annotations-v1",
+  "annotationSetId": "project-kings-remaining-semantic-real-30-independent-v2",
+  "datasetVersion": "real-30-v2",
+  "createdAt": "2026-07-10T18:00:00.000Z",
+  "independentFromModelRoutesUnderTest": true,
+  "sourcePolicyDatasetSha256": "21ce4864f790f5b9e552bbcfea5cd4abe468e96f3e9f5c7a3a9819460a114e66",
+  "sourceEvidence": [
+    {
+      "relativePath": "experiments/source-researcher/judge/holdout-v0/copscopes-x2e/verdicts.json",
+      "sha256": "918a4ba78af05c441a010a070d1410f0393d33585647ba939fe123122ae4f35c"
+    },
+    {
+      "relativePath": "experiments/source-researcher/runs/donors/02/copscopes-b2-verdicts.json",
+      "sha256": "ca64b7149b983b3e998c6b01c38c969feef9244bf66e01eef74917421be89e86"
+    },
+    {
+      "relativePath": "experiments/source-researcher/runs/donors/02/copscopes-verdicts.json",
+      "sha256": "07b396476a6fd8a9947fcecb5d9a2f8252a9be99ecfa9f937f9b4beebcd697a0"
+    },
+    {
+      "relativePath": "experiments/source-researcher/runs/donors/02/joyboy-verdicts.json",
+      "sha256": "e7fc349d7c38356ceed30c661ff7df07799f0557a13a6efaa294f3334f1cbc80"
+    },
+    {
+      "relativePath": "lib/project-kings/pilot-source-candidate-catalog.ts",
+      "sha256": "6cde50a3736059b06c3b8110672fe8791149979c7a839b2a614292420c2678ff"
+    }
+  ],
+  "mediaCases": [
+    {
+      "mediaId": "BtDnmx6HRr_",
+      "profileKey": "dark-joy-boy",
+      "disposition": "target",
+      "storyEventId": "event-man-tiger-chase-embrace-roll",
+      "englishSummary": "A man and a tiger chase, embrace, roll together, and remain in close contact.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/runs/donors/02/joyboy-verdicts.json"
+    },
+    {
+      "mediaId": "C-0YpsCAODv",
+      "profileKey": "dark-joy-boy",
+      "disposition": "target",
+      "storyEventId": "event-woman-smiles-chimp-shoulders",
+      "englishSummary": "A smiling woman carries a chimpanzee on her shoulders while both wave at the camera.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/runs/donors/02/joyboy-verdicts.json"
+    },
+    {
+      "mediaId": "C9gLu79MklN",
+      "profileKey": "dark-joy-boy",
+      "disposition": "target",
+      "storyEventId": "event-owner-feeds-plays-spider-monkey",
+      "englishSummary": "An owner feeds and plays with a diapered spider monkey in one continuous interaction.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/runs/donors/02/joyboy-verdicts.json"
+    },
+    {
+      "mediaId": "CsYa4skNBjP",
+      "profileKey": "dark-joy-boy",
+      "disposition": "target",
+      "storyEventId": "event-man-bottle-feeds-lion",
+      "englishSummary": "A man bottle-feeds a large lion, holds its paw, and stays close while the lion drinks.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/runs/donors/02/joyboy-verdicts.json"
+    },
+    {
+      "mediaId": "Cw_QTMmA69_",
+      "profileKey": "dark-joy-boy",
+      "disposition": "target",
+      "storyEventId": "event-woman-bottle-feeds-liger",
+      "englishSummary": "A woman bottle-feeds a giant liger and strokes its head in a close continuous moment.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/runs/donors/02/joyboy-verdicts.json"
+    },
+    {
+      "mediaId": "Cxb0DmpJ7oM",
+      "profileKey": "dark-joy-boy",
+      "disposition": "target",
+      "storyEventId": "event-man-holds-towel-wrapped-baby-monkey",
+      "englishSummary": "A man holds a towel-wrapped baby spider monkey close to his face.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/runs/donors/02/joyboy-verdicts.json"
+    },
+    {
+      "mediaId": "DIUYX9QStl3",
+      "profileKey": "dark-joy-boy",
+      "disposition": "target",
+      "storyEventId": "event-man-swims-hugging-chimp",
+      "englishSummary": "A man swims while hugging a chimpanzee and both remain in close playful contact.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/runs/donors/02/joyboy-verdicts.json"
+    },
+    {
+      "mediaId": "DKM66d2tamf",
+      "profileKey": "dark-joy-boy",
+      "disposition": "target",
+      "storyEventId": "event-man-rubs-tiger-cub-belly",
+      "englishSummary": "A young tiger rests on a man's lap while he rubs its belly and it licks his hand.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/runs/donors/02/joyboy-verdicts.json"
+    },
+    {
+      "mediaId": "DW0w8RMjY3Y",
+      "profileKey": "copscopes-x2e",
+      "disposition": "reject",
+      "storyEventId": "event-static-drunk-driving-stop-dialogue",
+      "englishSummary": "A static traffic stop relies on dialogue captions and does not show a physical action payoff.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/runs/donors/02/copscopes-verdicts.json"
+    },
+    {
+      "mediaId": "DW5s3qoDbHC",
+      "profileKey": "copscopes-x2e",
+      "disposition": "target",
+      "storyEventId": "event-passenger-flees-traffic-stop-foot-chase",
+      "englishSummary": "A passenger flees a traffic stop on foot before an officer catches and restrains him.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/runs/donors/02/copscopes-verdicts.json"
+    },
+    {
+      "mediaId": "DWjH5fWjBnt",
+      "profileKey": "copscopes-x2e",
+      "disposition": "target",
+      "storyEventId": "event-police-grappler-catches-fleeing-pickup",
+      "englishSummary": "Police pursue a pickup and deploy a grappler strap toward its rear wheel.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/runs/donors/02/copscopes-b2-verdicts.json"
+    },
+    {
+      "mediaId": "DWnxlyIDcoK",
+      "profileKey": "copscopes-x2e",
+      "disposition": "reject",
+      "storyEventId": "event-seated-officer-argument-dialogue",
+      "englishSummary": "A seated officer argues with a civilian while dialogue subtitles carry the entire story.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/runs/donors/02/copscopes-verdicts.json"
+    },
+    {
+      "mediaId": "DWwSVVOjMqO",
+      "profileKey": "copscopes-x2e",
+      "disposition": "reject",
+      "storyEventId": "event-compiled-street-race-crash-interview",
+      "englishSummary": "The source combines a night crash and fire with a separate daytime interview and hard subtitles.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/runs/donors/02/copscopes-verdicts.json"
+    },
+    {
+      "mediaId": "DXBhsJPjSgW",
+      "profileKey": "copscopes-x2e",
+      "disposition": "reject",
+      "storyEventId": "event-hospital-captions-crash-aftermath",
+      "englishSummary": "Large word-reveal captions cover a hospital scene while the crash appears only as aftermath.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/runs/donors/02/copscopes-verdicts.json"
+    },
+    {
+      "mediaId": "DXHx529DVb0",
+      "profileKey": "copscopes-x2e",
+      "disposition": "target",
+      "storyEventId": "event-trooper-stops-wrong-way-driver-collision",
+      "englishSummary": "Dashcam shows a trooper confronting a wrong-way driver and the damaged patrol vehicle payoff.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/runs/donors/02/copscopes-b2-verdicts.json"
+    },
+    {
+      "mediaId": "DXNBoz7jYmd",
+      "profileKey": "copscopes-x2e",
+      "disposition": "target",
+      "storyEventId": "event-stolen-car-neighborhood-pursuit",
+      "englishSummary": "Police pursue a stolen car through a neighborhood and stop it with an armed-officer payoff.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/runs/donors/02/copscopes-verdicts.json"
+    },
+    {
+      "mediaId": "DXOzkCdjMue",
+      "profileKey": "copscopes-x2e",
+      "disposition": "target",
+      "storyEventId": "event-suspect-clings-moving-car-during-pursuit",
+      "englishSummary": "A fleeing suspect clings to a moving car while police follow on the highway.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/runs/donors/02/copscopes-verdicts.json"
+    },
+    {
+      "mediaId": "DXUPExpjCs2",
+      "profileKey": "copscopes-x2e",
+      "disposition": "target",
+      "storyEventId": "event-troopers-rescue-choking-baby",
+      "englishSummary": "Two state troopers help a choking baby until the child begins breathing again.",
+      "sourceEvidenceRelativePath": "experiments/source-researcher/judge/holdout-v0/copscopes-x2e/verdicts.json"
+    },
+    {
+      "mediaId": "1diIRo4sHtk",
+      "profileKey": "light-kingdom",
+      "disposition": "reject",
+      "storyEventId": "event-ai-fiction-dense-foreign-captions",
+      "englishSummary": "Dense foreign burned-in captions cover the fiction source and make it unusable.",
+      "sourceEvidenceRelativePath": "lib/project-kings/pilot-source-candidate-catalog.ts"
+    },
+    {
+      "mediaId": "6IlkA1MLVYA",
+      "profileKey": "light-kingdom",
+      "disposition": "reject",
+      "storyEventId": "event-ranking-ui-subscribe-overlay",
+      "englishSummary": "Ranking interface and explicit subscribe overlays dominate the source.",
+      "sourceEvidenceRelativePath": "lib/project-kings/pilot-source-candidate-catalog.ts"
+    },
+    {
+      "mediaId": "6QIdqyFoxFE",
+      "profileKey": "light-kingdom",
+      "disposition": "target",
+      "storyEventId": "event-ai-fiction-parody-part-nine",
+      "englishSummary": "Recognizable fiction is visibly rebuilt as an AI parody with a changed action payoff.",
+      "sourceEvidenceRelativePath": "lib/project-kings/pilot-source-candidate-catalog.ts"
+    },
+    {
+      "mediaId": "BwIaEb5vGDo",
+      "profileKey": "light-kingdom",
+      "disposition": "target",
+      "storyEventId": "event-ai-mandalorian-grogu-short-scene",
+      "englishSummary": "The Mandalorian and Grogu appear in a clean AI-rebuilt short fiction scene.",
+      "sourceEvidenceRelativePath": "lib/project-kings/pilot-source-candidate-catalog.ts"
+    },
+    {
+      "mediaId": "EYkw1ELHXq0",
+      "profileKey": "light-kingdom",
+      "disposition": "reject",
+      "storyEventId": "event-ai-fiction-large-burned-captions",
+      "englishSummary": "Large burned-in captions cover the AI-fiction source and make it unusable.",
+      "sourceEvidenceRelativePath": "lib/project-kings/pilot-source-candidate-catalog.ts"
+    },
+    {
+      "mediaId": "J6tw2l128YE",
+      "profileKey": "light-kingdom",
+      "disposition": "target",
+      "storyEventId": "event-ai-harry-potter-afterparty",
+      "englishSummary": "Recognizable Harry Potter characters appear in a transformed AI afterparty scene.",
+      "sourceEvidenceRelativePath": "lib/project-kings/pilot-source-candidate-catalog.ts"
+    },
+    {
+      "mediaId": "V-xIvJs0Jbo",
+      "profileKey": "light-kingdom",
+      "disposition": "target",
+      "storyEventId": "event-ai-public-figure-inside-harry-potter-two",
+      "englishSummary": "A generated public-figure character is placed inside a recognizable Harry Potter scene.",
+      "sourceEvidenceRelativePath": "lib/project-kings/pilot-source-candidate-catalog.ts"
+    },
+    {
+      "mediaId": "WkEyab1jINA",
+      "profileKey": "light-kingdom",
+      "disposition": "target",
+      "storyEventId": "event-ai-public-figure-inside-harry-potter-one",
+      "englishSummary": "A generated public-figure character enters a recognizable Harry Potter fiction scene.",
+      "sourceEvidenceRelativePath": "lib/project-kings/pilot-source-candidate-catalog.ts"
+    },
+    {
+      "mediaId": "XPKBwhDPxk0",
+      "profileKey": "light-kingdom",
+      "disposition": "reject",
+      "storyEventId": "event-like-subscribe-overlay-end-card",
+      "englishSummary": "A large like-and-subscribe overlay and end card violate the clean source format.",
+      "sourceEvidenceRelativePath": "lib/project-kings/pilot-source-candidate-catalog.ts"
+    },
+    {
+      "mediaId": "fj6CXk2KTIs",
+      "profileKey": "light-kingdom",
+      "disposition": "reject",
+      "storyEventId": "event-split-screen-large-text-watermark",
+      "englishSummary": "Split-screen layout, large text, and a watermark block a clean AI-fiction crop.",
+      "sourceEvidenceRelativePath": "lib/project-kings/pilot-source-candidate-catalog.ts"
+    },
+    {
+      "mediaId": "n9kD935iROw",
+      "profileKey": "light-kingdom",
+      "disposition": "reject",
+      "storyEventId": "event-ordinary-horizontal-fiction-footage",
+      "englishSummary": "The footage reads as ordinary horizontal fiction and does not establish a visible AI premise.",
+      "sourceEvidenceRelativePath": "lib/project-kings/pilot-source-candidate-catalog.ts"
+    },
+    {
+      "mediaId": "oA7rziyGv8s",
+      "profileKey": "light-kingdom",
+      "disposition": "reject",
+      "storyEventId": "event-strangeai-watermark-foreign-captions",
+      "englishSummary": "A StrangeAI watermark and foreign burned-in captions make the source unusable.",
+      "sourceEvidenceRelativePath": "lib/project-kings/pilot-source-candidate-catalog.ts"
+    }
+  ],
+  "roleCases": {
+    "source_search": [
+      {
+        "caseId": "source-search-01-BtDnmx6HRr_",
+        "expectedQualityLabel": "FOUND",
+        "expectedCandidateIds": [
+          "candidate-BtDnmx6HRr_"
+        ]
+      },
+      {
+        "caseId": "source-search-02-C-0YpsCAODv",
+        "expectedQualityLabel": "NO_MATCH",
+        "expectedCandidateIds": []
+      },
+      {
+        "caseId": "source-search-03-C9gLu79MklN",
+        "expectedQualityLabel": "FOUND",
+        "expectedCandidateIds": [
+          "candidate-C9gLu79MklN"
+        ]
+      },
+      {
+        "caseId": "source-search-04-CsYa4skNBjP",
+        "expectedQualityLabel": "NO_MATCH",
+        "expectedCandidateIds": []
+      },
+      {
+        "caseId": "source-search-05-Cw_QTMmA69_",
+        "expectedQualityLabel": "FOUND",
+        "expectedCandidateIds": [
+          "candidate-Cw_QTMmA69_"
+        ]
+      },
+      {
+        "caseId": "source-search-06-Cxb0DmpJ7oM",
+        "expectedQualityLabel": "NO_MATCH",
+        "expectedCandidateIds": []
+      },
+      {
+        "caseId": "source-search-07-DIUYX9QStl3",
+        "expectedQualityLabel": "FOUND",
+        "expectedCandidateIds": [
+          "candidate-DIUYX9QStl3"
+        ]
+      },
+      {
+        "caseId": "source-search-08-DKM66d2tamf",
+        "expectedQualityLabel": "NO_MATCH",
+        "expectedCandidateIds": []
+      },
+      {
+        "caseId": "source-search-09-DW0w8RMjY3Y",
+        "expectedQualityLabel": "FOUND",
+        "expectedCandidateIds": [
+          "candidate-DW0w8RMjY3Y"
+        ]
+      },
+      {
+        "caseId": "source-search-10-DW5s3qoDbHC",
+        "expectedQualityLabel": "NO_MATCH",
+        "expectedCandidateIds": []
+      },
+      {
+        "caseId": "source-search-11-DWjH5fWjBnt",
+        "expectedQualityLabel": "FOUND",
+        "expectedCandidateIds": [
+          "candidate-DWjH5fWjBnt"
+        ]
+      },
+      {
+        "caseId": "source-search-12-DWnxlyIDcoK",
+        "expectedQualityLabel": "NO_MATCH",
+        "expectedCandidateIds": []
+      },
+      {
+        "caseId": "source-search-13-DWwSVVOjMqO",
+        "expectedQualityLabel": "FOUND",
+        "expectedCandidateIds": [
+          "candidate-DWwSVVOjMqO"
+        ]
+      },
+      {
+        "caseId": "source-search-14-DXBhsJPjSgW",
+        "expectedQualityLabel": "NO_MATCH",
+        "expectedCandidateIds": []
+      },
+      {
+        "caseId": "source-search-15-DXHx529DVb0",
+        "expectedQualityLabel": "FOUND",
+        "expectedCandidateIds": [
+          "candidate-DXHx529DVb0"
+        ]
+      },
+      {
+        "caseId": "source-search-16-DXNBoz7jYmd",
+        "expectedQualityLabel": "NO_MATCH",
+        "expectedCandidateIds": []
+      },
+      {
+        "caseId": "source-search-17-DXOzkCdjMue",
+        "expectedQualityLabel": "FOUND",
+        "expectedCandidateIds": [
+          "candidate-DXOzkCdjMue"
+        ]
+      },
+      {
+        "caseId": "source-search-18-DXUPExpjCs2",
+        "expectedQualityLabel": "NO_MATCH",
+        "expectedCandidateIds": []
+      },
+      {
+        "caseId": "source-search-19-1diIRo4sHtk",
+        "expectedQualityLabel": "FOUND",
+        "expectedCandidateIds": [
+          "candidate-1diIRo4sHtk"
+        ]
+      },
+      {
+        "caseId": "source-search-20-6IlkA1MLVYA",
+        "expectedQualityLabel": "NO_MATCH",
+        "expectedCandidateIds": []
+      },
+      {
+        "caseId": "source-search-21-6QIdqyFoxFE",
+        "expectedQualityLabel": "FOUND",
+        "expectedCandidateIds": [
+          "candidate-6QIdqyFoxFE"
+        ]
+      },
+      {
+        "caseId": "source-search-22-BwIaEb5vGDo",
+        "expectedQualityLabel": "NO_MATCH",
+        "expectedCandidateIds": []
+      },
+      {
+        "caseId": "source-search-23-EYkw1ELHXq0",
+        "expectedQualityLabel": "FOUND",
+        "expectedCandidateIds": [
+          "candidate-EYkw1ELHXq0"
+        ]
+      },
+      {
+        "caseId": "source-search-24-J6tw2l128YE",
+        "expectedQualityLabel": "NO_MATCH",
+        "expectedCandidateIds": []
+      },
+      {
+        "caseId": "source-search-25-V-xIvJs0Jbo",
+        "expectedQualityLabel": "FOUND",
+        "expectedCandidateIds": [
+          "candidate-V-xIvJs0Jbo"
+        ]
+      },
+      {
+        "caseId": "source-search-26-WkEyab1jINA",
+        "expectedQualityLabel": "NO_MATCH",
+        "expectedCandidateIds": []
+      },
+      {
+        "caseId": "source-search-27-XPKBwhDPxk0",
+        "expectedQualityLabel": "FOUND",
+        "expectedCandidateIds": [
+          "candidate-XPKBwhDPxk0"
+        ]
+      },
+      {
+        "caseId": "source-search-28-fj6CXk2KTIs",
+        "expectedQualityLabel": "NO_MATCH",
+        "expectedCandidateIds": []
+      },
+      {
+        "caseId": "source-search-29-n9kD935iROw",
+        "expectedQualityLabel": "FOUND",
+        "expectedCandidateIds": [
+          "candidate-n9kD935iROw"
+        ]
+      },
+      {
+        "caseId": "source-search-30-oA7rziyGv8s",
+        "expectedQualityLabel": "NO_MATCH",
+        "expectedCandidateIds": []
+      }
+    ],
+    "source_fit": [
+      {
+        "caseId": "source-fit-01-BtDnmx6HRr_-duplicate",
+        "expectedQualityLabel": "FAIL",
+        "duplicate": true
+      },
+      {
+        "caseId": "source-fit-02-C-0YpsCAODv-duplicate",
+        "expectedQualityLabel": "FAIL",
+        "duplicate": true
+      },
+      {
+        "caseId": "source-fit-03-C9gLu79MklN-duplicate",
+        "expectedQualityLabel": "FAIL",
+        "duplicate": true
+      },
+      {
+        "caseId": "source-fit-04-CsYa4skNBjP-duplicate",
+        "expectedQualityLabel": "FAIL",
+        "duplicate": true
+      },
+      {
+        "caseId": "source-fit-05-Cw_QTMmA69_-duplicate",
+        "expectedQualityLabel": "FAIL",
+        "duplicate": true
+      },
+      {
+        "caseId": "source-fit-06-Cxb0DmpJ7oM-duplicate",
+        "expectedQualityLabel": "FAIL",
+        "duplicate": true
+      },
+      {
+        "caseId": "source-fit-07-DIUYX9QStl3",
+        "expectedQualityLabel": "PASS",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-08-DKM66d2tamf",
+        "expectedQualityLabel": "PASS",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-09-DW0w8RMjY3Y",
+        "expectedQualityLabel": "FAIL",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-10-DW5s3qoDbHC",
+        "expectedQualityLabel": "PASS",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-11-DWjH5fWjBnt",
+        "expectedQualityLabel": "PASS",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-12-DWnxlyIDcoK",
+        "expectedQualityLabel": "FAIL",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-13-DWwSVVOjMqO",
+        "expectedQualityLabel": "FAIL",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-14-DXBhsJPjSgW",
+        "expectedQualityLabel": "FAIL",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-15-DXHx529DVb0",
+        "expectedQualityLabel": "PASS",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-16-DXNBoz7jYmd",
+        "expectedQualityLabel": "PASS",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-17-DXOzkCdjMue",
+        "expectedQualityLabel": "PASS",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-18-DXUPExpjCs2",
+        "expectedQualityLabel": "PASS",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-19-1diIRo4sHtk",
+        "expectedQualityLabel": "FAIL",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-20-6IlkA1MLVYA",
+        "expectedQualityLabel": "FAIL",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-21-6QIdqyFoxFE",
+        "expectedQualityLabel": "PASS",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-22-BwIaEb5vGDo",
+        "expectedQualityLabel": "PASS",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-23-EYkw1ELHXq0",
+        "expectedQualityLabel": "FAIL",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-24-J6tw2l128YE",
+        "expectedQualityLabel": "PASS",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-25-V-xIvJs0Jbo",
+        "expectedQualityLabel": "PASS",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-26-WkEyab1jINA",
+        "expectedQualityLabel": "PASS",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-27-XPKBwhDPxk0",
+        "expectedQualityLabel": "FAIL",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-28-fj6CXk2KTIs",
+        "expectedQualityLabel": "FAIL",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-29-n9kD935iROw",
+        "expectedQualityLabel": "FAIL",
+        "duplicate": false
+      },
+      {
+        "caseId": "source-fit-30-oA7rziyGv8s",
+        "expectedQualityLabel": "FAIL",
+        "duplicate": false
+      }
+    ],
+    "caption": [
+      {
+        "caseId": "caption-01-BtDnmx6HRr_-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "tiger",
+          "chase",
+          "embrace",
+          "together",
+          "close",
+          "contact"
+        ]
+      },
+      {
+        "caseId": "caption-02-C-0YpsCAODv-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "smiling",
+          "woman",
+          "carries",
+          "chimpanzee",
+          "shoulders",
+          "camera"
+        ]
+      },
+      {
+        "caseId": "caption-03-C9gLu79MklN-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "owner",
+          "feeds",
+          "plays",
+          "diapered",
+          "spider",
+          "monkey",
+          "continuous",
+          "interaction"
+        ]
+      },
+      {
+        "caseId": "caption-04-CsYa4skNBjP-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "bottle",
+          "feeds",
+          "holds",
+          "stays",
+          "close",
+          "drinks"
+        ]
+      },
+      {
+        "caseId": "caption-05-Cw_QTMmA69_-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "woman",
+          "bottle",
+          "feeds",
+          "giant",
+          "liger",
+          "strokes",
+          "close",
+          "continuous",
+          "moment"
+        ]
+      },
+      {
+        "caseId": "caption-06-Cxb0DmpJ7oM-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "holds",
+          "towel",
+          "wrapped",
+          "spider",
+          "monkey",
+          "close"
+        ]
+      },
+      {
+        "caseId": "caption-07-DIUYX9QStl3-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "swims",
+          "hugging",
+          "chimpanzee",
+          "close",
+          "playful",
+          "contact"
+        ]
+      },
+      {
+        "caseId": "caption-08-DKM66d2tamf-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "young",
+          "tiger",
+          "rests",
+          "belly",
+          "licks"
+        ]
+      },
+      {
+        "caseId": "caption-09-DW5s3qoDbHC-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "passenger",
+          "flees",
+          "traffic",
+          "officer",
+          "catches",
+          "restrains"
+        ]
+      },
+      {
+        "caseId": "caption-10-DWjH5fWjBnt-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "police",
+          "pursue",
+          "pickup",
+          "deploy",
+          "grappler",
+          "strap",
+          "toward",
+          "wheel"
+        ]
+      },
+      {
+        "caseId": "caption-11-DXHx529DVb0-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "dashcam",
+          "trooper",
+          "confronting",
+          "wrong",
+          "driver",
+          "damaged",
+          "patrol",
+          "vehicle",
+          "payoff"
+        ]
+      },
+      {
+        "caseId": "caption-12-DXNBoz7jYmd-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "police",
+          "pursue",
+          "stolen",
+          "neighborhood",
+          "armed",
+          "officer",
+          "payoff"
+        ]
+      },
+      {
+        "caseId": "caption-13-DXOzkCdjMue-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "fleeing",
+          "suspect",
+          "clings",
+          "moving",
+          "police",
+          "follow",
+          "highway"
+        ]
+      },
+      {
+        "caseId": "caption-14-DXUPExpjCs2-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "state",
+          "troopers",
+          "choking",
+          "child",
+          "begins",
+          "breathing"
+        ]
+      },
+      {
+        "caseId": "caption-15-6QIdqyFoxFE-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "recognizable",
+          "fiction",
+          "visibly",
+          "rebuilt",
+          "parody",
+          "changed",
+          "action",
+          "payoff"
+        ]
+      },
+      {
+        "caseId": "caption-16-BwIaEb5vGDo-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "mandalorian",
+          "grogu",
+          "clean",
+          "rebuilt",
+          "short",
+          "fiction"
+        ]
+      },
+      {
+        "caseId": "caption-17-J6tw2l128YE-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "recognizable",
+          "harry",
+          "potter",
+          "characters",
+          "transformed",
+          "afterparty"
+        ]
+      },
+      {
+        "caseId": "caption-18-V-xIvJs0Jbo-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "generated",
+          "public",
+          "figure",
+          "character",
+          "placed",
+          "recognizable",
+          "harry",
+          "potter"
+        ]
+      },
+      {
+        "caseId": "caption-19-WkEyab1jINA-v1",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 180,
+        "anchorTokens": [
+          "generated",
+          "public",
+          "figure",
+          "character",
+          "enters",
+          "recognizable",
+          "harry",
+          "potter",
+          "fiction"
+        ]
+      },
+      {
+        "caseId": "caption-20-BtDnmx6HRr_-v2",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 150,
+        "anchorTokens": [
+          "tiger",
+          "chase",
+          "embrace",
+          "together",
+          "close",
+          "contact"
+        ]
+      },
+      {
+        "caseId": "caption-21-C-0YpsCAODv-v2",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 150,
+        "anchorTokens": [
+          "smiling",
+          "woman",
+          "carries",
+          "chimpanzee",
+          "shoulders",
+          "camera"
+        ]
+      },
+      {
+        "caseId": "caption-22-C9gLu79MklN-v2",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 150,
+        "anchorTokens": [
+          "owner",
+          "feeds",
+          "plays",
+          "diapered",
+          "spider",
+          "monkey",
+          "continuous",
+          "interaction"
+        ]
+      },
+      {
+        "caseId": "caption-23-CsYa4skNBjP-v2",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 150,
+        "anchorTokens": [
+          "bottle",
+          "feeds",
+          "holds",
+          "stays",
+          "close",
+          "drinks"
+        ]
+      },
+      {
+        "caseId": "caption-24-Cw_QTMmA69_-v2",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 150,
+        "anchorTokens": [
+          "woman",
+          "bottle",
+          "feeds",
+          "giant",
+          "liger",
+          "strokes",
+          "close",
+          "continuous",
+          "moment"
+        ]
+      },
+      {
+        "caseId": "caption-25-Cxb0DmpJ7oM-v2",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 150,
+        "anchorTokens": [
+          "holds",
+          "towel",
+          "wrapped",
+          "spider",
+          "monkey",
+          "close"
+        ]
+      },
+      {
+        "caseId": "caption-26-DIUYX9QStl3-v2",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 150,
+        "anchorTokens": [
+          "swims",
+          "hugging",
+          "chimpanzee",
+          "close",
+          "playful",
+          "contact"
+        ]
+      },
+      {
+        "caseId": "caption-27-DKM66d2tamf-v2",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 150,
+        "anchorTokens": [
+          "young",
+          "tiger",
+          "rests",
+          "belly",
+          "licks"
+        ]
+      },
+      {
+        "caseId": "caption-28-DW5s3qoDbHC-v2",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 150,
+        "anchorTokens": [
+          "passenger",
+          "flees",
+          "traffic",
+          "officer",
+          "catches",
+          "restrains"
+        ]
+      },
+      {
+        "caseId": "caption-29-DWjH5fWjBnt-v2",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 150,
+        "anchorTokens": [
+          "police",
+          "pursue",
+          "pickup",
+          "deploy",
+          "grappler",
+          "strap",
+          "toward",
+          "wheel"
+        ]
+      },
+      {
+        "caseId": "caption-30-DXHx529DVb0-v2",
+        "expectedQualityLabel": "PASS",
+        "maxCharacters": 150,
+        "anchorTokens": [
+          "dashcam",
+          "trooper",
+          "confronting",
+          "wrong",
+          "driver",
+          "damaged",
+          "patrol",
+          "vehicle",
+          "payoff"
+        ]
+      }
+    ],
+    "montage_planner": [
+      {
+        "caseId": "montage-01-BtDnmx6HRr_-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 18,
+        "sourceDurationSec": 45.813
+      },
+      {
+        "caseId": "montage-02-C-0YpsCAODv-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 7.223,
+        "sourceDurationSec": 7.223
+      },
+      {
+        "caseId": "montage-03-C9gLu79MklN-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 18,
+        "sourceDurationSec": 18.182
+      },
+      {
+        "caseId": "montage-04-CsYa4skNBjP-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 8.433,
+        "sourceDurationSec": 8.433333
+      },
+      {
+        "caseId": "montage-05-Cw_QTMmA69_-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 18,
+        "sourceDurationSec": 20.969
+      },
+      {
+        "caseId": "montage-06-Cxb0DmpJ7oM-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 11,
+        "sourceDurationSec": 11
+      },
+      {
+        "caseId": "montage-07-DIUYX9QStl3-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 11.449,
+        "sourceDurationSec": 11.449
+      },
+      {
+        "caseId": "montage-08-DKM66d2tamf-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 18,
+        "sourceDurationSec": 37.5
+      },
+      {
+        "caseId": "montage-09-DW5s3qoDbHC-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 18,
+        "sourceDurationSec": 36.3
+      },
+      {
+        "caseId": "montage-10-DWjH5fWjBnt-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 15.4,
+        "sourceDurationSec": 15.4
+      },
+      {
+        "caseId": "montage-11-DXHx529DVb0-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 18,
+        "sourceDurationSec": 21.5
+      },
+      {
+        "caseId": "montage-12-DXNBoz7jYmd-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 18,
+        "sourceDurationSec": 97.833008
+      },
+      {
+        "caseId": "montage-13-DXOzkCdjMue-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 18,
+        "sourceDurationSec": 20.466667
+      },
+      {
+        "caseId": "montage-14-DXUPExpjCs2-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 18,
+        "sourceDurationSec": 36.666016
+      },
+      {
+        "caseId": "montage-15-6QIdqyFoxFE-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 18,
+        "sourceDurationSec": 34.274
+      },
+      {
+        "caseId": "montage-16-BwIaEb5vGDo-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 6.874,
+        "sourceDurationSec": 6.874
+      },
+      {
+        "caseId": "montage-17-J6tw2l128YE-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 18,
+        "sourceDurationSec": 24.514
+      },
+      {
+        "caseId": "montage-18-V-xIvJs0Jbo-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 18,
+        "sourceDurationSec": 66.754
+      },
+      {
+        "caseId": "montage-19-WkEyab1jINA-v1",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 18,
+        "sourceDurationSec": 53.414
+      },
+      {
+        "caseId": "montage-20-BtDnmx6HRr_-v2",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 12,
+        "sourceDurationSec": 45.813
+      },
+      {
+        "caseId": "montage-21-C-0YpsCAODv-v2",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 7.223,
+        "sourceDurationSec": 7.223
+      },
+      {
+        "caseId": "montage-22-C9gLu79MklN-v2",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 12,
+        "sourceDurationSec": 18.182
+      },
+      {
+        "caseId": "montage-23-CsYa4skNBjP-v2",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 8.433,
+        "sourceDurationSec": 8.433333
+      },
+      {
+        "caseId": "montage-24-Cw_QTMmA69_-v2",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 12,
+        "sourceDurationSec": 20.969
+      },
+      {
+        "caseId": "montage-25-Cxb0DmpJ7oM-v2",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 11,
+        "sourceDurationSec": 11
+      },
+      {
+        "caseId": "montage-26-DIUYX9QStl3-v2",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 11.449,
+        "sourceDurationSec": 11.449
+      },
+      {
+        "caseId": "montage-27-DKM66d2tamf-v2",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 12,
+        "sourceDurationSec": 37.5
+      },
+      {
+        "caseId": "montage-28-DW5s3qoDbHC-v2",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 12,
+        "sourceDurationSec": 36.3
+      },
+      {
+        "caseId": "montage-29-DWjH5fWjBnt-v2",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 12,
+        "sourceDurationSec": 15.4
+      },
+      {
+        "caseId": "montage-30-DXHx529DVb0-v2",
+        "expectedQualityLabel": "PASS",
+        "targetDurationSec": 12,
+        "sourceDurationSec": 21.5
+      }
+    ]
+  },
+  "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec"
+}
