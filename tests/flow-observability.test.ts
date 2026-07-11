@@ -679,6 +679,31 @@ test("middleware lets MCP bearer tokens reach route-level scoped APIs only", () 
   );
   assert.notEqual(youtubeConnectResponse.status, 401);
 
+  for (const method of ["GET", "POST"]) {
+    const sourceBufferResponse = middleware(
+      new NextRequest("http://localhost/api/admin/project-kings/source-buffer", {
+        method,
+        headers: { authorization: "Bearer clips_machine_test" }
+      })
+    );
+    assert.notEqual(sourceBufferResponse.status, 401);
+  }
+
+  const sourceBufferChildResponse = middleware(
+    new NextRequest("http://localhost/api/admin/project-kings/source-buffer/unscoped", {
+      headers: { authorization: "Bearer clips_machine_test" }
+    })
+  );
+  assert.equal(sourceBufferChildResponse.status, 401);
+
+  const sourceBufferDeleteResponse = middleware(
+    new NextRequest("http://localhost/api/admin/project-kings/source-buffer", {
+      method: "DELETE",
+      headers: { authorization: "Bearer clips_machine_test" }
+    })
+  );
+  assert.equal(sourceBufferDeleteResponse.status, 401);
+
   const channelMutationResponse = middleware(
     new NextRequest("http://localhost/api/channels/channel_1", {
       method: "PATCH",

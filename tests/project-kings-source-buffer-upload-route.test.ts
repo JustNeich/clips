@@ -79,6 +79,40 @@ async function createFixtureMp4(filePath: string): Promise<Uint8Array> {
   return fs.readFile(filePath);
 }
 
+test("source-buffer route rejects invalid and insufficiently scoped machine bearers", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Project Kings Source Buffer Auth",
+      email: "source-buffer-auth@example.com",
+      password: "Password123!",
+      displayName: "Source Buffer Auth Owner"
+    });
+    const readOnlyMachine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "zoro-source-reader",
+      scopes: ["flow:read"]
+    });
+
+    for (const [label, authorization] of [
+      ["insufficient scope", `Bearer ${readOnlyMachine.secret}`],
+      ["invalid credential", "Bearer clips_machine_invalid"]
+    ] as const) {
+      const getResponse = await getSourceBufferRuntime(new Request(
+        "http://localhost/api/admin/project-kings/source-buffer",
+        { headers: { authorization } }
+      ));
+      assert.equal(getResponse.status, 401, `${label} must not read the source buffer`);
+
+      const postResponse = await uploadQualifiedSource(new Request(
+        "http://localhost/api/admin/project-kings/source-buffer",
+        { method: "POST", headers: { authorization } }
+      ));
+      assert.equal(postResponse.status, 401, `${label} must not upload to the source buffer`);
+    }
+  });
+});
+
 test("machine-scoped upload admits only the exact decoded bytes and is idempotent", async () => {
   await withIsolatedAppData(async (root) => {
     const owner = await bootstrapOwner({

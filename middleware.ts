@@ -23,6 +23,7 @@ function isApiPublic(pathname: string): boolean {
 function canUseBearerForApi(pathname: string, request: NextRequest): boolean {
   const authorization = request.headers.get("authorization") ?? "";
   const hasBearer = /^Bearer\s+.+$/i.test(authorization);
+  const method = request.method.toUpperCase();
   return (
     hasBearer &&
     (pathname === "/api/auth/machine-session" ||
@@ -31,6 +32,8 @@ function canUseBearerForApi(pathname: string, request: NextRequest): boolean {
       pathname === "/api/admin/audit-events" ||
       pathname === "/api/admin/control" ||
       pathname === "/api/admin/control/copscopes" ||
+      (pathname === "/api/admin/project-kings/source-buffer" &&
+        (method === "GET" || method === "POST")) ||
       pathname.startsWith("/api/admin/render-exports/") ||
       pathname.startsWith("/api/admin/source-decomposition/"))
   );
