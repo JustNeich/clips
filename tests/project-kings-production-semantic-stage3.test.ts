@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { resolveClaimableStage3WorkerKinds } from "../app/api/stage3/worker/jobs/claim/route";
+import { resolveClaimableStage3WorkerKinds } from "../lib/stage3-worker-claim-capabilities";
 import { getDb, newId, nowIso } from "../lib/db/client";
 import {
   buildProductionSemanticJobPayload,
