@@ -6,19 +6,29 @@ import path from "node:path";
 import test from "node:test";
 
 import { POST as ownerControlRoute } from "../app/api/admin/control/route";
-import { createChannel } from "../lib/chat-history";
+import { createChannel, createOrGetChatBySource } from "../lib/chat-history";
 import { getDb } from "../lib/db/client";
 import { createMcpMachineCredential } from "../lib/mcp-machine-credential-store";
 import {
   appendProductionOutbox,
   buildProductionOutboxDedupeKey,
+  claimProductionOutbox,
   createOrGetProductionRun,
   createProductionItem,
   createProductionProfile,
+  getProductionItem,
   isProductionProfileExplicitlyApproved,
+  listChannelSourceCandidates,
+  listProductionEvents,
+  listProductionItems,
   listProductionOutbox,
   listProductionProfiles,
-  listProductionRunChannels
+  listProductionRunChannels,
+  reserveChannelSourceCandidate,
+  retryProductionOutbox,
+  transitionChannelSourceCandidateQualification,
+  transitionProductionItem,
+  upsertChannelSourceCandidate
 } from "../lib/portfolio-production-store";
 import { PROJECT_KINGS_PILOT_PROFILES } from "../lib/project-kings/pilot-production-profiles";
 import { getActiveProjectKingsSourcePolicyApproval } from "../lib/project-kings/source-policy-approval-store";
@@ -121,6 +131,104 @@ async function seedSyntheticRun() {
     ]
   });
   return { owner, profile, run: created.run };
+}
+
+async function seedProjectedUploadProtocolSourceFitFailure() {
+  const seeded = await seedSyntheticRun();
+  const runChannel = listProductionRunChannels(seeded.run.id)[0]!;
+  getDb().prepare("UPDATE production_runs SET status = 'running' WHERE id = ?")
+    .run(seeded.run.id);
+  getDb().prepare("UPDATE production_run_channels SET status = 'running' WHERE id = ?")
+    .run(runChannel.id);
+
+  const sourceUrl = "upload://owner-source-fit-retry/source.mp4";
+  const sourceSha256 = sha("owner-source-fit-retry-source");
+  const chat = await createOrGetChatBySource({
+    rawUrl: sourceUrl,
+    channelIdRaw: seeded.profile.channelId,
+    title: "Owner source-fit retry fixture"
+  });
+  const discovered = upsertChannelSourceCandidate({
+    workspaceId: seeded.owner.workspace.id,
+    channelId: seeded.profile.channelId,
+    provider: "upload",
+    sourceUrl,
+    canonicalUrl: sourceUrl,
+    contentSha256: sourceSha256,
+    eventFingerprint: "owner-source-fit-retry-event",
+    categoryKey: "owner-source-fit-retry",
+    rightsStatus: "owner_approved_source_pool",
+    evidence: { discoveredBy: "owner-control-regression" }
+  }).candidate;
+  const candidate = transitionChannelSourceCandidateQualification({
+    candidateId: discovered.id,
+    toStatus: "qualified",
+    contentSha256: sourceSha256,
+    eventFingerprint: discovered.eventFingerprint,
+    evidence: { qualifiedBy: "owner-control-regression" }
+  });
+  const createdItem = createProductionItem({
+    runId: seeded.run.id,
+    runChannelId: runChannel.id,
+    itemSlot: 1,
+    attemptBudget: 5
+  });
+  const reserved = reserveChannelSourceCandidate({
+    candidateId: candidate.id,
+    itemId: createdItem.id,
+    expectedItemVersion: createdItem.version
+  });
+  const sourceIngested = transitionProductionItem({
+    itemId: reserved.item.id,
+    expectedVersion: reserved.item.version,
+    toState: "source_ingested",
+    eventType: "production.source_ingested",
+    patch: { sourceSha256, chatId: chat.id },
+    outbox: {
+      eventKind: "source_fit.requested",
+      dedupeKey: buildProductionOutboxDedupeKey("source_fit.requested", {
+        gate: "source_fit",
+        sourceSha256
+      }),
+      payload: { sourceSha256, chatId: chat.id },
+      maxAttempts: 3
+    }
+  });
+  const originalOutbox = listProductionOutbox({
+    runId: seeded.run.id,
+    productionItemId: sourceIngested.id
+  })[0]!;
+  for (let attempt = 1; attempt <= originalOutbox.maxAttempts; attempt += 1) {
+    const now = `2040-01-01T00:00:0${attempt}.000Z`;
+    const claimed = claimProductionOutbox({
+      owner: `owner-source-fit-retry-${attempt}`,
+      leaseMs: 30_000,
+      runIds: [seeded.run.id],
+      now
+    });
+    assert.equal(claimed.length, 1);
+    retryProductionOutbox({
+      outboxId: claimed[0]!.id,
+      leaseToken: claimed[0]!.leaseToken!,
+      error: "packet.task.sourceUrl: must use HTTPS",
+      availableAt: now,
+      now
+    });
+  }
+  return {
+    ...seeded,
+    runChannelId: runChannel.id,
+    item: getProductionItem(sourceIngested.id)!,
+    candidate: listChannelSourceCandidates({
+      workspaceId: seeded.owner.workspace.id,
+      channelId: seeded.profile.channelId,
+      limit: 10
+    }).find((entry) => entry.id === candidate.id)!,
+    outbox: listProductionOutbox({
+      runId: seeded.run.id,
+      productionItemId: sourceIngested.id
+    })[0]!
+  };
 }
 
 test("portfolio owner commands enforce flow:read versus control:write", { concurrency: false }, async () => {
@@ -583,5 +691,244 @@ test("owner retry requeues the exact revision intent without leaving rework or d
     assert.equal(outbox[0]?.dedupeKey, dedupeKey);
     assert.deepEqual(outbox[0]?.payload, payload);
     assert.equal(outbox[0]?.attempts, 0);
+  });
+});
+
+test("owner retry reopens the exact upload-protocol source-fit intent without replacing its item or source", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedProjectedUploadProtocolSourceFitFailure();
+    assert.equal(seeded.item.state, "failed");
+    assert.equal(seeded.item.version, 4);
+    assert.equal(seeded.outbox.status, "dead");
+    assert.equal(seeded.outbox.deadLetterCode, "outbox_retry_exhausted");
+    assert.ok(seeded.outbox.projectedAt);
+    const beforeCandidate = structuredClone(seeded.candidate);
+    const beforePayload = structuredClone(seeded.outbox.payload);
+
+    const machine = createMcpMachineCredential({
+      workspaceId: seeded.owner.workspace.id,
+      ownerUserId: seeded.owner.user.id,
+      machineId: "portfolio-source-fit-owner-retry",
+      scopes: ["flow:read", "control:write"]
+    });
+    const response = await postOwnerControl(machine.secret, "clips_owner_retry_production_item", {
+      runId: seeded.run.id,
+      itemId: seeded.item.id,
+      expectedVersion: seeded.item.version,
+      reason: "retry the same source after canonical upload protocol support was deployed"
+    });
+    assert.equal(response.status, 202, await response.clone().text());
+    const result = (await response.json()) as {
+      item: {
+        id: string;
+        state: string;
+        version: number;
+        sourceCandidateId: string | null;
+        sourceSha256: string | null;
+        chatId: string | null;
+      };
+      retryIntent: {
+        outboxId: string;
+        dedupeKey: string;
+        status: string;
+        requeued: boolean;
+        preservedSource: boolean;
+      };
+    };
+    assert.equal(result.item.id, seeded.item.id);
+    assert.equal(result.item.state, "source_ingested");
+    assert.equal(result.item.version, seeded.item.version + 1);
+    assert.equal(result.item.sourceCandidateId, seeded.item.sourceCandidateId);
+    assert.equal(result.item.sourceSha256, seeded.item.sourceSha256);
+    assert.equal(result.item.chatId, seeded.item.chatId);
+    assert.deepEqual(result.retryIntent, {
+      outboxId: seeded.outbox.id,
+      dedupeKey: seeded.outbox.dedupeKey,
+      status: "pending",
+      requeued: true,
+      preservedSource: true
+    });
+
+    const currentItems = listProductionItems({
+      runId: seeded.run.id,
+      includeHistorical: true
+    });
+    assert.equal(currentItems.length, 1);
+    assert.equal(currentItems[0]?.id, seeded.item.id);
+    const afterCandidate = listChannelSourceCandidates({
+      workspaceId: seeded.owner.workspace.id,
+      channelId: seeded.profile.channelId,
+      limit: 10
+    }).find((entry) => entry.id === seeded.candidate.id)!;
+    assert.deepEqual(afterCandidate, beforeCandidate);
+    const afterOutbox = listProductionOutbox({
+      runId: seeded.run.id,
+      productionItemId: seeded.item.id
+    })[0]!;
+    assert.equal(afterOutbox.id, seeded.outbox.id);
+    assert.equal(afterOutbox.productionItemId, seeded.item.id);
+    assert.equal(afterOutbox.dedupeKey, seeded.outbox.dedupeKey);
+    assert.deepEqual(afterOutbox.payload, beforePayload);
+    assert.equal(afterOutbox.status, "pending");
+    assert.equal(afterOutbox.attempts, 0);
+    assert.equal(afterOutbox.lastError, null);
+    assert.equal(afterOutbox.deadLetterCode, null);
+    assert.equal(afterOutbox.projectedAt, null);
+    const afterChannel = listProductionRunChannels(seeded.run.id)[0]!;
+    assert.equal(afterChannel.id, seeded.runChannelId);
+    assert.equal(afterChannel.status, "running");
+    assert.equal(afterChannel.blockerCode, null);
+    assert.equal(afterChannel.blockerMessage, null);
+    assert.equal(afterChannel.completedAt, null);
+    const recoveryEvents = listProductionEvents({ runId: seeded.run.id })
+      .filter((entry) => entry.eventType.includes("owner_source_fit_retry"));
+    assert.deepEqual(recoveryEvents.map((entry) => entry.eventType).sort(), [
+      "production.channel.owner_source_fit_retry_reopened",
+      "production.item.owner_source_fit_retry_requeued"
+    ]);
+    assert.ok(recoveryEvents.every((entry) =>
+      entry.productionItemId === seeded.item.id &&
+      entry.payload.outboxId === seeded.outbox.id &&
+      entry.payload.sourceCandidateId === seeded.candidate.id &&
+      entry.payload.sourceSha256 === seeded.item.sourceSha256
+    ));
+  });
+});
+
+test("owner source-fit recovery stays fail-closed after external effects or a terminal run", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedProjectedUploadProtocolSourceFitFailure();
+    const machine = createMcpMachineCredential({
+      workspaceId: seeded.owner.workspace.id,
+      ownerUserId: seeded.owner.user.id,
+      machineId: "portfolio-source-fit-external-effect-guard",
+      scopes: ["flow:read", "control:write"]
+    });
+    getDb().prepare("UPDATE production_items SET upload_session_url = ? WHERE id = ?")
+      .run("https://upload.example/session", seeded.item.id);
+    const response = await postOwnerControl(machine.secret, "clips_owner_retry_production_item", {
+      runId: seeded.run.id,
+      itemId: seeded.item.id,
+      expectedVersion: seeded.item.version,
+      reason: "must remain blocked after an external effect"
+    });
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), {
+      error: "A production item with downstream or upload effects cannot be recovered in place.",
+      code: "external_effect_conflict",
+      details: { itemId: seeded.item.id }
+    });
+    assert.equal(getProductionItem(seeded.item.id)?.state, "failed");
+    assert.equal(listProductionOutbox({
+      runId: seeded.run.id,
+      productionItemId: seeded.item.id
+    })[0]?.status, "dead");
+    assert.equal(listProductionRunChannels(seeded.run.id)[0]?.status, "failed");
+  });
+
+  await withIsolatedAppData(async () => {
+    const seeded = await seedProjectedUploadProtocolSourceFitFailure();
+    const machine = createMcpMachineCredential({
+      workspaceId: seeded.owner.workspace.id,
+      ownerUserId: seeded.owner.user.id,
+      machineId: "portfolio-source-fit-terminal-run-guard",
+      scopes: ["flow:read", "control:write"]
+    });
+    getDb().prepare("UPDATE production_runs SET status = 'failed', completed_at = ? WHERE id = ?")
+      .run("2040-01-01T00:01:00.000Z", seeded.run.id);
+    const response = await postOwnerControl(machine.secret, "clips_owner_retry_production_item", {
+      runId: seeded.run.id,
+      itemId: seeded.item.id,
+      expectedVersion: seeded.item.version,
+      reason: "must not reopen a terminal run"
+    });
+    assert.equal(response.status, 409);
+    const body = (await response.json()) as { code: string; error: string };
+    assert.equal(body.code, "invalid_transition");
+    assert.match(body.error, /still-running production run/);
+    assert.equal(getProductionItem(seeded.item.id)?.state, "failed");
+    assert.equal(listProductionOutbox({
+      runId: seeded.run.id,
+      productionItemId: seeded.item.id
+    })[0]?.status, "dead");
+  });
+});
+
+test("owner source-fit recovery rejects a different dead-letter cause without creating a replacement", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedProjectedUploadProtocolSourceFitFailure();
+    const machine = createMcpMachineCredential({
+      workspaceId: seeded.owner.workspace.id,
+      ownerUserId: seeded.owner.user.id,
+      machineId: "portfolio-source-fit-cause-guard",
+      scopes: ["flow:read", "control:write"]
+    });
+    getDb().prepare("UPDATE production_outbox SET last_error = ? WHERE id = ?")
+      .run("semantic provider unavailable", seeded.outbox.id);
+    const response = await postOwnerControl(machine.secret, "clips_owner_retry_production_item", {
+      runId: seeded.run.id,
+      itemId: seeded.item.id,
+      expectedVersion: seeded.item.version,
+      reason: "must not reinterpret another source-fit failure"
+    });
+    assert.equal(response.status, 409);
+    const body = (await response.json()) as { code: string; error: string };
+    assert.equal(body.code, "invalid_transition");
+    assert.match(body.error, /exact projected upload-protocol source-fit dead letter/);
+    assert.equal(listProductionItems({
+      runId: seeded.run.id,
+      includeHistorical: true
+    }).length, 1);
+    assert.equal(getProductionItem(seeded.item.id)?.state, "failed");
+    assert.equal(listProductionRunChannels(seeded.run.id)[0]?.status, "failed");
+  });
+});
+
+test("ordinary failed owner retry still creates the next source generation", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedSyntheticRun();
+    const runChannel = listProductionRunChannels(seeded.run.id)[0]!;
+    getDb().prepare("UPDATE production_runs SET status = 'running' WHERE id = ?")
+      .run(seeded.run.id);
+    getDb().prepare("UPDATE production_run_channels SET status = 'running' WHERE id = ?")
+      .run(runChannel.id);
+    const original = createProductionItem({
+      runId: seeded.run.id,
+      runChannelId: runChannel.id,
+      itemSlot: 1,
+      attemptBudget: 5
+    });
+    getDb().prepare("UPDATE production_items SET state = 'failed', last_error = ? WHERE id = ?")
+      .run("ordinary bounded source failure", original.id);
+    const machine = createMcpMachineCredential({
+      workspaceId: seeded.owner.workspace.id,
+      ownerUserId: seeded.owner.user.id,
+      machineId: "portfolio-ordinary-failed-retry",
+      scopes: ["flow:read", "control:write"]
+    });
+    const response = await postOwnerControl(machine.secret, "clips_owner_retry_production_item", {
+      runId: seeded.run.id,
+      itemId: original.id,
+      expectedVersion: original.version,
+      reason: "advance the ordinary failed source generation"
+    });
+    assert.equal(response.status, 202, await response.clone().text());
+    const body = (await response.json()) as {
+      item: { id: string; itemSlot: number; generation: number; state: string };
+      retryIntent: unknown;
+    };
+    assert.notEqual(body.item.id, original.id);
+    assert.equal(body.item.itemSlot, original.itemSlot);
+    assert.equal(body.item.generation, original.generation + 1);
+    assert.equal(body.item.state, "reserved");
+    assert.equal(body.retryIntent, null);
+    assert.deepEqual(
+      listProductionItems({ runId: seeded.run.id, includeHistorical: true })
+        .map((item) => ({ id: item.id, generation: item.generation, state: item.state })),
+      [
+        { id: original.id, generation: 1, state: "failed" },
+        { id: body.item.id, generation: 2, state: "reserved" }
+      ]
+    );
   });
 });

@@ -114,6 +114,7 @@ import {
   listProductionOutbox,
   listPublicVerifications,
   ProductionStoreError,
+  requeueProjectedUploadProtocolSourceFitDeadLetter,
   requeueProductionItemRevision
 } from "../../../../lib/portfolio-production-store";
 import {
@@ -1060,7 +1061,44 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
         status: requeued.outbox.status,
         requeued: requeued.requeued
       };
-    } else if (item.state === "failed" || item.state === "replaced" || item.state === "quarantined") {
+    } else if (item.state === "failed") {
+      const projectedSourceFitIntents = listProductionOutbox({
+        runId,
+        productionItemId: item.id
+      }).filter((entry) =>
+        entry.eventKind === "source_fit.requested" &&
+        entry.status === "dead" &&
+        Boolean(entry.projectedAt)
+      );
+      if (projectedSourceFitIntents.length > 1) {
+        throw new Response(JSON.stringify({
+          error: "Failed item has more than one projected source-fit retry intent.",
+          code: "retry_intent_ambiguous"
+        }), { status: 409 });
+      }
+      const sourceFitIntent = projectedSourceFitIntents[0];
+      if (sourceFitIntent) {
+        const recovered = requeueProjectedUploadProtocolSourceFitDeadLetter({
+          itemId: item.id,
+          expectedItemVersion: item.version,
+          outboxId: sourceFitIntent.id,
+          reason
+        });
+        retried = recovered.item;
+        retryIntent = {
+          outboxId: recovered.outbox.id,
+          dedupeKey: recovered.outbox.dedupeKey,
+          status: recovered.outbox.status,
+          requeued: true,
+          preservedSource: true
+        };
+      } else {
+        retried = createReplacementProductionItem({
+          replacedItemId: item.id,
+          expectedVersion: item.version
+        });
+      }
+    } else if (item.state === "replaced" || item.state === "quarantined") {
       retried = createReplacementProductionItem({
         replacedItemId: item.id,
         expectedVersion: item.version

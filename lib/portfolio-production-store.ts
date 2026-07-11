@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 import { getDb, newId, nowIso, runInTransaction } from "./db/client";
+import { isUploadedSourceUrl } from "./uploaded-source";
 import {
   parseProductionSemanticJobPayloadJson,
   parseProductionSemanticJobResultJson
@@ -2578,6 +2579,267 @@ export function requeueProductionItemRevision(input: {
     });
     outbox = mapOutbox(readRow(db, "production_outbox", outbox.id)!);
     return { item: requireItem(db, item.id), outbox, requeued: true };
+  });
+}
+
+const PROJECT_KINGS_UPLOAD_PROTOCOL_SOURCE_FIT_ERROR =
+  "packet.task.sourceUrl: must use HTTPS";
+
+/**
+ * Recover the one pre-upload failure mode where the immutable source-fit
+ * intent was rejected before any external effect because the production
+ * contract did not yet accept the canonical upload:// source protocol.
+ *
+ * This is deliberately narrower than ordinary owner retry. A projected dead
+ * letter normally remains terminal and receives a new source generation. The
+ * exact contract fault below may instead replay the same source-fit intent,
+ * but only while every item, candidate, channel and outbox binding still
+ * proves that no publication/render boundary was crossed.
+ */
+export function requeueProjectedUploadProtocolSourceFitDeadLetter(input: {
+  itemId: string;
+  expectedItemVersion: number;
+  outboxId: string;
+  reason: string;
+  now?: string | null;
+}): {
+  item: ProductionItemRecord;
+  channel: ProductionRunChannelRecord;
+  outbox: ProductionOutboxRecord;
+} {
+  return runInTransaction((db) => {
+    const item = requireItem(db, requiredText(input.itemId, "itemId", 64));
+    if (item.version !== input.expectedItemVersion) {
+      fail("stale_version", "Production item version is stale.", {
+        expected: input.expectedItemVersion,
+        actual: item.version
+      });
+    }
+    if (item.state !== "failed") {
+      fail("invalid_transition", "Only the exact projected source-fit failure can be recovered in place.", {
+        itemId: item.id,
+        state: item.state
+      });
+    }
+
+    const run = requireRun(db, item.runId);
+    if (run.status !== "running") {
+      fail("invalid_transition", "In-place source-fit recovery requires a still-running production run.", {
+        runId: run.id,
+        status: run.status
+      });
+    }
+    const channel = requireRunChannel(db, item.runChannelId);
+    if (
+      channel.runId !== item.runId ||
+      channel.workspaceId !== item.workspaceId ||
+      channel.channelId !== item.channelId ||
+      channel.status !== "failed" ||
+      channel.blockerCode !== "outbox_retry_exhausted"
+    ) {
+      fail("invalid_transition", "Production channel is not bound to the recoverable source-fit dead letter.", {
+        runChannelId: channel.id,
+        status: channel.status,
+        blockerCode: channel.blockerCode
+      });
+    }
+
+    if (
+      item.previewSha256 ||
+      item.templateSha256 ||
+      item.settingsSha256 ||
+      item.finalArtifactSha256 ||
+      item.stage2RunId ||
+      item.stage3JobId ||
+      item.publicationId ||
+      item.youtubeVideoId ||
+      item.uploadSessionUrl
+    ) {
+      fail("external_effect_conflict", "A production item with downstream or upload effects cannot be recovered in place.", {
+        itemId: item.id
+      });
+    }
+    if (!item.sourceCandidateId || !item.sourceSha256 || !item.chatId) {
+      fail("source_conflict", "Recoverable source-fit failure lost its frozen source identity.", {
+        itemId: item.id
+      });
+    }
+
+    const candidateRow = readRow(db, "channel_source_candidates", item.sourceCandidateId);
+    if (!candidateRow) {
+      fail("not_found", "Frozen source candidate not found.", { candidateId: item.sourceCandidateId });
+    }
+    const candidate = mapCandidate(candidateRow);
+    if (
+      candidate.workspaceId !== item.workspaceId ||
+      candidate.channelId !== item.channelId ||
+      candidate.status !== "reserved" ||
+      candidate.reservedItemId !== item.id ||
+      candidate.contentSha256 !== item.sourceSha256 ||
+      !isUploadedSourceUrl(candidate.sourceUrl) ||
+      !isChannelSourceCandidateQualified(candidate)
+    ) {
+      fail("source_conflict", "Frozen source candidate no longer matches the failed production item.", {
+        itemId: item.id,
+        candidateId: candidate.id,
+        candidateStatus: candidate.status,
+        reservedItemId: candidate.reservedItemId
+      });
+    }
+
+    const outboxRow = readRow(db, "production_outbox", requiredText(input.outboxId, "outboxId", 64));
+    if (!outboxRow) fail("not_found", "Source-fit outbox record not found.", { outboxId: input.outboxId });
+    const outbox = mapOutbox(outboxRow);
+    const expectedDedupeKey = buildProductionOutboxDedupeKey("source_fit.requested", {
+      gate: "source_fit",
+      sourceSha256: item.sourceSha256
+    });
+    if (
+      outbox.workspaceId !== item.workspaceId ||
+      outbox.runId !== item.runId ||
+      outbox.channelId !== item.channelId ||
+      outbox.productionItemId !== item.id ||
+      outbox.eventKind !== "source_fit.requested" ||
+      outbox.dedupeKey !== expectedDedupeKey ||
+      outbox.payload.sourceSha256 !== item.sourceSha256 ||
+      outbox.payload.chatId !== item.chatId ||
+      outbox.status !== "dead" ||
+      outbox.attempts < outbox.maxAttempts ||
+      outbox.deadLetterCode !== "outbox_retry_exhausted" ||
+      !outbox.projectedAt ||
+      outbox.lastError !== PROJECT_KINGS_UPLOAD_PROTOCOL_SOURCE_FIT_ERROR ||
+      outbox.leaseOwner ||
+      outbox.leaseToken ||
+      outbox.leaseExpiresAt ||
+      outbox.deliveredAt
+    ) {
+      fail("invalid_transition", "Outbox is not the exact projected upload-protocol source-fit dead letter.", {
+        itemId: item.id,
+        outboxId: outbox.id,
+        eventKind: outbox.eventKind,
+        status: outbox.status,
+        deadLetterCode: outbox.deadLetterCode
+      });
+    }
+
+    const itemProjectionRow = db.prepare(`SELECT * FROM production_events
+      WHERE production_item_id = ? AND event_type = 'production.item.outbox_dead_lettered'
+      ORDER BY created_at DESC, id DESC LIMIT 1`).get(item.id) as Row | undefined;
+    const itemProjection = itemProjectionRow ? mapEvent(itemProjectionRow) : null;
+    if (
+      !itemProjection ||
+      itemProjection.fromState !== "source_ingested" ||
+      itemProjection.toState !== "failed" ||
+      itemProjection.payload.outboxId !== outbox.id ||
+      itemProjection.payload.eventKind !== outbox.eventKind ||
+      itemProjection.payload.dedupeKey !== outbox.dedupeKey ||
+      itemProjection.payload.classificationCode !== outbox.deadLetterCode
+    ) {
+      fail("invalid_transition", "Item failure projection does not match the frozen source-fit intent.", {
+        itemId: item.id,
+        outboxId: outbox.id
+      });
+    }
+    const channelProjectionRow = db.prepare(`SELECT * FROM production_events
+      WHERE run_id = ? AND channel_id = ? AND event_type = 'production.channel.outbox_dead_lettered'
+      ORDER BY created_at DESC, id DESC LIMIT 1`).get(item.runId, item.channelId) as Row | undefined;
+    const channelProjection = channelProjectionRow ? mapEvent(channelProjectionRow) : null;
+    if (
+      !channelProjection ||
+      channelProjection.fromState !== "running" ||
+      channelProjection.toState !== "failed" ||
+      channelProjection.payload.outboxId !== outbox.id ||
+      channelProjection.payload.productionItemId !== item.id ||
+      channelProjection.payload.classificationCode !== outbox.deadLetterCode ||
+      channel.blockerMessage !== item.lastError
+    ) {
+      fail("invalid_transition", "Channel failure projection does not match the frozen source-fit intent.", {
+        runChannelId: channel.id,
+        outboxId: outbox.id
+      });
+    }
+
+    const competingItem = db.prepare(`SELECT id FROM production_items
+      WHERE run_id = ? AND channel_id = ? AND item_slot = ? AND id <> ?
+        AND state NOT IN ('replaced', 'quarantined', 'failed')
+      LIMIT 1`).get(item.runId, item.channelId, item.itemSlot, item.id) as Row | undefined;
+    if (competingItem) {
+      fail("uniqueness_conflict", "Another current production generation already owns this logical slot.", {
+        itemId: item.id,
+        competingItemId: String(competingItem.id)
+      });
+    }
+
+    const stamp = input.now ?? nowIso();
+    const reason = requiredText(input.reason, "reason", 2000);
+    const itemResult = db.prepare(`UPDATE production_items SET
+      state = 'source_ingested', resume_state = NULL, version = version + 1,
+      lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
+      last_error = NULL, completed_at = NULL, updated_at = ?
+      WHERE id = ? AND version = ? AND state = 'failed'`)
+      .run(stamp, item.id, item.version);
+    if (Number(itemResult.changes) !== 1) {
+      fail("stale_version", "Production item changed before owner source-fit recovery.", { itemId: item.id });
+    }
+    const channelResult = db.prepare(`UPDATE production_run_channels SET
+      status = 'running', blocker_code = NULL, blocker_message = NULL,
+      version = version + 1, completed_at = NULL, updated_at = ?
+      WHERE id = ? AND version = ? AND status = 'failed'`)
+      .run(stamp, channel.id, channel.version);
+    if (Number(channelResult.changes) !== 1) {
+      fail("stale_version", "Production channel changed before owner source-fit recovery.", {
+        runChannelId: channel.id
+      });
+    }
+    const outboxResult = db.prepare(`UPDATE production_outbox SET
+      status = 'pending', attempts = 0, available_at = ?,
+      lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
+      last_error = NULL, dead_letter_code = NULL, projected_at = NULL,
+      delivered_at = NULL, updated_at = ?
+      WHERE id = ? AND status = 'dead' AND projected_at = ?`)
+      .run(stamp, stamp, outbox.id, outbox.projectedAt);
+    if (Number(outboxResult.changes) !== 1) {
+      fail("stale_version", "Source-fit outbox changed before owner recovery.", { outboxId: outbox.id });
+    }
+
+    const auditPayload = {
+      reason,
+      outboxId: outbox.id,
+      dedupeKey: outbox.dedupeKey,
+      sourceCandidateId: item.sourceCandidateId,
+      sourceSha256: item.sourceSha256,
+      previousItemVersion: item.version,
+      previousAttempts: outbox.attempts,
+      previousError: outbox.lastError
+    };
+    appendEventTx(db, {
+      workspaceId: item.workspaceId,
+      runId: item.runId,
+      channelId: item.channelId,
+      productionItemId: item.id,
+      eventType: "production.item.owner_source_fit_retry_requeued",
+      fromState: "failed",
+      toState: "source_ingested",
+      payload: auditPayload,
+      createdAt: stamp
+    });
+    appendEventTx(db, {
+      workspaceId: channel.workspaceId,
+      runId: channel.runId,
+      channelId: channel.channelId,
+      productionItemId: item.id,
+      eventType: "production.channel.owner_source_fit_retry_reopened",
+      fromState: "failed",
+      toState: "running",
+      payload: auditPayload,
+      createdAt: stamp
+    });
+
+    return {
+      item: requireItem(db, item.id),
+      channel: requireRunChannel(db, channel.id),
+      outbox: mapOutbox(readRow(db, "production_outbox", outbox.id)!)
+    };
   });
 }
 
