@@ -28,7 +28,15 @@ test("Render entrypoint repairs mounted persistent disk ownership before droppin
   assert.match(entrypoint, /mkdir -p "\$APP_DATA_DIR" "\$CODEX_SESSIONS_DIR"/);
   assert.match(
     entrypoint,
-    /chown -R clips:clips "\$APP_DATA_DIR" "\$CODEX_SESSIONS_DIR" "\$HOME"/
+    /for runtime_dir in "\$APP_DATA_DIR" "\$CODEX_SESSIONS_DIR" "\$HOME"/
+  );
+  assert.match(
+    entrypoint,
+    /if \[ "\$\(stat -c '%u' "\$runtime_dir"\)" != "\$clips_uid" \]/
+  );
+  assert.match(
+    entrypoint,
+    /chown -R clips:clips "\$runtime_dir"/
   );
   assert.match(
     entrypoint,
