@@ -17,6 +17,7 @@ const {
 } = profileStoreModule;
 const {
   createProjectKingsHttpSourceUploadProvider,
+  createProjectKingsFrozenCatalogDiscoveryProvider,
   createProjectKingsInstagramDiscoveryProvider,
   createProjectKingsLocalMediaEvidenceProvider,
   createProjectKingsLocalSourceDownloadProvider,
@@ -66,6 +67,15 @@ async function privateEnv(filePath: string): Promise<Env> {
   if (!details?.isFile()) throw new Error(`Private source-refill config is missing: ${filePath}.`);
   if ((details.mode & 0o777) !== 0o600) throw new Error(`Private source-refill config must use mode 0600: ${filePath}.`);
   return parseEnv(await readFile(filePath, "utf8"));
+}
+
+async function privateJson(filePath: string): Promise<unknown> {
+  const details = await stat(filePath).catch(() => null);
+  if (!details?.isFile()) throw new Error(`Private source catalog is missing: ${filePath}.`);
+  if ((details.mode & 0o777) !== 0o600) {
+    throw new Error(`Private source catalog must use mode 0600: ${filePath}.`);
+  }
+  return JSON.parse(await readFile(filePath, "utf8")) as unknown;
 }
 
 function argument(argv: readonly string[], name: string): string | null {
@@ -121,6 +131,13 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
       )
   ));
   const ledgerPath = path.join(stateDir, "autonomous-refill-ledger.json");
+  const frozenCatalogPathRaw = config.PROJECT_KINGS_SOURCE_REFILL_CATALOG_PATH?.trim() || null;
+  const frozenCatalog = frozenCatalogPathRaw
+    ? await privateJson(path.resolve(homePath(frozenCatalogPathRaw)))
+    : null;
+  const frozenCatalogProvider = frozenCatalog
+    ? createProjectKingsFrozenCatalogDiscoveryProvider(frozenCatalog)
+    : null;
   const manifestPath = config.PORTFOLIO_PIPELINE_ROUTE_MANIFEST_PATH?.trim() || null;
   const { manifest, invoker } = await loadProjectKingsSourceRefillSemanticRuntime({
     repoRoot: REPO_ROOT,
@@ -139,10 +156,13 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     mode,
     logicalDate: capturedAt.slice(0, 10),
     capturedAt,
+    discoveryScopeSha256: frozenCatalogProvider?.catalogSha256 ?? null,
     runtime,
     routeManifest: manifest,
     ledger: new FileProjectKingsSourceRefillLedgerStore(ledgerPath),
-    discoveryProviders: [createProjectKingsInstagramDiscoveryProvider()],
+    discoveryProviders: frozenCatalogProvider
+      ? [frozenCatalogProvider]
+      : [createProjectKingsInstagramDiscoveryProvider()],
     downloadProvider: createProjectKingsLocalSourceDownloadProvider({
       repoRoot: REPO_ROOT,
       cdpOrigin: config.PROJECT_KINGS_CLIPS_CDP_ORIGIN?.trim() || null

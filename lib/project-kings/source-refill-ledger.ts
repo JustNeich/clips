@@ -86,6 +86,7 @@ export type ProjectKingsSourceRefillLedgerRequest = Readonly<{
   workspaceId: string;
   logicalDate: string;
   mode: ProjectKingsSourceRefillMode;
+  discoveryScopeSha256?: string | null;
   routeManifestId: string;
   routeManifestSha256: string;
   runtimeSnapshotSha256: string;
@@ -214,6 +215,13 @@ export function verifyProjectKingsSourceRefillLedger(
       throw new Error("Source-refill ledger contains a missing or duplicate requestId.");
     }
     requestIds.add(request.requestId);
+    if (
+      request.discoveryScopeSha256 !== undefined &&
+      request.discoveryScopeSha256 !== null &&
+      !/^[a-f0-9]{64}$/.test(request.discoveryScopeSha256)
+    ) {
+      throw new Error(`Source-refill discovery scope is invalid: ${request.requestId}.`);
+    }
     if (hashProjectKingsSourceRefillLedgerValue(requestPayload(request)) !== request.requestSha256) {
       throw new Error(`Source-refill request hash mismatch: ${request.requestId}.`);
     }

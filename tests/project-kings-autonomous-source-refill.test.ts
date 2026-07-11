@@ -8,8 +8,10 @@ import test from "node:test";
 import { promisify } from "node:util";
 
 import {
+  createProjectKingsFrozenCatalogDiscoveryProvider,
   createProjectKingsLocalSourceDownloadProvider,
   createProjectKingsLocalMediaEvidenceProvider,
+  hashProjectKingsFrozenDiscoveryCatalog,
   projectKingsRefillFetchWithRetry,
   ProjectKingsSourceRefillHttpError
 } from "../lib/project-kings/source-refill-adapters";
@@ -272,6 +274,7 @@ function extracted(candidateValue: ProjectKingsDiscoveredSourceCandidate): Proje
 
 async function runFixture(input: {
   root: string;
+  discoveryScopeSha256?: string | null;
   runtime?: ProjectKingsSourceBufferRuntimeSnapshot;
   provider?: ProjectKingsSourceDiscoveryProvider;
   providers?: readonly ProjectKingsSourceDiscoveryProvider[];
@@ -286,6 +289,7 @@ async function runFixture(input: {
     mode: "shadow",
     logicalDate: "2026-07-10",
     capturedAt: CAPTURED_AT,
+    discoveryScopeSha256: input.discoveryScopeSha256,
     runtime: input.runtime ?? runtime(),
     routeManifest: manifest(),
     ledger: new FileProjectKingsSourceRefillLedgerStore(path.join(input.root, "ledger.json")),
@@ -562,6 +566,164 @@ test("provider fallback order continues to YouTube Ask only for the profile expl
     );
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("hash-bound frozen catalog feeds only designated canonical reserve sources", async () => {
+  const payload = {
+    schemaVersion: "project-kings-frozen-discovery-catalog-v1" as const,
+    catalogId: "project-kings-mvp-reserve-v1",
+    capturedAt: CAPTURED_AT,
+    profiles: {
+      "light-kingdom": [{
+        provider: "youtube_ask" as const,
+        route: "youtube_ask_v3" as const,
+        donorUsername: null,
+        sourceUrl: "https://www.youtube.com/watch?v=LightCatalogOne",
+        caption: "A visible AI remake of a known fiction scene."
+      }],
+      "copscopes-x2e": [{
+        provider: "instagram" as const,
+        route: "instagram_donor_pool" as const,
+        donorUsername: "copscopes",
+        sourceUrl: "https://www.instagram.com/reel/CopCatalogOne/",
+        caption: "A visible police intervention with a clear outcome."
+      }]
+    }
+  };
+  const catalog = { ...payload, catalogSha256: hashProjectKingsFrozenDiscoveryCatalog(payload) };
+  const provider = createProjectKingsFrozenCatalogDiscoveryProvider(catalog);
+  const result = await provider.discover({
+    profileKey: "light-kingdom",
+    targetCandidateCount: 9,
+    knownCanonicalUrls: [],
+    knownContentSha256: [],
+    knownStoryEventIds: [],
+    capturedAt: CAPTURED_AT
+  });
+  assert.equal(provider.strategy, "reserve_pool");
+  assert.equal(provider.catalogSha256, catalog.catalogSha256);
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0]?.provider, "youtube_ask");
+  assert.equal(result.candidates[0]?.canonicalUrl, "https://www.youtube.com/watch?v=LightCatalogOne");
+  assert.throws(
+    () => createProjectKingsFrozenCatalogDiscoveryProvider({
+      ...catalog,
+      catalogSha256: sha256("wrong-catalog")
+    }),
+    /hash mismatch/
+  );
+  assert.throws(
+    () => createProjectKingsFrozenCatalogDiscoveryProvider({
+      ...payload,
+      profiles: {
+        ...payload.profiles,
+        "copscopes-x2e": [{
+          ...payload.profiles["copscopes-x2e"][0],
+          donorUsername: "not-approved"
+        }]
+      },
+      catalogSha256: hashProjectKingsFrozenDiscoveryCatalog({
+        ...payload,
+        profiles: {
+          ...payload.profiles,
+          "copscopes-x2e": [{
+            ...payload.profiles["copscopes-x2e"][0],
+            donorUsername: "not-approved"
+          }]
+        }
+      })
+    }),
+    /entry is invalid/
+  );
+});
+
+test("catalog-only contour qualifies Light YouTube Ask and Cop Instagram while ready Dark stays untouched", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "autonomous-source-catalog-contour-"));
+  try {
+    const payload = {
+      schemaVersion: "project-kings-frozen-discovery-catalog-v1" as const,
+      catalogId: "project-kings-catalog-contour-v1",
+      capturedAt: CAPTURED_AT,
+      profiles: {
+        "light-kingdom": Array.from({ length: 7 }, (_, index) => ({
+          provider: "youtube_ask" as const,
+          route: "youtube_ask_v3" as const,
+          donorUsername: null,
+          sourceUrl: `https://www.youtube.com/watch?v=LightCatalog${index + 1}`,
+          caption: `Visible AI fiction transformation ${index + 1}.`
+        })),
+        "copscopes-x2e": Array.from({ length: 7 }, (_, index) => ({
+          provider: "instagram" as const,
+          route: "instagram_donor_pool" as const,
+          donorUsername: "copscopes",
+          sourceUrl: `https://www.instagram.com/reel/CopCatalog${index + 1}/`,
+          caption: `Visible police intervention and outcome ${index + 1}.`
+        }))
+      }
+    };
+    const catalog = { ...payload, catalogSha256: hashProjectKingsFrozenDiscoveryCatalog(payload) };
+    const provider = createProjectKingsFrozenCatalogDiscoveryProvider(catalog);
+    const fixture = await runFixture({
+      root,
+      runtime: runtime({ "dark-joy-boy": 6, "light-kingdom": 5, "copscopes-x2e": 5 }),
+      providers: [provider],
+      discoveryScopeSha256: provider.catalogSha256
+    });
+    assert.equal(fixture.result.status, "complete");
+    assert.equal(
+      fixture.result.channels.find((channel) => channel.profileKey === "dark-joy-boy")?.attempts,
+      0
+    );
+    assert.equal(
+      fixture.result.channels.find((channel) => channel.profileKey === "light-kingdom")?.qualified,
+      7
+    );
+    assert.equal(
+      fixture.result.channels.find((channel) => channel.profileKey === "copscopes-x2e")?.qualified,
+      7
+    );
+    const ledger = JSON.parse(await readFile(path.join(root, "ledger.json"), "utf8"));
+    const light = ledger.requests[0].channels.find(
+      (channel: { profileKey: string }) => channel.profileKey === "light-kingdom"
+    );
+    const cop = ledger.requests[0].channels.find(
+      (channel: { profileKey: string }) => channel.profileKey === "copscopes-x2e"
+    );
+    assert.equal(light.candidates.every(
+      (entry: { provider: string; route: string; stage: string }) =>
+        entry.provider === "youtube_ask" &&
+        entry.route === "youtube_ask_v3" &&
+        entry.stage === "qualified_shadow"
+    ), true);
+    assert.equal(cop.candidates.every(
+      (entry: { provider: string; route: string; stage: string }) =>
+        entry.provider === "instagram" &&
+        entry.route === "instagram_donor_pool" &&
+        entry.stage === "qualified_shadow"
+    ), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("frozen catalog hash scopes otherwise identical refill requests", async () => {
+  const firstRoot = await mkdtemp(path.join(os.tmpdir(), "autonomous-source-scope-one-"));
+  const secondRoot = await mkdtemp(path.join(os.tmpdir(), "autonomous-source-scope-two-"));
+  const defaultRoot = await mkdtemp(path.join(os.tmpdir(), "autonomous-source-scope-default-"));
+  const nullRoot = await mkdtemp(path.join(os.tmpdir(), "autonomous-source-scope-null-"));
+  try {
+    const first = await runFixture({ root: firstRoot, discoveryScopeSha256: sha256("catalog-one") });
+    const second = await runFixture({ root: secondRoot, discoveryScopeSha256: sha256("catalog-two") });
+    const defaultScope = await runFixture({ root: defaultRoot });
+    const explicitNullScope = await runFixture({ root: nullRoot, discoveryScopeSha256: null });
+    assert.notEqual(first.result.requestId, second.result.requestId);
+    assert.equal(defaultScope.result.requestId, explicitNullScope.result.requestId);
+  } finally {
+    await rm(firstRoot, { recursive: true, force: true });
+    await rm(secondRoot, { recursive: true, force: true });
+    await rm(defaultRoot, { recursive: true, force: true });
+    await rm(nullRoot, { recursive: true, force: true });
   }
 });
 

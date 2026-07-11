@@ -21,6 +21,7 @@ import {
   type ProductionReadyAgentRouteManifest
 } from "./production-model-route-manifest";
 import {
+  canonicalizeProjectKingsSourceUrl,
   inspectProjectKingsSourceMedia,
   verifyProjectKingsSourceQualificationEvidence,
   type ProjectKingsSourceQualificationEvidence
@@ -32,7 +33,8 @@ import {
   runProjectKingsSourcePolicyAssessment
 } from "./source-policy-assessment-runner";
 import {
-  PROJECT_KINGS_SOURCE_POLICY
+  PROJECT_KINGS_SOURCE_POLICY,
+  type ProjectKingsSourceRoute
 } from "./source-rights-sensitive-policy";
 import {
   hashProjectKingsDiscoveredSourceCandidate,
@@ -56,6 +58,29 @@ const execFileAsync = promisify(execFile);
 const MAX_SOURCE_BYTES = 512 * 1024 * 1024;
 const SHA256 = /^[a-f0-9]{64}$/;
 
+export const PROJECT_KINGS_FROZEN_DISCOVERY_CATALOG_VERSION =
+  "project-kings-frozen-discovery-catalog-v1" as const;
+
+export type ProjectKingsFrozenDiscoveryCatalogEntry = Readonly<{
+  provider: "instagram" | "youtube_ask";
+  route: ProjectKingsSourceRoute;
+  donorUsername: string | null;
+  sourceUrl: string;
+  caption: string;
+  provisionalStoryEventId?: string | null;
+}>;
+
+export type ProjectKingsFrozenDiscoveryCatalog = Readonly<{
+  schemaVersion: typeof PROJECT_KINGS_FROZEN_DISCOVERY_CATALOG_VERSION;
+  catalogId: string;
+  capturedAt: string;
+  profiles: Partial<Readonly<Record<
+    ProjectKingsPilotProfileKey,
+    readonly ProjectKingsFrozenDiscoveryCatalogEntry[]
+  >>>;
+  catalogSha256: string;
+}>;
+
 type RunCommand = (input: Readonly<{
   command: string;
   args: readonly string[];
@@ -65,6 +90,159 @@ type RunCommand = (input: Readonly<{
 
 function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function frozenCatalogPayload(input: Omit<ProjectKingsFrozenDiscoveryCatalog, "catalogSha256"> | ProjectKingsFrozenDiscoveryCatalog) {
+  const { catalogSha256: ignored, ...payload } = input as ProjectKingsFrozenDiscoveryCatalog;
+  void ignored;
+  return payload;
+}
+
+export function hashProjectKingsFrozenDiscoveryCatalog(
+  input: Omit<ProjectKingsFrozenDiscoveryCatalog, "catalogSha256"> | ProjectKingsFrozenDiscoveryCatalog
+): string {
+  return hashProjectKingsSourceRefillLedgerValue(frozenCatalogPayload(input));
+}
+
+function parseFrozenCatalog(raw: unknown): ProjectKingsFrozenDiscoveryCatalog {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("Frozen discovery catalog must be an object.");
+  }
+  const value = raw as Record<string, unknown>;
+  if (
+    value.schemaVersion !== PROJECT_KINGS_FROZEN_DISCOVERY_CATALOG_VERSION ||
+    typeof value.catalogId !== "string" ||
+    !value.catalogId.trim() ||
+    typeof value.capturedAt !== "string" ||
+    !Number.isFinite(Date.parse(value.capturedAt)) ||
+    typeof value.catalogSha256 !== "string" ||
+    !SHA256.test(value.catalogSha256) ||
+    !value.profiles ||
+    typeof value.profiles !== "object" ||
+    Array.isArray(value.profiles)
+  ) {
+    throw new Error("Frozen discovery catalog header is invalid.");
+  }
+  if (
+    hashProjectKingsFrozenDiscoveryCatalog(value as unknown as ProjectKingsFrozenDiscoveryCatalog) !==
+    value.catalogSha256
+  ) {
+    throw new Error("Frozen discovery catalog hash mismatch.");
+  }
+  const profileKeys = Object.keys(PROJECT_KINGS_PILOT_PROFILES) as ProjectKingsPilotProfileKey[];
+  const profiles: Partial<Record<ProjectKingsPilotProfileKey, ProjectKingsFrozenDiscoveryCatalogEntry[]>> = {};
+  for (const [profileKeyRaw, entriesRaw] of Object.entries(value.profiles as Record<string, unknown>)) {
+    if (!profileKeys.includes(profileKeyRaw as ProjectKingsPilotProfileKey) || !Array.isArray(entriesRaw)) {
+      throw new Error(`Frozen discovery catalog profile is invalid: ${profileKeyRaw}.`);
+    }
+    const profileKey = profileKeyRaw as ProjectKingsPilotProfileKey;
+    const designated = PROJECT_KINGS_SOURCE_POLICY.sourceDesignations[profileKey];
+    const seen = new Set<string>();
+    profiles[profileKey] = entriesRaw.map((entryRaw, index) => {
+      if (!entryRaw || typeof entryRaw !== "object" || Array.isArray(entryRaw)) {
+        throw new Error(`Frozen discovery catalog entry is invalid: ${profileKey}[${index}].`);
+      }
+      const entry = entryRaw as Record<string, unknown>;
+      const rawSourceUrl = typeof entry.sourceUrl === "string" ? entry.sourceUrl : "";
+      const sourceUrl = rawSourceUrl ? canonicalizeProjectKingsSourceUrl(rawSourceUrl) : "";
+      const provider = entry.provider;
+      const route = entry.route;
+      const donorUsername = entry.donorUsername === null ? null : entry.donorUsername;
+      const validPair =
+        (provider === "instagram" && route === "instagram_donor_pool") ||
+        (provider === "youtube_ask" && route === "youtube_ask_v3");
+      const designatedRoute =
+        (provider === "instagram" &&
+          typeof donorUsername === "string" &&
+          (designated.instagramDonors as readonly string[]).includes(donorUsername)) ||
+        (provider === "youtube_ask" && donorUsername === null && designated.youtubeAsk);
+      const providerMatchesUrl =
+        (provider === "instagram" && sourceUrl.startsWith("https://www.instagram.com/reel/")) ||
+        (provider === "youtube_ask" && sourceUrl.startsWith("https://www.youtube.com/watch?v="));
+      if (
+        !sourceUrl ||
+        sourceUrl !== rawSourceUrl ||
+        seen.has(sourceUrl) ||
+        typeof entry.caption !== "string" ||
+        !entry.caption.trim() ||
+        !validPair ||
+        !designatedRoute ||
+        !providerMatchesUrl ||
+        (entry.provisionalStoryEventId !== undefined &&
+          entry.provisionalStoryEventId !== null &&
+          (typeof entry.provisionalStoryEventId !== "string" || !entry.provisionalStoryEventId.trim()))
+      ) {
+        throw new Error(`Frozen discovery catalog entry is invalid: ${profileKey}[${index}].`);
+      }
+      seen.add(sourceUrl);
+      return {
+        provider,
+        route,
+        donorUsername,
+        sourceUrl,
+        caption: entry.caption.trim(),
+        provisionalStoryEventId:
+          typeof entry.provisionalStoryEventId === "string"
+            ? entry.provisionalStoryEventId.trim()
+            : null
+      } as ProjectKingsFrozenDiscoveryCatalogEntry;
+    });
+  }
+  const parsed: ProjectKingsFrozenDiscoveryCatalog = {
+    schemaVersion: PROJECT_KINGS_FROZEN_DISCOVERY_CATALOG_VERSION,
+    catalogId: value.catalogId.trim(),
+    capturedAt: value.capturedAt,
+    profiles,
+    catalogSha256: value.catalogSha256
+  };
+  return parsed;
+}
+
+export function createProjectKingsFrozenCatalogDiscoveryProvider(
+  rawCatalog: unknown
+): ProjectKingsSourceDiscoveryProvider & Readonly<{ catalogSha256: string }> {
+  const catalog = parseFrozenCatalog(rawCatalog);
+  return {
+    providerId: `frozen_catalog_${catalog.catalogSha256.slice(0, 16)}`,
+    strategy: "reserve_pool",
+    catalogSha256: catalog.catalogSha256,
+    async discover(input) {
+      const known = new Set(input.knownCanonicalUrls);
+      const entries = catalog.profiles[input.profileKey] ?? [];
+      const candidates = entries
+        .filter((entry) => !known.has(entry.sourceUrl))
+        .slice(0, input.targetCandidateCount)
+        .map((entry) => {
+          const identity = sha256(`${input.profileKey}:${entry.sourceUrl}`).slice(0, 32);
+          const payload = {
+            candidateId: `catalog-${input.profileKey}-${identity}`,
+            profileKey: input.profileKey,
+            provider: entry.provider,
+            route: entry.route,
+            donorUsername: entry.donorUsername,
+            sourceUrl: entry.sourceUrl,
+            canonicalUrl: entry.sourceUrl,
+            caption: entry.caption,
+            provisionalStoryEventId:
+              entry.provisionalStoryEventId ??
+              `event-provisional-${sha256(`${entry.sourceUrl}:${entry.caption}`).slice(0, 32)}`
+          };
+          return {
+            ...payload,
+            discoveryEvidenceSha256: hashProjectKingsDiscoveredSourceCandidate(payload)
+          };
+        });
+      return {
+        candidates,
+        issues: [],
+        evidenceSha256: hashProjectKingsSourceRefillLedgerValue({
+          catalogSha256: catalog.catalogSha256,
+          profileKey: input.profileKey,
+          selectedCandidateIds: candidates.map((candidate) => candidate.candidateId)
+        })
+      };
+    }
+  };
 }
 
 async function sha256File(filePath: string): Promise<string> {

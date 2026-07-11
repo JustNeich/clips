@@ -22,6 +22,15 @@ plist, а загрузка launchd требует отдельного `--arm`. 
 3. YouTube Ask доступен только для профиля, где frozen source policy разрешает `youtube_ask_v3` (сейчас THE LIGHT KINGDOM).
 4. Reserve provider может быть подключён через типизированный provider interface.
 
+Для ограниченного bootstrap допускается приватный hash-bound каталог через
+`PROJECT_KINGS_SOURCE_REFILL_CATALOG_PATH`. Файл обязан иметь mode `0600`,
+содержать только canonical URL и точные разрешённые пары provider/route/donor.
+При наличии этой настройки CLI использует каталог как единственный discovery
+provider; catalog SHA входит в request identity. Это временный способ наполнить
+конкретный дефицит, а не бесконечный источник: перед recurring arm надо
+подтвердить запас для всех дефицитных профилей либо убрать настройку и вернуться
+к обычному discovery.
+
 Runtime не принимает список donors из env или CLI. Donors и YouTube permission читаются только из frozen source policy.
 
 ## Семантические gates
@@ -36,11 +45,23 @@ Policy использует один заранее утверждённый own
 - `shadow`: выполняет полный contour до готового qualification evidence, но не вызывает upload.
 - `execute`: дополнительно вызывает idempotent source-buffer upload. Нужны одновременно `--allow-upload` и `PROJECT_KINGS_SOURCE_REFILL_UPLOAD_ARMED=1`.
 
-В этой реализации execute не запускался, daemon/launchd не менялся и production state не мутировался.
+Первый production execute 11 июля 2026 года завершился честным `partial`:
+Dark пополнен до 12, Cop получил один qualified source, Light остался на 2.
+Текущий bootstrap-каталог добавлен именно для закрытия дефицита Light/Cop;
+ни один catalog candidate не минует decode, OCR/ASR, dedupe, policy или
+Source Fit. Daemon/launchd при этом остаётся disarmed до завершения live 3×3.
 
 ## Restart safety
 
-Локальный ledger хранится атомарным JSON с mode `0600`. Каждый request, candidate и весь ledger имеют проверяемые SHA-256. Повтор того же `workspace + logicalDate + mode + manifest + runtime snapshot` возвращает существующий request. Уже завершённые `qualified_shadow`/`uploaded` кандидаты не запускаются повторно; повтор POST после crash безопасен благодаря idempotent server import по URL/content/event binding.
+Локальный ledger хранится атомарным JSON с mode `0600`. Каждый request,
+candidate и весь ledger имеют проверяемые SHA-256. Повтор того же
+`workspace + logicalDate + mode + manifest + runtime snapshot` возвращает
+существующий request. Для временного каталога к identity добавляется его SHA,
+поэтому новый точный каталог не сливается со старым terminal request;
+отсутствующий/null scope сохраняет прежнюю identity без drift. Уже завершённые
+`qualified_shadow`/`uploaded` кандидаты не запускаются повторно; повтор POST
+после crash безопасен благодаря idempotent server import по URL/content/event
+binding.
 
 Ledger запрещает credential-like поля. Секреты, session/access tokens и cookies остаются только в приватном machine env и не входят в health/result/evidence. Числовые метрики `inputTokens`, `cachedInputTokens`, `outputTokens` и `reasoningOutputTokens` не являются credentials: для каждого вызова `source_policy` и `source_fit` ledger сохраняет модель, reasoning, route, attempt, duration, token counts, вычисленную стоимость, outcome и hash prompt/output. Стоимость берётся из frozen Codex rate card, а для новой модели без локальной rate card — из того же benchmark snapshot с явной пометкой `benchmark_mean`.
 

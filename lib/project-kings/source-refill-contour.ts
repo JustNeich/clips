@@ -198,6 +198,7 @@ export type RunProjectKingsAutonomousSourceRefillInput = Readonly<{
   mode: ProjectKingsSourceRefillMode;
   logicalDate: string;
   capturedAt: string;
+  discoveryScopeSha256?: string | null;
   runtime: ProjectKingsSourceBufferRuntimeSnapshot;
   routeManifest: ProductionReadyAgentRouteManifest;
   ledger: FileProjectKingsSourceRefillLedgerStore;
@@ -402,6 +403,13 @@ function createRequest(input: RunProjectKingsAutonomousSourceRefillInput): Omit<
   ProjectKingsSourceRefillLedgerRequest,
   "requestSha256"
 > {
+  if (
+    input.discoveryScopeSha256 !== undefined &&
+    input.discoveryScopeSha256 !== null &&
+    !SHA256.test(input.discoveryScopeSha256)
+  ) {
+    throw new Error("Source-refill discovery scope must be a SHA-256 hash.");
+  }
   const runtimeSnapshotSha256 = stableHash({
     schemaVersion: input.runtime.schemaVersion,
     workspaceId: input.runtime.workspaceId,
@@ -431,6 +439,7 @@ function createRequest(input: RunProjectKingsAutonomousSourceRefillInput): Omit<
     workspaceId: input.runtime.workspaceId,
     logicalDate: input.logicalDate,
     mode: input.mode,
+    discoveryScopeSha256: input.discoveryScopeSha256 ?? undefined,
     routeManifestSha256: input.routeManifest.manifestSha256,
     runtimeSnapshotSha256
   });
@@ -442,6 +451,7 @@ function createRequest(input: RunProjectKingsAutonomousSourceRefillInput): Omit<
     workspaceId: input.runtime.workspaceId,
     logicalDate: input.logicalDate,
     mode: input.mode,
+    discoveryScopeSha256: input.discoveryScopeSha256 ?? undefined,
     routeManifestId: input.routeManifest.manifestId,
     routeManifestSha256: input.routeManifest.manifestSha256,
     runtimeSnapshotSha256,
