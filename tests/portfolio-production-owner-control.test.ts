@@ -133,6 +133,36 @@ async function seedSyntheticRun() {
   return { owner, profile, run: created.run };
 }
 
+function insertPortfolioChannelOwnership(input: {
+  workspaceId: string;
+  runChannel: {
+    channelId: string;
+    profileId: string;
+    profileVersion: number;
+    profileHash: string;
+  };
+  status: "active" | "releasing";
+}): void {
+  const stamp = "2040-01-01T00:00:00.000Z";
+  getDb().prepare(`INSERT INTO production_channel_ownership
+    (workspace_id, channel_id, daemon_id, config_sha256, profile_id, profile_version, profile_hash,
+     status, fence_token, activated_at, release_requested_at, released_at, updated_at)
+    VALUES (?, ?, 'project-kings-portfolio-v1', ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`)
+    .run(
+      input.workspaceId,
+      input.runChannel.channelId,
+      sha("owner-control-ownership-config"),
+      input.runChannel.profileId,
+      input.runChannel.profileVersion,
+      input.runChannel.profileHash,
+      input.status,
+      "owner-control-fence-token",
+      stamp,
+      input.status === "releasing" ? stamp : null,
+      stamp
+    );
+}
+
 async function seedProjectedUploadProtocolSourceFitFailure(
   failure = "packet.task.sourceUrl: must use HTTPS"
 ) {
@@ -965,6 +995,180 @@ test("ordinary failed owner retry still creates the next source generation", { c
       [
         { id: original.id, generation: 1, state: "failed" },
         { id: body.item.id, generation: 2, state: "reserved" }
+      ]
+    );
+  });
+});
+
+test("owner retry rejects releasing ownership before any recovery mutation", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedSyntheticRun();
+    const runChannel = listProductionRunChannels(seeded.run.id)[0]!;
+    getDb().prepare("UPDATE production_runs SET status = 'running' WHERE id = ?")
+      .run(seeded.run.id);
+    getDb().prepare("UPDATE production_run_channels SET status = 'running' WHERE id = ?")
+      .run(runChannel.id);
+    const original = createProductionItem({
+      runId: seeded.run.id,
+      runChannelId: runChannel.id,
+      itemSlot: 1,
+      attemptBudget: 5
+    });
+    getDb().prepare("UPDATE production_items SET state = 'failed', last_error = ? WHERE id = ?")
+      .run("ordinary bounded source failure", original.id);
+    insertPortfolioChannelOwnership({
+      workspaceId: seeded.owner.workspace.id,
+      runChannel,
+      status: "releasing"
+    });
+    const machine = createMcpMachineCredential({
+      workspaceId: seeded.owner.workspace.id,
+      ownerUserId: seeded.owner.user.id,
+      machineId: "portfolio-releasing-owner-retry",
+      scopes: ["flow:read", "control:write"]
+    });
+    const before = {
+      item: getProductionItem(original.id),
+      items: listProductionItems({ runId: seeded.run.id, includeHistorical: true }),
+      channel: listProductionRunChannels(seeded.run.id)[0],
+      events: listProductionEvents({ runId: seeded.run.id })
+    };
+    const response = await postOwnerControl(machine.secret, "clips_owner_retry_production_item", {
+      runId: seeded.run.id,
+      itemId: original.id,
+      expectedVersion: original.version,
+      reason: "must remain unchanged while ownership is releasing"
+    });
+    assert.equal(response.status, 409);
+    const body = (await response.json()) as {
+      code: string;
+      details: { blockerCode?: string; operation?: string };
+    };
+    assert.equal(body.code, "lease_conflict");
+    assert.deepEqual(body.details, {
+      blockerCode: "portfolio_channel_ownership_releasing",
+      operation: "create_replacement_generation",
+      productionItemId: original.id,
+      workspaceId: seeded.owner.workspace.id,
+      channelId: runChannel.channelId
+    });
+    assert.deepEqual({
+      item: getProductionItem(original.id),
+      items: listProductionItems({ runId: seeded.run.id, includeHistorical: true }),
+      channel: listProductionRunChannels(seeded.run.id)[0],
+      events: listProductionEvents({ runId: seeded.run.id })
+    }, before);
+  });
+});
+
+test("accepted owner retry reports deferred reconcile and remains idempotent", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedSyntheticRun();
+    const runChannel = listProductionRunChannels(seeded.run.id)[0]!;
+    getDb().prepare("UPDATE production_runs SET status = 'running' WHERE id = ?")
+      .run(seeded.run.id);
+    getDb().prepare("UPDATE production_run_channels SET status = 'running' WHERE id = ?")
+      .run(runChannel.id);
+    const original = createProductionItem({
+      runId: seeded.run.id,
+      runChannelId: runChannel.id,
+      itemSlot: 1,
+      attemptBudget: 5
+    });
+    getDb().prepare("UPDATE production_items SET state = 'failed', last_error = ? WHERE id = ?")
+      .run("ordinary bounded source failure", original.id);
+    const sourceUrl = "https://example.com/owner-retry-deferred.mp4";
+    const sourceSha256 = sha("owner-retry-deferred-source");
+    const discovered = upsertChannelSourceCandidate({
+      workspaceId: seeded.owner.workspace.id,
+      channelId: seeded.profile.channelId,
+      provider: "test",
+      sourceUrl,
+      canonicalUrl: sourceUrl,
+      contentSha256: sourceSha256,
+      eventFingerprint: "owner-retry-deferred-event",
+      categoryKey: "owner-retry-deferred",
+      rightsStatus: "owner_approved_source_pool",
+      evidence: { discoveredBy: "owner-retry-deferred-regression" }
+    }).candidate;
+    const candidate = transitionChannelSourceCandidateQualification({
+      candidateId: discovered.id,
+      toStatus: "qualified",
+      contentSha256: sourceSha256,
+      eventFingerprint: discovered.eventFingerprint,
+      evidence: { qualifiedBy: "owner-retry-deferred-regression" }
+    });
+    insertPortfolioChannelOwnership({
+      workspaceId: seeded.owner.workspace.id,
+      runChannel,
+      status: "active"
+    });
+    getDb().exec(`CREATE TRIGGER owner_retry_test_release_after_replacement
+      AFTER INSERT ON production_items
+      WHEN NEW.run_id = '${seeded.run.id}' AND NEW.item_slot = 1 AND NEW.generation = 2
+      BEGIN
+        UPDATE production_channel_ownership
+        SET status = 'releasing', release_requested_at = '2040-01-01T00:00:01.000Z',
+            updated_at = '2040-01-01T00:00:01.000Z'
+        WHERE workspace_id = NEW.workspace_id AND channel_id = NEW.channel_id;
+      END;`);
+    const machine = createMcpMachineCredential({
+      workspaceId: seeded.owner.workspace.id,
+      ownerUserId: seeded.owner.user.id,
+      machineId: "portfolio-deferred-reconcile-owner-retry",
+      scopes: ["flow:read", "control:write"]
+    });
+    const retryInput = {
+      runId: seeded.run.id,
+      itemId: original.id,
+      expectedVersion: original.version,
+      reason: "accept once and defer reconciliation behind the stop fence"
+    };
+    const firstResponse = await postOwnerControl(
+      machine.secret,
+      "clips_owner_retry_production_item",
+      retryInput
+    );
+    assert.equal(firstResponse.status, 202, await firstResponse.clone().text());
+    const first = (await firstResponse.json()) as {
+      accepted: boolean;
+      item: { id: string; generation: number; state: string; sourceCandidateId: string | null };
+      reconcileDeferred: { code: string; error: string } | null;
+    };
+    assert.equal(first.accepted, true);
+    assert.equal(first.item.generation, 2);
+    assert.equal(first.item.state, "reserved");
+    assert.equal(first.item.sourceCandidateId, null);
+    assert.equal(first.reconcileDeferred?.code, "portfolio_channel_ownership_releasing");
+    assert.match(first.reconcileDeferred?.error ?? "", /ownership is releasing/);
+    assert.equal(listProductionOutbox({ runId: seeded.run.id }).length, 0);
+    assert.equal(listChannelSourceCandidates({
+      workspaceId: seeded.owner.workspace.id,
+      channelId: seeded.profile.channelId,
+      limit: 10
+    }).find((entry) => entry.id === candidate.id)?.status, "available");
+
+    const repeatedResponse = await postOwnerControl(
+      machine.secret,
+      "clips_owner_retry_production_item",
+      retryInput
+    );
+    assert.equal(repeatedResponse.status, 202, await repeatedResponse.clone().text());
+    const repeated = (await repeatedResponse.json()) as {
+      accepted: boolean;
+      item: { id: string; generation: number };
+      reconcileDeferred: { code: string } | null;
+    };
+    assert.equal(repeated.accepted, true);
+    assert.equal(repeated.item.id, first.item.id);
+    assert.equal(repeated.item.generation, 2);
+    assert.equal(repeated.reconcileDeferred?.code, "portfolio_channel_ownership_releasing");
+    assert.deepEqual(
+      listProductionItems({ runId: seeded.run.id, includeHistorical: true })
+        .map((item) => ({ id: item.id, generation: item.generation })),
+      [
+        { id: original.id, generation: 1 },
+        { id: first.item.id, generation: 2 }
       ]
     );
   });

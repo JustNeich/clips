@@ -121,6 +121,7 @@ const ITEM_COMPLETED_STATES = new Set<ProductionItemState>([
 const RUN_TERMINAL_STATES = new Set<ProductionRunStatus>(["completed", "blocked", "canceled", "failed"]);
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
 const LOGICAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const PORTFOLIO_CHANNEL_OWNERSHIP_RELEASING_ERROR = "portfolio_channel_ownership_releasing";
 export const PRODUCTION_PUBLIC_VERIFICATION_WINDOW_MS = 24 * 60 * 60_000;
 const PRODUCTION_PUBLIC_VERIFICATION_CONTINUATION_DELAY_MS = 5 * 60_000;
 const PRODUCTION_PUBLIC_VERIFICATION_MAX_ATTEMPTS_PER_WINDOW = 12;
@@ -568,6 +569,10 @@ function isConstraintError(error: unknown): boolean {
   return error instanceof Error && /constraint|unique/i.test(error.message);
 }
 
+function isPortfolioChannelOwnershipReleasingError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes(PORTFOLIO_CHANNEL_OWNERSHIP_RELEASING_ERROR);
+}
+
 function mapProfile(row: Row): ProductionProfileRecord {
   return {
     id: String(row.id), workspaceId: String(row.workspace_id), channelId: String(row.channel_id),
@@ -749,6 +754,36 @@ function requireItem(db: DatabaseSync, itemId: string): ProductionItemRecord {
   return mapItem(row);
 }
 
+function failPortfolioChannelOwnershipReleasing(
+  item: Pick<ProductionItemRecord, "id" | "workspaceId" | "channelId">,
+  operation: string
+): never {
+  fail(
+    "lease_conflict",
+    "Portfolio channel ownership is releasing; owner recovery must wait for the exact daemon configuration to resume ownership.",
+    {
+      blockerCode: PORTFOLIO_CHANNEL_OWNERSHIP_RELEASING_ERROR,
+      operation,
+      productionItemId: item.id,
+      workspaceId: item.workspaceId,
+      channelId: item.channelId
+    }
+  );
+}
+
+function assertPortfolioOwnerRecoveryOpenTx(
+  db: DatabaseSync,
+  item: Pick<ProductionItemRecord, "id" | "workspaceId" | "channelId">,
+  operation: string
+): void {
+  const ownership = db.prepare(`SELECT status FROM production_channel_ownership
+    WHERE workspace_id = ? AND channel_id = ? LIMIT 1`)
+    .get(item.workspaceId, item.channelId) as { status?: string } | undefined;
+  if (ownership?.status === "releasing") {
+    failPortfolioChannelOwnershipReleasing(item, operation);
+  }
+}
+
 function appendEventTx(db: DatabaseSync, input: {
   workspaceId: string; runId: string; channelId?: string | null; productionItemId?: string | null;
   eventType: string; fromState?: string | null; toState?: string | null; payload?: Record<string, unknown>; createdAt: string;
@@ -876,6 +911,9 @@ function appendOutboxTx(db: DatabaseSync, input: AppendProductionOutboxInput, st
       .run(id, input.workspaceId, input.runId, input.channelId, input.productionItemId,
         eventKind, dedupeKey, payloadJson, maxAttempts, availableAt, stamp, stamp);
   } catch (error) {
+    if (isPortfolioChannelOwnershipReleasingError(error)) {
+      failPortfolioChannelOwnershipReleasing(item, `append_outbox:${eventKind}`);
+    }
     if (isConstraintError(error)) {
       fail("idempotency_conflict", "Outbox dedupe key was claimed by a different immutable intent.", {
         productionItemId: input.productionItemId, eventKind, dedupeKey
@@ -1383,11 +1421,26 @@ export function createReplacementProductionItem(input: {
     if (!REPLACEABLE_ITEM_STATES.has(oldItem.state) || oldItem.publicationId || oldItem.youtubeVideoId || oldItem.uploadSessionUrl) {
       fail("invalid_transition", "This production item cannot receive another generation.", { state: oldItem.state });
     }
+    const attemptBudget = positiveInteger(input.attemptBudget ?? oldItem.attemptBudget, "attemptBudget");
+    const existingRow = db.prepare(`SELECT * FROM production_items
+      WHERE run_id = ? AND channel_id = ? AND item_slot = ? AND generation = ? LIMIT 1`)
+      .get(oldItem.runId, oldItem.channelId, oldItem.itemSlot, oldItem.generation + 1) as Row | undefined;
+    if (existingRow) {
+      const existing = mapItem(existingRow);
+      if (existing.runChannelId !== oldItem.runChannelId || existing.attemptBudget !== attemptBudget) {
+        fail("idempotency_conflict", "Replacement generation already exists with different immutable bindings.", {
+          replacedItemId: oldItem.id,
+          replacementItemId: existing.id
+        });
+      }
+      return existing;
+    }
+    assertPortfolioOwnerRecoveryOpenTx(db, oldItem, "create_replacement_generation");
     const run = requireRun(db, oldItem.runId);
     const runChannel = requireRunChannel(db, oldItem.runChannelId);
     return insertProductionItemTx(db, {
       run, runChannel, itemSlot: oldItem.itemSlot, generation: oldItem.generation + 1,
-      attemptBudget: positiveInteger(input.attemptBudget ?? oldItem.attemptBudget, "attemptBudget"), createdAt: nowIso()
+      attemptBudget, createdAt: nowIso()
     });
   });
 }
@@ -2551,6 +2604,7 @@ export function requeueProductionItemRevision(input: {
         deadLetterCode: outbox.deadLetterCode
       });
     }
+    assertPortfolioOwnerRecoveryOpenTx(db, item, "requeue_revision_intent");
     const stamp = input.now ?? nowIso();
     const result = db.prepare(`UPDATE production_outbox SET status = 'pending', attempts = 0,
       available_at = ?, lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
@@ -2624,6 +2678,7 @@ export function requeueProjectedRecoverableSourceFitDeadLetter(input: {
         state: item.state
       });
     }
+    assertPortfolioOwnerRecoveryOpenTx(db, item, "requeue_source_fit_intent");
 
     const run = requireRun(db, item.runId);
     if (run.status !== "running") {
@@ -2850,6 +2905,8 @@ export function requeueProjectedRecoverableSourceFitDeadLetter(input: {
 const PROJECT_KINGS_RECOVERABLE_BRIEF_ERROR = "Caption Agent failed the text gate.";
 const PROJECT_KINGS_RECOVERABLE_PREVIEW_POLICY_ERROR =
   "invalid_binding: Deterministic targeted_visual_revision has no compatible structured defect.";
+const PROJECT_KINGS_RECOVERABLE_FINAL_LEDGER_POLICY_ERROR =
+  "invalid_ledger: Revision attempt mismatch: item=1, ledger=0.";
 const PROJECT_KINGS_OWNER_REPLACEMENT_BUDGET_ERROR =
   "Replacement budget exhausted: Unsafe source-level defect cannot pass through revision.";
 
@@ -2931,6 +2988,7 @@ export function requeueProjectedRecoverableBriefDeadLetter(input: {
         state: item.state
       });
     }
+    assertPortfolioOwnerRecoveryOpenTx(db, item, "requeue_brief_intent");
     const stamp = input.now ?? nowIso();
     const reason = requiredText(input.reason, "reason", 2000);
     const run = reopenExactBlockedShadowIncidentRunTx(db, requireRun(db, item.runId), {
@@ -3120,6 +3178,7 @@ export function requeueRecoverablePreviewPolicyBlock(input: {
         lastError: item.lastError
       });
     }
+    assertPortfolioOwnerRecoveryOpenTx(db, item, "requeue_preview_intent");
     const stamp = input.now ?? nowIso();
     const reason = requiredText(input.reason, "reason", 2000);
     const run = reopenExactBlockedShadowIncidentRunTx(db, requireRun(db, item.runId), {
@@ -3292,6 +3351,7 @@ export function requeueRecoverablePreviewPolicyBlock(input: {
     }
     const itemResult = db.prepare(`UPDATE production_items SET
       state = 'preview_ready', resume_state = NULL, version = version + 1,
+      attempts = 0,
       lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
       last_error = NULL, completed_at = NULL, updated_at = ?
       WHERE id = ? AND version = ? AND state = 'policy_blocked'`)
@@ -3330,7 +3390,8 @@ export function requeueRecoverablePreviewPolicyBlock(input: {
         dedupeKey: outbox.dedupeKey,
         preservedPreviewSha256: item.previewSha256,
         preservedStage3JobId: item.stage3JobId,
-        preservedAttempts: item.attempts,
+        resetAttemptsFrom: item.attempts,
+        resetAttemptsTo: 0,
         supersededRevisionOutboxId: revision.id
       },
       createdAt: stamp
@@ -3339,6 +3400,244 @@ export function requeueRecoverablePreviewPolicyBlock(input: {
       item: requireItem(db, item.id),
       channel: requireRunChannel(db, channel.id),
       outbox: mapOutbox(readRow(db, "production_outbox", outbox.id)!)
+    };
+  });
+}
+
+/**
+ * Re-run final QA for the exact shadow item whose old preview-policy recovery
+ * preserved one bogus revision attempt even though no revision ledger entry
+ * was ever applied. The completed final render remains immutable and is reused;
+ * only the counter and a fresh, one-shot QA intent are reopened.
+ */
+export function requeueRecoverableFinalLedgerPolicyBlock(input: {
+  itemId: string;
+  expectedItemVersion: number;
+  reason: string;
+  now?: string | null;
+}): {
+  item: ProductionItemRecord;
+  channel: ProductionRunChannelRecord;
+  outbox: ProductionOutboxRecord;
+} {
+  return runInTransaction((db) => {
+    const item = requireItem(db, requiredText(input.itemId, "itemId", 64));
+    if (item.version !== input.expectedItemVersion) {
+      fail("stale_version", "Production item version is stale.", {
+        expected: input.expectedItemVersion,
+        actual: item.version
+      });
+    }
+    if (item.state !== "policy_blocked" ||
+        item.lastError !== PROJECT_KINGS_RECOVERABLE_FINAL_LEDGER_POLICY_ERROR ||
+        item.attempts !== 1) {
+      fail("invalid_transition", "Item is not the exact recoverable final-QA ledger block.", {
+        itemId: item.id,
+        state: item.state,
+        attempts: item.attempts,
+        lastError: item.lastError
+      });
+    }
+    assertPortfolioOwnerRecoveryOpenTx(db, item, "requeue_final_qa_ledger_intent");
+    const stamp = input.now ?? nowIso();
+    const reason = requiredText(input.reason, "reason", 2000);
+    const run = reopenExactBlockedShadowIncidentRunTx(db, requireRun(db, item.runId), {
+      itemId: item.id,
+      reason,
+      stamp
+    });
+    const channel = requireRunChannel(db, item.runChannelId);
+    if (run.status !== "running" || !["running", "blocked"].includes(channel.status) ||
+        (channel.status === "blocked" &&
+          (channel.blockerCode !== "item_policy_blocked" || channel.blockerMessage !== item.lastError))) {
+      fail("invalid_transition", "Final-QA ledger recovery requires the exact running incident run/channel.", {
+        runStatus: run.status,
+        channelStatus: channel.status,
+        blockerCode: channel.blockerCode
+      });
+    }
+    if (!item.sourceCandidateId || !item.sourceSha256 || !item.previewSha256 ||
+        !item.templateSha256 || !item.settingsSha256 || !item.finalArtifactSha256 ||
+        !item.chatId || !item.stage3JobId || item.publicationId || item.youtubeVideoId ||
+        item.uploadSessionUrl) {
+      fail("external_effect_conflict", "Final-QA ledger recovery requires exact final bindings and no upload effect.", {
+        itemId: item.id
+      });
+    }
+    const candidateRow = readRow(db, "channel_source_candidates", item.sourceCandidateId);
+    const candidate = candidateRow ? mapCandidate(candidateRow) : null;
+    if (!candidate || candidate.status !== "reserved" || candidate.reservedItemId !== item.id ||
+        candidate.workspaceId !== item.workspaceId || candidate.channelId !== item.channelId ||
+        candidate.contentSha256 !== item.sourceSha256 || !isChannelSourceCandidateQualified(candidate)) {
+      fail("source_conflict", "Final-QA ledger recovery lost its exact source reservation.", {
+        itemId: item.id,
+        sourceCandidateId: item.sourceCandidateId
+      });
+    }
+    const stage3Job = db.prepare(`WITH latest_artifact AS (
+        SELECT *, ROW_NUMBER() OVER (
+          PARTITION BY job_id ORDER BY created_at DESC, id DESC
+        ) AS row_num
+        FROM stage3_job_artifacts
+      )
+      SELECT j.workspace_id, j.kind, j.status, a.file_path AS artifact_file_path
+      FROM stage3_jobs j
+      LEFT JOIN latest_artifact a ON a.job_id = j.id AND a.row_num = 1
+      WHERE j.id = ? LIMIT 1`).get(item.stage3JobId) as Row | undefined;
+    if (!stage3Job || String(stage3Job.workspace_id) !== item.workspaceId ||
+        String(stage3Job.kind) !== "render" || String(stage3Job.status) !== "completed" ||
+        typeof stage3Job.artifact_file_path !== "string" || !stage3Job.artifact_file_path) {
+      fail("invalid_transition", "Final-QA ledger recovery requires the exact completed final render job.", {
+        itemId: item.id,
+        stage3JobId: item.stage3JobId
+      });
+    }
+    const finalRows = db.prepare(`SELECT * FROM production_outbox
+      WHERE production_item_id = ? AND event_kind = 'final_render.requested'`).all(item.id) as Row[];
+    if (finalRows.length !== 1) {
+      fail("invalid_transition", "Final-QA ledger recovery requires one original final-render intent.", {
+        itemId: item.id,
+        intentCount: finalRows.length
+      });
+    }
+    const predecessor = mapOutbox(finalRows[0]!);
+    const approvalBindingSha256 = typeof predecessor.payload.approvalBindingSha256 === "string"
+      ? predecessor.payload.approvalBindingSha256
+      : "";
+    const expectedDedupeKey = buildProductionOutboxDedupeKey("final_render.requested", {
+      gate: "final_render",
+      attemptNo: item.attempts + 1,
+      approvalBindingSha256
+    });
+    if (!SHA256_PATTERN.test(approvalBindingSha256) || predecessor.dedupeKey !== expectedDedupeKey ||
+        predecessor.status !== "delivered" || predecessor.attempts < 1 || !predecessor.deliveredAt ||
+        predecessor.lastError || predecessor.deadLetterCode || predecessor.projectedAt ||
+        predecessor.leaseOwner || predecessor.leaseToken || predecessor.leaseExpiresAt) {
+      fail("invalid_transition", "Original final-render intent is not exact and replayable for QA.", {
+        itemId: item.id,
+        outboxId: predecessor.id,
+        status: predecessor.status
+      });
+    }
+    const blockedEventRow = db.prepare(`SELECT * FROM production_events
+      WHERE production_item_id = ? AND event_type = 'production.revision_application_blocked'
+      ORDER BY rowid DESC LIMIT 1`).get(item.id) as Row | undefined;
+    const blockedEvent = blockedEventRow ? mapEvent(blockedEventRow) : null;
+    if (!blockedEvent || blockedEvent.fromState !== "final_rendered" ||
+        blockedEvent.toState !== "policy_blocked" || blockedEvent.payload.stage !== "decision" ||
+        blockedEvent.payload.code !== "invalid_ledger" ||
+        blockedEvent.payload.message !== "Revision attempt mismatch: item=1, ledger=0." ||
+        blockedEvent.payload.evidenceArtifactId !== "revision-application-rejected-1" ||
+        typeof blockedEvent.payload.evidenceSha256 !== "string" ||
+        !SHA256_PATTERN.test(blockedEvent.payload.evidenceSha256)) {
+      fail("invalid_transition", "Final-QA policy block is not bound to the exact empty-ledger incident.", {
+        itemId: item.id
+      });
+    }
+    const latestItemEvent = db.prepare(`SELECT id FROM production_events
+      WHERE production_item_id = ? ORDER BY rowid DESC LIMIT 1`).get(item.id) as Row | undefined;
+    if (!latestItemEvent || String(latestItemEvent.id) !== blockedEvent.id) {
+      fail("invalid_transition", "Final-QA ledger block is no longer the latest item mutation.", {
+        itemId: item.id
+      });
+    }
+    const appliedRevision = db.prepare(`SELECT id FROM production_events
+      WHERE production_item_id = ? AND event_type = 'production.revision_ready' LIMIT 1`)
+      .get(item.id) as Row | undefined;
+    if (appliedRevision) {
+      fail("invalid_transition", "Final-QA ledger recovery refuses an item with an applied revision.", {
+        itemId: item.id,
+        revisionEventId: String(appliedRevision.id)
+      });
+    }
+    const priorRecovery = db.prepare(`SELECT id FROM production_events
+      WHERE production_item_id = ? AND event_type = 'production.item.owner_final_ledger_retry_requeued'
+      LIMIT 1`).get(item.id) as Row | undefined;
+    if (priorRecovery) {
+      fail("invalid_transition", "Final-QA ledger recovery is allowed only once for this exact item.", {
+        itemId: item.id,
+        recoveryEventId: String(priorRecovery.id)
+      });
+    }
+    const finalVerdicts = (db.prepare(`SELECT * FROM quality_verdicts
+      WHERE production_item_id = ? AND gate_type = 'final' AND artifact_sha256 = ?
+        AND source_sha256 IS ? AND preview_sha256 IS ?
+        AND template_sha256 IS ? AND settings_sha256 IS ?`)
+      .all(item.id, item.finalArtifactSha256, item.sourceSha256, item.previewSha256,
+        item.templateSha256, item.settingsSha256) as Row[]).map(mapVerdict);
+    if (!finalVerdicts.some((verdict) => verdict.judgeKind === "deterministic") ||
+        !finalVerdicts.some((verdict) => verdict.judgeKind === "vision") ||
+        !finalVerdicts.some((verdict) => verdict.verdict === "fail")) {
+      fail("quality_gate_missing", "Final-QA ledger recovery requires the exact persisted failing final verdicts.", {
+        itemId: item.id
+      });
+    }
+    const itemResult = db.prepare(`UPDATE production_items SET
+      state = 'final_rendered', resume_state = NULL, attempts = 0,
+      version = version + 1, lease_owner = NULL, lease_token = NULL,
+      lease_expires_at = NULL, last_error = NULL, completed_at = NULL, updated_at = ?
+      WHERE id = ? AND version = ? AND state = 'policy_blocked' AND attempts = 1`)
+      .run(stamp, item.id, item.version);
+    if (Number(itemResult.changes) !== 1) {
+      fail("stale_version", "Final-QA ledger item changed before owner recovery.", { itemId: item.id });
+    }
+    if (channel.status === "blocked") {
+      const channelResult = db.prepare(`UPDATE production_run_channels SET
+        status = 'running', blocker_code = NULL, blocker_message = NULL,
+        version = version + 1, completed_at = NULL, updated_at = ?
+        WHERE id = ? AND version = ? AND status = 'blocked'`)
+        .run(stamp, channel.id, channel.version);
+      if (Number(channelResult.changes) !== 1) {
+        fail("stale_version", "Final-QA ledger channel changed before owner recovery.", {
+          runChannelId: channel.id
+        });
+      }
+    }
+    const freshOutbox = appendOutboxTx(db, {
+      workspaceId: item.workspaceId,
+      runId: item.runId,
+      channelId: item.channelId,
+      productionItemId: item.id,
+      eventKind: "final_render.requested",
+      dedupeKey: buildProductionOutboxDedupeKey("final_render.requested", {
+        gate: "final_qa_owner_ledger_retry",
+        finalArtifactSha256: item.finalArtifactSha256,
+        predecessorOutboxId: predecessor.id
+      }),
+      payload: {
+        ...predecessor.payload,
+        ownerRetryOfOutboxId: predecessor.id,
+        forceFreshSemanticJob: true,
+        reuseFinalArtifact: true
+      },
+      maxAttempts: 1,
+      availableAt: stamp
+    }, stamp);
+    appendEventTx(db, {
+      workspaceId: item.workspaceId,
+      runId: item.runId,
+      channelId: item.channelId,
+      productionItemId: item.id,
+      eventType: "production.item.owner_final_ledger_retry_requeued",
+      fromState: "policy_blocked",
+      toState: "final_rendered",
+      payload: {
+        reason,
+        predecessorOutboxId: predecessor.id,
+        outboxId: freshOutbox.id,
+        dedupeKey: freshOutbox.dedupeKey,
+        preservedFinalArtifactSha256: item.finalArtifactSha256,
+        preservedStage3JobId: item.stage3JobId,
+        resetAttemptsFrom: item.attempts,
+        resetAttemptsTo: 0,
+        forceFreshSemanticJob: true
+      },
+      createdAt: stamp
+    });
+    return {
+      item: requireItem(db, item.id),
+      channel: requireRunChannel(db, channel.id),
+      outbox: freshOutbox
     };
   });
 }
@@ -3377,6 +3676,7 @@ export function createOwnerReplacementAfterQuarantineBudgetBlock(input: {
         lastError: item.lastError
       });
     }
+    assertPortfolioOwnerRecoveryOpenTx(db, item, "override_replacement_budget");
     const stamp = input.now ?? nowIso();
     const reason = requiredText(input.reason, "reason", 2000);
     const run = reopenExactBlockedShadowIncidentRunTx(db, requireRun(db, item.runId), {

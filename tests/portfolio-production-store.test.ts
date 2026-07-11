@@ -41,6 +41,7 @@ import {
   recordPublicVerification,
   recordQualityVerdict,
   requeueProjectedRecoverableBriefDeadLetter,
+  requeueRecoverableFinalLedgerPolicyBlock,
   requeueRecoverablePreviewPolicyBlock,
   releaseChannelSourceCandidate,
   releaseProductionItemLease,
@@ -2305,6 +2306,53 @@ test("exact preview policy incident reuses the same completed preview without re
     getDb().prepare(`UPDATE production_runs SET
       status = 'blocked', mode = 'shadow', last_error = 'One or more channels are blocked.', completed_at = ?
       WHERE id = ?`).run(new Date().toISOString(), item.runId);
+    const runChannel = listProductionRunChannels(seeded.run.id)[0]!;
+    const ownershipStamp = "2026-07-12T00:00:00.000Z";
+    getDb().prepare(`INSERT INTO production_channel_ownership
+      (workspace_id, channel_id, daemon_id, config_sha256, profile_id, profile_version, profile_hash,
+       status, fence_token, activated_at, release_requested_at, released_at, updated_at)
+      VALUES (?, ?, 'project-kings-portfolio-v1', ?, ?, ?, ?, 'releasing', ?, ?, ?, NULL, ?)`)
+      .run(
+        seeded.workspaceId,
+        item.channelId,
+        sha("preview-policy-releasing-config"),
+        runChannel.profileId,
+        runChannel.profileVersion,
+        runChannel.profileHash,
+        "preview-policy-releasing-fence",
+        ownershipStamp,
+        ownershipStamp,
+        ownershipStamp
+      );
+    const beforeReleasingRetry = {
+      run: getProductionRun(item.runId),
+      channel: listProductionRunChannels(item.runId)[0],
+      item: getProductionItem(item.id),
+      outbox: listProductionOutbox({ runId: item.runId, productionItemId: item.id }),
+      events: listProductionEvents({ runId: item.runId, productionItemId: item.id })
+    };
+    assert.throws(
+      () => requeueRecoverablePreviewPolicyBlock({
+        itemId: item.id,
+        expectedItemVersion: item.version,
+        reason: "must not replay a delivered preview while ownership is releasing"
+      }),
+      (error: unknown) =>
+        error instanceof ProductionStoreError &&
+        error.code === "lease_conflict" &&
+        error.details.operation === "requeue_preview_intent"
+    );
+    assert.deepEqual({
+      run: getProductionRun(item.runId),
+      channel: listProductionRunChannels(item.runId)[0],
+      item: getProductionItem(item.id),
+      outbox: listProductionOutbox({ runId: item.runId, productionItemId: item.id }),
+      events: listProductionEvents({ runId: item.runId, productionItemId: item.id })
+    }, beforeReleasingRetry);
+    getDb().prepare(`UPDATE production_channel_ownership
+      SET status = 'active', release_requested_at = NULL, updated_at = ?
+      WHERE workspace_id = ? AND channel_id = ?`)
+      .run("2026-07-12T00:00:01.000Z", seeded.workspaceId, item.channelId);
     const recovered = requeueRecoverablePreviewPolicyBlock({
       itemId: item.id,
       expectedItemVersion: item.version,
@@ -2312,7 +2360,7 @@ test("exact preview policy incident reuses the same completed preview without re
     });
     assert.equal(recovered.item.id, item.id);
     assert.equal(recovered.item.state, "preview_ready");
-    assert.equal(recovered.item.attempts, 1);
+    assert.equal(recovered.item.attempts, 0);
     assert.equal(recovered.item.previewSha256, HASH.preview);
     assert.equal(recovered.item.stage3JobId, previewJob.id);
     assert.equal(recovered.item.finalArtifactSha256, null);
@@ -2321,6 +2369,225 @@ test("exact preview policy incident reuses the same completed preview without re
     assert.equal(recovered.outbox.status, "pending");
     assert.equal(getProductionRun(item.runId)?.status, "running");
     assert.equal(recovered.channel.status, "running");
+    const recoveryEvent = listProductionEvents({
+      runId: item.runId,
+      productionItemId: item.id
+    }).find((event) => event.eventType === "production.item.owner_preview_policy_retry_requeued");
+    assert.equal(recoveryEvent?.payload.resetAttemptsFrom, 1);
+    assert.equal(recoveryEvent?.payload.resetAttemptsTo, 0);
+  });
+});
+
+test("exact final-QA ledger incident reuses the completed render and resets the bogus attempt", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedPortfolio({ targetPerChannel: 1 });
+    getDb().prepare("UPDATE production_runs SET status = 'running', mode = 'shadow' WHERE id = ?")
+      .run(seeded.run.id);
+    getDb().prepare("UPDATE production_run_channels SET status = 'running' WHERE id = ?")
+      .run(seeded.runChannels[0].id);
+    const candidate = createCandidate({
+      workspaceId: seeded.workspaceId,
+      channelId: seeded.channels[0].id,
+      suffix: "final-ledger-recovery"
+    });
+    const chat = await createOrGetChatBySource({
+      rawUrl: candidate.sourceUrl,
+      channelIdRaw: seeded.channels[0].id,
+      title: "Final ledger recovery"
+    });
+    let item = createProductionItem({
+      runId: seeded.run.id,
+      runChannelId: seeded.runChannels[0].id,
+      itemSlot: 1,
+      attemptBudget: 5
+    });
+    item = reserveChannelSourceCandidate({
+      candidateId: candidate.id,
+      itemId: item.id,
+      expectedItemVersion: item.version
+    }).item;
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "source_ingested",
+      eventType: "fixture.source_ingested",
+      patch: { sourceSha256: candidate.contentSha256, chatId: chat.id }
+    });
+    recordCombinedPass(item, "source");
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "source_qualified",
+      eventType: "fixture.source_qualified"
+    });
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "brief_ready",
+      eventType: "fixture.brief_ready"
+    });
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "preview_ready",
+      eventType: "fixture.preview_ready",
+      patch: {
+        previewSha256: HASH.preview,
+        templateSha256: HASH.template,
+        settingsSha256: HASH.settings
+      }
+    });
+    recordCombinedPass(item, "preview");
+    getDb().prepare("UPDATE production_items SET attempts = 1 WHERE id = ?").run(item.id);
+    item = getProductionItem(item.id)!;
+    const approvalBindingSha256 = sha("final-ledger-approval-binding");
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "preview_approved",
+      eventType: "production.preview_approved",
+      outbox: {
+        eventKind: "final_render.requested",
+        dedupeKey: buildProductionOutboxDedupeKey("final_render.requested", {
+          gate: "final_render",
+          attemptNo: 2,
+          approvalBindingSha256
+        }),
+        payload: { approvalBindingSha256 },
+        maxAttempts: 5
+      }
+    });
+    const originalFinalIntent = claimProductionOutbox({
+      owner: "final-ledger-original",
+      leaseMs: 30_000,
+      runIds: [seeded.run.id]
+    })[0]!;
+    ackProductionOutbox({
+      outboxId: originalFinalIntent.id,
+      leaseToken: originalFinalIntent.leaseToken!
+    });
+    const renderJob = enqueueStage3JobWithOutcome({
+      workspaceId: seeded.workspaceId,
+      userId: seeded.userId,
+      kind: "render",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({ fixture: "final-ledger-recovery" }),
+      dedupeKey: "final-ledger-recovery-job"
+    }).job;
+    const renderStamp = "2026-07-12T00:00:00.000Z";
+    getDb().prepare(`UPDATE stage3_jobs SET status = 'completed', completed_at = ?, updated_at = ?
+      WHERE id = ?`).run(renderStamp, renderStamp, renderJob.id);
+    getDb().prepare(`INSERT INTO stage3_job_artifacts
+      (id, job_id, kind, file_name, mime_type, file_path, size_bytes, created_at)
+      VALUES (?, ?, 'video', 'final.mp4', 'video/mp4', ?, 1, ?)`)
+      .run("final-ledger-recovery-artifact", renderJob.id,
+        "/quality-tests/final-ledger-recovery.mp4", renderStamp);
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "final_rendered",
+      eventType: "production.final_rendered",
+      patch: { finalArtifactSha256: HASH.final, stage3JobId: renderJob.id }
+    });
+    const finalBindingSha256 = calculateQualityVerdictBindingSha256({
+      gateType: "final",
+      artifactSha256: item.finalArtifactSha256!,
+      sourceSha256: item.sourceSha256,
+      previewSha256: item.previewSha256,
+      templateSha256: item.templateSha256,
+      settingsSha256: item.settingsSha256
+    });
+    const visionAttempt = recordAgentAttempt({
+      workspaceId: item.workspaceId,
+      runId: item.runId,
+      productionItemId: item.id,
+      role: "vision_qa",
+      attemptNo: 2,
+      model: "quality-test-model",
+      reasoningLevel: "none",
+      promptHash: sha("final-ledger-vision-prompt"),
+      qualityBindingSha256: finalBindingSha256,
+      outputHash: sha("final-ledger-vision-output"),
+      status: "passed",
+      verdict: "pass",
+      startedAt: renderStamp,
+      finishedAt: "2026-07-12T00:00:00.001Z"
+    });
+    const finalVerdictBase = {
+      workspaceId: item.workspaceId,
+      runId: item.runId,
+      productionItemId: item.id,
+      gateType: "final" as const,
+      attemptNo: 2,
+      artifactSha256: item.finalArtifactSha256!,
+      sourceSha256: item.sourceSha256,
+      previewSha256: item.previewSha256,
+      templateSha256: item.templateSha256,
+      settingsSha256: item.settingsSha256
+    };
+    recordQualityVerdict({
+      ...finalVerdictBase,
+      judgeKind: "deterministic",
+      verdict: "fail",
+      evidenceSha256: sha("final-ledger-deterministic-fail"),
+      evidenceArtifactPath: "/quality-tests/final-ledger-deterministic-fail.json",
+      defects: [{ code: "wrong_resolution", severity: "critical" }]
+    });
+    recordQualityVerdict({
+      ...finalVerdictBase,
+      judgeKind: "vision",
+      verdict: "pass",
+      agentAttemptId: visionAttempt.id,
+      evidenceSha256: sha("final-ledger-vision-pass"),
+      evidenceArtifactPath: "/quality-tests/final-ledger-vision-pass.json",
+      defects: []
+    });
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "policy_blocked",
+      eventType: "production.revision_application_blocked",
+      eventPayload: {
+        stage: "decision",
+        code: "invalid_ledger",
+        message: "Revision attempt mismatch: item=1, ledger=0.",
+        evidenceArtifactId: "revision-application-rejected-1",
+        evidenceSha256: sha("final-ledger-rejection")
+      },
+      patch: { lastError: "invalid_ledger: Revision attempt mismatch: item=1, ledger=0." }
+    });
+    getDb().prepare(`UPDATE production_run_channels SET
+      status = 'blocked', blocker_code = 'item_policy_blocked', blocker_message = ?, completed_at = ?
+      WHERE id = ?`).run(item.lastError, renderStamp, item.runChannelId);
+    const recovered = requeueRecoverableFinalLedgerPolicyBlock({
+      itemId: item.id,
+      expectedItemVersion: item.version,
+      reason: "retry final QA with the exact completed render after resetting the bogus counter"
+    });
+    assert.equal(recovered.item.id, item.id);
+    assert.equal(recovered.item.state, "final_rendered");
+    assert.equal(recovered.item.attempts, 0);
+    assert.equal(recovered.item.finalArtifactSha256, HASH.final);
+    assert.equal(recovered.item.stage3JobId, renderJob.id);
+    assert.equal(recovered.item.publicationId, null);
+    assert.equal(recovered.item.youtubeVideoId, null);
+    assert.equal(recovered.channel.status, "running");
+    assert.equal(recovered.outbox.eventKind, "final_render.requested");
+    assert.equal(recovered.outbox.status, "pending");
+    assert.equal(recovered.outbox.maxAttempts, 1);
+    assert.equal(recovered.outbox.payload.ownerRetryOfOutboxId, originalFinalIntent.id);
+    assert.equal(recovered.outbox.payload.forceFreshSemanticJob, true);
+    assert.equal(recovered.outbox.payload.reuseFinalArtifact, true);
+    const outbox = listProductionOutbox({ runId: item.runId, productionItemId: item.id });
+    assert.deepEqual(outbox.map((entry) => entry.status), ["delivered", "pending"]);
+    assert.throws(
+      () => requeueRecoverableFinalLedgerPolicyBlock({
+        itemId: item.id,
+        expectedItemVersion: recovered.item.version,
+        reason: "must remain one-time"
+      }),
+      assertStoreError("invalid_transition")
+    );
   });
 });
 
@@ -2409,6 +2676,53 @@ test("owner quarantine-budget override creates one audited generation without up
         lastError: "Replacement budget exhausted: Unsafe source-level defect cannot pass through revision."
       }
     });
+    const runChannel = listProductionRunChannels(seeded.run.id)[0]!;
+    const stamp = "2026-07-12T00:00:00.000Z";
+    getDb().prepare(`INSERT INTO production_channel_ownership
+      (workspace_id, channel_id, daemon_id, config_sha256, profile_id, profile_version, profile_hash,
+       status, fence_token, activated_at, release_requested_at, released_at, updated_at)
+      VALUES (?, ?, 'project-kings-portfolio-v1', ?, ?, ?, ?, 'releasing', ?, ?, ?, NULL, ?)`)
+      .run(
+        seeded.workspaceId,
+        item.channelId,
+        sha("quarantine-budget-releasing-config"),
+        runChannel.profileId,
+        runChannel.profileVersion,
+        runChannel.profileHash,
+        "releasing-fence-token",
+        stamp,
+        stamp,
+        stamp
+      );
+    const before = {
+      run: getProductionRun(seeded.run.id),
+      channel: listProductionRunChannels(seeded.run.id)[0],
+      item: getProductionItem(item.id),
+      items: listProductionItems({ runId: seeded.run.id, includeHistorical: true }),
+      events: listProductionEvents({ runId: seeded.run.id })
+    };
+    assert.throws(
+      () => createOwnerReplacementAfterQuarantineBudgetBlock({
+        itemId: item.id,
+        expectedItemVersion: item.version,
+        reason: "must not mutate while portfolio ownership is releasing"
+      }),
+      (error: unknown) =>
+        error instanceof ProductionStoreError &&
+        error.code === "lease_conflict" &&
+        error.details.blockerCode === "portfolio_channel_ownership_releasing"
+    );
+    assert.deepEqual({
+      run: getProductionRun(seeded.run.id),
+      channel: listProductionRunChannels(seeded.run.id)[0],
+      item: getProductionItem(item.id),
+      items: listProductionItems({ runId: seeded.run.id, includeHistorical: true }),
+      events: listProductionEvents({ runId: seeded.run.id })
+    }, before);
+    getDb().prepare(`UPDATE production_channel_ownership
+      SET status = 'active', release_requested_at = NULL, updated_at = ?
+      WHERE workspace_id = ? AND channel_id = ?`)
+      .run("2026-07-12T00:00:01.000Z", seeded.workspaceId, item.channelId);
     const recovered = createOwnerReplacementAfterQuarantineBudgetBlock({
       itemId: item.id,
       expectedItemVersion: item.version,

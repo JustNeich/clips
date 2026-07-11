@@ -117,6 +117,7 @@ import {
   ProductionStoreError,
   requeueProjectedRecoverableSourceFitDeadLetter,
   requeueProjectedRecoverableBriefDeadLetter,
+  requeueRecoverableFinalLedgerPolicyBlock,
   requeueRecoverablePreviewPolicyBlock,
   requeueProductionItemRevision
 } from "../../../../lib/portfolio-production-store";
@@ -236,6 +237,22 @@ function resolveStringArray(value: unknown): string[] | undefined {
     return undefined;
   }
   return value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean);
+}
+
+function ownerRetryReconcileDeferred(error: unknown): { code: string; error: string } {
+  if (error instanceof ProductionStoreError) {
+    const blockerCode = typeof error.details.blockerCode === "string"
+      ? error.details.blockerCode
+      : error.code;
+    return { code: blockerCode, error: error.message };
+  }
+  const message = error instanceof Error ? error.message : "Owner retry reconciliation failed.";
+  return {
+    code: message.includes("portfolio_channel_ownership_releasing")
+      ? "portfolio_channel_ownership_releasing"
+      : "reconcile_failed",
+    error: message
+  };
 }
 
 function mergeStage3SnapshotPatch(
@@ -1134,6 +1151,26 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     } else if (item.state === "policy_blocked") {
       if (
         item.lastError ===
+        "invalid_ledger: Revision attempt mismatch: item=1, ledger=0."
+      ) {
+        const recovered = requeueRecoverableFinalLedgerPolicyBlock({
+          itemId: item.id,
+          expectedItemVersion: item.version,
+          reason
+        });
+        retried = recovered.item;
+        retryIntent = {
+          outboxId: recovered.outbox.id,
+          dedupeKey: recovered.outbox.dedupeKey,
+          status: recovered.outbox.status,
+          requeued: true,
+          preservedSource: true,
+          preservedPreview: true,
+          preservedFinalArtifact: true,
+          resetAttemptsTo: recovered.item.attempts
+        };
+      } else if (
+        item.lastError ===
         "invalid_binding: Deterministic targeted_visual_revision has no compatible structured defect."
       ) {
         const recovered = requeueRecoverablePreviewPolicyBlock({
@@ -1184,16 +1221,24 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
         { status: 409 }
       );
     }
-    reconcilePortfolioProductionRun({
-      runId,
-      leaseOwner: `owner-retry:${auth.user.id}`
-    });
+    let reconcileDeferred: { code: string; error: string } | null = null;
+    try {
+      reconcilePortfolioProductionRun({
+        runId,
+        leaseOwner: `owner-retry:${auth.user.id}`
+      });
+    } catch (error) {
+      // The recovery transaction above is already durable. A follow-up
+      // reconcile failure must not turn an accepted, idempotent mutation into
+      // a false HTTP failure that encourages the owner client to repeat it.
+      reconcileDeferred = ownerRetryReconcileDeferred(error);
+    }
     const background = await schedulePortfolioProductionLiveBackgroundRun({
       runId,
       workspaceId: auth.workspace.id,
       userId: auth.user.id
     });
-    return { accepted: true, item: retried, retryIntent, background };
+    return { accepted: true, item: retried, retryIntent, reconcileDeferred, background };
   }
 
   if (tool === "clips_owner_cancel_portfolio_run") {

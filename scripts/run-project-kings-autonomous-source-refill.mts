@@ -6,7 +6,16 @@ import path from "node:path";
 
 import profileStoreModule from "../lib/project-kings/pilot-profile-store";
 
-import {
+import sourceRefillAdaptersModule from "../lib/project-kings/source-refill-adapters";
+import sourceRefillContourModule from "../lib/project-kings/source-refill-contour";
+import sourceRefillLedgerModule from "../lib/project-kings/source-refill-ledger";
+import type { ProjectKingsSourceRefillMode } from "../lib/project-kings/source-refill-ledger";
+
+const {
+  PROJECT_KINGS_MODEL_ROUTE_MANIFEST_ID,
+  PROJECT_KINGS_MODEL_ROUTE_MANIFEST_SHA256
+} = profileStoreModule;
+const {
   createProjectKingsHttpSourceUploadProvider,
   createProjectKingsInstagramDiscoveryProvider,
   createProjectKingsLocalMediaEvidenceProvider,
@@ -15,19 +24,9 @@ import {
   createProjectKingsSourcePolicyAssessor,
   loadProjectKingsSourceRefillSemanticRuntime,
   readProjectKingsSourceBufferRuntime
-} from "../lib/project-kings/source-refill-adapters";
-import {
-  runProjectKingsAutonomousSourceRefill
-} from "../lib/project-kings/source-refill-contour";
-import {
-  FileProjectKingsSourceRefillLedgerStore,
-  type ProjectKingsSourceRefillMode
-} from "../lib/project-kings/source-refill-ledger";
-
-const {
-  PROJECT_KINGS_MODEL_ROUTE_MANIFEST_ID,
-  PROJECT_KINGS_MODEL_ROUTE_MANIFEST_SHA256
-} = profileStoreModule;
+} = sourceRefillAdaptersModule;
+const { runProjectKingsAutonomousSourceRefill } = sourceRefillContourModule;
+const { FileProjectKingsSourceRefillLedgerStore } = sourceRefillLedgerModule;
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const DEFAULT_CONFIG = path.join(

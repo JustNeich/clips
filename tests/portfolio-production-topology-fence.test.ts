@@ -503,7 +503,10 @@ test("CopScopes legacy publication is blocked during v1 ownership and safe rollb
     const outboxCountAtStop = listProductionOutbox({ runId: run.id }).length;
     assert.throws(
       () => append(item, "post_stop.intent"),
-      /portfolio_channel_ownership_releasing/
+      (error: unknown) =>
+        error instanceof ProductionStoreError &&
+        error.code === "lease_conflict" &&
+        error.details.blockerCode === "portfolio_channel_ownership_releasing"
     );
     assert.equal(listProductionOutbox({ runId: run.id }).length, outboxCountAtStop);
     assert.throws(

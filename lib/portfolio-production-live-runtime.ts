@@ -2073,7 +2073,13 @@ async function handleFinalRender(
         knownSourceSha256: [],
         knownStoryEventIds: []
       }
-    }
+    },
+    reuseCompleted: event.payload.forceFreshSemanticJob !== true,
+    jobDedupeSalt:
+      event.payload.forceFreshSemanticJob === true &&
+      typeof event.payload.ownerRetryOfOutboxId === "string"
+        ? event.payload.ownerRetryOfOutboxId
+        : null
   });
   const vision = visionRun.output as ProductionVisionVerdict;
   item = requireItem(item.id);
