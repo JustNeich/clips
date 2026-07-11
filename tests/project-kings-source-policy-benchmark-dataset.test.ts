@@ -56,6 +56,53 @@ test("frozen source_policy dataset loads 30 exact MP4-bound cases with six real 
   );
 });
 
+test("reviewed annotation overrides apply only with exact base bindings and are visible in datasetVersion", async () => {
+  const overridesRelativePath =
+    "docs/project-kings-production-pipeline-v1/source-policy-benchmark-reviewed-annotations-v2.overrides.json";
+  const dataset = await loadProjectKingsSourcePolicyBenchmarkDataset({
+    repoRoot: REPO_ROOT,
+    annotationOverridesRelativePath: overridesRelativePath
+  });
+  assert.equal(
+    dataset.datasetVersion,
+    "real-30-v1+project-kings-source-policy-real-30-annotation-review-v2"
+  );
+  const byCase = new Map(dataset.cases.map((entry) => [entry.caseId, entry.expectedQualityLabel]));
+  assert.equal(byCase.get("cop-instagram-DXNBoz7jYmd"), "sp:a,p,u,a");
+  assert.equal(byCase.get("light-youtube-fj6CXk2KTIs"), "sp:a,a,a,a");
+
+  // The overrides binding check fires before any media verification, so the
+  // tamper fixture only needs the three frozen JSON files.
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "project-kings-source-policy-overrides-"));
+  try {
+    for (const relativePath of [
+      PROJECT_KINGS_SOURCE_POLICY_BENCHMARK_DATASET_PATH,
+      PROJECT_KINGS_SOURCE_POLICY_BENCHMARK_ANNOTATIONS_PATH
+    ]) {
+      const target = path.join(temporaryRoot, relativePath);
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.copyFile(path.join(REPO_ROOT, relativePath), target);
+    }
+    const overridesPath = path.join(temporaryRoot, overridesRelativePath);
+    await fs.mkdir(path.dirname(overridesPath), { recursive: true });
+    const tampered = JSON.parse(
+      await fs.readFile(path.join(REPO_ROOT, overridesRelativePath), "utf8")
+    ) as { overrides: Array<{ previousSignals: Record<string, string> }> };
+    tampered.overrides[0]!.previousSignals.minorInSensitiveIncident = "absent";
+    await fs.writeFile(overridesPath, JSON.stringify(tampered, null, 2));
+    await assert.rejects(
+      () =>
+        loadProjectKingsSourcePolicyBenchmarkDataset({
+          repoRoot: temporaryRoot,
+          annotationOverridesRelativePath: overridesRelativePath
+        }),
+      /does not match the frozen base signals/
+    );
+  } finally {
+    await fs.rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
 test("frozen annotation drift fails before a benchmark invocation can use it", async () => {
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "project-kings-source-policy-dataset-"));
   try {

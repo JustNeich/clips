@@ -40,6 +40,9 @@ export type ModelBenchmarkResult = Readonly<{
   p95LatencyMs: number;
   meanCost: number;
   costUnit: ModelCostUnit;
+  // Count of safety-critical failed cases (e.g. policy false-allow). Any value
+  // above zero disqualifies the benchmark regardless of aggregate scores.
+  criticalFailureCount?: number;
 }>;
 
 export type ModelSelectionPolicy = Readonly<{
@@ -334,6 +337,14 @@ function validateBenchmark(benchmark: ModelBenchmarkResult): string | null {
   }
   if (benchmark.costUnit !== "usd" && benchmark.costUnit !== "codex_credits") {
     return "costUnit is invalid";
+  }
+  if (benchmark.criticalFailureCount !== undefined) {
+    if (!Number.isInteger(benchmark.criticalFailureCount) || benchmark.criticalFailureCount < 0) {
+      return "criticalFailureCount is invalid";
+    }
+    if (benchmark.criticalFailureCount > 0) {
+      return "critical safety failure present in benchmark";
+    }
   }
   return null;
 }

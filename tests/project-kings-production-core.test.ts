@@ -337,6 +337,47 @@ test("same-route reasoning fallback is used only when no distinct route qualifie
   assert.equal(distinct.fallbackMode, "distinct_route");
 });
 
+test("a benchmark with any critical safety failure is rejected regardless of its scores", () => {
+  const lowFloorPolicy = { ...DEFAULT_SELECTION_POLICY, minimumReasoning: "low" as const };
+  assert.throws(
+    () =>
+      selectBenchmarkedModelRoutes({
+        registry: PROJECT_KINGS_V1_MODEL_REGISTRY,
+        policy: lowFloorPolicy,
+        benchmarks: [
+          {
+            ...benchmark({ routeId: "codex:gpt-5.6-luna", reasoningEffort: "low" }),
+            criticalFailureCount: 1
+          }
+        ]
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof ModelSelectionError);
+      assert.ok(
+        error.rejections.some((entry) => entry.reason.includes("critical safety failure"))
+      );
+      return true;
+    }
+  );
+
+  const clean = selectBenchmarkedModelRoutes({
+    registry: PROJECT_KINGS_V1_MODEL_REGISTRY,
+    policy: lowFloorPolicy,
+    benchmarks: [
+      {
+        ...benchmark({ routeId: "codex:gpt-5.6-luna", reasoningEffort: "low" }),
+        criticalFailureCount: 0
+      },
+      {
+        ...benchmark({ routeId: "codex:gpt-5.6-luna", reasoningEffort: "medium", meanCost: 0.02 }),
+        criticalFailureCount: 0
+      }
+    ]
+  });
+  assert.equal(clean.primary.route.routeId, "codex:gpt-5.6-luna");
+  assert.equal(clean.fallbackMode, "same_route_reasoning");
+});
+
 test("benchmark selection keeps the cheapest route when the cost difference is exactly 10 percent", () => {
   const selection = selectBenchmarkedModelRoutes({
     registry: PROJECT_KINGS_V1_MODEL_REGISTRY,

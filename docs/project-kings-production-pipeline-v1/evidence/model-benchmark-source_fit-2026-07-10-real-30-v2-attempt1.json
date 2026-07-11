@@ -1,0 +1,2008 @@
+{
+  "schemaVersion": "project-kings-model-benchmark-evidence-v1",
+  "benchmarkVersion": "project-kings-source_fit-real-30-v2",
+  "stageRole": "source_fit",
+  "createdAt": "2026-07-10T20:13:48.675Z",
+  "bounds": {
+    "maxCases": 120,
+    "maxCandidates": 12,
+    "maxExecutions": 240,
+    "actualExecutions": 60
+  },
+  "dataset": {
+    "datasetId": "project-kings-source-fit-real-30",
+    "datasetVersion": "real-30-v2",
+    "datasetSha256": "31fcac95096fc0109c54cdc031d2da64b33520a18ea1c85219d4b7e07a28fa30",
+    "promptSetSha256": "4122e82d65694f640aaaf2c909de39e8d1d0bbc304b7c02ade6c1c446fa6ebd8",
+    "outputSchemaSha256": "bb6ea99a7c48388752196553f562bc110b90103fe3be05d15dcefe21833563e2",
+    "sampleSize": 30
+  },
+  "qualityEvaluator": {
+    "evaluatorId": "project-kings-remaining-semantic-real-30",
+    "evaluatorVersion": "v1",
+    "implementationSha256": "d3f0fdc1c10fdb02a817b61c437ee23fe17e9a38833aa3ce609ac73ae55414f5",
+    "configSha256": "359ed0625aeca94b7df6d12057c3051d0dcc371624671c58391717e2ecbe3edc"
+  },
+  "executionContract": {
+    "registrySha256": "e899df48af4ad54b2e55514a0ac9b87b69e66b5cea05af8216a1b6a8eaca36b8",
+    "policySha256": "6f635076564bb849b8f331fef8da498be53c43bd7c15702699f88eb87573bc05",
+    "schemaValidationMethod": "strict-production-agent-output-v1",
+    "qualityAggregationMethod": "mean-passed-evaluator-score-v1",
+    "p95Method": "nearest-rank-p95-v1",
+    "costMethod": "uncached-input-plus-cached-input-plus-total-output-v1",
+    "reasoningTokensDoubleCounted": false
+  },
+  "pricing": [
+    {
+      "routeId": "codex:gpt-5.4",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 62.5,
+      "cachedInputPerMillionTokens": 6.25,
+      "outputPerMillionTokens": 375,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10-v2.json",
+      "verifiedAt": "2026-07-10T18:20:00.000Z",
+      "sourceSha256": "4e38a43a881d6f1b2fb8a5649d902c48faef26ba228907b2d57d82bd4310e97a"
+    },
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 18.75,
+      "cachedInputPerMillionTokens": 1.875,
+      "outputPerMillionTokens": 113,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10-v2.json",
+      "verifiedAt": "2026-07-10T18:20:00.000Z",
+      "sourceSha256": "4e38a43a881d6f1b2fb8a5649d902c48faef26ba228907b2d57d82bd4310e97a"
+    },
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 25,
+      "cachedInputPerMillionTokens": 2.5,
+      "outputPerMillionTokens": 150,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10-v2.json",
+      "verifiedAt": "2026-07-10T18:20:00.000Z",
+      "sourceSha256": "4e38a43a881d6f1b2fb8a5649d902c48faef26ba228907b2d57d82bd4310e97a"
+    }
+  ],
+  "candidates": [
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "provider": "codex",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "low",
+      "samples": [
+        {
+          "caseId": "source-fit-01-BtDnmx6HRr_-duplicate",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "bbeb826025f5c012869e8f95ea7b5334ec0e61139a11e46364f46e856ea05c57",
+          "startedAt": "2026-07-10T19:56:12.160Z",
+          "durationMs": 13823.954292,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=true",
+              "duplicateEvent=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 50059,
+            "cachedInputTokens": 21248,
+            "outputTokens": 441,
+            "reasoningOutputTokens": 146
+          },
+          "cost": 0.839545,
+          "costUnit": "codex_credits",
+          "outputSha256": "2c9797787dafee6fc066d28a67da647a32658c35ecdc02f58e13a6a0eb63082b",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-02-C-0YpsCAODv-duplicate",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "a33ad455b4c0642445d8e6ce06e20faf36b51fb0d4fb02b76ebea4912a53fa33",
+          "startedAt": "2026-07-10T19:56:25.986Z",
+          "durationMs": 15577.305833,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=true",
+              "duplicateEvent=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53536,
+            "cachedInputTokens": 8960,
+            "outputTokens": 501,
+            "reasoningOutputTokens": 190
+          },
+          "cost": 1.21195,
+          "costUnit": "codex_credits",
+          "outputSha256": "1c4703e84b003036ac3316282ec777a601589f99a67f78b59b9d61c6b9801e72",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-03-C9gLu79MklN-duplicate",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "af8f9f812c5b91c5a3606a68974903ad4c2f756ed6f538f389c71ee76945bdaf",
+          "startedAt": "2026-07-10T19:56:41.566Z",
+          "durationMs": 13452.815417,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=true",
+              "duplicateEvent=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53535,
+            "cachedInputTokens": 32256,
+            "outputTokens": 408,
+            "reasoningOutputTokens": 98
+          },
+          "cost": 0.673815,
+          "costUnit": "codex_credits",
+          "outputSha256": "a3f38f8b0d997a6863c42371802e050553e7fbf8cbb37afe1fa2720fd042c5d4",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-04-CsYa4skNBjP-duplicate",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "9d75da5bb57af6866c58d36ec9617227d515a59c87241b66d1737a7729a26daf",
+          "startedAt": "2026-07-10T19:56:55.021Z",
+          "durationMs": 13713.579875,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=true",
+              "duplicateEvent=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53470,
+            "cachedInputTokens": 23296,
+            "outputTokens": 380,
+            "reasoningOutputTokens": 85
+          },
+          "cost": 0.86959,
+          "costUnit": "codex_credits",
+          "outputSha256": "5d2b246c0fd49bfce6afcf71c28989e68adcccaa0f106d00cb89d1c8ebdf5802",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-05-Cw_QTMmA69_-duplicate",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "aa787f92ae0e5d2ec14fd0b9ba128215e7432367c1da75865a5018aa7b2c215e",
+          "startedAt": "2026-07-10T19:57:08.736Z",
+          "durationMs": 14217.810333,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=false",
+              "duplicateVideo=true",
+              "duplicateEvent=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53510,
+            "cachedInputTokens": 0,
+            "outputTokens": 411,
+            "reasoningOutputTokens": 119
+          },
+          "cost": 1.3994,
+          "costUnit": "codex_credits",
+          "outputSha256": "12e8f7ce5d9dbbad861283ea67f9fa9c7e6c5f514bf36e8edc5d52f0d8f610b9",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-06-Cxb0DmpJ7oM-duplicate",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "a18265886c0cdf99d3a841d1c8a84f03838e2f2fe904f2ef151832a0ef90ef78",
+          "startedAt": "2026-07-10T19:57:22.956Z",
+          "durationMs": 21386.925125,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=true",
+              "duplicateEvent=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53503,
+            "cachedInputTokens": 32256,
+            "outputTokens": 383,
+            "reasoningOutputTokens": 86
+          },
+          "cost": 0.669265,
+          "costUnit": "codex_credits",
+          "outputSha256": "6c64f12fa48bf4c9d7bce9d78229b5ce449e40de8e3536864626fe34bfe6e70d",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-07-DIUYX9QStl3",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "53101cec3d0408d22002a2ab80f4a5f1bc413d4f61cdf22d0ddc8e011a3ca624",
+          "startedAt": "2026-07-10T19:57:44.343Z",
+          "durationMs": 15373.483666,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53350,
+            "cachedInputTokens": 23296,
+            "outputTokens": 410,
+            "reasoningOutputTokens": 104
+          },
+          "cost": 0.87109,
+          "costUnit": "codex_credits",
+          "outputSha256": "ba200ed1d456754b047553c1fe72d0c9db939ad31f5f63e247b97e061a4b906e",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-08-DKM66d2tamf",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "da531f892cb9624ede41c3ee9ddee138373c8d1ad2779644d6dd62b014bb9037",
+          "startedAt": "2026-07-10T19:57:59.720Z",
+          "durationMs": 14840.472125,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53416,
+            "cachedInputTokens": 32256,
+            "outputTokens": 428,
+            "reasoningOutputTokens": 100
+          },
+          "cost": 0.67384,
+          "costUnit": "codex_credits",
+          "outputSha256": "f09c87905897d2a0fdef44ecfb3ea039494f507799a9de6cd3198a56c252fa67",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-09-DW0w8RMjY3Y",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "f3fcf78bf90dac753ebcd60caafa4d7445d3e2599691296b81794d6c3847cdbd",
+          "startedAt": "2026-07-10T19:58:14.563Z",
+          "durationMs": 14679.163917,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=false",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53498,
+            "cachedInputTokens": 8960,
+            "outputTokens": 438,
+            "reasoningOutputTokens": 107
+          },
+          "cost": 1.20155,
+          "costUnit": "codex_credits",
+          "outputSha256": "085765fd1b0a535dcd8bb426a235d600e8e79040d8aaf3619643a799757a72c8",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-10-DW5s3qoDbHC",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "6679f487eaa0b4ef888e0e5f00506b4fa982ab044409a97797133f5056c0f37b",
+          "startedAt": "2026-07-10T19:58:29.243Z",
+          "durationMs": 13907.48675,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53415,
+            "cachedInputTokens": 32256,
+            "outputTokens": 369,
+            "reasoningOutputTokens": 77
+          },
+          "cost": 0.664965,
+          "costUnit": "codex_credits",
+          "outputSha256": "ab1cf4c6a52be6d506a73e07468b6351fe529c035dbc6df5b009423e5801b3cd",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-11-DWjH5fWjBnt",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "ad9490e614f7bc8581342c05053af97bdeb1617d0cc48e1100327cd441eee1c3",
+          "startedAt": "2026-07-10T19:58:43.151Z",
+          "durationMs": 17431.633292,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53455,
+            "cachedInputTokens": 32256,
+            "outputTokens": 481,
+            "reasoningOutputTokens": 158
+          },
+          "cost": 0.682765,
+          "costUnit": "codex_credits",
+          "outputSha256": "71efa104fbe0415da0ee090452dfe3bd6946bcabdf5d4c5b93158372802a37be",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-12-DWnxlyIDcoK",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "44e0613f046118f501756bb57ac0104a7f709c31fdd52996b3102293e9864cb2",
+          "startedAt": "2026-07-10T19:59:00.583Z",
+          "durationMs": 13604.575375,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=false",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53469,
+            "cachedInputTokens": 32256,
+            "outputTokens": 445,
+            "reasoningOutputTokens": 69
+          },
+          "cost": 0.677715,
+          "costUnit": "codex_credits",
+          "outputSha256": "8006665a0c644ebde953e524ba8fa12d2eb68e7ad7a84afa68a70497374697a2",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-13-DWwSVVOjMqO",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "e795f6198dbe8986f583d7de5f6a660e3a1ba8c08a542b40a4cf1608e03c5808",
+          "startedAt": "2026-07-10T19:59:14.188Z",
+          "durationMs": 14317.728375,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=false",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53344,
+            "cachedInputTokens": 32256,
+            "outputTokens": 416,
+            "reasoningOutputTokens": 95
+          },
+          "cost": 0.67024,
+          "costUnit": "codex_credits",
+          "outputSha256": "7420552856e31e1dbcb7ff0957f89c74a4e8b4c9696d44894be5f4de875ade82",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-14-DXBhsJPjSgW",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "263305e4ab28e2149f9b612538f2231031fb27c1ca1a3254ef0e5c9988069156",
+          "startedAt": "2026-07-10T19:59:28.506Z",
+          "durationMs": 13056.790542,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=false",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53398,
+            "cachedInputTokens": 32256,
+            "outputTokens": 409,
+            "reasoningOutputTokens": 116
+          },
+          "cost": 0.67054,
+          "costUnit": "codex_credits",
+          "outputSha256": "8402c4fb905aff982db93ffb5c0115ddd0ad8448ff5b62108a1a93d66d49afe7",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-15-DXHx529DVb0",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "e3b52afbb067a8910517b71774e8f972d677947c8afe7f1383bb4fdc15ec15f2",
+          "startedAt": "2026-07-10T19:59:41.566Z",
+          "durationMs": 9456.088625,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "Reading prompt from stdin...\n{\"type\":\"thread.started\",\"thread_id\":\"019f4d9d-4a64-75b2-8749-fbbacc8b7454\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_0\",\"type\":\"command_execution\",\"command\":\"/bin/zsh -lc \\\"sed -n '1,240p' artifacts/01-concept-copscopes-x2e.json && sed -n '1,240p' artifacts/02-decoded-source-metadata.json && sed -n '1,260p' artifacts/03-human-source-evidence.json\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"command_execution\",\"command\":\"/bin/zsh -lc \\\"sed -n '1,240p' artifacts/01-concept-copscopes-x2e.json && sed -n '1,240p' artifacts/02-decoded-source-metadata.json && sed -n '1,260p' artifacts/03-human-source-evidence.json\\\"\",\"aggregated_output\":\"{\\n  \\\"profileVersion\\\": \\\"project-kings-profile-v1\\\",\\n  \\\"profileId\\\": \\\"6187aeeea7bd47188e08089c5916edc1\\\",\\n  \\\"youtube\\\": {\\n    \\\"channelId\\\": \\\"UCJhBMXXQ5GrTbrhqjwT1leg\\\",\\n    \\\"titleAdvisory\\\": \\\"lessie potirl\\\"\\n  },\\n"
+        },
+        {
+          "caseId": "source-fit-16-DXNBoz7jYmd",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "380691d6aff00e2f8fbd1e863fcad60cdea2e693c3e6fa0975318ab791279096",
+          "startedAt": "2026-07-10T19:59:51.023Z",
+          "durationMs": 47010.265916,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53382,
+            "cachedInputTokens": 32256,
+            "outputTokens": 411,
+            "reasoningOutputTokens": 77
+          },
+          "cost": 0.67044,
+          "costUnit": "codex_credits",
+          "outputSha256": "5ba2645d7599317700594ee552745ffcb39b9f2268aedfa741b63afcac688dae",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-17-DXOzkCdjMue",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "f10f755b3704ddf198558fe8abf6932220e10d30a09a42ea499675753809b73d",
+          "startedAt": "2026-07-10T20:00:38.034Z",
+          "durationMs": 32391.491584,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53416,
+            "cachedInputTokens": 32256,
+            "outputTokens": 446,
+            "reasoningOutputTokens": 144
+          },
+          "cost": 0.67654,
+          "costUnit": "codex_credits",
+          "outputSha256": "eb6acaa6f884449dd62bca284f2c1b806b6a9c6f49a02dfb6a8dc9d8a43216e1",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-18-DXUPExpjCs2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "97d736c428b57f28c1bf43b516e90d42baec79f3398c9d0333bd394f5abd1938",
+          "startedAt": "2026-07-10T20:01:10.429Z",
+          "durationMs": 13725.472083,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 54741,
+            "cachedInputTokens": 0,
+            "outputTokens": 392,
+            "reasoningOutputTokens": 97
+          },
+          "cost": 1.427325,
+          "costUnit": "codex_credits",
+          "outputSha256": "d2fc1d36c4ef6db6d21f64fb26ecffa63b9ff6d61043a31d0310665a1fd03c14",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-19-1diIRo4sHtk",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "5859d64df33a9fcdcc988976f5ead96ce91354d99f7e825debd840646c1cceb9",
+          "startedAt": "2026-07-10T20:01:24.156Z",
+          "durationMs": 12901.107209,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=true",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52970,
+            "cachedInputTokens": 32256,
+            "outputTokens": 373,
+            "reasoningOutputTokens": 106
+          },
+          "cost": 0.65444,
+          "costUnit": "codex_credits",
+          "outputSha256": "9b6a26c4bca8b21bb13fcafd47e993063514512726a8ff315fdfc79d0f7880dd",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-20-6IlkA1MLVYA",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "beed8f3581f50590023de6736724a8848d41705b3132afb19531d7161ca7a52c",
+          "startedAt": "2026-07-10T20:01:37.058Z",
+          "durationMs": 16142.055709,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=false",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52902,
+            "cachedInputTokens": 32256,
+            "outputTokens": 520,
+            "reasoningOutputTokens": 151
+          },
+          "cost": 0.67479,
+          "costUnit": "codex_credits",
+          "outputSha256": "57dd5bd6ca3231bd2c26608b8f7ebd808b89faabebc1f94599a1e6d115f8b870",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-21-6QIdqyFoxFE",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "dfe6a1dffa41fe7099498478d79f2d2b2c09b44c68bf87aa1bf0c1135110cb87",
+          "startedAt": "2026-07-10T20:01:53.203Z",
+          "durationMs": 15372.377125,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52997,
+            "cachedInputTokens": 32256,
+            "outputTokens": 523,
+            "reasoningOutputTokens": 153
+          },
+          "cost": 0.677615,
+          "costUnit": "codex_credits",
+          "outputSha256": "57a8bf0c9b74c47e045e3d667d822f10e4a9ee3d7b67c64cbbf103c794080ed4",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-22-BwIaEb5vGDo",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "301ad215d98233dcba66e6bd98f9cfc2765446d2c45bb805842fd272aae4f9d0",
+          "startedAt": "2026-07-10T20:02:08.578Z",
+          "durationMs": 13667.967375,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 49484,
+            "cachedInputTokens": 8960,
+            "outputTokens": 404,
+            "reasoningOutputTokens": 83
+          },
+          "cost": 1.0961,
+          "costUnit": "codex_credits",
+          "outputSha256": "f545c3c3e782077e50d1cd527e19b57ee8b1aa5a4e65e8ef0ae947fb9f5a7d82",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-23-EYkw1ELHXq0",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "35f8c3e12a71fba96c765c89b1b0b345795a99113c1d76c2d5f69ba2c5fea111",
+          "startedAt": "2026-07-10T20:02:22.249Z",
+          "durationMs": 17218.421625,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=false",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52952,
+            "cachedInputTokens": 32256,
+            "outputTokens": 453,
+            "reasoningOutputTokens": 161
+          },
+          "cost": 0.66599,
+          "costUnit": "codex_credits",
+          "outputSha256": "888c406af288cf0e7aa5d8837037fcdfdf2e870b770fd102d9e037a2f33c66d5",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-24-J6tw2l128YE",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "cb93603a73e77047c99ede3bd7545d9d1a565dcb749d799a1c28bc644abd27e9",
+          "startedAt": "2026-07-10T20:02:39.468Z",
+          "durationMs": 14327.260042,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52904,
+            "cachedInputTokens": 32256,
+            "outputTokens": 430,
+            "reasoningOutputTokens": 126
+          },
+          "cost": 0.66134,
+          "costUnit": "codex_credits",
+          "outputSha256": "b991dcbe0cb28d5041316777c0761d1798dd295d3fd3e1b9bba918e318cbc7e6",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-25-V-xIvJs0Jbo",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "506d9dce60309596bc36eba0303d59da62804f710cd4e5fd0ee398e4faad6fcd",
+          "startedAt": "2026-07-10T20:02:53.798Z",
+          "durationMs": 15552.522542,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52928,
+            "cachedInputTokens": 8960,
+            "outputTokens": 425,
+            "reasoningOutputTokens": 77
+          },
+          "cost": 1.18535,
+          "costUnit": "codex_credits",
+          "outputSha256": "41f62df785c29dd026cc72a7b563fe0cc60e2a9ccd1582ff5fa0e5ebeefa2321",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-26-WkEyab1jINA",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "e007b9f62ae5b887f4355b4521bf754f59298e2a7afe0bb29d3d44ddf20ea9a7",
+          "startedAt": "2026-07-10T20:03:09.353Z",
+          "durationMs": 18991.9645,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53005,
+            "cachedInputTokens": 17920,
+            "outputTokens": 421,
+            "reasoningOutputTokens": 115
+          },
+          "cost": 0.985075,
+          "costUnit": "codex_credits",
+          "outputSha256": "d8ff6f97fcbdbcb279fe739c8b9492bcf7bbeeb04b5b0f7bcf1c1eae92848b52",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-27-XPKBwhDPxk0",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "3ed1901f48d0afb921b5f255b0084ee8840e6f4a3ede00ffbfbdefd129c850bc",
+          "startedAt": "2026-07-10T20:03:28.348Z",
+          "durationMs": 16655.51725,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=true",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52967,
+            "cachedInputTokens": 32256,
+            "outputTokens": 558,
+            "reasoningOutputTokens": 286
+          },
+          "cost": 0.682115,
+          "costUnit": "codex_credits",
+          "outputSha256": "70f45e0fa0aea7bd4ebfeaab8f16731535a1f43c94bbdc13913ed434f8e2a4f4",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-28-fj6CXk2KTIs",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "0baf074f7293b127cbd3fcc9e166518992e3a7108ac5bad60ac46fb484cf3aaf",
+          "startedAt": "2026-07-10T20:03:45.006Z",
+          "durationMs": 15636.690666,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=false",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52955,
+            "cachedInputTokens": 32256,
+            "outputTokens": 537,
+            "reasoningOutputTokens": 171
+          },
+          "cost": 0.678665,
+          "costUnit": "codex_credits",
+          "outputSha256": "df490eaac308c193b1d67a6b021f097b7c9aecf272e67d6c5b4068e6148d3d8e",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-29-n9kD935iROw",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "81d99ce0784ea9cd6e4ee6b4be301e086847724818f9f69c6b31061626e6b242",
+          "startedAt": "2026-07-10T20:04:00.645Z",
+          "durationMs": 11934.511708,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=false",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 54278,
+            "cachedInputTokens": 32256,
+            "outputTokens": 338,
+            "reasoningOutputTokens": 64
+          },
+          "cost": 0.68189,
+          "costUnit": "codex_credits",
+          "outputSha256": "38eb63867cafef41b1348f0edbccf80cc8a690786b0395e3705022865dd27aaf",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-30-oA7rziyGv8s",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "f82c4adfb25f634bfe56e86c57d78362bc8896f6b3222dc396445e4d309d6832",
+          "startedAt": "2026-07-10T20:04:12.582Z",
+          "durationMs": 15026.890125,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=true",
+              "factualFit=false",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52937,
+            "cachedInputTokens": 23296,
+            "outputTokens": 479,
+            "reasoningOutputTokens": 111
+          },
+          "cost": 0.871115,
+          "costUnit": "codex_credits",
+          "outputSha256": "5bbb25142a3a9d1ee6662d5aab34a4b3e38c009dfd3cd28b4ac506f170543842",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 30,
+        "schemaSuccessRate": 0.966666666667,
+        "qualityScore": 0.966666666667,
+        "qualityPassRate": 0.966666666667,
+        "p95LatencyMs": 32391.491584,
+        "meanCost": null,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": false,
+        "selectorBenchmark": null
+      }
+    },
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "provider": "codex",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "samples": [
+        {
+          "caseId": "source-fit-01-BtDnmx6HRr_-duplicate",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "bbeb826025f5c012869e8f95ea7b5334ec0e61139a11e46364f46e856ea05c57",
+          "startedAt": "2026-07-10T20:04:27.610Z",
+          "durationMs": 16675.35775,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=true",
+              "duplicateEvent=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 50058,
+            "cachedInputTokens": 0,
+            "outputTokens": 412,
+            "reasoningOutputTokens": 111
+          },
+          "cost": 1.31325,
+          "costUnit": "codex_credits",
+          "outputSha256": "72135ba49612a139552ee9011c2aa55050e805de0ce7bbc2db0673227c424367",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-02-C-0YpsCAODv-duplicate",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "a33ad455b4c0642445d8e6ce06e20faf36b51fb0d4fb02b76ebea4912a53fa33",
+          "startedAt": "2026-07-10T20:04:44.286Z",
+          "durationMs": 16723.201542,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=true",
+              "duplicateEvent=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53481,
+            "cachedInputTokens": 23296,
+            "outputTokens": 541,
+            "reasoningOutputTokens": 203
+          },
+          "cost": 0.894015,
+          "costUnit": "codex_credits",
+          "outputSha256": "b364f63121db0337738bdf74e19ae4750f70763e90aafccb7a4eab04a799f47b",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-03-C9gLu79MklN-duplicate",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "af8f9f812c5b91c5a3606a68974903ad4c2f756ed6f538f389c71ee76945bdaf",
+          "startedAt": "2026-07-10T20:05:01.012Z",
+          "durationMs": 20147.304625,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=true",
+              "duplicateEvent=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53491,
+            "cachedInputTokens": 23296,
+            "outputTokens": 540,
+            "reasoningOutputTokens": 216
+          },
+          "cost": 0.894115,
+          "costUnit": "codex_credits",
+          "outputSha256": "5de930c9495b2af4022709c853568c3b06e62604509e52b0e92501d44e588c17",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-04-CsYa4skNBjP-duplicate",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "9d75da5bb57af6866c58d36ec9617227d515a59c87241b66d1737a7729a26daf",
+          "startedAt": "2026-07-10T20:05:21.163Z",
+          "durationMs": 16994.461625,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=true",
+              "duplicateEvent=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53477,
+            "cachedInputTokens": 32256,
+            "outputTokens": 423,
+            "reasoningOutputTokens": 130
+          },
+          "cost": 0.674615,
+          "costUnit": "codex_credits",
+          "outputSha256": "0734d233ced6b47acc52ccf69fb55bd9a2dd4c7d519628482c5625b0786b1402",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-05-Cw_QTMmA69_-duplicate",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "aa787f92ae0e5d2ec14fd0b9ba128215e7432367c1da75865a5018aa7b2c215e",
+          "startedAt": "2026-07-10T20:05:38.163Z",
+          "durationMs": 16708.6785,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=true",
+              "duplicateEvent=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53554,
+            "cachedInputTokens": 32256,
+            "outputTokens": 480,
+            "reasoningOutputTokens": 175
+          },
+          "cost": 0.68509,
+          "costUnit": "codex_credits",
+          "outputSha256": "fea1739946c48b38933a2d627cf5ba6db16b835a59f82287f1ed132413b9d16e",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-06-Cxb0DmpJ7oM-duplicate",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "a18265886c0cdf99d3a841d1c8a84f03838e2f2fe904f2ef151832a0ef90ef78",
+          "startedAt": "2026-07-10T20:05:54.874Z",
+          "durationMs": 14461.444125,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=true",
+              "duplicateEvent=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53471,
+            "cachedInputTokens": 23296,
+            "outputTokens": 432,
+            "reasoningOutputTokens": 133
+          },
+          "cost": 0.877415,
+          "costUnit": "codex_credits",
+          "outputSha256": "42b657383d56e7233d038c9bd03d07232ab5ea9c05b4756b67ed80fdbfde449a",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-07-DIUYX9QStl3",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "53101cec3d0408d22002a2ab80f4a5f1bc413d4f61cdf22d0ddc8e011a3ca624",
+          "startedAt": "2026-07-10T20:06:09.339Z",
+          "durationMs": 20452.84825,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53396,
+            "cachedInputTokens": 23296,
+            "outputTokens": 503,
+            "reasoningOutputTokens": 194
+          },
+          "cost": 0.88619,
+          "costUnit": "codex_credits",
+          "outputSha256": "d3409b0385193e46281ade39a112df8683f5085b18f9c48ee48384bffe7ab24f",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-08-DKM66d2tamf",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "da531f892cb9624ede41c3ee9ddee138373c8d1ad2779644d6dd62b014bb9037",
+          "startedAt": "2026-07-10T20:06:29.794Z",
+          "durationMs": 18226.306209,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53338,
+            "cachedInputTokens": 32256,
+            "outputTokens": 442,
+            "reasoningOutputTokens": 119
+          },
+          "cost": 0.67399,
+          "costUnit": "codex_credits",
+          "outputSha256": "7acc9bdb8086527feea518d90f9c2dce2dd8a8e48112a8ef71e0bb63a7ef33c9",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-09-DW0w8RMjY3Y",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "f3fcf78bf90dac753ebcd60caafa4d7445d3e2599691296b81794d6c3847cdbd",
+          "startedAt": "2026-07-10T20:06:48.021Z",
+          "durationMs": 13581.6515,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=false",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53459,
+            "cachedInputTokens": 32256,
+            "outputTokens": 398,
+            "reasoningOutputTokens": 91
+          },
+          "cost": 0.670415,
+          "costUnit": "codex_credits",
+          "outputSha256": "108647c24873c8600d1341de70de7c83e7333983693347d517ed9ec2093b4ad6",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-10-DW5s3qoDbHC",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "6679f487eaa0b4ef888e0e5f00506b4fa982ab044409a97797133f5056c0f37b",
+          "startedAt": "2026-07-10T20:07:01.605Z",
+          "durationMs": 13115.919958,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 54764,
+            "cachedInputTokens": 8960,
+            "outputTokens": 417,
+            "reasoningOutputTokens": 112
+          },
+          "cost": 1.23005,
+          "costUnit": "codex_credits",
+          "outputSha256": "661187cd6c8d80b38eb8c0b516ed6a5eea8727358bddfe7b22169e42a31969d7",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-11-DWjH5fWjBnt",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "ad9490e614f7bc8581342c05053af97bdeb1617d0cc48e1100327cd441eee1c3",
+          "startedAt": "2026-07-10T20:07:14.724Z",
+          "durationMs": 17286.958833,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53455,
+            "cachedInputTokens": 23296,
+            "outputTokens": 513,
+            "reasoningOutputTokens": 166
+          },
+          "cost": 0.889165,
+          "costUnit": "codex_credits",
+          "outputSha256": "d1aa10470454a5fd16f63deae076cff23b98cc404597d12d43b80c5863582974",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-12-DWnxlyIDcoK",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "44e0613f046118f501756bb57ac0104a7f709c31fdd52996b3102293e9864cb2",
+          "startedAt": "2026-07-10T20:07:32.013Z",
+          "durationMs": 18580.688875,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=true",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53384,
+            "cachedInputTokens": 23296,
+            "outputTokens": 611,
+            "reasoningOutputTokens": 296
+          },
+          "cost": 0.90209,
+          "costUnit": "codex_credits",
+          "outputSha256": "25dbb5b158194fad3204fbe5be2e948d1a0033b04e21d6fd2361075b5d3d4e39",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-13-DWwSVVOjMqO",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "e795f6198dbe8986f583d7de5f6a660e3a1ba8c08a542b40a4cf1608e03c5808",
+          "startedAt": "2026-07-10T20:07:50.597Z",
+          "durationMs": 29807.242292,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=false",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 87841,
+            "cachedInputTokens": 60672,
+            "outputTokens": 1229,
+            "reasoningOutputTokens": 425
+          },
+          "cost": 1.015255,
+          "costUnit": "codex_credits",
+          "outputSha256": "f10e59d05ef6ba15269a17c8e96d4052ba73a1aeae43870076e12afc34d5ee48",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-14-DXBhsJPjSgW",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "263305e4ab28e2149f9b612538f2231031fb27c1ca1a3254ef0e5c9988069156",
+          "startedAt": "2026-07-10T20:08:20.407Z",
+          "durationMs": 15574.089167,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=false",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53393,
+            "cachedInputTokens": 32256,
+            "outputTokens": 421,
+            "reasoningOutputTokens": 101
+          },
+          "cost": 0.672215,
+          "costUnit": "codex_credits",
+          "outputSha256": "e16aee2c6f33b595cdbb113296a963c454d25d2f9746ac568218f9467f858f20",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-15-DXHx529DVb0",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "e3b52afbb067a8910517b71774e8f972d677947c8afe7f1383bb4fdc15ec15f2",
+          "startedAt": "2026-07-10T20:08:35.983Z",
+          "durationMs": 14842.809459,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53405,
+            "cachedInputTokens": 32256,
+            "outputTokens": 445,
+            "reasoningOutputTokens": 100
+          },
+          "cost": 0.676115,
+          "costUnit": "codex_credits",
+          "outputSha256": "b9b0530057f6cbc101156fca6d0b53022b61a7456ed9741ade9db919c78ced6c",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-16-DXNBoz7jYmd",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "380691d6aff00e2f8fbd1e863fcad60cdea2e693c3e6fa0975318ab791279096",
+          "startedAt": "2026-07-10T20:08:50.829Z",
+          "durationMs": 15298.144375,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53559,
+            "cachedInputTokens": 32256,
+            "outputTokens": 398,
+            "reasoningOutputTokens": 83
+          },
+          "cost": 0.672915,
+          "costUnit": "codex_credits",
+          "outputSha256": "9e35555e4248cd87f4989247eeea2aad1795de96d47084d156873d9130b532e7",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-17-DXOzkCdjMue",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "f10f755b3704ddf198558fe8abf6932220e10d30a09a42ea499675753809b73d",
+          "startedAt": "2026-07-10T20:09:06.129Z",
+          "durationMs": 28321.810708,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53435,
+            "cachedInputTokens": 32256,
+            "outputTokens": 484,
+            "reasoningOutputTokens": 177
+          },
+          "cost": 0.682715,
+          "costUnit": "codex_credits",
+          "outputSha256": "aa69c0f9b0f018793471309e35291d4ed1036f42d3fa47b5c22ed065340dcdc5",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-18-DXUPExpjCs2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "97d736c428b57f28c1bf43b516e90d42baec79f3398c9d0333bd394f5abd1938",
+          "startedAt": "2026-07-10T20:09:34.452Z",
+          "durationMs": 15082.961875,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53410,
+            "cachedInputTokens": 32256,
+            "outputTokens": 443,
+            "reasoningOutputTokens": 142
+          },
+          "cost": 0.67594,
+          "costUnit": "codex_credits",
+          "outputSha256": "1269f7cc9e1219cae3b9261c4b461edeb1c555735063cd6716b74dbe5cb28992",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-19-1diIRo4sHtk",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "5859d64df33a9fcdcc988976f5ead96ce91354d99f7e825debd840646c1cceb9",
+          "startedAt": "2026-07-10T20:09:49.538Z",
+          "durationMs": 28610.259083,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=false",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52973,
+            "cachedInputTokens": 17920,
+            "outputTokens": 702,
+            "reasoningOutputTokens": 432
+          },
+          "cost": 1.026425,
+          "costUnit": "codex_credits",
+          "outputSha256": "178e0430398c24c2e8312059b58eac62e3db0d94d2e7f15236ad1e99727e8bc3",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-20-6IlkA1MLVYA",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "beed8f3581f50590023de6736724a8848d41705b3132afb19531d7161ca7a52c",
+          "startedAt": "2026-07-10T20:10:18.150Z",
+          "durationMs": 3111.715833,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "Reading prompt from stdin...\n{\"type\":\"thread.started\",\"thread_id\":\"019f4da7-043e-7330-a011-3547622cd131\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Skill descriptions were shortened to fit the 2% skills context budget. Codex can still see every skill, but some descriptions are shorter. Disable unused skills or plugins to leave more room for the rest.\"}}\n{\"type\":\"error\",\"message\":\"Selected model is at capacity. Please try a different model.\"}\n{\"type\":\"turn.failed\",\"error\":{\"message\":\"Selected model is at capacity. Please try a different model.\"}}"
+        },
+        {
+          "caseId": "source-fit-21-6QIdqyFoxFE",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "dfe6a1dffa41fe7099498478d79f2d2b2c09b44c68bf87aa1bf0c1135110cb87",
+          "startedAt": "2026-07-10T20:10:21.263Z",
+          "durationMs": 15648.762833,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53013,
+            "cachedInputTokens": 32256,
+            "outputTokens": 516,
+            "reasoningOutputTokens": 164
+          },
+          "cost": 0.676965,
+          "costUnit": "codex_credits",
+          "outputSha256": "52b75e4740df34fff7e43375f6c2a377e7237c27abd17abc22b732f56608f428",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-22-BwIaEb5vGDo",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "301ad215d98233dcba66e6bd98f9cfc2765446d2c45bb805842fd272aae4f9d0",
+          "startedAt": "2026-07-10T20:10:36.914Z",
+          "durationMs": 14422.451667,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 49646,
+            "cachedInputTokens": 17920,
+            "outputTokens": 451,
+            "reasoningOutputTokens": 139
+          },
+          "cost": 0.9056,
+          "costUnit": "codex_credits",
+          "outputSha256": "f368f51c31644a4914aa18f25330487fa6cf639b901d9415d92d11f11b7ab43c",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-23-EYkw1ELHXq0",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "35f8c3e12a71fba96c765c89b1b0b345795a99113c1d76c2d5f69ba2c5fea111",
+          "startedAt": "2026-07-10T20:10:51.339Z",
+          "durationMs": 40885.427875,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=false",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52939,
+            "cachedInputTokens": 32256,
+            "outputTokens": 528,
+            "reasoningOutputTokens": 239
+          },
+          "cost": 0.676915,
+          "costUnit": "codex_credits",
+          "outputSha256": "e1da9267e4ab3fcddf352760eca53b027757c1e4fc7cfd86b9cab8502d4850b4",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-24-J6tw2l128YE",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "cb93603a73e77047c99ede3bd7545d9d1a565dcb749d799a1c28bc644abd27e9",
+          "startedAt": "2026-07-10T20:11:32.228Z",
+          "durationMs": 14909.262583,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52950,
+            "cachedInputTokens": 32256,
+            "outputTokens": 478,
+            "reasoningOutputTokens": 166
+          },
+          "cost": 0.66969,
+          "costUnit": "codex_credits",
+          "outputSha256": "41c15ac56b86b68474063cd5de597d2bb3922cd26ff76e5d293c7688d490094e",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-25-V-xIvJs0Jbo",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "506d9dce60309596bc36eba0303d59da62804f710cd4e5fd0ee398e4faad6fcd",
+          "startedAt": "2026-07-10T20:11:47.139Z",
+          "durationMs": 13575.555166,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52871,
+            "cachedInputTokens": 32256,
+            "outputTokens": 446,
+            "reasoningOutputTokens": 139
+          },
+          "cost": 0.662915,
+          "costUnit": "codex_credits",
+          "outputSha256": "43ab4c63bbb7697be61e5bc929d7d23fe0ce8e1330cc4ac1d064ed1abf82a843",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-26-WkEyab1jINA",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "e007b9f62ae5b887f4355b4521bf754f59298e2a7afe0bb29d3d44ddf20ea9a7",
+          "startedAt": "2026-07-10T20:12:00.717Z",
+          "durationMs": 20045.210167,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=true",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52972,
+            "cachedInputTokens": 23296,
+            "outputTokens": 477,
+            "reasoningOutputTokens": 149
+          },
+          "cost": 0.87169,
+          "costUnit": "codex_credits",
+          "outputSha256": "5a3162aa665de8bc73bd80c79eba27b8449e9ceddbf2137c6d7b2b0cb294f530",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-27-XPKBwhDPxk0",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "3ed1901f48d0afb921b5f255b0084ee8840e6f4a3ede00ffbfbdefd129c850bc",
+          "startedAt": "2026-07-10T20:12:20.765Z",
+          "durationMs": 19810.1115,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=true",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52966,
+            "cachedInputTokens": 32256,
+            "outputTokens": 764,
+            "reasoningOutputTokens": 451
+          },
+          "cost": 0.71299,
+          "costUnit": "codex_credits",
+          "outputSha256": "6f9178f9ed826dc62fe7ebba95a8443186e7c264d9551cecf8a1bec49e45c035",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-28-fj6CXk2KTIs",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "0baf074f7293b127cbd3fcc9e166518992e3a7108ac5bad60ac46fb484cf3aaf",
+          "startedAt": "2026-07-10T20:12:40.578Z",
+          "durationMs": 24067.81475,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=true",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52970,
+            "cachedInputTokens": 32256,
+            "outputTokens": 824,
+            "reasoningOutputTokens": 517
+          },
+          "cost": 0.72209,
+          "costUnit": "codex_credits",
+          "outputSha256": "3579ea95bcdcf99db30dc556d46444a41342c14ae8bcee0bf7feb9ab5aebcd01",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-29-n9kD935iROw",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "81d99ce0784ea9cd6e4ee6b4be301e086847724818f9f69c6b31061626e6b242",
+          "startedAt": "2026-07-10T20:13:04.646Z",
+          "durationMs": 27249.085375,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=false",
+              "factualFit=true",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 55080,
+            "cachedInputTokens": 8960,
+            "outputTokens": 1034,
+            "reasoningOutputTokens": 578
+          },
+          "cost": 1.3305,
+          "costUnit": "codex_credits",
+          "outputSha256": "e64bc0687548329c2e6b95fcdc54f11d3d83cd5119d62211ec064e6e62d13841",
+          "error": null
+        },
+        {
+          "caseId": "source-fit-30-oA7rziyGv8s",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "f82c4adfb25f634bfe56e86c57d78362bc8896f6b3222dc396445e4d309d6832",
+          "startedAt": "2026-07-10T20:13:31.898Z",
+          "durationMs": 16774.3955,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "conceptMatch=true",
+              "factualFit=true",
+              "sourceUsable=false",
+              "duplicateVideo=false",
+              "duplicateEvent=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53029,
+            "cachedInputTokens": 32256,
+            "outputTokens": 619,
+            "reasoningOutputTokens": 321
+          },
+          "cost": 0.692815,
+          "costUnit": "codex_credits",
+          "outputSha256": "c101294186b8a2fbd6f6439e86f595d5c5206c1dd58a9e82b675034f045be9d4",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 30,
+        "schemaSuccessRate": 0.966666666667,
+        "qualityScore": 0.966666666667,
+        "qualityPassRate": 0.966666666667,
+        "p95LatencyMs": 29807.242292,
+        "meanCost": null,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": false,
+        "selectorBenchmark": null
+      }
+    }
+  ],
+  "selection": null,
+  "selectionError": "No model route passed the benchmark policy.",
+  "selectionRejections": [
+    {
+      "routeId": "codex:gpt-5.4",
+      "reason": "no benchmark result"
+    },
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "reason": "no benchmark result"
+    },
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "reason": "no benchmark result"
+    }
+  ],
+  "evidenceSha256": "b37426b4476c82cd60f03683cdc66866a5a80c9da75b593675171716aa88b979"
+}

@@ -170,6 +170,11 @@ export async function loadProjectKingsSourcePolicyBenchmarkDataset(input: {
   repoRoot: string;
   datasetRelativePath?: string;
   annotationsRelativePath?: string;
+  // Optional reviewed-annotation overrides (a frozen second review bound to the
+  // exact base annotation set and dataset by SHA-256). When applied, the
+  // returned datasetVersion carries the override revisionId so evidence shows
+  // which labels were in force.
+  annotationOverridesRelativePath?: string;
 }): Promise<StageModelBenchmarkDataset<"source_policy">> {
   const repoRoot = path.resolve(input.repoRoot);
   const datasetPath = resolveInside(
@@ -230,6 +235,45 @@ export async function loadProjectKingsSourcePolicyBenchmarkDataset(input: {
         `annotations.cases[${index}].datasetCaseBindingSha256`
       )
     });
+  }
+
+  let appliedAnnotationRevisionId: string | null = null;
+  if (input.annotationOverridesRelativePath) {
+    const overridesPath = resolveInside(
+      repoRoot,
+      input.annotationOverridesRelativePath,
+      "annotationOverridesRelativePath"
+    );
+    const overrides = await readFrozenJson(overridesPath);
+    if (overrides.schemaVersion !== "project-kings-source-policy-annotation-overrides-v1") {
+      throw new Error("Unsupported source-policy annotation-overrides schema.");
+    }
+    const revisionId = text(overrides.revisionId, "overrides.revisionId", 160);
+    if (sha256(overrides.baseAnnotationsSha256, "overrides.baseAnnotationsSha256") !== annotationsSha256) {
+      throw new Error("Annotation overrides are not bound to the loaded base annotation set.");
+    }
+    if (sha256(overrides.datasetSha256, "overrides.datasetSha256") !== datasetSha256) {
+      throw new Error("Annotation overrides are not bound to this dataset.");
+    }
+    const overrideEntries = array(overrides.overrides, "overrides.overrides");
+    for (const [index, rawOverride] of overrideEntries.entries()) {
+      const override = record(rawOverride, `overrides.overrides[${index}]`);
+      const caseId = text(override.caseId, `overrides.overrides[${index}].caseId`, 160);
+      const existing = annotationsByCase.get(caseId);
+      if (!existing) throw new Error(`Annotation override targets unknown case ${caseId}.`);
+      const previous = parseSignals(override.previousSignals, `overrides.overrides[${index}].previousSignals`);
+      for (const key of SIGNAL_KEYS) {
+        if (previous[key] !== existing.signals[key]) {
+          throw new Error(`Annotation override for ${caseId} does not match the frozen base signals.`);
+        }
+      }
+      text(override.reason, `overrides.overrides[${index}].reason`, 2_000);
+      annotationsByCase.set(caseId, {
+        signals: parseSignals(override.signals, `overrides.overrides[${index}].signals`),
+        datasetCaseBindingSha256: existing.datasetCaseBindingSha256
+      });
+    }
+    appliedAnnotationRevisionId = revisionId;
   }
 
   const seenCaseIds = new Set<string>();
@@ -336,9 +380,12 @@ export async function loadProjectKingsSourcePolicyBenchmarkDataset(input: {
     });
   }
   if (annotationsByCase.size !== seenCaseIds.size) throw new Error("Annotation set contains cases outside the dataset.");
+  const baseDatasetVersion = text(dataset.datasetVersion, "dataset.datasetVersion", 160);
   return Object.freeze({
     datasetId: text(dataset.datasetId, "dataset.datasetId", 160),
-    datasetVersion: text(dataset.datasetVersion, "dataset.datasetVersion", 160),
+    datasetVersion: appliedAnnotationRevisionId
+      ? `${baseDatasetVersion}+${appliedAnnotationRevisionId}`
+      : baseDatasetVersion,
     role: "source_policy" as const,
     cases: Object.freeze(benchmarkCases)
   });

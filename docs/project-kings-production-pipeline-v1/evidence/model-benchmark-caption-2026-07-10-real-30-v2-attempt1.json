@@ -1,0 +1,2051 @@
+{
+  "schemaVersion": "project-kings-model-benchmark-evidence-v1",
+  "benchmarkVersion": "project-kings-caption-real-30-v2",
+  "stageRole": "caption",
+  "createdAt": "2026-07-10T20:30:32.665Z",
+  "bounds": {
+    "maxCases": 120,
+    "maxCandidates": 12,
+    "maxExecutions": 240,
+    "actualExecutions": 60
+  },
+  "dataset": {
+    "datasetId": "project-kings-caption-real-30",
+    "datasetVersion": "real-30-v2",
+    "datasetSha256": "db8060d157526dd56566da48c27fd416e23014165f3c91f74e3d3afc22cf9515",
+    "promptSetSha256": "bdaa860252c4ad655355eedd4452c6b1b37a9494d687fe8d067c9d6c81f5c435",
+    "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
+    "sampleSize": 30
+  },
+  "qualityEvaluator": {
+    "evaluatorId": "project-kings-remaining-semantic-real-30",
+    "evaluatorVersion": "v1",
+    "implementationSha256": "d3f0fdc1c10fdb02a817b61c437ee23fe17e9a38833aa3ce609ac73ae55414f5",
+    "configSha256": "359ed0625aeca94b7df6d12057c3051d0dcc371624671c58391717e2ecbe3edc"
+  },
+  "executionContract": {
+    "registrySha256": "e899df48af4ad54b2e55514a0ac9b87b69e66b5cea05af8216a1b6a8eaca36b8",
+    "policySha256": "06e7f06d92d5e357c10889008388c41650592bc7f6d986fdf13e365bfbb7bd11",
+    "schemaValidationMethod": "strict-production-agent-output-v1",
+    "qualityAggregationMethod": "mean-passed-evaluator-score-v1",
+    "p95Method": "nearest-rank-p95-v1",
+    "costMethod": "uncached-input-plus-cached-input-plus-total-output-v1",
+    "reasoningTokensDoubleCounted": false
+  },
+  "pricing": [
+    {
+      "routeId": "codex:gpt-5.4",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 62.5,
+      "cachedInputPerMillionTokens": 6.25,
+      "outputPerMillionTokens": 375,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10-v2.json",
+      "verifiedAt": "2026-07-10T18:20:00.000Z",
+      "sourceSha256": "4e38a43a881d6f1b2fb8a5649d902c48faef26ba228907b2d57d82bd4310e97a"
+    },
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 18.75,
+      "cachedInputPerMillionTokens": 1.875,
+      "outputPerMillionTokens": 113,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10-v2.json",
+      "verifiedAt": "2026-07-10T18:20:00.000Z",
+      "sourceSha256": "4e38a43a881d6f1b2fb8a5649d902c48faef26ba228907b2d57d82bd4310e97a"
+    },
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 25,
+      "cachedInputPerMillionTokens": 2.5,
+      "outputPerMillionTokens": 150,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10-v2.json",
+      "verifiedAt": "2026-07-10T18:20:00.000Z",
+      "sourceSha256": "4e38a43a881d6f1b2fb8a5649d902c48faef26ba228907b2d57d82bd4310e97a"
+    }
+  ],
+  "candidates": [
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "provider": "codex",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "low",
+      "samples": [
+        {
+          "caseId": "caption-01-BtDnmx6HRr_-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "1b184d5bf712586d0f528303276f1aabf3b8e383e3e45c390a4b49ed3674395d",
+          "startedAt": "2026-07-10T20:13:48.860Z",
+          "durationMs": 16652.979125,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=93",
+              "titleWords=8",
+              "factualClaims=1",
+              "matchedAnchors=tiger,chase,embrace,together,close,contact",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 49477,
+            "cachedInputTokens": 21248,
+            "outputTokens": 516,
+            "reasoningOutputTokens": 270
+          },
+          "cost": 0.836245,
+          "costUnit": "codex_credits",
+          "outputSha256": "461f29fafc106ba38a38e131655144ad43f2ea8c289e5979c9db8f3a2ecc1643",
+          "error": null
+        },
+        {
+          "caseId": "caption-02-C-0YpsCAODv-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "3313bf5cdb41d53daed96ce21cec5512878bc9237473a671ccdd6fa1e3952218",
+          "startedAt": "2026-07-10T20:14:05.515Z",
+          "durationMs": 18425.235416,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=146",
+              "titleWords=4",
+              "factualClaims=3",
+              "matchedAnchors=smiling,woman,carries,chimpanzee,shoulders,camera",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52933,
+            "cachedInputTokens": 22272,
+            "outputTokens": 506,
+            "reasoningOutputTokens": 232
+          },
+          "cost": 0.898105,
+          "costUnit": "codex_credits",
+          "outputSha256": "bd11f8cf718f5c10f7611cbf6d7217e363b796d1e021c64f62d13838ec4a0114",
+          "error": null
+        },
+        {
+          "caseId": "caption-03-C9gLu79MklN-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "c710f739900aefa2585aaac1f61d20229c33e1d864d5f7d84fae2e9e5c501d79",
+          "startedAt": "2026-07-10T20:14:23.943Z",
+          "durationMs": 18816.915583,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=91",
+              "titleWords=3",
+              "factualClaims=1",
+              "matchedAnchors=owner,feeds,plays,diapered,spider,monkey,continuous,interaction",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52907,
+            "cachedInputTokens": 22272,
+            "outputTokens": 438,
+            "reasoningOutputTokens": 206
+          },
+          "cost": 0.887255,
+          "costUnit": "codex_credits",
+          "outputSha256": "3e4c306876341a20f713d947330ded95e22fbffa51d6142c49bc4c16c86917c6",
+          "error": null
+        },
+        {
+          "caseId": "caption-04-CsYa4skNBjP-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "00795b3cd32dde6a4f35967ed969dd2ffaf6eb4b04212e8857792f29b1cf8878",
+          "startedAt": "2026-07-10T20:14:42.763Z",
+          "durationMs": 14392.34725,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=102",
+              "titleWords=4",
+              "factualClaims=3",
+              "matchedAnchors=bottle,feeds,holds,stays,close,drinks",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52776,
+            "cachedInputTokens": 22272,
+            "outputTokens": 355,
+            "reasoningOutputTokens": 102
+          },
+          "cost": 0.87153,
+          "costUnit": "codex_credits",
+          "outputSha256": "93f65d4ef0759e2ac307826a66374d8ae69495c1fccd619ef37399de9394299a",
+          "error": null
+        },
+        {
+          "caseId": "caption-05-Cw_QTMmA69_-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "45abee5c7fe4d917eb9fc3cdb419dd25f9d1d2c13d481ec36dfe58a278a82ad4",
+          "startedAt": "2026-07-10T20:14:57.158Z",
+          "durationMs": 13376.215417,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=64",
+              "titleWords=5",
+              "factualClaims=2",
+              "matchedAnchors=woman,bottle,feeds,giant,liger,strokes,close",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52841,
+            "cachedInputTokens": 8960,
+            "outputTokens": 390,
+            "reasoningOutputTokens": 143
+          },
+          "cost": 1.177925,
+          "costUnit": "codex_credits",
+          "outputSha256": "e6c65269a87130c17194c70e2dcc0571bfc6f3d7ea638be6941c749ce057c8d9",
+          "error": null
+        },
+        {
+          "caseId": "caption-06-Cxb0DmpJ7oM-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "502b9a6c6ac793588912ef08df1ddaffaf9ef632cb8050eb090e18d7c0ec9243",
+          "startedAt": "2026-07-10T20:15:10.535Z",
+          "durationMs": 13875.225875,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=106",
+              "titleWords=5",
+              "factualClaims=2",
+              "matchedAnchors=holds,towel,wrapped,spider,monkey,close",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52939,
+            "cachedInputTokens": 31232,
+            "outputTokens": 376,
+            "reasoningOutputTokens": 117
+          },
+          "cost": 0.677155,
+          "costUnit": "codex_credits",
+          "outputSha256": "ed3c74ec09b6d302fd2c1a9afb11caaf08bca568bb20326e037ea7db81a786fa",
+          "error": null
+        },
+        {
+          "caseId": "caption-07-DIUYX9QStl3-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "e387617b99ff7741e3e79f1321a07b3ebf5301c89723e883f4b024b9b41a470a",
+          "startedAt": "2026-07-10T20:15:24.412Z",
+          "durationMs": 13525.735458,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=140",
+              "titleWords=6",
+              "factualClaims=2",
+              "matchedAnchors=chimpanzee,close,playful",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52907,
+            "cachedInputTokens": 22272,
+            "outputTokens": 414,
+            "reasoningOutputTokens": 148
+          },
+          "cost": 0.883655,
+          "costUnit": "codex_credits",
+          "outputSha256": "5fb2c83e148f59850781a6a7aaea3e611dea2e4b0357743f1bb8f8ffb9392caf",
+          "error": null
+        },
+        {
+          "caseId": "caption-08-DKM66d2tamf-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "4750e9975536fd8b8216d6e74f419f9e52e28cf18f8ace176a97d56dec354995",
+          "startedAt": "2026-07-10T20:15:37.941Z",
+          "durationMs": 19344.782875,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=79",
+              "titleWords=6",
+              "factualClaims=3",
+              "matchedAnchors=tiger,belly,licks",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52895,
+            "cachedInputTokens": 8960,
+            "outputTokens": 425,
+            "reasoningOutputTokens": 182
+          },
+          "cost": 1.184525,
+          "costUnit": "codex_credits",
+          "outputSha256": "1551825d3b74f6192ce88ae93bf441de7e90f24cb58f380e9d29ab49331247bd",
+          "error": null
+        },
+        {
+          "caseId": "caption-09-DW5s3qoDbHC-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "9c5234990dd15e7f5031ef1200ec19ccc9f269e107a8a5e29357e1bed4423b6c",
+          "startedAt": "2026-07-10T20:15:57.288Z",
+          "durationMs": 12424.394125,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=83",
+              "titleWords=6",
+              "factualClaims=2",
+              "matchedAnchors=passenger,flees,traffic,officer,catches,restrains",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52973,
+            "cachedInputTokens": 0,
+            "outputTokens": 375,
+            "reasoningOutputTokens": 128
+          },
+          "cost": 1.380575,
+          "costUnit": "codex_credits",
+          "outputSha256": "39a5614b11c7b4d5b1d373b3c1a38906166fd9890837378e975e8247f48bf5c9",
+          "error": null
+        },
+        {
+          "caseId": "caption-10-DWjH5fWjBnt-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "7216486a0ad7bdf90689437d6d0cf65025755f07efd44f50514effb7f2fcfaa7",
+          "startedAt": "2026-07-10T20:16:09.713Z",
+          "durationMs": 14678.755667,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=116",
+              "titleWords=5",
+              "factualClaims=2",
+              "matchedAnchors=police,pickup,deploy,grappler,strap,toward,wheel",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52940,
+            "cachedInputTokens": 17920,
+            "outputTokens": 436,
+            "reasoningOutputTokens": 189
+          },
+          "cost": 0.9857,
+          "costUnit": "codex_credits",
+          "outputSha256": "c4e082dd424dee8d3f59813d3e97a8f9341e1f8d7f23e32d17b3c76bcd55f7cd",
+          "error": null
+        },
+        {
+          "caseId": "caption-11-DXHx529DVb0-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "c881de64086e97bfd1fac09ca0a9ab194ee9af1d52765ddbdaacee929ced897c",
+          "startedAt": "2026-07-10T20:16:24.393Z",
+          "durationMs": 15771.421,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=104",
+              "titleWords=6",
+              "factualClaims=2",
+              "matchedAnchors=trooper,wrong,driver,damaged,patrol,vehicle",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52925,
+            "cachedInputTokens": 17920,
+            "outputTokens": 445,
+            "reasoningOutputTokens": 184
+          },
+          "cost": 0.986675,
+          "costUnit": "codex_credits",
+          "outputSha256": "a97e225b946792a23c91a3eaa64063521f50493ad9813704e50a7fcb8abb00b8",
+          "error": null
+        },
+        {
+          "caseId": "caption-12-DXNBoz7jYmd-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "aa797c12510aa9ec01387be18e6a8f4d95cc8d21a20e1edfd9e3c9fedd156981",
+          "startedAt": "2026-07-10T20:16:40.165Z",
+          "durationMs": 13234.969417,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=95",
+              "titleWords=7",
+              "factualClaims=2",
+              "matchedAnchors=police,pursue,stolen,neighborhood,armed,officer",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52944,
+            "cachedInputTokens": 17920,
+            "outputTokens": 429,
+            "reasoningOutputTokens": 175
+          },
+          "cost": 0.98475,
+          "costUnit": "codex_credits",
+          "outputSha256": "4b5de0edc48af296b13b35d0a591283d6931c8d186000db1949eee47023ca79b",
+          "error": null
+        },
+        {
+          "caseId": "caption-13-DXOzkCdjMue-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "c773922d6412c35c69200257fe386efde4e9d91d336c09416db28489d69903a3",
+          "startedAt": "2026-07-10T20:16:53.402Z",
+          "durationMs": 19010.290792,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=135",
+              "titleWords=8",
+              "factualClaims=1",
+              "matchedAnchors=fleeing,suspect,clings,moving,police,follow,highway",
+              "meta=the footage"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52927,
+            "cachedInputTokens": 22272,
+            "outputTokens": 466,
+            "reasoningOutputTokens": 213
+          },
+          "cost": 0.891955,
+          "costUnit": "codex_credits",
+          "outputSha256": "e8f32d2688d89d790c41264b1561b81bdd8225e172079ac23156b783522b7353",
+          "error": null
+        },
+        {
+          "caseId": "caption-14-DXUPExpjCs2-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "537b8e081faccb741836e75a384154a11756650d218bf544422499899a73441a",
+          "startedAt": "2026-07-10T20:17:12.415Z",
+          "durationMs": 13574.399042,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=96",
+              "titleWords=4",
+              "factualClaims=1",
+              "matchedAnchors=state,troopers,choking,child,begins,breathing",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52946,
+            "cachedInputTokens": 31232,
+            "outputTokens": 395,
+            "reasoningOutputTokens": 159
+          },
+          "cost": 0.68018,
+          "costUnit": "codex_credits",
+          "outputSha256": "845e72a7930d8fba8f5c1e01d3a6d120d737a39d97fc25b638462386ce637c97",
+          "error": null
+        },
+        {
+          "caseId": "caption-15-6QIdqyFoxFE-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "419d2943930d6e41d9e430540e86a4ec87562fb1a78fa8bafc69c47a04f71e20",
+          "startedAt": "2026-07-10T20:17:25.992Z",
+          "durationMs": 15342.43525,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=84",
+              "titleWords=5",
+              "factualClaims=4",
+              "matchedAnchors=payoff",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52416,
+            "cachedInputTokens": 31232,
+            "outputTokens": 365,
+            "reasoningOutputTokens": 104
+          },
+          "cost": 0.66243,
+          "costUnit": "codex_credits",
+          "outputSha256": "c490f62f145f69590bc03353ce5ad9e941c80bdb7de7a87a3604646d7a5b2f5b",
+          "error": null
+        },
+        {
+          "caseId": "caption-16-BwIaEb5vGDo-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "6a47846884be349e57b287134c1639ca0c745c1fd654293bb1f72a10c7420c97",
+          "startedAt": "2026-07-10T20:17:41.335Z",
+          "durationMs": 15004.141125,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=113",
+              "titleWords=5",
+              "factualClaims=1",
+              "matchedAnchors=mandalorian,grogu,rebuilt",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 49056,
+            "cachedInputTokens": 30208,
+            "outputTokens": 441,
+            "reasoningOutputTokens": 187
+          },
+          "cost": 0.61287,
+          "costUnit": "codex_credits",
+          "outputSha256": "3126b6489ae294bd0a2a4d90894539d2720f23841b3b5b6e578f27891cbcf273",
+          "error": null
+        },
+        {
+          "caseId": "caption-17-J6tw2l128YE-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "747cc6cb33a33d1c7b8bc33484048d47b3181dae89faef795de44d6ea167144a",
+          "startedAt": "2026-07-10T20:17:56.342Z",
+          "durationMs": 16061.390292,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=140",
+              "titleWords=5",
+              "factualClaims=2",
+              "matchedAnchors=harry,potter,characters,transformed,afterparty",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52420,
+            "cachedInputTokens": 17920,
+            "outputTokens": 510,
+            "reasoningOutputTokens": 245
+          },
+          "cost": 0.9838,
+          "costUnit": "codex_credits",
+          "outputSha256": "c6858fe64551e3a312ae7f493283d21e3cf24dba8e471f2a16e46339212a70ff",
+          "error": null
+        },
+        {
+          "caseId": "caption-18-V-xIvJs0Jbo-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "71ae416d468c8583c757c4635962672451475034ebce62071113bddf5e6dd87b",
+          "startedAt": "2026-07-10T20:18:12.406Z",
+          "durationMs": 17194.056083,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=112",
+              "titleWords=6",
+              "factualClaims=1",
+              "matchedAnchors=generated,public,figure,character,harry,potter",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52367,
+            "cachedInputTokens": 31232,
+            "outputTokens": 383,
+            "reasoningOutputTokens": 143
+          },
+          "cost": 0.663905,
+          "costUnit": "codex_credits",
+          "outputSha256": "225f92ee25fcb8ecd49d55b9271ae4ff45db0fd765f7ae98e1e74b4e152915b5",
+          "error": null
+        },
+        {
+          "caseId": "caption-19-WkEyab1jINA-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "3ea7083e1d294d938a13fda0bc5918f36d098d5423ac1ec5c2561cd61a726172",
+          "startedAt": "2026-07-10T20:18:29.600Z",
+          "durationMs": 15263.295333,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 0,
+            "passed": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=97",
+              "titleWords=3",
+              "factualClaims=2",
+              "matchedAnchors=enters",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52473,
+            "cachedInputTokens": 17920,
+            "outputTokens": 433,
+            "reasoningOutputTokens": 154
+          },
+          "cost": 0.973575,
+          "costUnit": "codex_credits",
+          "outputSha256": "74fd091f63947fb1765162cc4cdf83f6d175b854af942a74b800716ef15042fe",
+          "error": null
+        },
+        {
+          "caseId": "caption-20-BtDnmx6HRr_-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "5640489e19dce3222f73f194a3929a8394c9d2819f61141839f6f98b13a8cc1a",
+          "startedAt": "2026-07-10T20:18:44.864Z",
+          "durationMs": 12846.090417,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=89",
+              "titleWords=5",
+              "factualClaims=1",
+              "matchedAnchors=tiger,chase,embrace,together,close,contact",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 49441,
+            "cachedInputTokens": 8960,
+            "outputTokens": 381,
+            "reasoningOutputTokens": 138
+          },
+          "cost": 1.091575,
+          "costUnit": "codex_credits",
+          "outputSha256": "925c2757fab9cc563febeabcee1044202bc62b69510b5430e09547a309b9f0b1",
+          "error": null
+        },
+        {
+          "caseId": "caption-21-C-0YpsCAODv-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "7cecf4ccada1cef65f46e3c7e9b764b618676019883912ca63ed8f247f0e9b9a",
+          "startedAt": "2026-07-10T20:18:57.712Z",
+          "durationMs": 12999.195792,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=57",
+              "titleWords=5",
+              "factualClaims=2",
+              "matchedAnchors=carries,chimpanzee,shoulders,camera",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52994,
+            "cachedInputTokens": 17920,
+            "outputTokens": 364,
+            "reasoningOutputTokens": 124
+          },
+          "cost": 0.97625,
+          "costUnit": "codex_credits",
+          "outputSha256": "2e84a5e45f27bee2acd965245c7723a81ba3dcf570d99e324de1abaec8429e4e",
+          "error": null
+        },
+        {
+          "caseId": "caption-22-C9gLu79MklN-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "0ee9abde8239c4b82606bc81d22d744495c83e537672570be24b4dd76271c1a0",
+          "startedAt": "2026-07-10T20:19:10.712Z",
+          "durationMs": 13550.81425,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=94",
+              "titleWords=6",
+              "factualClaims=1",
+              "matchedAnchors=owner,feeds,plays,diapered,spider,monkey,continuous",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52886,
+            "cachedInputTokens": 31232,
+            "outputTokens": 437,
+            "reasoningOutputTokens": 192
+          },
+          "cost": 0.68498,
+          "costUnit": "codex_credits",
+          "outputSha256": "c9fe1f8bf818fba769370e2eb3d83873c42b1a9a91d98bbec2a43f909e1f11b5",
+          "error": null
+        },
+        {
+          "caseId": "caption-23-CsYa4skNBjP-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "0ff971d9d00df1b115fe0b86d5656ee0b8d093be64adb1a1be63a3e2f075a094",
+          "startedAt": "2026-07-10T20:19:24.266Z",
+          "durationMs": 14089.903791,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=73",
+              "titleWords=4",
+              "factualClaims=2",
+              "matchedAnchors=bottle,feeds,holds,close",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52852,
+            "cachedInputTokens": 8960,
+            "outputTokens": 391,
+            "reasoningOutputTokens": 146
+          },
+          "cost": 1.17835,
+          "costUnit": "codex_credits",
+          "outputSha256": "710888d1351ff1bf2db44dd987eaaae0eee0a53effe16ff13cb2edc2b5ab2e03",
+          "error": null
+        },
+        {
+          "caseId": "caption-24-Cw_QTMmA69_-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "314cc04ce5483f21289c0846994f8af24fbb5107560bdea10449b83faeea0dbc",
+          "startedAt": "2026-07-10T20:19:38.356Z",
+          "durationMs": 13433.783042,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=60",
+              "titleWords=6",
+              "factualClaims=3",
+              "matchedAnchors=woman,bottle,feeds,giant,liger,strokes,close",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52891,
+            "cachedInputTokens": 0,
+            "outputTokens": 331,
+            "reasoningOutputTokens": 88
+          },
+          "cost": 1.371925,
+          "costUnit": "codex_credits",
+          "outputSha256": "024b4359cc2c11ef7f1c77ac361fac98b8db833991da4f9e2afcf34d7eb4090b",
+          "error": null
+        },
+        {
+          "caseId": "caption-25-Cxb0DmpJ7oM-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "f0e6851eecfba9a1c8fb31bfddd504bec8401c36a855a87b83ca2b4747ef407d",
+          "startedAt": "2026-07-10T20:19:51.793Z",
+          "durationMs": 29873.762167,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=115",
+              "titleWords=6",
+              "factualClaims=2",
+              "matchedAnchors=holds,towel,wrapped,spider,monkey,close",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52852,
+            "cachedInputTokens": 17920,
+            "outputTokens": 368,
+            "reasoningOutputTokens": 116
+          },
+          "cost": 0.9733,
+          "costUnit": "codex_credits",
+          "outputSha256": "934c6fe88d72a6c1daa238a66f80afc61e5005e0590fa38734b928d6122b6235",
+          "error": null
+        },
+        {
+          "caseId": "caption-26-DIUYX9QStl3-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "7e2d347ad6ad5a04b716bc2271596f8aaafe1d15c45ba574f3f64adfc06de22e",
+          "startedAt": "2026-07-10T20:20:21.667Z",
+          "durationMs": 14569.613584,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=63",
+              "titleWords=4",
+              "factualClaims=2",
+              "matchedAnchors=swims,chimpanzee,close,playful",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52938,
+            "cachedInputTokens": 31232,
+            "outputTokens": 386,
+            "reasoningOutputTokens": 155
+          },
+          "cost": 0.67863,
+          "costUnit": "codex_credits",
+          "outputSha256": "947736fd00fa984439f564693b992b3d57285d929dbd70d99a830568c5c72b77",
+          "error": null
+        },
+        {
+          "caseId": "caption-27-DKM66d2tamf-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "835feca9456fd084b2408a8749c05a27d7b601abd7624eb0ee5e385888c35352",
+          "startedAt": "2026-07-10T20:20:36.239Z",
+          "durationMs": 17188.136458,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=63",
+              "titleWords=5",
+              "factualClaims=1",
+              "matchedAnchors=tiger,rests,belly,licks",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52862,
+            "cachedInputTokens": 31232,
+            "outputTokens": 322,
+            "reasoningOutputTokens": 77
+          },
+          "cost": 0.66713,
+          "costUnit": "codex_credits",
+          "outputSha256": "830a2b9f291cf7ed07818dadb4d43271e7d4d51d5906681896b71f4ff9063e48",
+          "error": null
+        },
+        {
+          "caseId": "caption-28-DW5s3qoDbHC-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "0e30f3f5859dd0ec03ed49449820c4eb661c9d8a6a707dc5671a9f2d3e0b2508",
+          "startedAt": "2026-07-10T20:20:53.430Z",
+          "durationMs": 12553.609083,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=84",
+              "titleWords=6",
+              "factualClaims=2",
+              "matchedAnchors=passenger,flees,traffic,officer,catches,restrains",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52942,
+            "cachedInputTokens": 31232,
+            "outputTokens": 394,
+            "reasoningOutputTokens": 152
+          },
+          "cost": 0.67993,
+          "costUnit": "codex_credits",
+          "outputSha256": "8566750502ffdb8fbf1fba04939526b00e2e7b0e5f75b89940f381c235d88af6",
+          "error": null
+        },
+        {
+          "caseId": "caption-29-DWjH5fWjBnt-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "5fa486a28a01a673302f9e9aeecceee8ccc1569c3c6fcd8d748b0ce2ed7d81b8",
+          "startedAt": "2026-07-10T20:21:05.986Z",
+          "durationMs": 13044.825625,
+          "schemaValid": false,
+          "quality": null,
+          "usage": {
+            "inputTokens": 52969,
+            "cachedInputTokens": 31232,
+            "outputTokens": 412,
+            "reasoningOutputTokens": 134
+          },
+          "cost": 0.683305,
+          "costUnit": "codex_credits",
+          "outputSha256": "e1087e1f8ac04f3a49c249083a312c1320d7a2e800996e9dfc4526af5c7d95cb",
+          "error": "output.caption: exceeds maxCharacters"
+        },
+        {
+          "caseId": "caption-30-DXHx529DVb0-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "9cc6b97e0680bf22ba005ae4e944612085d57f70af44841db0a811a97e962049",
+          "startedAt": "2026-07-10T20:21:19.032Z",
+          "durationMs": 12709.359084,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=96",
+              "titleWords=5",
+              "factualClaims=2",
+              "matchedAnchors=trooper,wrong,driver,damaged,patrol,vehicle",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52923,
+            "cachedInputTokens": 17920,
+            "outputTokens": 400,
+            "reasoningOutputTokens": 148
+          },
+          "cost": 0.979875,
+          "costUnit": "codex_credits",
+          "outputSha256": "1857991775aa27f8ce6781f3d86c06e647ea9275736b7fd3aeda85cff3b799ec",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 30,
+        "schemaSuccessRate": 0.966666666667,
+        "qualityScore": 0.866666666667,
+        "qualityPassRate": 0.866666666667,
+        "p95LatencyMs": 19344.782875,
+        "meanCost": 0.906268666667,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": true,
+        "selectorBenchmark": {
+          "benchmarkVersion": "project-kings-caption-real-30-v2",
+          "routeId": "codex:gpt-5.6-luna",
+          "reasoningEffort": "low",
+          "sampleSize": 30,
+          "qualityScore": 0.866666666667,
+          "schemaSuccessRate": 0.966666666667,
+          "p95LatencyMs": 19344.782875,
+          "meanCost": 0.906268666667,
+          "costUnit": "codex_credits"
+        }
+      }
+    },
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "provider": "codex",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "samples": [
+        {
+          "caseId": "caption-01-BtDnmx6HRr_-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "1b184d5bf712586d0f528303276f1aabf3b8e383e3e45c390a4b49ed3674395d",
+          "startedAt": "2026-07-10T20:21:31.742Z",
+          "durationMs": 15973.362708,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=116",
+              "titleWords=4",
+              "factualClaims=1",
+              "matchedAnchors=tiger,chase,embrace,together,close,contact",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 49463,
+            "cachedInputTokens": 21248,
+            "outputTokens": 555,
+            "reasoningOutputTokens": 283
+          },
+          "cost": 0.841745,
+          "costUnit": "codex_credits",
+          "outputSha256": "e0a767f94e08141ee63057a4c29b7594d66685a1967e9838895733f87c53b25e",
+          "error": null
+        },
+        {
+          "caseId": "caption-02-C-0YpsCAODv-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "3313bf5cdb41d53daed96ce21cec5512878bc9237473a671ccdd6fa1e3952218",
+          "startedAt": "2026-07-10T20:21:47.718Z",
+          "durationMs": 21507.844375,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=111",
+              "titleWords=6",
+              "factualClaims=2",
+              "matchedAnchors=chimpanzee,shoulders,camera",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52910,
+            "cachedInputTokens": 22272,
+            "outputTokens": 497,
+            "reasoningOutputTokens": 238
+          },
+          "cost": 0.89618,
+          "costUnit": "codex_credits",
+          "outputSha256": "ff3cf1f406ca16cf04f4c45a177d4970baf149e6196a75b85fcf24e3d150637c",
+          "error": null
+        },
+        {
+          "caseId": "caption-03-C9gLu79MklN-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "c710f739900aefa2585aaac1f61d20229c33e1d864d5f7d84fae2e9e5c501d79",
+          "startedAt": "2026-07-10T20:22:09.228Z",
+          "durationMs": 16481.669833,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=107",
+              "titleWords=4",
+              "factualClaims=3",
+              "matchedAnchors=owner,feeds,plays,diapered,spider,monkey,interaction",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53777,
+            "cachedInputTokens": 23296,
+            "outputTokens": 517,
+            "reasoningOutputTokens": 268
+          },
+          "cost": 0.897815,
+          "costUnit": "codex_credits",
+          "outputSha256": "3d32f0035b90fe566dd6b00dd229537ce6a4d1805c04cdc693e0cba7a6741aa0",
+          "error": null
+        },
+        {
+          "caseId": "caption-04-CsYa4skNBjP-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "00795b3cd32dde6a4f35967ed969dd2ffaf6eb4b04212e8857792f29b1cf8878",
+          "startedAt": "2026-07-10T20:22:25.711Z",
+          "durationMs": 16238.135917,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=83",
+              "titleWords=4",
+              "factualClaims=3",
+              "matchedAnchors=bottle,feeds,holds,stays,close,drinks",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52905,
+            "cachedInputTokens": 22272,
+            "outputTokens": 503,
+            "reasoningOutputTokens": 226
+          },
+          "cost": 0.896955,
+          "costUnit": "codex_credits",
+          "outputSha256": "253c9786857678662fd5797db17b6ad081736b583491d8619def32700b14f24f",
+          "error": null
+        },
+        {
+          "caseId": "caption-05-Cw_QTMmA69_-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "45abee5c7fe4d917eb9fc3cdb419dd25f9d1d2c13d481ec36dfe58a278a82ad4",
+          "startedAt": "2026-07-10T20:22:41.951Z",
+          "durationMs": 15057.716042,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=80",
+              "titleWords=6",
+              "factualClaims=3",
+              "matchedAnchors=woman,bottle,feeds,giant,liger,strokes,close",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52986,
+            "cachedInputTokens": 22272,
+            "outputTokens": 394,
+            "reasoningOutputTokens": 137
+          },
+          "cost": 0.88263,
+          "costUnit": "codex_credits",
+          "outputSha256": "e7cbc1683312868d063b87ed4aebb970dfa9006b0cf903efdde617802bcc33c2",
+          "error": null
+        },
+        {
+          "caseId": "caption-06-Cxb0DmpJ7oM-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "502b9a6c6ac793588912ef08df1ddaffaf9ef632cb8050eb090e18d7c0ec9243",
+          "startedAt": "2026-07-10T20:22:57.012Z",
+          "durationMs": 16736.046584,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=84",
+              "titleWords=3",
+              "factualClaims=2",
+              "matchedAnchors=holds,towel,wrapped,spider,monkey,close",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52878,
+            "cachedInputTokens": 31232,
+            "outputTokens": 560,
+            "reasoningOutputTokens": 308
+          },
+          "cost": 0.70323,
+          "costUnit": "codex_credits",
+          "outputSha256": "19a54aa93c88cb3f9cf68d7aa05ec56f167fc0c45fe5d30d87f2d9345f9dd74f",
+          "error": null
+        },
+        {
+          "caseId": "caption-07-DIUYX9QStl3-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "e387617b99ff7741e3e79f1321a07b3ebf5301c89723e883f4b024b9b41a470a",
+          "startedAt": "2026-07-10T20:23:13.750Z",
+          "durationMs": 19650.552583,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=111",
+              "titleWords=6",
+              "factualClaims=1",
+              "matchedAnchors=swims,hugging,chimpanzee,close,playful,contact",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52899,
+            "cachedInputTokens": 8960,
+            "outputTokens": 766,
+            "reasoningOutputTokens": 515
+          },
+          "cost": 1.235775,
+          "costUnit": "codex_credits",
+          "outputSha256": "6af205f5cde21656954ba29d3f311339a5259731b6167735ddb9b41558fb8b64",
+          "error": null
+        },
+        {
+          "caseId": "caption-08-DKM66d2tamf-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "4750e9975536fd8b8216d6e74f419f9e52e28cf18f8ace176a97d56dec354995",
+          "startedAt": "2026-07-10T20:23:33.403Z",
+          "durationMs": 21556.150958,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=75",
+              "titleWords=6",
+              "factualClaims=3",
+              "matchedAnchors=tiger,rests,belly,licks",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52947,
+            "cachedInputTokens": 22272,
+            "outputTokens": 498,
+            "reasoningOutputTokens": 244
+          },
+          "cost": 0.897255,
+          "costUnit": "codex_credits",
+          "outputSha256": "366dd87b8e4e9bc480b136ce54e7b6c8c4dd778807d3ca3e157cb3c270a522d7",
+          "error": null
+        },
+        {
+          "caseId": "caption-09-DW5s3qoDbHC-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "9c5234990dd15e7f5031ef1200ec19ccc9f269e107a8a5e29357e1bed4423b6c",
+          "startedAt": "2026-07-10T20:23:54.962Z",
+          "durationMs": 16724.922333,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=130",
+              "titleWords=4",
+              "factualClaims=2",
+              "matchedAnchors=passenger,flees,traffic,officer",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53051,
+            "cachedInputTokens": 22272,
+            "outputTokens": 588,
+            "reasoningOutputTokens": 334
+          },
+          "cost": 0.913355,
+          "costUnit": "codex_credits",
+          "outputSha256": "0f48802d8162a000878f1479506319f046498bb3f386de1c34a8875cd42115b6",
+          "error": null
+        },
+        {
+          "caseId": "caption-10-DWjH5fWjBnt-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "7216486a0ad7bdf90689437d6d0cf65025755f07efd44f50514effb7f2fcfaa7",
+          "startedAt": "2026-07-10T20:24:11.689Z",
+          "durationMs": 17979.1665,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=130",
+              "titleWords=5",
+              "factualClaims=2",
+              "matchedAnchors=police,pursue,pickup,deploy,grappler,strap,toward,wheel",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52997,
+            "cachedInputTokens": 0,
+            "outputTokens": 582,
+            "reasoningOutputTokens": 322
+          },
+          "cost": 1.412225,
+          "costUnit": "codex_credits",
+          "outputSha256": "7c5bbb6d77f80911becb4d10ac81180a4794814d1d13e019e2692f0d1615b027",
+          "error": null
+        },
+        {
+          "caseId": "caption-11-DXHx529DVb0-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "c881de64086e97bfd1fac09ca0a9ab194ee9af1d52765ddbdaacee929ced897c",
+          "startedAt": "2026-07-10T20:24:29.671Z",
+          "durationMs": 14993.213667,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=98",
+              "titleWords=5",
+              "factualClaims=2",
+              "matchedAnchors=trooper,wrong,driver,damaged,patrol,vehicle",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52924,
+            "cachedInputTokens": 0,
+            "outputTokens": 518,
+            "reasoningOutputTokens": 269
+          },
+          "cost": 1.4008,
+          "costUnit": "codex_credits",
+          "outputSha256": "e66f6ad263fd07da5d8f31981bee775236a7bbf5dc1bd586f54ac74191ac752b",
+          "error": null
+        },
+        {
+          "caseId": "caption-12-DXNBoz7jYmd-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "aa797c12510aa9ec01387be18e6a8f4d95cc8d21a20e1edfd9e3c9fedd156981",
+          "startedAt": "2026-07-10T20:24:44.667Z",
+          "durationMs": 15824.437458,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=90",
+              "titleWords=6",
+              "factualClaims=2",
+              "matchedAnchors=police,pursue,stolen,neighborhood,armed,officer",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52996,
+            "cachedInputTokens": 17920,
+            "outputTokens": 386,
+            "reasoningOutputTokens": 141
+          },
+          "cost": 0.9796,
+          "costUnit": "codex_credits",
+          "outputSha256": "a1c658177982964d111c2cdf6a9c499ea1155fecc454d0db8c844184eb698f30",
+          "error": null
+        },
+        {
+          "caseId": "caption-13-DXOzkCdjMue-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "c773922d6412c35c69200257fe386efde4e9d91d336c09416db28489d69903a3",
+          "startedAt": "2026-07-10T20:25:00.494Z",
+          "durationMs": 19132.445417,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=150",
+              "titleWords=8",
+              "factualClaims=1",
+              "matchedAnchors=fleeing,suspect,clings,moving,police,follow,highway",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52958,
+            "cachedInputTokens": 31232,
+            "outputTokens": 714,
+            "reasoningOutputTokens": 447
+          },
+          "cost": 0.72833,
+          "costUnit": "codex_credits",
+          "outputSha256": "12a9afb36add3ad082eea24b3ef39b5e7591a149fed27e673ac52cc66a1ca2d4",
+          "error": null
+        },
+        {
+          "caseId": "caption-14-DXUPExpjCs2-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "537b8e081faccb741836e75a384154a11756650d218bf544422499899a73441a",
+          "startedAt": "2026-07-10T20:25:19.629Z",
+          "durationMs": 14355.483375,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=104",
+              "titleWords=5",
+              "factualClaims=1",
+              "matchedAnchors=state,troopers,choking,child,breathing",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53871,
+            "cachedInputTokens": 32256,
+            "outputTokens": 434,
+            "reasoningOutputTokens": 199
+          },
+          "cost": 0.686115,
+          "costUnit": "codex_credits",
+          "outputSha256": "421e31d1362797038c6038f00fee48eeafcdd141756ddcb8e7e51c5b966298b1",
+          "error": null
+        },
+        {
+          "caseId": "caption-15-6QIdqyFoxFE-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "419d2943930d6e41d9e430540e86a4ec87562fb1a78fa8bafc69c47a04f71e20",
+          "startedAt": "2026-07-10T20:25:33.987Z",
+          "durationMs": 18769.773834,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=108",
+              "titleWords=8",
+              "factualClaims=3",
+              "matchedAnchors=fiction,rebuilt,parody,payoff",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52631,
+            "cachedInputTokens": 31232,
+            "outputTokens": 560,
+            "reasoningOutputTokens": 287
+          },
+          "cost": 0.697055,
+          "costUnit": "codex_credits",
+          "outputSha256": "faa4271902c1444aadb32defb63597cfc45cb94ebeb7cff00619f5d43bed7110",
+          "error": null
+        },
+        {
+          "caseId": "caption-16-BwIaEb5vGDo-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "6a47846884be349e57b287134c1639ca0c745c1fd654293bb1f72a10c7420c97",
+          "startedAt": "2026-07-10T20:25:52.757Z",
+          "durationMs": 18051.932666,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=109",
+              "titleWords=5",
+              "factualClaims=3",
+              "matchedAnchors=mandalorian,grogu,clean,rebuilt,fiction",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 49089,
+            "cachedInputTokens": 21248,
+            "outputTokens": 660,
+            "reasoningOutputTokens": 398
+          },
+          "cost": 0.848145,
+          "costUnit": "codex_credits",
+          "outputSha256": "822be2b5c2f040419e4c3f2d3d4ea56da599bdedb478d080e170704066415f98",
+          "error": null
+        },
+        {
+          "caseId": "caption-17-J6tw2l128YE-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "747cc6cb33a33d1c7b8bc33484048d47b3181dae89faef795de44d6ea167144a",
+          "startedAt": "2026-07-10T20:26:10.812Z",
+          "durationMs": 38603.966792,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=134",
+              "titleWords=5",
+              "factualClaims=2",
+              "matchedAnchors=harry,potter,characters,afterparty",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52493,
+            "cachedInputTokens": 22272,
+            "outputTokens": 596,
+            "reasoningOutputTokens": 336
+          },
+          "cost": 0.900605,
+          "costUnit": "codex_credits",
+          "outputSha256": "54a2f0fa333daf952fa621353154a0825b86b12dd5546c1d1bfbe8905d2c6e2b",
+          "error": null
+        },
+        {
+          "caseId": "caption-18-V-xIvJs0Jbo-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "71ae416d468c8583c757c4635962672451475034ebce62071113bddf5e6dd87b",
+          "startedAt": "2026-07-10T20:26:49.418Z",
+          "durationMs": 19002.926666,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=134",
+              "titleWords=3",
+              "factualClaims=3",
+              "matchedAnchors=harry,potter",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52448,
+            "cachedInputTokens": 31232,
+            "outputTokens": 722,
+            "reasoningOutputTokens": 447
+          },
+          "cost": 0.71678,
+          "costUnit": "codex_credits",
+          "outputSha256": "09776a6e629e8a1795a573b0c4e4e93c8881e31fc5a3025c59d4194812ff1f2a",
+          "error": null
+        },
+        {
+          "caseId": "caption-19-WkEyab1jINA-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "3ea7083e1d294d938a13fda0bc5918f36d098d5423ac1ec5c2561cd61a726172",
+          "startedAt": "2026-07-10T20:27:08.424Z",
+          "durationMs": 21397.412166,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=143",
+              "titleWords=4",
+              "factualClaims=2",
+              "matchedAnchors=generated,enters,harry",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52399,
+            "cachedInputTokens": 31232,
+            "outputTokens": 730,
+            "reasoningOutputTokens": 476
+          },
+          "cost": 0.716755,
+          "costUnit": "codex_credits",
+          "outputSha256": "b5f12be5d12eed6b7e2ee78da379cfdb5bd07119997554c8f9ed282c387ea7df",
+          "error": null
+        },
+        {
+          "caseId": "caption-20-BtDnmx6HRr_-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "5640489e19dce3222f73f194a3929a8394c9d2819f61141839f6f98b13a8cc1a",
+          "startedAt": "2026-07-10T20:27:29.824Z",
+          "durationMs": 16360.630459,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=81",
+              "titleWords=5",
+              "factualClaims=2",
+              "matchedAnchors=tiger,chase,embrace,together,close,contact",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 49440,
+            "cachedInputTokens": 30208,
+            "outputTokens": 611,
+            "reasoningOutputTokens": 365
+          },
+          "cost": 0.64797,
+          "costUnit": "codex_credits",
+          "outputSha256": "1050fe273150fcd1e68630d387cc2180c6b5b65bcdb7b936023a2e01b14136f7",
+          "error": null
+        },
+        {
+          "caseId": "caption-21-C-0YpsCAODv-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "7cecf4ccada1cef65f46e3c7e9b764b618676019883912ca63ed8f247f0e9b9a",
+          "startedAt": "2026-07-10T20:27:46.189Z",
+          "durationMs": 16747.602583,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=69",
+              "titleWords=4",
+              "factualClaims=2",
+              "matchedAnchors=chimpanzee,shoulders,camera",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52930,
+            "cachedInputTokens": 31232,
+            "outputTokens": 545,
+            "reasoningOutputTokens": 307
+          },
+          "cost": 0.70228,
+          "costUnit": "codex_credits",
+          "outputSha256": "5cf545e2cd00a78f89c34c81d981bea170ca25558428e7e0abb530d0a8e0b5ab",
+          "error": null
+        },
+        {
+          "caseId": "caption-22-C9gLu79MklN-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "0ee9abde8239c4b82606bc81d22d744495c83e537672570be24b4dd76271c1a0",
+          "startedAt": "2026-07-10T20:28:02.939Z",
+          "durationMs": 18577.423791,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=126",
+              "titleWords=3",
+              "factualClaims=1",
+              "matchedAnchors=owner,feeds,plays,diapered,spider,monkey,continuous,interaction",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52898,
+            "cachedInputTokens": 17920,
+            "outputTokens": 631,
+            "reasoningOutputTokens": 383
+          },
+          "cost": 1.0139,
+          "costUnit": "codex_credits",
+          "outputSha256": "d7ec464ce65d568ba90f48d12f5b9bf99a320fa1adca1c2bbbda2390722d6656",
+          "error": null
+        },
+        {
+          "caseId": "caption-23-CsYa4skNBjP-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "0ff971d9d00df1b115fe0b86d5656ee0b8d093be64adb1a1be63a3e2f075a094",
+          "startedAt": "2026-07-10T20:28:21.516Z",
+          "durationMs": 15016.252625,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=101",
+              "titleWords=5",
+              "factualClaims=3",
+              "matchedAnchors=bottle,holds,stays,close,drinks",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52856,
+            "cachedInputTokens": 31232,
+            "outputTokens": 457,
+            "reasoningOutputTokens": 196
+          },
+          "cost": 0.68723,
+          "costUnit": "codex_credits",
+          "outputSha256": "b74ce5956d8667f79d0103eb9f146e7e74f25b4da6a1aea3fe532a881f81e7ec",
+          "error": null
+        },
+        {
+          "caseId": "caption-24-Cw_QTMmA69_-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "314cc04ce5483f21289c0846994f8af24fbb5107560bdea10449b83faeea0dbc",
+          "startedAt": "2026-07-10T20:28:36.535Z",
+          "durationMs": 16316.660208,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=99",
+              "titleWords=4",
+              "factualClaims=3",
+              "matchedAnchors=bottle,feeds,giant,liger,strokes,close,moment",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52866,
+            "cachedInputTokens": 17920,
+            "outputTokens": 508,
+            "reasoningOutputTokens": 255
+          },
+          "cost": 0.99465,
+          "costUnit": "codex_credits",
+          "outputSha256": "1659fdf805350b0f8774b45263c5b169a36990abff1ddfad1ae60b24d571ad88",
+          "error": null
+        },
+        {
+          "caseId": "caption-25-Cxb0DmpJ7oM-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "f0e6851eecfba9a1c8fb31bfddd504bec8401c36a855a87b83ca2b4747ef407d",
+          "startedAt": "2026-07-10T20:28:52.852Z",
+          "durationMs": 16652.821,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=104",
+              "titleWords=4",
+              "factualClaims=2",
+              "matchedAnchors=holds,towel,wrapped,spider,monkey,close",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52886,
+            "cachedInputTokens": 31232,
+            "outputTokens": 502,
+            "reasoningOutputTokens": 246
+          },
+          "cost": 0.69473,
+          "costUnit": "codex_credits",
+          "outputSha256": "51e57c0e50a4197ad39316641444f617dbfced7b5486ff30f0716505e3db82b2",
+          "error": null
+        },
+        {
+          "caseId": "caption-26-DIUYX9QStl3-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "7e2d347ad6ad5a04b716bc2271596f8aaafe1d15c45ba574f3f64adfc06de22e",
+          "startedAt": "2026-07-10T20:29:09.506Z",
+          "durationMs": 14060.492084,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=78",
+              "titleWords=3",
+              "factualClaims=2",
+              "matchedAnchors=swims,hugging,chimpanzee,close,playful",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52928,
+            "cachedInputTokens": 0,
+            "outputTokens": 438,
+            "reasoningOutputTokens": 191
+          },
+          "cost": 1.3889,
+          "costUnit": "codex_credits",
+          "outputSha256": "0b26efa226bc38311b75f8be995c35144abd1daf0ed41078401408f07cf3d46e",
+          "error": null
+        },
+        {
+          "caseId": "caption-27-DKM66d2tamf-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "835feca9456fd084b2408a8749c05a27d7b601abd7624eb0ee5e385888c35352",
+          "startedAt": "2026-07-10T20:29:23.569Z",
+          "durationMs": 17830.228292,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=74",
+              "titleWords=4",
+              "factualClaims=3",
+              "matchedAnchors=young,tiger,rests,belly,licks",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52932,
+            "cachedInputTokens": 31232,
+            "outputTokens": 591,
+            "reasoningOutputTokens": 338
+          },
+          "cost": 0.70923,
+          "costUnit": "codex_credits",
+          "outputSha256": "a4a311efd24b5e73515d919fff2074f3f3186ddaea8c54ed0860d67e5e723d66",
+          "error": null
+        },
+        {
+          "caseId": "caption-28-DW5s3qoDbHC-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "0e30f3f5859dd0ec03ed49449820c4eb661c9d8a6a707dc5671a9f2d3e0b2508",
+          "startedAt": "2026-07-10T20:29:41.402Z",
+          "durationMs": 18447.792834,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=84",
+              "titleWords=4",
+              "factualClaims=1",
+              "matchedAnchors=passenger,flees,traffic,officer",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 77692,
+            "cachedInputTokens": 54528,
+            "outputTokens": 617,
+            "reasoningOutputTokens": 241
+          },
+          "cost": 0.80797,
+          "costUnit": "codex_credits",
+          "outputSha256": "98a3d66dad707a1fdf5f7ec0974c7ca5bfa9cfdc57d7e2cb82bb2f9b2f27e1a1",
+          "error": null
+        },
+        {
+          "caseId": "caption-29-DWjH5fWjBnt-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "5fa486a28a01a673302f9e9aeecceee8ccc1569c3c6fcd8d748b0ce2ed7d81b8",
+          "startedAt": "2026-07-10T20:29:59.850Z",
+          "durationMs": 17521.287541,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=134",
+              "titleWords=5",
+              "factualClaims=3",
+              "matchedAnchors=police,pickup,deploy,grappler,strap,toward,wheel",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53065,
+            "cachedInputTokens": 31232,
+            "outputTokens": 653,
+            "reasoningOutputTokens": 385
+          },
+          "cost": 0.721855,
+          "costUnit": "codex_credits",
+          "outputSha256": "c198f6cd2e1b63c94a01aedb588893c2b61573b22d9f8b18d57f3011a773aedd",
+          "error": null
+        },
+        {
+          "caseId": "caption-30-DXHx529DVb0-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "9cc6b97e0680bf22ba005ae4e944612085d57f70af44841db0a811a97e962049",
+          "startedAt": "2026-07-10T20:30:17.372Z",
+          "durationMs": 15290.081416,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "captionLength=100",
+              "titleWords=5",
+              "factualClaims=2",
+              "matchedAnchors=trooper,wrong,driver,damaged,patrol,vehicle",
+              "meta=none"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52923,
+            "cachedInputTokens": 31232,
+            "outputTokens": 454,
+            "reasoningOutputTokens": 200
+          },
+          "cost": 0.688455,
+          "costUnit": "codex_credits",
+          "outputSha256": "619ad07a6014b56ab42261c268488a39c7cb3e8521101e26af5660834b34a1e1",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 30,
+        "schemaSuccessRate": 1,
+        "qualityScore": 1,
+        "qualityPassRate": 1,
+        "p95LatencyMs": 21556.150958,
+        "meanCost": 0.876950666667,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": true,
+        "selectorBenchmark": {
+          "benchmarkVersion": "project-kings-caption-real-30-v2",
+          "routeId": "codex:gpt-5.6-luna",
+          "reasoningEffort": "medium",
+          "sampleSize": 30,
+          "qualityScore": 1,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 21556.150958,
+          "meanCost": 0.876950666667,
+          "costUnit": "codex_credits"
+        }
+      }
+    }
+  ],
+  "selection": null,
+  "selectionError": "Primary route codex:gpt-5.6-luna has no distinct benchmark-qualified fallback.",
+  "selectionRejections": [
+    {
+      "routeId": "codex:gpt-5.4",
+      "reason": "no benchmark result"
+    },
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "reason": "no benchmark result"
+    },
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "reason": "quality score is below the floor; schema success rate is below the floor"
+    }
+  ],
+  "evidenceSha256": "e339d2bef4118ded085e8597aa2afbb2dc4254e48f61803674d39bfd84255c18"
+}

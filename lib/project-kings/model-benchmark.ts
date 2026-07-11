@@ -69,6 +69,10 @@ export type ModelBenchmarkQualityEvaluation = Readonly<{
   label: string;
   score: number;
   passed: boolean;
+  // A critical failure is a safety-relevant miss (e.g. a policy false-allow).
+  // One critical failure disqualifies the whole candidate route regardless of
+  // its aggregate quality score.
+  critical?: boolean;
   evidence: readonly string[];
 }>;
 
@@ -112,6 +116,7 @@ export type ModelBenchmarkCandidateEvidence = Readonly<{
     schemaSuccessRate: number;
     qualityScore: number;
     qualityPassRate: number;
+    criticalFailureCount: number;
     p95LatencyMs: number;
     meanCost: number | null;
     costUnit: ModelCostUnit;
@@ -323,11 +328,17 @@ function validateQualityEvaluation(value: ModelBenchmarkQualityEvaluation): Mode
   if (typeof value.score !== "number" || !Number.isFinite(value.score) || value.score < 0 || value.score > 1) {
     throw new ModelBenchmarkHarnessError("quality.score must be between 0 and 1.");
   }
+  if (value.critical !== undefined && typeof value.critical !== "boolean") {
+    throw new ModelBenchmarkHarnessError("quality.critical must be boolean when present.");
+  }
+  if (value.critical === true && value.passed) {
+    throw new ModelBenchmarkHarnessError("quality.critical is only valid on a failed evaluation.");
+  }
   if (!Array.isArray(value.evidence) || value.evidence.length > 24) {
     throw new ModelBenchmarkHarnessError("quality.evidence must contain at most 24 entries.");
   }
   const evidence = value.evidence.map((entry, index) => text(entry, `quality.evidence[${index}]`, 1_000));
-  return { label, score: value.score, passed: value.passed, evidence };
+  return { label, score: value.score, passed: value.passed, critical: value.critical === true, evidence };
 }
 
 function extractOutputLabel(output: ProductionAgentOutputByRole[ProductionAgentRole]): string {
@@ -609,6 +620,9 @@ export async function runStageSpecificModelBenchmark<R extends ProductionAgentRo
       ) / sampleSize
     );
     const qualityPassRate = round(samples.filter((sample) => sample.quality?.passed).length / sampleSize);
+    const criticalFailureCount = samples.filter(
+      (sample) => sample.quality !== null && !sample.quality.passed && sample.quality.critical === true
+    ).length;
     const p95LatencyMs = calculateModelBenchmarkP95(samples.map((sample) => sample.durationMs));
     const completeUsageAndCostEvidence = samples.every((sample) => sample.usage !== null && sample.cost !== null);
     const meanCost = completeUsageAndCostEvidence
@@ -626,7 +640,8 @@ export async function runStageSpecificModelBenchmark<R extends ProductionAgentRo
             schemaSuccessRate,
             p95LatencyMs,
             meanCost,
-            costUnit: routePricing.costUnit
+            costUnit: routePricing.costUnit,
+            criticalFailureCount
           };
     if (selectorBenchmark) selectorBenchmarks.push(selectorBenchmark);
     candidateEvidence.push({
@@ -640,6 +655,7 @@ export async function runStageSpecificModelBenchmark<R extends ProductionAgentRo
         schemaSuccessRate,
         qualityScore,
         qualityPassRate,
+        criticalFailureCount,
         p95LatencyMs,
         meanCost,
         costUnit: routePricing.costUnit,
