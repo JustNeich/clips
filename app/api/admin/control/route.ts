@@ -878,8 +878,10 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
         status: 400
       });
     }
-    if (targetPerChannel !== 3) {
-      throw new Response(JSON.stringify({ error: "Project Kings pilot targetPerChannel must equal 3." }), {
+    if (targetPerChannel !== 3 && !(mode === "shadow" && targetPerChannel === 1)) {
+      throw new Response(JSON.stringify({
+        error: "Project Kings owner start supports targetPerChannel=1 only for shadow; live and simulation require 3."
+      }), {
         status: 400
       });
     }

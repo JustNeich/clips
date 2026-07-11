@@ -513,6 +513,52 @@ test("simulation start creates one idempotent 3x3 run and dispatches all nine so
   });
 });
 
+test("shadow owner contour accepts one item per channel while live remains exact 3x3", async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedPortfolio();
+    const shadow = await startPortfolioProductionRun(
+      {
+        workspaceId: seeded.workspaceId,
+        profileIds: seeded.profiles.map((profile) => profile.id),
+        logicalDate: "2026-07-10",
+        mode: "shadow",
+        targetPerChannel: 1,
+        publishPolicyId: PROJECT_KINGS_PUBLISH_POLICY_ID
+      },
+      dependencies()
+    );
+    assert.equal(shadow.run.targetPerChannel, 1);
+    assert.equal(shadow.canaryPolicy, "none");
+    assert.equal(shadow.items.length, 3);
+    assert.equal(shadow.channels.length, 3);
+    assert.ok(shadow.channels.every((channel) => channel.target === 1));
+    assert.equal(new Set(shadow.items.map((item) => item.channelId)).size, 3);
+    assert.equal(listProductionOutbox({ runId: shadow.run.id }).length, 3);
+    assert.ok(listProductionOutbox({ runId: shadow.run.id }).every(
+      (event) => event.eventKind === "source_ingest.requested"
+    ));
+
+    await assert.rejects(
+      () => startPortfolioProductionRun(
+        {
+          workspaceId: seeded.workspaceId,
+          profileIds: seeded.profiles.map((profile) => profile.id),
+          logicalDate: "2026-07-11",
+          mode: "live",
+          targetPerChannel: 1,
+          publishPolicyId: PROJECT_KINGS_PUBLISH_POLICY_ID
+        },
+        dependencies()
+      ),
+      /Live Project Kings runs require targetPerChannel=3/
+    );
+    assert.equal(
+      (getDb().prepare("SELECT COUNT(*) AS count FROM production_runs WHERE mode = 'live'").get() as { count: number }).count,
+      0
+    );
+  });
+});
+
 test("live start releases one canary per channel before the remaining six", async () => {
   await withIsolatedAppData(async () => {
     const seeded = await seedPortfolio();
@@ -595,7 +641,7 @@ test("live start rejects an active profile that has only legacy approval fields"
   });
 });
 
-test("a verified canary releases only the two remaining items for its own channel", async () => {
+test("global canary barrier blocks at 1/3 and 2/3, then releases exactly six once at unambiguous 3/3", async () => {
   await withIsolatedAppData(async () => {
     const seeded = await seedPortfolio();
     const started = await startPortfolioProductionRun(
@@ -609,50 +655,75 @@ test("a verified canary releases only the two remaining items for its own channe
       },
       dependencies()
     );
-    const selectedCanary = started.items.find((item) => item.id === started.canaryItemIds[0])!;
-    const dispatcher = createPortfolioSimulationDispatcher();
-    let now = Date.now();
-    for (let tick = 0; tick < 8; tick += 1) {
-      await dispatchPortfolioProductionOutbox({
-        owner: "single-channel-canary",
-        dispatcher: async (event) => {
-          if (event.productionItemId !== selectedCanary.id) {
-            throw new Error("hold-unselected-canary");
-          }
-          await dispatcher(event);
-        },
-        limit: 100,
-        retryDelayMs: 60 * 60_000,
-        now: new Date(now)
-      });
-      now += 10;
-      if (getProductionItem(selectedCanary.id)?.state === "public_verified") break;
-    }
-    assert.equal(getProductionItem(selectedCanary.id)?.state, "public_verified");
+    const canaryItemIds = new Set(started.canaryItemIds);
+    const canaries = started.canaryItemIds.map(
+      (itemId) => started.items.find((item) => item.id === itemId)!
+    );
+    assert.equal(canaries.length, 3);
+    const postCanaryItems = started.items.filter((item) => !canaryItemIds.has(item.id));
+    assert.equal(postCanaryItems.length, 6);
+    const releasedSourceIngests = () => listProductionOutbox({ runId: started.run.id })
+      .filter((event) =>
+        event.eventKind === "source_ingest.requested" &&
+        !canaryItemIds.has(event.productionItemId)
+      );
+    const markPublicVerified = (index: number, youtubeVideoId: string) => {
+      getDb().prepare(`UPDATE production_items
+        SET state = 'public_verified', youtube_video_id = ?, version = version + 1
+        WHERE id = ?`).run(youtubeVideoId, canaries[index]!.id);
+    };
+
+    markPublicVerified(0, "YT_CANARY_1");
+    reconcilePortfolioProductionRun({
+      runId: started.run.id,
+      leaseOwner: "global-canary-one"
+    });
+    assert.equal(releasedSourceIngests().length, 0, "1/3 canaries must release no post-canary work");
+
+    markPublicVerified(1, "YT_CANARY_2");
+    reconcilePortfolioProductionRun({
+      runId: started.run.id,
+      leaseOwner: "global-canary-two"
+    });
+    assert.equal(releasedSourceIngests().length, 0, "2/3 canaries must release no post-canary work");
+
+    markPublicVerified(2, "YT_CANARY_2");
+    reconcilePortfolioProductionRun({
+      runId: started.run.id,
+      leaseOwner: "global-canary-ambiguous"
+    });
+    assert.equal(
+      releasedSourceIngests().length,
+      0,
+      "duplicate public IDs make the 3/3 state ambiguous and must fail closed"
+    );
+
+    getDb().prepare("UPDATE production_items SET youtube_video_id = ?, version = version + 1 WHERE id = ?")
+      .run("YT_CANARY_3", canaries[2]!.id);
+    reconcilePortfolioProductionRun({
+      runId: started.run.id,
+      leaseOwner: "global-canary-three"
+    });
+    const released = releasedSourceIngests();
+    assert.equal(released.length, 6);
+    assert.equal(new Set(released.map((event) => event.productionItemId)).size, 6);
+    assert.deepEqual(
+      [...new Set(released.map((event) => event.productionItemId))].sort(),
+      postCanaryItems.map((item) => item.id).sort()
+    );
+    assert.deepEqual(
+      [...released.reduce((counts, event) => {
+        counts.set(event.channelId, (counts.get(event.channelId) ?? 0) + 1);
+        return counts;
+      }, new Map<string, number>()).values()].sort(),
+      [2, 2, 2]
+    );
 
     reconcilePortfolioProductionRun({
       runId: started.run.id,
-      leaseOwner: "release-one-channel"
+      leaseOwner: "global-canary-idempotent-restart"
     });
-    const canaryItemIds = new Set(started.canaryItemIds);
-    const releasedSourceIngests = listProductionOutbox({ runId: started.run.id })
-      .filter((event) =>
-        event.eventKind === "source_ingest.requested" &&
-        !canaryItemIds.has(event.productionItemId) &&
-        event.status === "pending"
-      );
-    assert.equal(
-      releasedSourceIngests.length,
-      2,
-      JSON.stringify(listProductionOutbox({ runId: started.run.id }).map((event) => ({
-        eventKind: event.eventKind,
-        itemId: event.productionItemId,
-        channelId: event.channelId,
-        status: event.status
-      })), null, 2)
-    );
-    assert.ok(releasedSourceIngests.every((event) => event.channelId === selectedCanary.channelId));
-    assert.equal(new Set(releasedSourceIngests.map((event) => event.productionItemId)).size, 2);
+    assert.equal(releasedSourceIngests().length, 6, "reconcile must not duplicate the six released intents");
   });
 });
 

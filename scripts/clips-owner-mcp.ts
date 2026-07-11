@@ -517,13 +517,13 @@ server.registerTool(
   {
     title: "Start a Project Kings portfolio run",
     description:
-      "Create or return the idempotent 3-channel x 3-item run. Shadow and live modes require exact profiles approved beforehand through the explicit hash-bound approval command; start never prepares or approves them.",
+      "Create or return the idempotent Project Kings run. A bounded shadow rehearsal may use one item per channel; live remains exactly three items per channel. Shadow and live require exact profiles approved beforehand; start never prepares or approves them.",
     inputSchema: z.object({
       profileIds: z.array(z.string()).length(3).optional(),
       logicalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       mode: z.enum(["simulation", "shadow", "live"]),
       canaryPolicy: z.enum(["first_item_per_channel_public_verified", "none"]).optional(),
-      targetPerChannel: z.literal(3).optional(),
+      targetPerChannel: z.union([z.literal(1), z.literal(3)]).optional(),
       publishPolicyId: z.literal("project-kings-daily-3x3-v1").optional(),
       idempotencyKey: z.string().optional()
     })

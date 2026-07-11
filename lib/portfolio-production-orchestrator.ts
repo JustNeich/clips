@@ -15,6 +15,7 @@ import {
   isChannelSourceCandidateQualified,
   listChannelSourceCandidates,
   listProductionItems,
+  listProductionOutbox,
   listProductionRunChannelAttemptedCandidateIds,
   listProductionRunChannels,
   releaseShadowSourceCandidateReservation,
@@ -130,19 +131,6 @@ function asErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function firstItemIdsByChannel(items: readonly ProductionItemRecord[]): string[] {
-  const firstByChannel = new Map<string, string>();
-  for (const item of [...items].sort(
-    (left, right) =>
-      left.channelId.localeCompare(right.channelId) ||
-      left.itemSlot - right.itemSlot ||
-      left.generation - right.generation
-  )) {
-    if (!firstByChannel.has(item.channelId)) firstByChannel.set(item.channelId, item.id);
-  }
-  return [...firstByChannel.values()];
-}
-
 function requireProfile(profileId: string, workspaceId: string): ProductionProfileRecord {
   const profile = getProductionProfile(profileId);
   if (!profile || profile.workspaceId !== workspaceId) {
@@ -157,6 +145,12 @@ function assertStartInput(input: StartPortfolioRunInput): void {
   }
   if (!Number.isInteger(input.targetPerChannel) || input.targetPerChannel < 1 || input.targetPerChannel > 3) {
     throw new Error("targetPerChannel must be an integer between 1 and 3.");
+  }
+  if (input.mode === "live" && input.targetPerChannel !== 3) {
+    throw new Error("Live Project Kings runs require targetPerChannel=3.");
+  }
+  if (input.mode === "shadow" && input.targetPerChannel !== 1 && input.targetPerChannel !== 3) {
+    throw new Error("Shadow Project Kings runs require targetPerChannel=1 or 3.");
   }
   if (input.publishPolicyId !== PROJECT_KINGS_PUBLISH_POLICY_ID) {
     throw new Error(`Unsupported publish policy: ${input.publishPolicyId}`);
@@ -202,6 +196,72 @@ export function resolveRunCanaryPolicy(run: ProductionRunRecord): ProductionCana
     return "first_item_per_channel_public_verified";
   }
   return run.mode === "live" ? "first_item_per_channel_public_verified" : "none";
+}
+
+type GlobalCanaryBarrier = Readonly<{
+  canaryItems: readonly ProductionItemRecord[];
+  postCanaryItems: readonly ProductionItemRecord[];
+}>;
+
+/**
+ * Resolve the only topology allowed to release post-canary live work.
+ * Any missing/duplicate profile, channel, slot or current item fails closed.
+ */
+function resolveGlobalCanaryBarrier(
+  run: ProductionRunRecord,
+  items: readonly ProductionItemRecord[]
+): GlobalCanaryBarrier | null {
+  if (
+    run.mode !== "live" ||
+    resolveRunCanaryPolicy(run) !== "first_item_per_channel_public_verified" ||
+    run.targetPerChannel !== 3
+  ) {
+    return null;
+  }
+  const runChannels = listProductionRunChannels(run.id);
+  if (
+    runChannels.length !== 3 ||
+    new Set(runChannels.map((channel) => channel.id)).size !== 3 ||
+    new Set(runChannels.map((channel) => channel.channelId)).size !== 3 ||
+    new Set(runChannels.map((channel) => channel.profileId)).size !== 3 ||
+    runChannels.some((channel) => channel.targetCount !== 3)
+  ) {
+    return null;
+  }
+  const sorted = [...items].sort(
+    (left, right) =>
+      left.channelId.localeCompare(right.channelId) ||
+      left.itemSlot - right.itemSlot ||
+      left.generation - right.generation
+  );
+  if (sorted.length !== 9 || sorted.some((item) => item.runId !== run.id)) return null;
+
+  const canaryItems: ProductionItemRecord[] = [];
+  const postCanaryItems: ProductionItemRecord[] = [];
+  for (const channel of runChannels) {
+    const channelItems = sorted.filter((item) => item.channelId === channel.channelId);
+    if (
+      channelItems.length !== 3 ||
+      channelItems.some((item) => item.runChannelId !== channel.id) ||
+      new Set(channelItems.map((item) => item.itemSlot)).size !== 3 ||
+      !channelItems.some((item) => item.itemSlot === 1) ||
+      !channelItems.some((item) => item.itemSlot === 2) ||
+      !channelItems.some((item) => item.itemSlot === 3)
+    ) {
+      return null;
+    }
+    canaryItems.push(channelItems.find((item) => item.itemSlot === 1)!);
+    postCanaryItems.push(...channelItems.filter((item) => item.itemSlot !== 1));
+  }
+  if (
+    canaryItems.length !== 3 ||
+    postCanaryItems.length !== 6 ||
+    new Set(canaryItems.map((item) => item.id)).size !== 3 ||
+    new Set(postCanaryItems.map((item) => item.id)).size !== 6
+  ) {
+    return null;
+  }
+  return { canaryItems, postCanaryItems };
 }
 
 export async function validatePortfolioProductionProfile(
@@ -322,9 +382,10 @@ function buildSummary(runId: string): PortfolioRunSummary {
       left.generation - right.generation
   );
   const canaryPolicy = resolveRunCanaryPolicy(run);
-  const canaryItemIds = canaryPolicy === "first_item_per_channel_public_verified"
-    ? firstItemIdsByChannel(sortedItems)
-    : [];
+  const canaryBarrier = canaryPolicy === "first_item_per_channel_public_verified"
+    ? resolveGlobalCanaryBarrier(run, sortedItems)
+    : null;
+  const canaryItemIds = canaryBarrier?.canaryItems.map((item) => item.id) ?? [];
   return {
     run,
     channels,
@@ -754,9 +815,13 @@ export async function startPortfolioProductionRun(
   const items = findOrCreateItems(run).sort(
     (left, right) => left.channelId.localeCompare(right.channelId) || left.itemSlot - right.itemSlot
   );
-  const canaryItemIds = canaryPolicy === "first_item_per_channel_public_verified"
-    ? firstItemIdsByChannel(items)
-    : [];
+  const canaryBarrier = canaryPolicy === "first_item_per_channel_public_verified"
+    ? resolveGlobalCanaryBarrier(run, items)
+    : null;
+  if (canaryPolicy === "first_item_per_channel_public_verified" && !canaryBarrier) {
+    throw new Error("Live canary release requires one exact 3x3 run across three unique approved profiles.");
+  }
+  const canaryItemIds = canaryBarrier?.canaryItems.map((item) => item.id) ?? [];
   reserveInitialSources({ run, canaryPolicy, canaryItemIds, now: startNow });
   const summary = buildSummary(run.id);
   return {
@@ -769,18 +834,31 @@ export async function startPortfolioProductionRun(
 }
 
 function releasePostCanaryItems(run: ProductionRunRecord, items: ProductionItemRecord[], now?: string): void {
-  if (run.mode !== "live" || resolveRunCanaryPolicy(run) !== "first_item_per_channel_public_verified") return;
-  const sorted = [...items].sort(
-    (left, right) => left.channelId.localeCompare(right.channelId) || left.itemSlot - right.itemSlot
-  );
-  const canaryByChannel = new Map<string, ProductionItemRecord>();
-  for (const item of sorted) {
-    if (!canaryByChannel.has(item.channelId)) canaryByChannel.set(item.channelId, item);
+  const barrier = resolveGlobalCanaryBarrier(run, items);
+  if (!barrier) return;
+  const canaryVideoIds = barrier.canaryItems
+    .map((item) => item.youtubeVideoId?.trim() || null);
+  if (
+    barrier.canaryItems.some((item) => item.state !== "public_verified") ||
+    canaryVideoIds.some((videoId) => !videoId) ||
+    new Set(canaryVideoIds).size !== 3
+  ) {
+    return;
   }
-  for (const item of sorted) {
-    const canary = canaryByChannel.get(item.channelId);
-    if (!canary || canary.state !== "public_verified" || item.id === canary.id) continue;
-    if (item.state !== "reserved" || !item.sourceCandidateId) continue;
+  const postCanaryItemIds = new Set(barrier.postCanaryItems.map((item) => item.id));
+  const existingSourceIngestItemIds = new Set(
+    listProductionOutbox({ runId: run.id })
+      .filter((event) =>
+        event.eventKind === "source_ingest.requested" &&
+        postCanaryItemIds.has(event.productionItemId)
+      )
+      .map((event) => event.productionItemId)
+  );
+  const missing = barrier.postCanaryItems.filter(
+    (item) => !existingSourceIngestItemIds.has(item.id)
+  );
+  if (missing.some((item) => item.state !== "reserved" || !item.sourceCandidateId)) return;
+  for (const item of missing) {
     try {
       appendProductionOutbox({
         workspaceId: item.workspaceId,
@@ -825,10 +903,10 @@ export function reconcilePortfolioProductionRun(input: {
     let items = listProductionItems({ runId: run.id });
     const cancellationRequested = run.status === "cancel_requested";
     const canaryPolicy = resolveRunCanaryPolicy(run);
-    const canaryItemIds =
-      canaryPolicy === "first_item_per_channel_public_verified"
-        ? firstItemIdsByChannel(items)
-        : [];
+    const canaryBarrier = canaryPolicy === "first_item_per_channel_public_verified"
+      ? resolveGlobalCanaryBarrier(run, items)
+      : null;
+    const canaryItemIds = canaryBarrier?.canaryItems.map((item) => item.id) ?? [];
     if (!cancellationRequested) {
       reserveInitialSources({ run, canaryPolicy, canaryItemIds, now: reconcileNow });
       items = listProductionItems({ runId: run.id });

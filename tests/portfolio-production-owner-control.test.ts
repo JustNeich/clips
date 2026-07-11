@@ -319,6 +319,32 @@ test("portfolio start and retry reject incomplete owner input before side effect
       mode: "unsupported"
     });
     assert.equal(start.status, 400);
+    const fakeProfileIds = ["profile-dark", "profile-light", "profile-cop"];
+    const liveTargetOne = await postOwnerControl(machine.secret, "clips_owner_start_portfolio_run", {
+      profileIds: fakeProfileIds,
+      logicalDate: "2040-01-01",
+      mode: "live",
+      targetPerChannel: 1
+    });
+    assert.equal(liveTargetOne.status, 400);
+    assert.deepEqual(await liveTargetOne.json(), {
+      error: "Project Kings owner start supports targetPerChannel=1 only for shadow; live and simulation require 3."
+    });
+    const shadowTargetTwo = await postOwnerControl(machine.secret, "clips_owner_start_portfolio_run", {
+      profileIds: fakeProfileIds,
+      logicalDate: "2040-01-01",
+      mode: "shadow",
+      targetPerChannel: 2
+    });
+    assert.equal(shadowTargetTwo.status, 400);
+    const shadowTargetOne = await postOwnerControl(machine.secret, "clips_owner_start_portfolio_run", {
+      profileIds: fakeProfileIds,
+      logicalDate: "2040-01-01",
+      mode: "shadow",
+      targetPerChannel: 1
+    });
+    assert.equal(shadowTargetOne.status, 404, await shadowTargetOne.clone().text());
+    assert.doesNotMatch(await shadowTargetOne.text(), /targetPerChannel/);
     const retry = await postOwnerControl(machine.secret, "clips_owner_retry_production_item", {
       runId: "missing"
     });
