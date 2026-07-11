@@ -32,6 +32,7 @@ export type EnqueueProductionSemanticStage3JobInput<R extends ProductionSemantic
   attemptLimit?: number | null;
   attemptGroup?: string | null;
   reuseCompleted?: boolean | null;
+  dedupeSalt?: string | null;
 }>;
 
 export type EnqueueProductionSemanticStage3JobResult<R extends ProductionSemanticJobRole> = Readonly<{
@@ -51,6 +52,10 @@ export async function enqueueProductionSemanticStage3Job<R extends ProductionSem
     throw new Error(`Role ${String(input.role)} is not covered by the production-semantic transport contract.`);
   }
   const packet = validateProductionAgentPacket(input.role, input.packet);
+  const dedupeSalt = input.dedupeSalt?.trim() || null;
+  if (dedupeSalt && !/^[a-f0-9]{32,64}$/i.test(dedupeSalt)) {
+    throw new Error("Production semantic dedupe salt must be a 32..64 character hex incident id.");
+  }
   const staged = await stageProductionSemanticInputsWithReceipt(packet.artifacts);
   try {
     const portablePacket = {
@@ -71,7 +76,7 @@ export async function enqueueProductionSemanticStage3Job<R extends ProductionSem
       kind: "production-semantic",
       executionTarget: "local",
       payloadJson: JSON.stringify(payload),
-      dedupeKey: `production-semantic:${payload.invocationKey}`,
+      dedupeKey: `production-semantic:${payload.invocationKey}${dedupeSalt ? `:retry:${dedupeSalt.toLowerCase()}` : ""}`,
       attemptLimit: input.attemptLimit,
       attemptGroup: input.attemptGroup,
       reuseCompleted: input.reuseCompleted

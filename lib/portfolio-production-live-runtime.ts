@@ -34,6 +34,7 @@ import {
   listChannelSourceCandidates,
   listProductionRunChannels,
   listPublicVerifications,
+  listQualityVerdicts,
   quarantineChannelSourceCandidate,
   recordAgentAttempt,
   recordPublicVerification,
@@ -485,6 +486,8 @@ export async function runPortfolioProductionSemanticStage3Agent<
   item: ProductionItemRecord;
   options: PortfolioLiveRuntimeOptions;
   qualityBindingSha256?: string | null;
+  reuseCompleted?: boolean;
+  jobDedupeSalt?: string | null;
   dependencies?: PortfolioProductionSemanticTransportDependencies;
 }): Promise<{
   output: ProductionAgentOutputByRole[R];
@@ -510,7 +513,8 @@ export async function runPortfolioProductionSemanticStage3Agent<
     selection: input.options.selections[input.role],
     attemptLimit: 3,
     attemptGroup: `project-kings-semantic:${input.item.runId}:${input.item.id}:${input.role}`,
-    reuseCompleted: true
+    reuseCompleted: input.reuseCompleted ?? true,
+    dedupeSalt: input.jobDedupeSalt ?? null
   });
   const completed = await waitForJob(queued.enqueue.job.id, {
     timeoutMs: SEMANTIC_JOB_TIMEOUT_MS
@@ -1079,7 +1083,13 @@ async function handleBrief(
           channel.stage2HardConstraints.bottomLengthMax,
         bannedWords: channel.stage2HardConstraints.bannedWords
       }
-    }
+    },
+    reuseCompleted: event.payload.forceFreshSemanticJob !== true,
+    jobDedupeSalt:
+      event.payload.forceFreshSemanticJob === true &&
+      typeof event.payload.ownerRetryOfOutboxId === "string"
+        ? event.payload.ownerRetryOfOutboxId
+        : null
   })).output as CaptionOutput;
   if (caption.decision !== "PASS" || caption.bannedWordsFound.length) {
     throw new Error("Caption Agent failed the text gate.");
@@ -1439,8 +1449,8 @@ async function renderPreviewAndJudge(
   const previewProbe = await probeFinalProductionMp4(previewArtifactPath);
   const previewExpectations = {
     artifactSha256: previewSha256,
-    width: 1080,
-    height: 1920,
+    width: 540,
+    height: { min: 2, max: 4096, even: true },
     durationSec: montage.targetDurationSec,
     durationToleranceSec: 0.35,
     requireAudio: true
@@ -1511,6 +1521,12 @@ async function renderPreviewAndJudge(
     finalExpectations: previewExpectations,
     vision
   });
+  const deterministicAttemptNo = listQualityVerdicts({
+    productionItemId: item.id,
+    gateType: "preview"
+  }).filter((verdict) =>
+    verdict.judgeKind === "deterministic" && verdict.artifactSha256 === previewSha256
+  ).reduce((maximum, verdict) => Math.max(maximum, verdict.attemptNo), 0) + 1;
   const visionEvidence = await writeJsonArtifact(
     item,
     `preview-vision-verdict-${visionRun.successfulAttempt.attemptNo}`,
@@ -1530,7 +1546,7 @@ async function renderPreviewAndJudge(
     gateType: "preview",
     judgeKind: "deterministic",
     verdict: qualityVerdict.deterministicPass ? "pass" : "fail",
-    attemptNo: visionRun.successfulAttempt.attemptNo,
+    attemptNo: deterministicAttemptNo,
     artifactSha256: previewSha256,
     sourceSha256: item.sourceSha256,
     previewSha256: item.previewSha256,

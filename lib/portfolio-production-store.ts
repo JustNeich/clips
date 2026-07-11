@@ -2847,6 +2847,649 @@ export function requeueProjectedRecoverableSourceFitDeadLetter(input: {
   });
 }
 
+const PROJECT_KINGS_RECOVERABLE_BRIEF_ERROR = "Caption Agent failed the text gate.";
+const PROJECT_KINGS_RECOVERABLE_PREVIEW_POLICY_ERROR =
+  "invalid_binding: Deterministic targeted_visual_revision has no compatible structured defect.";
+const PROJECT_KINGS_OWNER_REPLACEMENT_BUDGET_ERROR =
+  "Replacement budget exhausted: Unsafe source-level defect cannot pass through revision.";
+
+function reopenExactBlockedShadowIncidentRunTx(
+  db: DatabaseSync,
+  run: ProductionRunRecord,
+  input: { itemId: string; reason: string; stamp: string }
+): ProductionRunRecord {
+  if (run.status === "running") return run;
+  if (
+    run.status !== "blocked" ||
+    run.mode !== "shadow" ||
+    run.targetPerChannel !== 1 ||
+    run.lastError !== "One or more channels are blocked."
+  ) {
+    fail("invalid_transition", "Owner incident recovery cannot reopen this production run.", {
+      runId: run.id,
+      status: run.status,
+      mode: run.mode,
+      targetPerChannel: run.targetPerChannel,
+      lastError: run.lastError
+    });
+  }
+  const external = db.prepare(`SELECT id FROM production_items
+    WHERE run_id = ? AND (publication_id IS NOT NULL OR youtube_video_id IS NOT NULL OR upload_session_url IS NOT NULL)
+    LIMIT 1`).get(run.id) as Row | undefined;
+  if (external) {
+    fail("external_effect_conflict", "A blocked run with an upload/publication identity cannot be reopened.", {
+      runId: run.id,
+      productionItemId: String(external.id)
+    });
+  }
+  const result = db.prepare(`UPDATE production_runs SET
+    status = 'running', version = version + 1, last_error = NULL,
+    completed_at = NULL, updated_at = ?
+    WHERE id = ? AND version = ? AND status = 'blocked'`)
+    .run(input.stamp, run.id, run.version);
+  if (Number(result.changes) !== 1) {
+    fail("stale_version", "Blocked shadow run changed before owner incident recovery.", { runId: run.id });
+  }
+  appendEventTx(db, {
+    workspaceId: run.workspaceId,
+    runId: run.id,
+    eventType: "production.run.owner_incident_reopened",
+    fromState: "blocked",
+    toState: "running",
+    payload: { reason: input.reason },
+    createdAt: input.stamp
+  });
+  return requireRun(db, run.id);
+}
+
+/**
+ * Reopen only the exact projected caption-gate dead letter while preserving
+ * the qualified source and immutable brief intent. No render or publication
+ * boundary may have been crossed.
+ */
+export function requeueProjectedRecoverableBriefDeadLetter(input: {
+  itemId: string;
+  expectedItemVersion: number;
+  reason: string;
+  now?: string | null;
+}): {
+  item: ProductionItemRecord;
+  channel: ProductionRunChannelRecord;
+  outbox: ProductionOutboxRecord;
+} {
+  return runInTransaction((db) => {
+    const item = requireItem(db, requiredText(input.itemId, "itemId", 64));
+    if (item.version !== input.expectedItemVersion) {
+      fail("stale_version", "Production item version is stale.", {
+        expected: input.expectedItemVersion,
+        actual: item.version
+      });
+    }
+    if (item.state !== "failed") {
+      fail("invalid_transition", "Only the exact projected brief failure can be recovered in place.", {
+        itemId: item.id,
+        state: item.state
+      });
+    }
+    const stamp = input.now ?? nowIso();
+    const reason = requiredText(input.reason, "reason", 2000);
+    const run = reopenExactBlockedShadowIncidentRunTx(db, requireRun(db, item.runId), {
+      itemId: item.id,
+      reason,
+      stamp
+    });
+    const channel = requireRunChannel(db, item.runChannelId);
+    if (run.status !== "running" || channel.status !== "failed" ||
+        channel.blockerCode !== "outbox_retry_exhausted" || channel.blockerMessage !== item.lastError) {
+      fail("invalid_transition", "Run channel is not bound to the recoverable brief dead letter.", {
+        runStatus: run.status,
+        channelStatus: channel.status,
+        blockerCode: channel.blockerCode
+      });
+    }
+    if (!item.sourceCandidateId || !item.sourceSha256 || !item.chatId ||
+        item.previewSha256 || item.templateSha256 || item.settingsSha256 ||
+        item.finalArtifactSha256 || item.stage3JobId || item.publicationId ||
+        item.youtubeVideoId || item.uploadSessionUrl) {
+      fail("external_effect_conflict", "Brief recovery requires the exact pre-preview source binding.", {
+        itemId: item.id
+      });
+    }
+    const candidateRow = readRow(db, "channel_source_candidates", item.sourceCandidateId);
+    const candidate = candidateRow ? mapCandidate(candidateRow) : null;
+    if (!candidate || candidate.workspaceId !== item.workspaceId || candidate.channelId !== item.channelId ||
+        candidate.status !== "reserved" || candidate.reservedItemId !== item.id ||
+        candidate.contentSha256 !== item.sourceSha256 || !isChannelSourceCandidateQualified(candidate)) {
+      fail("source_conflict", "Brief recovery lost its exact qualified source reservation.", {
+        itemId: item.id,
+        sourceCandidateId: item.sourceCandidateId
+      });
+    }
+    if (!deriveCombinedQualityPass(db, {
+      productionItemId: item.id,
+      gateType: "source",
+      artifactSha256: item.sourceSha256,
+      sourceSha256: item.sourceSha256,
+      previewSha256: null,
+      templateSha256: null,
+      settingsSha256: null
+    })) {
+      fail("quality_gate_missing", "Brief recovery requires the existing bound source PASS.", {
+        itemId: item.id
+      });
+    }
+    const outboxRows = db.prepare(`SELECT * FROM production_outbox
+      WHERE production_item_id = ? AND event_kind = 'brief.requested'`).all(item.id) as Row[];
+    if (outboxRows.length !== 1) {
+      fail("invalid_transition", "Brief recovery requires exactly one durable brief intent.", {
+        itemId: item.id,
+        intentCount: outboxRows.length
+      });
+    }
+    const outbox = mapOutbox(outboxRows[0]!);
+    const expectedDedupeKey = buildProductionOutboxDedupeKey("brief.requested", {
+      gate: "brief",
+      sourceSha256: item.sourceSha256
+    });
+    if (outbox.dedupeKey !== expectedDedupeKey || outbox.status !== "dead" ||
+        outbox.attempts < outbox.maxAttempts || outbox.lastError !== PROJECT_KINGS_RECOVERABLE_BRIEF_ERROR ||
+        outbox.deadLetterCode !== "outbox_retry_exhausted" || !outbox.projectedAt ||
+        outbox.leaseOwner || outbox.leaseToken || outbox.leaseExpiresAt || outbox.deliveredAt) {
+      fail("invalid_transition", "Brief outbox is not the exact recoverable projected intent.", {
+        itemId: item.id,
+        outboxId: outbox.id,
+        status: outbox.status,
+        lastError: outbox.lastError
+      });
+    }
+    const itemProjectionRow = db.prepare(`SELECT * FROM production_events
+      WHERE production_item_id = ? AND event_type = 'production.item.outbox_dead_lettered'
+      ORDER BY created_at DESC, id DESC LIMIT 1`).get(item.id) as Row | undefined;
+    const itemProjection = itemProjectionRow ? mapEvent(itemProjectionRow) : null;
+    const channelProjectionRow = db.prepare(`SELECT * FROM production_events
+      WHERE run_id = ? AND channel_id = ? AND event_type = 'production.channel.outbox_dead_lettered'
+      ORDER BY created_at DESC, id DESC LIMIT 1`).get(item.runId, item.channelId) as Row | undefined;
+    const channelProjection = channelProjectionRow ? mapEvent(channelProjectionRow) : null;
+    if (!itemProjection || itemProjection.fromState !== "source_qualified" ||
+        itemProjection.toState !== "failed" || itemProjection.payload.outboxId !== outbox.id ||
+        !channelProjection || channelProjection.fromState !== "running" ||
+        channelProjection.toState !== "failed" || channelProjection.payload.outboxId !== outbox.id) {
+      fail("invalid_transition", "Brief failure projections do not match the immutable retry intent.", {
+        itemId: item.id,
+        outboxId: outbox.id
+      });
+    }
+    const itemResult = db.prepare(`UPDATE production_items SET
+      state = 'source_qualified', resume_state = NULL, version = version + 1,
+      lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
+      last_error = NULL, completed_at = NULL, updated_at = ?
+      WHERE id = ? AND version = ? AND state = 'failed'`)
+      .run(stamp, item.id, item.version);
+    const channelResult = db.prepare(`UPDATE production_run_channels SET
+      status = 'running', blocker_code = NULL, blocker_message = NULL,
+      version = version + 1, completed_at = NULL, updated_at = ?
+      WHERE id = ? AND version = ? AND status = 'failed'`)
+      .run(stamp, channel.id, channel.version);
+    if (Number(itemResult.changes) !== 1 || Number(channelResult.changes) !== 1) {
+      fail("stale_version", "Brief recovery bindings changed before commit.", { itemId: item.id });
+    }
+    const freshOutbox = appendOutboxTx(db, {
+      workspaceId: item.workspaceId,
+      runId: item.runId,
+      channelId: item.channelId,
+      productionItemId: item.id,
+      eventKind: "brief.requested",
+      dedupeKey: buildProductionOutboxDedupeKey("brief.requested", {
+        gate: "brief_owner_retry",
+        sourceSha256: item.sourceSha256,
+        predecessorOutboxId: outbox.id
+      }),
+      payload: {
+        ...outbox.payload,
+        ownerRetryOfOutboxId: outbox.id,
+        forceFreshSemanticJob: true
+      },
+      maxAttempts: 1,
+      availableAt: stamp
+    }, stamp);
+    const payload = {
+      reason,
+      predecessorOutboxId: outbox.id,
+      predecessorDedupeKey: outbox.dedupeKey,
+      outboxId: freshOutbox.id,
+      dedupeKey: freshOutbox.dedupeKey,
+      forceFreshSemanticJob: true
+    };
+    appendEventTx(db, {
+      workspaceId: item.workspaceId,
+      runId: item.runId,
+      channelId: item.channelId,
+      productionItemId: item.id,
+      eventType: "production.item.owner_brief_retry_requeued",
+      fromState: "failed",
+      toState: "source_qualified",
+      payload,
+      createdAt: stamp
+    });
+    appendEventTx(db, {
+      workspaceId: channel.workspaceId,
+      runId: channel.runId,
+      channelId: channel.channelId,
+      productionItemId: item.id,
+      eventType: "production.channel.owner_brief_retry_reopened",
+      fromState: "failed",
+      toState: "running",
+      payload,
+      createdAt: stamp
+    });
+    return {
+      item: requireItem(db, item.id),
+      channel: requireRunChannel(db, channel.id),
+      outbox: freshOutbox
+    };
+  });
+}
+
+/**
+ * Re-run QA for the one preview that was policy-blocked only because the
+ * preview renderer intentionally emitted 540px aspect-preserving media while
+ * the old gate incorrectly demanded final 1080x1920 dimensions.
+ */
+export function requeueRecoverablePreviewPolicyBlock(input: {
+  itemId: string;
+  expectedItemVersion: number;
+  reason: string;
+  now?: string | null;
+}): {
+  item: ProductionItemRecord;
+  channel: ProductionRunChannelRecord;
+  outbox: ProductionOutboxRecord;
+} {
+  return runInTransaction((db) => {
+    const item = requireItem(db, requiredText(input.itemId, "itemId", 64));
+    if (item.version !== input.expectedItemVersion) {
+      fail("stale_version", "Production item version is stale.", {
+        expected: input.expectedItemVersion,
+        actual: item.version
+      });
+    }
+    if (item.state !== "policy_blocked" || item.lastError !== PROJECT_KINGS_RECOVERABLE_PREVIEW_POLICY_ERROR) {
+      fail("invalid_transition", "Item is not the exact recoverable preview-policy block.", {
+        itemId: item.id,
+        state: item.state,
+        lastError: item.lastError
+      });
+    }
+    const stamp = input.now ?? nowIso();
+    const reason = requiredText(input.reason, "reason", 2000);
+    const run = reopenExactBlockedShadowIncidentRunTx(db, requireRun(db, item.runId), {
+      itemId: item.id,
+      reason,
+      stamp
+    });
+    const channel = requireRunChannel(db, item.runChannelId);
+    if (run.status !== "running" || !["running", "blocked"].includes(channel.status) ||
+        (channel.status === "blocked" &&
+          (channel.blockerCode !== "item_policy_blocked" || channel.blockerMessage !== item.lastError))) {
+      fail("invalid_transition", "Preview recovery requires the still-running incident run/channel.", {
+        runStatus: run.status,
+        channelStatus: channel.status,
+        blockerCode: channel.blockerCode
+      });
+    }
+    if (!item.sourceCandidateId || !item.sourceSha256 || !item.previewSha256 ||
+        !item.templateSha256 || !item.settingsSha256 || !item.chatId || !item.stage3JobId ||
+        item.finalArtifactSha256 || item.publicationId || item.youtubeVideoId || item.uploadSessionUrl) {
+      fail("external_effect_conflict", "Preview recovery requires exact pre-final bindings and no upload effect.", {
+        itemId: item.id
+      });
+    }
+    const candidateRow = readRow(db, "channel_source_candidates", item.sourceCandidateId);
+    const candidate = candidateRow ? mapCandidate(candidateRow) : null;
+    if (!candidate || candidate.status !== "reserved" || candidate.reservedItemId !== item.id ||
+        candidate.workspaceId !== item.workspaceId || candidate.channelId !== item.channelId ||
+        candidate.contentSha256 !== item.sourceSha256 || !isChannelSourceCandidateQualified(candidate)) {
+      fail("source_conflict", "Preview recovery lost its exact source reservation.", { itemId: item.id });
+    }
+    const stage3Job = db.prepare(`WITH latest_artifact AS (
+        SELECT *, ROW_NUMBER() OVER (
+          PARTITION BY job_id ORDER BY created_at DESC, id DESC
+        ) AS row_num
+        FROM stage3_job_artifacts
+      )
+      SELECT j.workspace_id, j.kind, j.status, a.file_path AS artifact_file_path
+      FROM stage3_jobs j
+      LEFT JOIN latest_artifact a ON a.job_id = j.id AND a.row_num = 1
+      WHERE j.id = ? LIMIT 1`).get(item.stage3JobId) as Row | undefined;
+    if (!stage3Job || String(stage3Job.workspace_id) !== item.workspaceId ||
+        String(stage3Job.kind) !== "preview" || String(stage3Job.status) !== "completed" ||
+        typeof stage3Job.artifact_file_path !== "string" || !stage3Job.artifact_file_path) {
+      fail("invalid_transition", "Preview recovery requires the exact completed Stage 3 preview job.", {
+        itemId: item.id,
+        stage3JobId: item.stage3JobId
+      });
+    }
+    const deterministicRow = db.prepare(`SELECT * FROM quality_verdicts
+      WHERE production_item_id = ? AND gate_type = 'preview' AND judge_kind = 'deterministic'
+        AND verdict = 'fail' AND artifact_sha256 = ?
+        AND source_sha256 IS ? AND preview_sha256 IS ?
+        AND template_sha256 IS ? AND settings_sha256 IS ?
+      ORDER BY attempt_no DESC, created_at DESC LIMIT 1`)
+      .get(item.id, item.previewSha256, item.sourceSha256, item.previewSha256,
+        item.templateSha256, item.settingsSha256) as Row | undefined;
+    const deterministicFail = deterministicRow ? mapVerdict(deterministicRow) : null;
+    const visionPass = findLatestValidQualityPrerequisite(db, {
+      productionItemId: item.id,
+      gateType: "preview",
+      judgeKind: "vision",
+      artifactSha256: item.previewSha256,
+      sourceSha256: item.sourceSha256,
+      previewSha256: item.previewSha256,
+      templateSha256: item.templateSha256,
+      settingsSha256: item.settingsSha256
+    });
+    const deterministicDefect = deterministicFail?.defects[0] as
+      | { code?: unknown; message?: unknown }
+      | undefined;
+    if (!deterministicFail || deterministicFail.defects.length !== 1 ||
+        deterministicDefect?.code !== "wrong_resolution" ||
+        typeof deterministicDefect.message !== "string" ||
+        !/^Expected 1080x1920, got 540x\d+\.$/.test(deterministicDefect.message) ||
+        !visionPass || visionPass.defects.length !== 0) {
+      fail("quality_gate_missing", "Preview recovery is not bound to the exact old-resolution FAIL and Vision PASS.", {
+        itemId: item.id
+      });
+    }
+    const previewRows = db.prepare(`SELECT * FROM production_outbox
+      WHERE production_item_id = ? AND event_kind = 'preview.requested'`).all(item.id) as Row[];
+    if (previewRows.length !== 1) {
+      fail("invalid_transition", "Preview recovery requires exactly one original preview intent.", {
+        itemId: item.id,
+        intentCount: previewRows.length
+      });
+    }
+    const outbox = mapOutbox(previewRows[0]!);
+    const captionArtifactId = typeof outbox.payload.captionArtifactId === "string"
+      ? outbox.payload.captionArtifactId : "";
+    const montageArtifactId = typeof outbox.payload.montageArtifactId === "string"
+      ? outbox.payload.montageArtifactId : "";
+    const expectedDedupeKey = buildProductionOutboxDedupeKey("preview.requested", {
+      gate: "preview",
+      sourceSha256: item.sourceSha256,
+      captionArtifactId,
+      montageArtifactId
+    });
+    if (!captionArtifactId || !montageArtifactId || outbox.dedupeKey !== expectedDedupeKey ||
+        outbox.status !== "delivered" || outbox.attempts < 1 || !outbox.deliveredAt ||
+        outbox.lastError || outbox.deadLetterCode || outbox.projectedAt ||
+        outbox.leaseOwner || outbox.leaseToken || outbox.leaseExpiresAt) {
+      fail("invalid_transition", "Original preview intent is not exact and replayable.", {
+        itemId: item.id,
+        outboxId: outbox.id,
+        status: outbox.status
+      });
+    }
+    const blockedEventRow = db.prepare(`SELECT * FROM production_events
+      WHERE production_item_id = ? AND event_type = 'production.revision_application_blocked'
+      ORDER BY created_at DESC, id DESC LIMIT 1`).get(item.id) as Row | undefined;
+    const blockedEvent = blockedEventRow ? mapEvent(blockedEventRow) : null;
+    if (!blockedEvent || blockedEvent.fromState !== "rework" || blockedEvent.toState !== "policy_blocked" ||
+        blockedEvent.payload.stage !== "decision" || blockedEvent.payload.code !== "invalid_binding" ||
+        blockedEvent.payload.message !== "Deterministic targeted_visual_revision has no compatible structured defect." ||
+        blockedEvent.payload.evidenceArtifactId !== `revision-application-rejected-${item.attempts}` ||
+        typeof blockedEvent.payload.evidenceSha256 !== "string" ||
+        !SHA256_PATTERN.test(blockedEvent.payload.evidenceSha256)) {
+      fail("invalid_transition", "Preview policy-block event is not bound to the known incident.", {
+        itemId: item.id
+      });
+    }
+    const latestItemEventRow = db.prepare(`SELECT * FROM production_events
+      WHERE production_item_id = ? ORDER BY rowid DESC LIMIT 1`).get(item.id) as Row | undefined;
+    if (!latestItemEventRow || String(latestItemEventRow.id) !== blockedEvent.id) {
+      fail("invalid_transition", "Preview policy-block event is no longer the latest item mutation.", {
+        itemId: item.id
+      });
+    }
+    const reworkEventRow = db.prepare(`SELECT * FROM production_events
+      WHERE production_item_id = ? AND event_type = 'production.preview_rework'
+      ORDER BY rowid DESC LIMIT 1`).get(item.id) as Row | undefined;
+    const reworkEvent = reworkEventRow ? mapEvent(reworkEventRow) : null;
+    const reworkDefects = Array.isArray(reworkEvent?.payload.defects)
+      ? reworkEvent.payload.defects as Array<{ code?: unknown }>
+      : [];
+    const reworkCodes = new Set(reworkDefects.map((defect) => defect.code));
+    const reworkDecision = reworkEvent?.payload.decision as { action?: unknown } | undefined;
+    if (!reworkEvent || reworkEvent.fromState !== "preview_ready" || reworkEvent.toState !== "rework" ||
+        reworkDecision?.action !== "targeted_visual_revision" ||
+        !reworkCodes.has("wrong_resolution") || !reworkCodes.has("vision_deterministic_disagreement")) {
+      fail("invalid_transition", "Preview rework decision is not the exact old-resolution incident.", {
+        itemId: item.id
+      });
+    }
+    const revisionRows = db.prepare(`SELECT * FROM production_outbox
+      WHERE production_item_id = ? AND event_kind = 'revision.requested'`).all(item.id) as Row[];
+    if (revisionRows.length !== 1) {
+      fail("invalid_transition", "Preview policy recovery requires one delivered bad revision intent.", {
+        itemId: item.id,
+        intentCount: revisionRows.length
+      });
+    }
+    const revision = mapOutbox(revisionRows[0]!);
+    const expectedRevisionDedupeKey = buildProductionOutboxDedupeKey("revision.requested", {
+      gate: "preview",
+      attemptNo: item.attempts,
+      previewSha256: item.previewSha256,
+      expectedRevisionAction: "targeted_visual_revision"
+    });
+    if (revision.status !== "delivered" || revision.payload.expectedRevisionAction !== "targeted_visual_revision" ||
+        revision.dedupeKey !== expectedRevisionDedupeKey ||
+        revision.attempts < 1 || !revision.deliveredAt || revision.lastError ||
+        revision.deadLetterCode || revision.projectedAt || revision.leaseOwner || revision.leaseToken) {
+      fail("invalid_transition", "Bad revision intent is not the exact delivered incident output.", {
+        itemId: item.id,
+        outboxId: revision.id
+      });
+    }
+    const itemResult = db.prepare(`UPDATE production_items SET
+      state = 'preview_ready', resume_state = NULL, version = version + 1,
+      lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
+      last_error = NULL, completed_at = NULL, updated_at = ?
+      WHERE id = ? AND version = ? AND state = 'policy_blocked'`)
+      .run(stamp, item.id, item.version);
+    const outboxResult = db.prepare(`UPDATE production_outbox SET
+      status = 'pending', attempts = 0, available_at = ?,
+      lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
+      last_error = NULL, dead_letter_code = NULL, projected_at = NULL,
+      delivered_at = NULL, updated_at = ?
+      WHERE id = ? AND status = 'delivered' AND delivered_at = ?`)
+      .run(stamp, stamp, outbox.id, outbox.deliveredAt);
+    if (Number(itemResult.changes) !== 1 || Number(outboxResult.changes) !== 1) {
+      fail("stale_version", "Preview recovery bindings changed before commit.", { itemId: item.id });
+    }
+    if (channel.status === "blocked") {
+      const channelResult = db.prepare(`UPDATE production_run_channels SET
+        status = 'running', blocker_code = NULL, blocker_message = NULL,
+        version = version + 1, completed_at = NULL, updated_at = ?
+        WHERE id = ? AND version = ? AND status = 'blocked'`)
+        .run(stamp, channel.id, channel.version);
+      if (Number(channelResult.changes) !== 1) {
+        fail("stale_version", "Preview recovery channel changed before commit.", { runChannelId: channel.id });
+      }
+    }
+    appendEventTx(db, {
+      workspaceId: item.workspaceId,
+      runId: item.runId,
+      channelId: item.channelId,
+      productionItemId: item.id,
+      eventType: "production.item.owner_preview_policy_retry_requeued",
+      fromState: "policy_blocked",
+      toState: "preview_ready",
+      payload: {
+        reason,
+        outboxId: outbox.id,
+        dedupeKey: outbox.dedupeKey,
+        preservedPreviewSha256: item.previewSha256,
+        preservedStage3JobId: item.stage3JobId,
+        preservedAttempts: item.attempts,
+        supersededRevisionOutboxId: revision.id
+      },
+      createdAt: stamp
+    });
+    return {
+      item: requireItem(db, item.id),
+      channel: requireRunChannel(db, channel.id),
+      outbox: mapOutbox(readRow(db, "production_outbox", outbox.id)!)
+    };
+  });
+}
+
+/**
+ * Explicit owner override for a source already quarantined at the automatic
+ * replacement ceiling. It creates one more source generation without opening
+ * any render/upload identity and keeps the new generation unable to replace
+ * itself automatically beyond the same bounded budget.
+ */
+export function createOwnerReplacementAfterQuarantineBudgetBlock(input: {
+  itemId: string;
+  expectedItemVersion: number;
+  reason: string;
+  now?: string | null;
+}): {
+  item: ProductionItemRecord;
+  replacementItem: ProductionItemRecord;
+  channel: ProductionRunChannelRecord;
+} {
+  return runInTransaction((db) => {
+    const item = requireItem(db, requiredText(input.itemId, "itemId", 64));
+    if (item.version !== input.expectedItemVersion) {
+      fail("stale_version", "Production item version is stale.", {
+        expected: input.expectedItemVersion,
+        actual: item.version
+      });
+    }
+    if (item.state !== "policy_blocked" || item.lastError !== PROJECT_KINGS_OWNER_REPLACEMENT_BUDGET_ERROR ||
+        !item.sourceCandidateId || !item.sourceSha256 || item.finalArtifactSha256 ||
+        item.publicationId || item.youtubeVideoId || item.uploadSessionUrl ||
+        item.generation < item.attemptBudget) {
+      fail("invalid_transition", "Item is not the exact quarantined-source replacement-budget block.", {
+        itemId: item.id,
+        state: item.state,
+        lastError: item.lastError
+      });
+    }
+    const stamp = input.now ?? nowIso();
+    const reason = requiredText(input.reason, "reason", 2000);
+    const run = reopenExactBlockedShadowIncidentRunTx(db, requireRun(db, item.runId), {
+      itemId: item.id,
+      reason,
+      stamp
+    });
+    const channel = requireRunChannel(db, item.runChannelId);
+    if (run.status !== "running" || !["running", "blocked"].includes(channel.status) ||
+        (channel.status === "blocked" &&
+          (channel.blockerCode !== "item_policy_blocked" || channel.blockerMessage !== item.lastError))) {
+      fail("invalid_transition", "Owner replacement requires the still-running incident run/channel.", {
+        runStatus: run.status,
+        channelStatus: channel.status,
+        blockerCode: channel.blockerCode
+      });
+    }
+    const candidateRow = readRow(db, "channel_source_candidates", item.sourceCandidateId);
+    const candidate = candidateRow ? mapCandidate(candidateRow) : null;
+    if (!candidate || candidate.status !== "quarantined" || candidate.qualificationStatus !== "quarantined" ||
+        candidate.reservedItemId || candidate.workspaceId !== item.workspaceId ||
+        candidate.channelId !== item.channelId || candidate.contentSha256 !== item.sourceSha256) {
+      fail("source_conflict", "Replacement-budget override requires the exact quarantined candidate.", {
+        itemId: item.id,
+        sourceCandidateId: item.sourceCandidateId
+      });
+    }
+    const blockEventRow = db.prepare(`SELECT * FROM production_events
+      WHERE production_item_id = ? AND event_type = 'production.replacement_budget_exhausted'
+      ORDER BY created_at DESC, id DESC LIMIT 1`).get(item.id) as Row | undefined;
+    const blockEvent = blockEventRow ? mapEvent(blockEventRow) : null;
+    if (!blockEvent || blockEvent.toState !== "policy_blocked" ||
+        blockEvent.payload.reason !== "Unsafe source-level defect cannot pass through revision." ||
+        Number(blockEvent.payload.generation) !== item.generation ||
+        Number(blockEvent.payload.attemptBudget) !== item.attemptBudget) {
+      fail("invalid_transition", "Replacement-budget event is not bound to the quarantined item.", {
+        itemId: item.id
+      });
+    }
+    const priorOverride = (db.prepare(`SELECT * FROM production_events
+      WHERE run_id = ? AND channel_id = ?
+        AND event_type = 'production.item.owner_replacement_budget_overridden'
+      ORDER BY created_at DESC, id DESC`).all(item.runId, item.channelId) as Row[])
+      .map(mapEvent)
+      .find((event) => Number(event.payload.itemSlot) === item.itemSlot);
+    if (priorOverride) {
+      fail("invalid_transition", "This logical slot already used its one owner replacement-budget override.", {
+        itemId: item.id,
+        itemSlot: item.itemSlot,
+        priorOverrideEventId: priorOverride.id
+      });
+    }
+    const competing = db.prepare(`SELECT id FROM production_items
+      WHERE run_id = ? AND channel_id = ? AND item_slot = ? AND id <> ?
+        AND state NOT IN ('replaced', 'quarantined', 'failed') LIMIT 1`)
+      .get(item.runId, item.channelId, item.itemSlot, item.id) as Row | undefined;
+    if (competing) {
+      fail("uniqueness_conflict", "Another current generation already owns this logical slot.", {
+        itemId: item.id,
+        competingItemId: String(competing.id)
+      });
+    }
+    const itemResult = db.prepare(`UPDATE production_items SET
+      state = 'quarantined', version = version + 1, last_error = ?, updated_at = ?
+      WHERE id = ? AND version = ? AND state = 'policy_blocked'`)
+      .run(PROJECT_KINGS_OWNER_REPLACEMENT_BUDGET_ERROR, stamp, item.id, item.version);
+    if (Number(itemResult.changes) !== 1) {
+      fail("stale_version", "Policy-blocked item changed before owner replacement.", { itemId: item.id });
+    }
+    const replacementItem = insertProductionItemTx(db, {
+      run,
+      runChannel: channel,
+      itemSlot: item.itemSlot,
+      generation: item.generation + 1,
+      attemptBudget: item.attemptBudget,
+      createdAt: stamp
+    });
+    if (channel.status === "blocked") {
+      const channelResult = db.prepare(`UPDATE production_run_channels SET
+        status = 'running', blocker_code = NULL, blocker_message = NULL,
+        version = version + 1, completed_at = NULL, updated_at = ?
+        WHERE id = ? AND version = ? AND status = 'blocked'`)
+        .run(stamp, channel.id, channel.version);
+      if (Number(channelResult.changes) !== 1) {
+        fail("stale_version", "Owner replacement channel changed before commit.", { runChannelId: channel.id });
+      }
+    }
+    appendEventTx(db, {
+      workspaceId: item.workspaceId,
+      runId: item.runId,
+      channelId: item.channelId,
+      productionItemId: item.id,
+      eventType: "production.item.owner_replacement_budget_overridden",
+      fromState: "policy_blocked",
+      toState: "quarantined",
+      payload: {
+        reason,
+        itemSlot: item.itemSlot,
+        quarantinedCandidateId: candidate.id,
+        replacementItemId: replacementItem.id,
+        replacementGeneration: replacementItem.generation,
+        automaticReplacementBudgetRemains: replacementItem.attemptBudget
+      },
+      createdAt: stamp
+    });
+    return {
+      item: requireItem(db, item.id),
+      replacementItem,
+      channel: requireRunChannel(db, channel.id)
+    };
+  });
+}
+
 export type ProductionOutboxDaemonFence = Readonly<{
   daemonId: string;
   daemonLeaseToken: string;

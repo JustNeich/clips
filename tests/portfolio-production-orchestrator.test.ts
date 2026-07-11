@@ -15,6 +15,7 @@ import {
   listAgentAttempts,
   listChannelSourceCandidates,
   listProductionEvents,
+  listProductionItems,
   listProductionOutbox,
   releaseShadowSourceCandidateReservation,
   transitionProductionItem,
@@ -727,6 +728,57 @@ test("global canary barrier blocks at 1/3 and 2/3, then releases exactly six onc
   });
 });
 
+test("a settled failed global canary blocks all three channels without releasing six post-canary items", async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedPortfolio();
+    const started = await startPortfolioProductionRun({
+      workspaceId: seeded.workspaceId,
+      profileIds: seeded.profiles.map((profile) => profile.id),
+      logicalDate: "2026-07-10",
+      mode: "live",
+      targetPerChannel: 3,
+      publishPolicyId: PROJECT_KINGS_PUBLISH_POLICY_ID
+    }, dependencies());
+    const canaries = started.canaryItemIds.map(
+      (itemId) => started.items.find((item) => item.id === itemId)!
+    );
+    getDb().prepare(`UPDATE production_items
+      SET state = 'public_verified', youtube_video_id = 'YT_CANARY_OK_1', version = version + 1
+      WHERE id = ?`).run(canaries[0]!.id);
+    getDb().prepare(`UPDATE production_items
+      SET state = 'public_verified', youtube_video_id = 'YT_CANARY_OK_2', version = version + 1
+      WHERE id = ?`).run(canaries[1]!.id);
+    getDb().prepare(`UPDATE production_items
+      SET state = 'failed', last_error = 'canary quality block', version = version + 1
+      WHERE id = ?`).run(canaries[2]!.id);
+
+    const settled = reconcilePortfolioProductionRun({
+      runId: started.run.id,
+      leaseOwner: "global-canary-failed"
+    });
+    assert.equal(settled.run.status, "blocked");
+    assert.ok(settled.channels.every((channel) => channel.status === "blocked"));
+    assert.ok(settled.channels.every(
+      (channel) => channel.blocker === "The global 1x3 canary barrier failed; post-canary work remains closed."
+    ));
+    const postCanaryItems = listProductionItems({
+      runId: started.run.id,
+      includeHistorical: true
+    }).filter((item) => item.itemSlot !== 1);
+    assert.equal(postCanaryItems.length, 6);
+    assert.ok(postCanaryItems.every(
+      (item) => item.state === "policy_blocked" && item.sourceCandidateId === null
+    ));
+    assert.equal(
+      listProductionOutbox({ runId: started.run.id }).filter((event) =>
+        event.eventKind === "source_ingest.requested" &&
+        !started.canaryItemIds.includes(event.productionItemId)
+      ).length,
+      0
+    );
+  });
+});
+
 test("live start rejects canaryPolicy none without the explicit post-canary flag", async () => {
   await withIsolatedAppData(async () => {
     const seeded = await seedPortfolio();
@@ -877,6 +929,39 @@ test("one blocked channel does not stop the other two channel runs", async () =>
     assert.equal(result.channels.filter((channel) => channel.status === "running").length, 2);
     assert.equal(result.items.length, 6);
     assert.equal(getPortfolioProductionRun(result.run.id).items.length, 6);
+  });
+});
+
+test("a current policy-blocked item closes its channel and run instead of deadlocking", async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedPortfolio();
+    const started = await startPortfolioProductionRun({
+      workspaceId: seeded.workspaceId,
+      profileIds: seeded.profiles.map((profile) => profile.id),
+      logicalDate: "2026-07-10",
+      mode: "shadow",
+      targetPerChannel: 1,
+      publishPolicyId: PROJECT_KINGS_PUBLISH_POLICY_ID
+    }, dependencies());
+    for (const item of started.items) {
+      transitionProductionItem({
+        itemId: item.id,
+        expectedVersion: item.version,
+        toState: "policy_blocked",
+        eventType: "test.policy_blocked",
+        patch: { lastError: "deterministic revision has no compatible defect" }
+      });
+    }
+
+    const settled = reconcilePortfolioProductionRun({
+      runId: started.run.id,
+      leaseOwner: "policy-blocked-terminalization"
+    });
+    assert.equal(settled.run.status, "blocked");
+    assert.ok(settled.channels.every((channel) => channel.status === "blocked"));
+    assert.ok(settled.channels.every(
+      (channel) => channel.blocker === "deterministic revision has no compatible defect"
+    ));
   });
 });
 

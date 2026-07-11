@@ -72,13 +72,21 @@ export type FinalMp4Probe = {
 
 export type FinalMp4Expectations = {
   artifactSha256?: string | null;
-  width: number;
-  height: number;
+  width: ProductionMp4DimensionExpectation;
+  height: ProductionMp4DimensionExpectation;
   durationSec: number;
   durationToleranceSec?: number;
   videoCodec?: string;
   requireAudio?: boolean;
 };
+
+export type ProductionMp4DimensionExpectation =
+  | number
+  | {
+      min: number;
+      max: number;
+      even?: boolean;
+    };
 
 export type ProductionVisionVerdict = {
   decision: "PASS" | "FAIL";
@@ -267,6 +275,23 @@ function pushDefect(
   defects.push({ code, severity, message, ...(frameIndexes?.length ? { frameIndexes } : {}) });
 }
 
+function matchesDimension(
+  value: number | null,
+  expectation: ProductionMp4DimensionExpectation
+): boolean {
+  if (typeof expectation === "number") return value === expectation;
+  return value !== null &&
+    Number.isInteger(value) &&
+    value >= expectation.min &&
+    value <= expectation.max &&
+    (!expectation.even || value % 2 === 0);
+}
+
+function describeDimension(expectation: ProductionMp4DimensionExpectation): string {
+  if (typeof expectation === "number") return String(expectation);
+  return `${expectation.min}..${expectation.max}${expectation.even ? " even" : ""}`;
+}
+
 export function evaluateFinalProductionMp4(
   probe: FinalMp4Probe,
   expectations: FinalMp4Expectations
@@ -293,12 +318,15 @@ export function evaluateFinalProductionMp4(
   if (probe.videoCodec !== expectedCodec) {
     pushDefect(defects, "wrong_video_codec", "critical", `Expected ${expectedCodec}, got ${probe.videoCodec ?? "unknown"}.`);
   }
-  if (probe.width !== expectations.width || probe.height !== expectations.height) {
+  if (
+    !matchesDimension(probe.width, expectations.width) ||
+    !matchesDimension(probe.height, expectations.height)
+  ) {
     pushDefect(
       defects,
       "wrong_resolution",
       "critical",
-      `Expected ${expectations.width}x${expectations.height}, got ${probe.width ?? "?"}x${probe.height ?? "?"}.`
+      `Expected ${describeDimension(expectations.width)}x${describeDimension(expectations.height)}, got ${probe.width ?? "?"}x${probe.height ?? "?"}.`
     );
   }
   const tolerance =
@@ -442,6 +470,11 @@ const UNSAFE_SOURCE_DEFECTS = new Set<ProductionDefectCode>([
   "foreign_captions"
 ]);
 
+const VISUAL_DEFECTS = new Set<ProductionDefectCode>([
+  "main_event_lost",
+  "unsafe_crop"
+]);
+
 export function decideProductionRevision(input: {
   defects: ProductionQualityDefect[];
   totalAttempts: number;
@@ -467,15 +500,21 @@ export function decideProductionRevision(input: {
     }
     return { action: "replace_source", reason: "Text repair budget exhausted." };
   }
-  if (
-    input.visualAttempts <
-    PROJECT_KINGS_PRODUCTION_QUALITY_POLICY.revisions.maximumVisualRevisions
-  ) {
-    return {
-      action: "targeted_visual_revision",
-      resumeState: "preview_ready",
-      reason: "Apply a targeted visual revision tied to the structured defect."
-    };
+  if ([...codes].some((code) => VISUAL_DEFECTS.has(code))) {
+    if (
+      input.visualAttempts <
+      PROJECT_KINGS_PRODUCTION_QUALITY_POLICY.revisions.maximumVisualRevisions
+    ) {
+      return {
+        action: "targeted_visual_revision",
+        resumeState: "preview_ready",
+        reason: "Apply a targeted visual revision tied to the structured defect."
+      };
+    }
+    return { action: "replace_source", reason: "Three targeted visual revisions failed." };
   }
-  return { action: "replace_source", reason: "Three targeted visual revisions failed." };
+  return {
+    action: "replace_source",
+    reason: "The structured defect is not compatible with a bounded text or visual revision."
+  };
 }

@@ -105,6 +105,52 @@ test("quality gate passes only when technical, hash-bound and vision checks pass
   assert.deepEqual(verdict.defects, []);
 });
 
+test("preview quality accepts the bounded 540px aspect-preserving artifact", () => {
+  const verdict = evaluateProductionQualityGate({
+    binding,
+    recordedApprovalBindingSha256: buildProductionArtifactBindingSha256(binding),
+    finalProbe: {
+      ...cleanProbe,
+      artifactSha256: "preview-sha",
+      width: 540,
+      height: 674
+    },
+    finalExpectations: {
+      artifactSha256: "preview-sha",
+      width: 540,
+      height: { min: 2, max: 4096, even: true },
+      durationSec: 30
+    },
+    vision: cleanVision
+  });
+  assert.equal(verdict.decision, "PASS");
+  assert.deepEqual(verdict.deterministicDefects, []);
+});
+
+test("preview quality rejects odd or unbounded aspect-preserving dimensions", () => {
+  for (const height of [673, 4098]) {
+    const verdict = evaluateProductionQualityGate({
+      binding,
+      recordedApprovalBindingSha256: buildProductionArtifactBindingSha256(binding),
+      finalProbe: {
+        ...cleanProbe,
+        artifactSha256: "preview-sha",
+        width: 540,
+        height
+      },
+      finalExpectations: {
+        artifactSha256: "preview-sha",
+        width: 540,
+        height: { min: 2, max: 4096, even: true },
+        durationSec: 30
+      },
+      vision: cleanVision
+    });
+    assert.equal(verdict.decision, "FAIL");
+    assert.ok(verdict.deterministicDefects.some((defect) => defect.code === "wrong_resolution"));
+  }
+});
+
 test("stale preview approval fails closed", () => {
   const verdict = evaluate({ approval: "old-binding" });
   assert.equal(verdict.decision, "FAIL");
@@ -192,6 +238,15 @@ test("revision policy is bounded and quarantines unsafe sources", () => {
       totalAttempts: 3,
       textAttempts: 0,
       visualAttempts: 3
+    }).action,
+    "replace_source"
+  );
+  assert.equal(
+    decideProductionRevision({
+      defects: [{ code: "wrong_resolution", severity: "critical", message: "technical mismatch" }],
+      totalAttempts: 0,
+      textAttempts: 0,
+      visualAttempts: 0
     }).action,
     "replace_source"
   );

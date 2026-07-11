@@ -353,6 +353,21 @@ test("semantic enqueue helper stages canonical artifacts and reuses the exact im
     assert.equal(replay.enqueue.outcome, "reused_in_flight");
     assert.equal(replay.enqueue.job.id, first.enqueue.job.id);
     assert.equal(replay.payload.payloadSha256, first.payload.payloadSha256);
+
+    const ownerRetry = await enqueueProductionSemanticStage3Job({
+      workspaceId: "w1",
+      userId: "u1",
+      role: "caption",
+      packet,
+      qualityBindingSha256: null,
+      routeManifestId: "project-kings-model-routes-v2",
+      routeManifestSha256: MANIFEST_SHA,
+      selection: selection(),
+      dedupeSalt: "a".repeat(32)
+    });
+    assert.equal(ownerRetry.enqueue.outcome, "created");
+    assert.notEqual(ownerRetry.enqueue.job.id, first.enqueue.job.id);
+    assert.match(ownerRetry.enqueue.job.dedupeKey ?? "", /:retry:a{32}$/);
   });
 });
 

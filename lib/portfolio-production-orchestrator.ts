@@ -19,11 +19,13 @@ import {
   listProductionRunChannelAttemptedCandidateIds,
   listProductionRunChannels,
   releaseShadowSourceCandidateReservation,
+  releaseChannelSourceCandidate,
   releaseProductionRunLease,
   reserveChannelSourceCandidate,
   reserveChannelSourceCandidatesAtomically,
   retryProductionOutbox,
   ackProductionOutbox,
+  transitionProductionItem,
   transitionProductionRun,
   transitionProductionRunChannel,
   ProductionStoreError,
@@ -407,6 +409,19 @@ function buildSummary(runId: string): PortfolioRunSummary {
     canaryItemId: canaryItemIds[0] ?? null,
     canaryItemIds
   };
+}
+
+function listCurrentGenerationItems(runId: string): ProductionItemRecord[] {
+  return [...listProductionItems({ runId, includeHistorical: true })]
+    .sort((left, right) => left.generation - right.generation)
+    .reduce<ProductionItemRecord[]>((current, candidate) => {
+      const index = current.findIndex((item) =>
+        item.channelId === candidate.channelId && item.itemSlot === candidate.itemSlot
+      );
+      if (index === -1) current.push(candidate);
+      else current[index] = candidate;
+      return current;
+    }, []);
 }
 
 export function getPortfolioProductionRun(runId: string): PortfolioRunSummary {
@@ -903,10 +918,53 @@ export function reconcilePortfolioProductionRun(input: {
     let items = listProductionItems({ runId: run.id });
     const cancellationRequested = run.status === "cancel_requested";
     const canaryPolicy = resolveRunCanaryPolicy(run);
+    const topologyItems = listCurrentGenerationItems(run.id);
     const canaryBarrier = canaryPolicy === "first_item_per_channel_public_verified"
-      ? resolveGlobalCanaryBarrier(run, items)
+      ? resolveGlobalCanaryBarrier(run, topologyItems)
       : null;
     const canaryItemIds = canaryBarrier?.canaryItems.map((item) => item.id) ?? [];
+    const canaryTerminalStates = new Set([
+      "public_verified",
+      "policy_blocked",
+      "failed",
+      "replaced",
+      "quarantined",
+      "canceled"
+    ]);
+    const globalCanaryFailure = Boolean(
+      canaryBarrier &&
+      canaryBarrier.canaryItems.every((item) => canaryTerminalStates.has(item.state)) &&
+      canaryBarrier.canaryItems.some((item) => item.state !== "public_verified")
+    );
+    if (globalCanaryFailure && canaryBarrier) {
+      for (const item of canaryBarrier.postCanaryItems) {
+        if (item.state === "policy_blocked") continue;
+        if (item.state !== "reserved") {
+          throw new Error(
+            `Global canary failure found started post-canary item ${item.id} in state ${item.state}.`
+          );
+        }
+        const current = item.sourceCandidateId
+          ? releaseChannelSourceCandidate({
+              candidateId: item.sourceCandidateId,
+              itemId: item.id,
+              expectedItemVersion: item.version,
+              reason: "Global canary failed before post-canary release."
+            }).item
+          : item;
+        transitionProductionItem({
+          itemId: current.id,
+          expectedVersion: current.version,
+          toState: "policy_blocked",
+          eventType: "production.item.global_canary_failed_before_release",
+          eventPayload: { canaryItemIds },
+          patch: {
+            lastError: "The global 1x3 canary barrier failed before this item was released."
+          },
+          now: reconcileNow
+        });
+      }
+    }
     if (!cancellationRequested) {
       reserveInitialSources({ run, canaryPolicy, canaryItemIds, now: reconcileNow });
       items = listProductionItems({ runId: run.id });
@@ -947,6 +1005,43 @@ export function reconcilePortfolioProductionRun(input: {
         channelItems.length === initialChannel.targetCount &&
         channelItems.every((item) => item.state === "publication_scheduled" || item.state === "public_verified");
       let channel = initialChannel;
+      if (!cancellationRequested && globalCanaryFailure) {
+        const failedCanaries = canaryBarrier!.canaryItems
+          .filter((item) => item.state !== "public_verified")
+          .map((item) => ({
+            productionItemId: item.id,
+            channelId: item.channelId,
+            state: item.state,
+            lastError: item.lastError
+          }));
+        transitionProductionRunChannel({
+          runChannelId: channel.id,
+          expectedVersion: channel.version,
+          toStatus: "blocked",
+          eventType: "production.channel.global_canary_failed",
+          eventPayload: { failedCanaries },
+          blockerCode: "global_canary_failed",
+          blockerMessage: "The global 1x3 canary barrier failed; post-canary work remains closed."
+        });
+        continue;
+      }
+      const policyBlockedItem = channelItems.find((item) => item.state === "policy_blocked");
+      if (!cancellationRequested && policyBlockedItem) {
+        transitionProductionRunChannel({
+          runChannelId: channel.id,
+          expectedVersion: channel.version,
+          toStatus: "blocked",
+          eventType: "production.channel.item_policy_blocked",
+          eventPayload: {
+            productionItemId: policyBlockedItem.id,
+            itemSlot: policyBlockedItem.itemSlot,
+            generation: policyBlockedItem.generation
+          },
+          blockerCode: "item_policy_blocked",
+          blockerMessage: policyBlockedItem.lastError ?? "A current production item is policy blocked."
+        });
+        continue;
+      }
       if (shadowApproved) {
         for (const item of channelItems) {
           if (!item.sourceCandidateId) {

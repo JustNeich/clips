@@ -104,6 +104,7 @@ import { CHANNEL_STORY_TEMPLATE_ID } from "../../../../lib/stage3-template";
 import type { Stage3RenderPlan, Stage3StateSnapshot } from "../../../../app/components/types";
 import {
   cancelProductionRun,
+  createOwnerReplacementAfterQuarantineBudgetBlock,
   createReplacementProductionItem,
   getProductionItem,
   getProductionProfile,
@@ -115,6 +116,8 @@ import {
   listPublicVerifications,
   ProductionStoreError,
   requeueProjectedRecoverableSourceFitDeadLetter,
+  requeueProjectedRecoverableBriefDeadLetter,
+  requeueRecoverablePreviewPolicyBlock,
   requeueProductionItemRevision
 } from "../../../../lib/portfolio-production-store";
 import {
@@ -1093,10 +1096,82 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
           preservedSource: true
         };
       } else {
-        retried = createReplacementProductionItem({
-          replacedItemId: item.id,
-          expectedVersion: item.version
+        const projectedBriefIntents = listProductionOutbox({
+          runId,
+          productionItemId: item.id
+        }).filter((entry) =>
+          entry.eventKind === "brief.requested" &&
+          entry.status === "dead" &&
+          Boolean(entry.projectedAt)
+        );
+        if (projectedBriefIntents.length > 1) {
+          throw new Response(JSON.stringify({
+            error: "Failed item has more than one projected brief retry intent.",
+            code: "retry_intent_ambiguous"
+          }), { status: 409 });
+        }
+        if (projectedBriefIntents.length === 1) {
+          const recovered = requeueProjectedRecoverableBriefDeadLetter({
+            itemId: item.id,
+            expectedItemVersion: item.version,
+            reason
+          });
+          retried = recovered.item;
+          retryIntent = {
+            outboxId: recovered.outbox.id,
+            dedupeKey: recovered.outbox.dedupeKey,
+            status: recovered.outbox.status,
+            requeued: true,
+            preservedSource: true
+          };
+        } else {
+          retried = createReplacementProductionItem({
+            replacedItemId: item.id,
+            expectedVersion: item.version
+          });
+        }
+      }
+    } else if (item.state === "policy_blocked") {
+      if (
+        item.lastError ===
+        "invalid_binding: Deterministic targeted_visual_revision has no compatible structured defect."
+      ) {
+        const recovered = requeueRecoverablePreviewPolicyBlock({
+          itemId: item.id,
+          expectedItemVersion: item.version,
+          reason
         });
+        retried = recovered.item;
+        retryIntent = {
+          outboxId: recovered.outbox.id,
+          dedupeKey: recovered.outbox.dedupeKey,
+          status: recovered.outbox.status,
+          requeued: true,
+          preservedSource: true,
+          preservedPreview: true
+        };
+      } else if (
+        item.lastError ===
+        "Replacement budget exhausted: Unsafe source-level defect cannot pass through revision."
+      ) {
+        const recovered = createOwnerReplacementAfterQuarantineBudgetBlock({
+          itemId: item.id,
+          expectedItemVersion: item.version,
+          reason
+        });
+        retried = recovered.replacementItem;
+        retryIntent = {
+          requeued: true,
+          ownerReplacementBudgetOverride: true,
+          replacedItemId: recovered.item.id,
+          replacementItemId: recovered.replacementItem.id,
+          replacementGeneration: recovered.replacementItem.generation
+        };
+      } else {
+        throw new Response(JSON.stringify({
+          error: "This policy-blocked item is not eligible for a bounded owner recovery.",
+          code: "invalid_transition"
+        }), { status: 409 });
       }
     } else if (item.state === "replaced" || item.state === "quarantined") {
       retried = createReplacementProductionItem({

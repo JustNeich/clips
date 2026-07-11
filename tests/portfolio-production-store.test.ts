@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 
-import { createChannel } from "../lib/chat-history";
+import { createChannel, createOrGetChatBySource } from "../lib/chat-history";
 import { getDb } from "../lib/db/client";
 import {
   ProductionStoreError,
@@ -22,6 +22,7 @@ import {
   claimProductionOutbox,
   claimProductionRunLease,
   createOrGetProductionRun,
+  createOwnerReplacementAfterQuarantineBudgetBlock,
   createProductionItem,
   createProductionProfile,
   createReplacementProductionItem,
@@ -39,6 +40,8 @@ import {
   recordAgentAttempt,
   recordPublicVerification,
   recordQualityVerdict,
+  requeueProjectedRecoverableBriefDeadLetter,
+  requeueRecoverablePreviewPolicyBlock,
   releaseChannelSourceCandidate,
   releaseProductionItemLease,
   releaseProductionRunLease,
@@ -47,6 +50,7 @@ import {
   reserveChannelSourceCandidate,
   reserveChannelSourceCandidatesAtomically,
   retryProductionOutbox,
+  quarantineChannelSourceCandidate,
   transitionChannelSourceCandidateQualification,
   transitionProductionItem,
   transitionProductionRun,
@@ -57,6 +61,7 @@ import {
   type ProductionRunRecord
 } from "../lib/portfolio-production-store";
 import { reconcilePortfolioProductionRun } from "../lib/portfolio-production-orchestrator";
+import { enqueueStage3JobWithOutcome } from "../lib/stage3-job-store";
 import { bootstrapOwner } from "../lib/team-store";
 
 const HASH = {
@@ -2008,5 +2013,413 @@ test("run cancellation requests safe work to stop but never masks an upload-star
       3
     );
     assert.equal(listProductionItems({ runId: seeded.run.id }).length, 3);
+  });
+});
+
+test("exact caption dead letter reopens the same qualified source and brief intent", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedPortfolio({ targetPerChannel: 1 });
+    getDb().prepare("UPDATE production_runs SET status = 'running' WHERE id = ?").run(seeded.run.id);
+    getDb().prepare("UPDATE production_run_channels SET status = 'running' WHERE id = ?")
+      .run(seeded.runChannels[0].id);
+    const candidate = createCandidate({
+      workspaceId: seeded.workspaceId,
+      channelId: seeded.channels[0].id,
+      suffix: "brief-recovery"
+    });
+    const chat = await createOrGetChatBySource({
+      rawUrl: candidate.sourceUrl,
+      channelIdRaw: seeded.channels[0].id,
+      title: "Brief recovery"
+    });
+    let item = createProductionItem({
+      runId: seeded.run.id,
+      runChannelId: seeded.runChannels[0].id,
+      itemSlot: 1,
+      attemptBudget: 5
+    });
+    item = reserveChannelSourceCandidate({
+      candidateId: candidate.id,
+      itemId: item.id,
+      expectedItemVersion: item.version
+    }).item;
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "source_ingested",
+      eventType: "fixture.source_ingested",
+      patch: { sourceSha256: candidate.contentSha256, chatId: chat.id }
+    });
+    recordCombinedPass(item, "source");
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "source_qualified",
+      eventType: "fixture.source_qualified",
+      outbox: {
+        eventKind: "brief.requested",
+        dedupeKey: buildProductionOutboxDedupeKey("brief.requested", {
+          gate: "brief",
+          sourceSha256: item.sourceSha256
+        }),
+        payload: { sourceSha256: item.sourceSha256 },
+        maxAttempts: 3
+      },
+      now: "2026-07-10T00:00:00.000Z"
+    });
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const now = `2026-07-10T00:00:0${attempt}.000Z`;
+      const claim = claimProductionOutbox({
+        owner: `brief-recovery-${attempt}`,
+        leaseMs: 30_000,
+        runIds: [seeded.run.id],
+        now
+      })[0]!;
+      retryProductionOutbox({
+        outboxId: claim.id,
+        leaseToken: claim.leaseToken!,
+        error: "Caption Agent failed the text gate.",
+        availableAt: now,
+        now
+      });
+    }
+    item = getProductionItem(item.id)!;
+    assert.equal(item.state, "failed");
+    const recovered = requeueProjectedRecoverableBriefDeadLetter({
+      itemId: item.id,
+      expectedItemVersion: item.version,
+      reason: "retry exact caption intent after bounded incident review"
+    });
+    assert.equal(recovered.item.id, item.id);
+    assert.equal(recovered.item.state, "source_qualified");
+    assert.equal(recovered.item.sourceCandidateId, candidate.id);
+    assert.equal(recovered.channel.status, "running");
+    assert.equal(recovered.outbox.status, "pending");
+    assert.equal(recovered.outbox.attempts, 0);
+  });
+});
+
+test("exact preview policy incident reuses the same completed preview without reopening publication", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedPortfolio({ targetPerChannel: 1 });
+    getDb().prepare("UPDATE production_runs SET status = 'running' WHERE id = ?").run(seeded.run.id);
+    getDb().prepare("UPDATE production_run_channels SET status = 'running' WHERE id = ?")
+      .run(seeded.runChannels[0].id);
+    const candidate = createCandidate({
+      workspaceId: seeded.workspaceId,
+      channelId: seeded.channels[0].id,
+      suffix: "preview-policy-recovery"
+    });
+    const chat = await createOrGetChatBySource({
+      rawUrl: candidate.sourceUrl,
+      channelIdRaw: seeded.channels[0].id,
+      title: "Preview policy recovery"
+    });
+    let item = createProductionItem({
+      runId: seeded.run.id,
+      runChannelId: seeded.runChannels[0].id,
+      itemSlot: 1,
+      attemptBudget: 5
+    });
+    item = reserveChannelSourceCandidate({
+      candidateId: candidate.id,
+      itemId: item.id,
+      expectedItemVersion: item.version
+    }).item;
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "source_ingested",
+      eventType: "fixture.source_ingested",
+      patch: { sourceSha256: candidate.contentSha256, chatId: chat.id }
+    });
+    recordCombinedPass(item, "source");
+    const previewJob = enqueueStage3JobWithOutcome({
+      workspaceId: seeded.workspaceId,
+      userId: seeded.userId,
+      kind: "preview",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({ fixture: "preview-policy-recovery" }),
+      dedupeKey: "preview-policy-recovery-job"
+    }).job;
+    getDb().prepare(`UPDATE stage3_jobs SET status = 'completed', completed_at = ?
+      WHERE id = ?`).run(new Date().toISOString(), previewJob.id);
+    getDb().prepare(`INSERT INTO stage3_job_artifacts
+      (id, job_id, kind, file_name, mime_type, file_path, size_bytes, created_at)
+      VALUES (?, ?, 'video', 'preview.mp4', 'video/mp4', ?, 1, ?)`)
+      .run("preview-policy-recovery-artifact", previewJob.id,
+        "/quality-tests/preview-policy-recovery.mp4", new Date().toISOString());
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "source_qualified",
+      eventType: "fixture.source_qualified"
+    });
+    const previewDedupeKey = buildProductionOutboxDedupeKey("preview.requested", {
+      gate: "preview",
+      sourceSha256: item.sourceSha256,
+      captionArtifactId: "caption-brief",
+      montageArtifactId: "montage-plan"
+    });
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "brief_ready",
+      eventType: "fixture.brief_ready",
+      outbox: {
+        eventKind: "preview.requested",
+        dedupeKey: previewDedupeKey,
+        payload: { captionArtifactId: "caption-brief", montageArtifactId: "montage-plan" },
+        maxAttempts: 5
+      }
+    });
+    const previewClaim = claimProductionOutbox({
+      owner: "preview-policy-original",
+      leaseMs: 30_000,
+      runIds: [seeded.run.id]
+    })[0]!;
+    ackProductionOutbox({ outboxId: previewClaim.id, leaseToken: previewClaim.leaseToken! });
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "preview_ready",
+      eventType: "fixture.preview_ready",
+      patch: {
+        previewSha256: HASH.preview,
+        templateSha256: HASH.template,
+        settingsSha256: HASH.settings,
+        stage3JobId: previewJob.id
+      }
+    });
+    const previewBindingSha256 = calculateQualityVerdictBindingSha256({
+      gateType: "preview",
+      artifactSha256: item.previewSha256!,
+      sourceSha256: item.sourceSha256,
+      previewSha256: item.previewSha256,
+      templateSha256: item.templateSha256,
+      settingsSha256: item.settingsSha256
+    });
+    const visionAttempt = recordAgentAttempt({
+      workspaceId: item.workspaceId,
+      runId: item.runId,
+      productionItemId: item.id,
+      role: "vision_qa",
+      attemptNo: 1,
+      model: "quality-test-model",
+      reasoningLevel: "none",
+      promptHash: sha("preview-policy-vision-prompt"),
+      qualityBindingSha256: previewBindingSha256,
+      outputHash: sha("preview-policy-vision-output"),
+      status: "passed",
+      verdict: "pass",
+      startedAt: "2026-07-10T00:00:00.000Z",
+      finishedAt: "2026-07-10T00:00:00.001Z"
+    });
+    const previewVerdictBase = {
+      workspaceId: item.workspaceId,
+      runId: item.runId,
+      productionItemId: item.id,
+      gateType: "preview" as const,
+      attemptNo: 1,
+      artifactSha256: item.previewSha256!,
+      sourceSha256: item.sourceSha256,
+      previewSha256: item.previewSha256,
+      templateSha256: item.templateSha256,
+      settingsSha256: item.settingsSha256
+    };
+    recordQualityVerdict({
+      ...previewVerdictBase,
+      judgeKind: "deterministic",
+      verdict: "fail",
+      evidenceSha256: sha("preview-policy-old-probe"),
+      evidenceArtifactPath: "/quality-tests/preview-policy-old-probe.json",
+      defects: [{
+        code: "wrong_resolution",
+        severity: "critical",
+        message: "Expected 1080x1920, got 540x674."
+      }]
+    });
+    recordQualityVerdict({
+      ...previewVerdictBase,
+      judgeKind: "vision",
+      verdict: "pass",
+      agentAttemptId: visionAttempt.id,
+      evidenceSha256: sha("preview-policy-vision-pass"),
+      evidenceArtifactPath: "/quality-tests/preview-policy-vision-pass.json",
+      defects: []
+    });
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "rework",
+      resumeState: "preview_ready",
+      eventType: "production.preview_rework",
+      eventPayload: {
+        defects: [
+          { code: "wrong_resolution", severity: "critical", message: "Expected final dimensions." },
+          { code: "vision_deterministic_disagreement", severity: "critical", message: "Fail closed." }
+        ],
+        decision: { action: "targeted_visual_revision" }
+      },
+      patch: { incrementAttempts: true },
+      outbox: {
+        eventKind: "revision.requested",
+        dedupeKey: buildProductionOutboxDedupeKey("revision.requested", {
+          gate: "preview",
+          attemptNo: 1,
+          previewSha256: item.previewSha256,
+          expectedRevisionAction: "targeted_visual_revision"
+        }),
+        payload: {
+          defects: [{ code: "wrong_resolution", severity: "critical", message: "Expected final dimensions." }],
+          expectedRevisionAction: "targeted_visual_revision"
+        },
+        maxAttempts: 3
+      }
+    });
+    const revisionClaim = claimProductionOutbox({
+      owner: "preview-policy-bad-revision",
+      leaseMs: 30_000,
+      runIds: [seeded.run.id]
+    })[0]!;
+    ackProductionOutbox({ outboxId: revisionClaim.id, leaseToken: revisionClaim.leaseToken! });
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "policy_blocked",
+      eventType: "production.revision_application_blocked",
+      eventPayload: {
+        stage: "decision",
+        code: "invalid_binding",
+        message: "Deterministic targeted_visual_revision has no compatible structured defect.",
+        evidenceArtifactId: "revision-application-rejected-1",
+        evidenceSha256: sha("preview-policy-rejection")
+      },
+      patch: {
+        lastError: "invalid_binding: Deterministic targeted_visual_revision has no compatible structured defect."
+      }
+    });
+    getDb().prepare(`UPDATE production_run_channels SET
+      status = 'blocked', blocker_code = 'item_policy_blocked', blocker_message = ?, completed_at = ?
+      WHERE id = ?`).run(item.lastError, new Date().toISOString(), item.runChannelId);
+    getDb().prepare(`UPDATE production_runs SET
+      status = 'blocked', mode = 'shadow', last_error = 'One or more channels are blocked.', completed_at = ?
+      WHERE id = ?`).run(new Date().toISOString(), item.runId);
+    const recovered = requeueRecoverablePreviewPolicyBlock({
+      itemId: item.id,
+      expectedItemVersion: item.version,
+      reason: "retry same preview after preview-specific dimensions were deployed"
+    });
+    assert.equal(recovered.item.id, item.id);
+    assert.equal(recovered.item.state, "preview_ready");
+    assert.equal(recovered.item.attempts, 1);
+    assert.equal(recovered.item.previewSha256, HASH.preview);
+    assert.equal(recovered.item.stage3JobId, previewJob.id);
+    assert.equal(recovered.item.finalArtifactSha256, null);
+    assert.equal(recovered.item.publicationId, null);
+    assert.equal(recovered.outbox.id, previewClaim.id);
+    assert.equal(recovered.outbox.status, "pending");
+    assert.equal(getProductionRun(item.runId)?.status, "running");
+    assert.equal(recovered.channel.status, "running");
+  });
+});
+
+test("owner quarantine-budget override creates one audited generation without upload identity", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedPortfolio({ targetPerChannel: 1 });
+    getDb().prepare("UPDATE production_runs SET status = 'running' WHERE id = ?").run(seeded.run.id);
+    getDb().prepare("UPDATE production_run_channels SET status = 'running' WHERE id = ?")
+      .run(seeded.runChannels[0].id);
+    const candidate = createCandidate({
+      workspaceId: seeded.workspaceId,
+      channelId: seeded.channels[0].id,
+      suffix: "quarantine-budget-override"
+    });
+    const chat = await createOrGetChatBySource({
+      rawUrl: candidate.sourceUrl,
+      channelIdRaw: seeded.channels[0].id,
+      title: "Quarantine budget override"
+    });
+    let item = createProductionItem({
+      runId: seeded.run.id,
+      runChannelId: seeded.runChannels[0].id,
+      itemSlot: 1,
+      attemptBudget: 1
+    });
+    item = reserveChannelSourceCandidate({
+      candidateId: candidate.id,
+      itemId: item.id,
+      expectedItemVersion: item.version
+    }).item;
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "source_ingested",
+      eventType: "fixture.source_ingested",
+      patch: { sourceSha256: candidate.contentSha256, chatId: chat.id }
+    });
+    recordCombinedPass(item, "source");
+    const previewJob = enqueueStage3JobWithOutcome({
+      workspaceId: seeded.workspaceId,
+      userId: seeded.userId,
+      kind: "preview",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({ fixture: "quarantine-budget-override" }),
+      dedupeKey: "quarantine-budget-override-job"
+    }).job;
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "source_qualified",
+      eventType: "fixture.source_qualified"
+    });
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "brief_ready",
+      eventType: "fixture.brief_ready"
+    });
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "preview_ready",
+      eventType: "fixture.preview_ready",
+      patch: {
+        previewSha256: HASH.preview,
+        templateSha256: HASH.template,
+        settingsSha256: HASH.settings,
+        stage3JobId: previewJob.id
+      }
+    });
+    quarantineChannelSourceCandidate({
+      candidateId: candidate.id,
+      reason: "Unsafe source-level defect cannot pass through revision."
+    });
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "policy_blocked",
+      eventType: "production.replacement_budget_exhausted",
+      eventPayload: {
+        reason: "Unsafe source-level defect cannot pass through revision.",
+        generation: item.generation,
+        attemptBudget: item.attemptBudget
+      },
+      patch: {
+        lastError: "Replacement budget exhausted: Unsafe source-level defect cannot pass through revision."
+      }
+    });
+    const recovered = createOwnerReplacementAfterQuarantineBudgetBlock({
+      itemId: item.id,
+      expectedItemVersion: item.version,
+      reason: "owner-authorized next exact source after bounded shadow rejection"
+    });
+    assert.equal(recovered.item.state, "quarantined");
+    assert.equal(recovered.replacementItem.generation, 2);
+    assert.equal(recovered.replacementItem.attemptBudget, 1);
+    assert.equal(recovered.replacementItem.state, "reserved");
+    assert.equal(recovered.replacementItem.publicationId, null);
+    assert.equal(recovered.channel.status, "running");
+    assert.equal(listProductionItems({ runId: seeded.run.id, includeHistorical: true }).length, 2);
   });
 });
