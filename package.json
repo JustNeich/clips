@@ -35,6 +35,7 @@
     "project-kings:source-buffer-refiller:legacy-frozen": "node scripts/run-project-kings-source-buffer-refiller.mjs tick",
     "project-kings:source-buffer:sync": "node scripts/sync-project-kings-source-buffer.mjs",
     "project-kings:source-buffer:audit": "node --import tsx scripts/audit-project-kings-source-buffer.mts",
+    "project-kings:source-policy:replay": "node --import tsx scripts/replay-project-kings-source-policy-benchmark.mts",
     "project-kings:source-fit:attest": "node --import tsx scripts/run-project-kings-source-fit-attestations.mts",
     "project-kings:instagram:discover": "node --import tsx scripts/discover-project-kings-instagram-donors.ts",
     "project-kings:models:benchmark": "node --import tsx scripts/run-project-kings-model-benchmarks.ts",

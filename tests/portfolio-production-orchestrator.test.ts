@@ -57,7 +57,7 @@ import {
   PROJECT_KINGS_PILOT_PROFILES,
   type ProjectKingsPilotProfileKey
 } from "../lib/project-kings/pilot-production-profiles";
-import { calculateProductionProfileHash } from "../lib/project-kings/pilot-profile-store";
+import { buildProjectKingsPilotProfileSnapshot } from "../lib/project-kings/pilot-profile-store";
 import { bootstrapOwner } from "../lib/team-store";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
@@ -93,7 +93,6 @@ function productionReadySourceEvidence(input: {
   eventFingerprint: string;
   policyApproval: ProjectKingsSourcePolicyApproval;
 }) {
-  const profile = PROJECT_KINGS_PILOT_PROFILES[input.profileKey];
   const donorUsername = input.profileKey === "dark-joy-boy"
     ? "kodyantle"
     : input.profileKey === "light-kingdom"
@@ -177,7 +176,7 @@ function productionReadySourceEvidence(input: {
       profileKey: input.profileKey,
       sourceUrl: canonicalUrl,
       contentSha256: input.contentSha256,
-      profileHash: calculateProductionProfileHash(profile),
+      profileHash: buildProjectKingsPilotProfileSnapshot(input.profileKey).profileHash,
       liveInventorySha256,
       agentAttemptId: `source-fit-${input.candidateId}`,
       model: "test:deterministic",

@@ -12,7 +12,7 @@ import {
   PROJECT_KINGS_PILOT_PROFILES,
   type ProjectKingsPilotProfileKey
 } from "./pilot-production-profiles";
-import { calculateProductionProfileHash } from "./pilot-profile-store";
+import { buildProjectKingsPilotProfileSnapshot } from "./pilot-profile-store";
 import {
   PROJECT_KINGS_PROFILE_MEDIA_OVERRIDES,
   PROJECT_KINGS_PILOT_CANDIDATE_OBSERVATIONS,
@@ -458,6 +458,15 @@ export function verifyProjectKingsSourceQualificationEvidence(
     "sourcePolicy.policyVerdict.verdictSha256"
   );
   validateSha(evidence.evidenceSha256, "evidenceSha256");
+  const frozenProfile = buildProjectKingsPilotProfileSnapshot(evidence.profileKey);
+  if (
+    evidence.profileId !== frozenProfile.channelProfile.profileId ||
+    evidence.profileVersion !== frozenProfile.channelProfile.profileVersion ||
+    evidence.profileHash !== frozenProfile.profileHash ||
+    evidence.conceptId !== frozenProfile.channelProfile.concept.conceptId
+  ) {
+    throw new Error("Source qualification evidence is not bound to the active full production profile snapshot.");
+  }
   if (
     evidence.sourcePolicy.discoveryState !== "frozen_catalog" ||
     evidence.sourcePolicy.policyVersion !== PROJECT_KINGS_SOURCE_POLICY_VERSION ||
@@ -641,7 +650,7 @@ export function buildProjectKingsSourceQualificationEvidence(input: {
   } else {
     try {
       const profile = PROJECT_KINGS_PILOT_PROFILES[input.profileKey];
-      const profileHash = calculateProductionProfileHash(profile);
+      const profileHash = buildProjectKingsPilotProfileSnapshot(input.profileKey).profileHash;
       const canonicalUrl = canonicalizeProjectKingsSourceUrl(input.sourceUrl);
       const mediaHash = input.media.selected?.contentSha256 ?? "";
       validateSha(attestation.contentSha256, "attestation.contentSha256");
@@ -700,7 +709,7 @@ export function buildProjectKingsSourceQualificationEvidence(input: {
     profileKey: input.profileKey,
     profileId: profile.profileId,
     profileVersion: profile.profileVersion,
-    profileHash: calculateProductionProfileHash(profile),
+    profileHash: buildProjectKingsPilotProfileSnapshot(input.profileKey).profileHash,
     conceptId: profile.concept.conceptId,
     sourceUrl: input.sourceUrl,
     canonicalUrl: canonicalizeProjectKingsSourceUrl(input.sourceUrl),
@@ -1234,7 +1243,7 @@ export async function auditProjectKingsSourceBufferReadiness(
       profileKey,
       profileId: profile.profileId,
       youtubeChannelId: profile.youtube.channelId,
-      profileHash: calculateProductionProfileHash(profile),
+      profileHash: buildProjectKingsPilotProfileSnapshot(profileKey).profileHash,
       conceptId: profile.concept.conceptId,
       targetQualified: PROJECT_KINGS_READY_BUFFER_TARGET,
       unusedCandidateCount: candidates.length,

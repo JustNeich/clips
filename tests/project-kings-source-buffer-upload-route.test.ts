@@ -22,7 +22,7 @@ import {
   DARK_JOY_BOY_PROJECT_KINGS_PROFILE,
   PROJECT_KINGS_PILOT_PROFILES
 } from "../lib/project-kings/pilot-production-profiles";
-import { calculateProductionProfileHash } from "../lib/project-kings/pilot-profile-store";
+import { buildProjectKingsPilotProfileSnapshot } from "../lib/project-kings/pilot-profile-store";
 import {
   createProjectKingsSensitiveContentAssessment,
   createProjectKingsSourceDesignationEvidence,
@@ -176,7 +176,7 @@ test("machine-scoped upload admits only the exact decoded bytes and is idempoten
         profileKey: "dark-joy-boy",
         sourceUrl,
         contentSha256: media.contentSha256,
-        profileHash: calculateProductionProfileHash(DARK_JOY_BOY_PROJECT_KINGS_PROFILE),
+        profileHash: buildProjectKingsPilotProfileSnapshot("dark-joy-boy").profileHash,
         liveInventorySha256,
         agentAttemptId: "source-fit-upload-route-fixture",
         model: "gpt-test",

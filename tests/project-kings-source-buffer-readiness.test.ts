@@ -18,8 +18,7 @@ import {
   type ProjectKingsLivePublicationInventory,
   type ProjectKingsSourceMediaInspection
 } from "../lib/project-kings/source-buffer-readiness";
-import { LIGHT_KINGDOM_PROJECT_KINGS_PROFILE } from "../lib/project-kings/pilot-production-profiles";
-import { calculateProductionProfileHash } from "../lib/project-kings/pilot-profile-store";
+import { buildProjectKingsPilotProfileSnapshot } from "../lib/project-kings/pilot-profile-store";
 import type { ProjectKingsPilotCandidateObservation } from "../lib/project-kings/pilot-source-candidate-catalog";
 import {
   createProjectKingsSensitiveContentAssessment,
@@ -195,7 +194,7 @@ test("qualification is hash-bound and cannot PASS from a URL or a non-empty note
     profileKey: "light-kingdom" as const,
     sourceUrl,
     contentSha256,
-    profileHash: calculateProductionProfileHash(LIGHT_KINGDOM_PROJECT_KINGS_PROFILE),
+    profileHash: buildProjectKingsPilotProfileSnapshot("light-kingdom").profileHash,
     liveInventorySha256,
     agentAttemptId: "attempt-source-fit-1",
     model: "codex:gpt-test",

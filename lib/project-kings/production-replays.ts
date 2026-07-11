@@ -82,7 +82,7 @@ import {
   PROJECT_KINGS_MODEL_ROUTE_MANIFEST_ID,
   PROJECT_KINGS_MODEL_ROUTE_MANIFEST_SHA256,
   PROJECT_KINGS_QUALITY_POLICY_ID,
-  calculateProductionProfileHash
+  buildProjectKingsPilotProfileSnapshot
 } from "./pilot-profile-store";
 
 export type ProjectKingsReplayAssertion = {
@@ -173,7 +173,6 @@ function replayQualifiedSourceEvidence(input: {
   eventFingerprint: string;
   policyApproval: ProjectKingsSourcePolicyApproval;
 }) {
-  const profile = PROJECT_KINGS_PILOT_PROFILES[input.profileKey];
   const donorUsername = input.profileKey === "dark-joy-boy"
     ? "kodyantle"
     : input.profileKey === "light-kingdom"
@@ -265,7 +264,7 @@ function replayQualifiedSourceEvidence(input: {
       profileKey: input.profileKey,
       sourceUrl: canonicalUrl,
       contentSha256: input.contentSha256,
-      profileHash: calculateProductionProfileHash(profile),
+      profileHash: buildProjectKingsPilotProfileSnapshot(input.profileKey).profileHash,
       liveInventorySha256,
       agentAttemptId: `replay-source-fit-${input.candidateId}`,
       model: "replay:deterministic",
@@ -383,7 +382,7 @@ function seedReplayPortfolio(scenarioId: ReplayScenarioId): {
       .run(profile.profileId, workspaceId, userId, profile.youtube.titleAdvisory, key,
         TEMPLATE_ID_BY_PROFILE[key], FIXED_APPROVED_AT, FIXED_APPROVED_AT);
     const profileId = `replay-profile-${key}-v1`;
-    const profileHash = calculateProductionProfileHash(profile);
+    const profileHash = buildProjectKingsPilotProfileSnapshot(key).profileHash;
     db.prepare(`INSERT INTO production_profiles
       (id, workspace_id, channel_id, version, status, profile_hash, expected_youtube_channel_id,
        expected_destination_title, template_id, template_snapshot_sha256, publish_policy_id,

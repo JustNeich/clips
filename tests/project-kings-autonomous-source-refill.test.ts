@@ -29,7 +29,7 @@ import {
   PROJECT_KINGS_PILOT_PROFILES,
   type ProjectKingsPilotProfileKey
 } from "../lib/project-kings/pilot-production-profiles";
-import { calculateProductionProfileHash } from "../lib/project-kings/pilot-profile-store";
+import { buildProjectKingsPilotProfileSnapshot } from "../lib/project-kings/pilot-profile-store";
 import { runProjectKingsSourceFitAssessment } from "../lib/project-kings/source-fit-assessment-runner";
 import type {
   ProductionAgentAttemptTelemetry,
@@ -355,9 +355,9 @@ async function runFixture(input: {
             profileKey: candidateValue.profileKey,
             sourceUrl: candidateValue.sourceUrl,
             contentSha256: extractedValue.media.contentSha256,
-            profileHash: calculateProductionProfileHash(
-              PROJECT_KINGS_PILOT_PROFILES[candidateValue.profileKey]
-            ),
+            profileHash: buildProjectKingsPilotProfileSnapshot(
+              candidateValue.profileKey
+            ).profileHash,
             liveInventorySha256,
             agentAttemptId: `attempt-${candidateValue.candidateId}`,
             model: "test-model",

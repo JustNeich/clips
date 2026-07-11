@@ -18,7 +18,7 @@ import {
   PROJECT_KINGS_PILOT_PROFILES,
   type ProjectKingsPilotProfileKey
 } from "./pilot-production-profiles";
-import { calculateProductionProfileHash } from "./pilot-profile-store";
+import { buildProjectKingsPilotProfileSnapshot } from "./pilot-profile-store";
 import type {
   ProjectKingsSourceFitAttestation,
   ProjectKingsSourceMediaInspection
@@ -264,7 +264,7 @@ export async function runProjectKingsSourceFitAssessment(
       profileKey: input.profileKey,
       sourceUrl: input.sourceUrl,
       contentSha256: input.media.contentSha256,
-      profileHash: calculateProductionProfileHash(profile),
+      profileHash: buildProjectKingsPilotProfileSnapshot(input.profileKey).profileHash,
       liveInventorySha256: input.liveInventorySha256,
       agentAttemptId: `source-fit-${sha256(
         `${successfulAttempt.promptSha256}:${successfulAttempt.outputSha256}`
