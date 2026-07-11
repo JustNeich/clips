@@ -792,6 +792,55 @@ test("local media adapter fully decodes MP4 and creates exact OCR/ASR/key-frame 
   }
 });
 
+test("local media adapter records no recoverable text when Whisper succeeds without a transcript", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "autonomous-source-silent-media-"));
+  try {
+    const mediaPath = path.join(root, ".data/project-kings/source-refill/request/silent.mp4");
+    await mkdir(path.dirname(mediaPath), { recursive: true });
+    await execFileAsync("ffmpeg", [
+      "-nostdin", "-v", "error",
+      "-f", "lavfi", "-i", "color=c=black:s=320x568:d=1",
+      "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+      "-movflags", "+faststart", "-y", mediaPath
+    ], { timeout: 60_000 });
+    const adapter = createProjectKingsLocalMediaEvidenceProvider({
+      repoRoot: root,
+      runCommand: async ({ command, args }) => {
+        if (command === "ffmpeg") {
+          const framePath = args.at(-1)!;
+          await writeFile(framePath, Buffer.from(`frame:${framePath}`));
+          return { stdout: "", stderr: "" };
+        }
+        if (command === "tesseract") {
+          return { stdout: "", stderr: "" };
+        }
+        if (command === "whisper") {
+          const outputRoot = args[args.indexOf("--output_dir") + 1]!;
+          await mkdir(outputRoot, { recursive: true });
+          return { stdout: "", stderr: "" };
+        }
+        throw new Error(`Unexpected command ${command}`);
+      }
+    });
+    const candidateValue = candidate("copscopes-x2e", 1);
+    const result = await adapter.extract({
+      requestId: "request-silent-media",
+      candidate: candidateValue,
+      downloaded: {
+        candidateId: candidateValue.candidateId,
+        sourceUrl: candidateValue.sourceUrl,
+        mediaPath,
+        acquisitionPath: "public_ephemeral",
+        acquisitionEvidenceSha256: sha256("download")
+      }
+    });
+    assert.equal(await readFile(result.asr.filePath, "utf8"), "No recoverable text.\n");
+    assert.match(result.extractionEvidenceSha256, /^[a-f0-9]{64}$/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("Source Fit runner binds exact concept/media/OCR/ASR artifacts to the benchmarked selection", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "autonomous-source-fit-runner-"));
   try {

@@ -514,7 +514,10 @@ export function createProjectKingsLocalMediaEvidenceProvider(input: {
           whisperRoot,
           `${path.basename(downloaded.mediaPath, path.extname(downloaded.mediaPath))}.txt`
         );
-        const transcript = await fs.readFile(generatedPath, "utf8");
+        const transcript = await fs.readFile(generatedPath, "utf8").catch((error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT") return "";
+          throw error;
+        });
         await writeTextArtifact(asrPath, transcript);
       }
       const asr = {
