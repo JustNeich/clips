@@ -337,13 +337,13 @@ function validateRuntime(input: ProjectKingsSourceBufferRuntimeSnapshot): void {
 
 function validateManifest(manifest: ProductionReadyAgentRouteManifest): void {
   if (
-    manifest.schemaVersion !== 2 ||
+    (manifest.schemaVersion !== 2 && manifest.schemaVersion !== 3) ||
     !manifest.manifestId.trim() ||
     !SHA256.test(manifest.manifestSha256) ||
     !manifest.selections.source_policy ||
     !manifest.selections.source_fit
   ) {
-    throw new Error("A production-ready schema-v2 route manifest is required for source refill.");
+    throw new Error("A production-ready schema-v2/v3 route manifest is required for source refill.");
   }
   validateProductionAgentModelSelection(manifest.selections.source_policy, "source_policy");
   validateProductionAgentModelSelection(manifest.selections.source_fit, "source_fit");

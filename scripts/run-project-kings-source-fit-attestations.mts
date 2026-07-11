@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import contractsModule from "../lib/project-kings/production-agent-contracts";
 import runtimeModule from "../lib/project-kings/production-agent-runtime";
 import manifestModule from "../lib/project-kings/production-model-route-manifest";
+import profileStoreModule from "../lib/project-kings/pilot-profile-store";
 import profilesModule from "../lib/project-kings/pilot-production-profiles";
 import readinessModule from "../lib/project-kings/source-buffer-readiness";
 import type {
@@ -27,7 +28,6 @@ const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const EVIDENCE_ROOT = path.join(REPO_ROOT, "docs/project-kings-production-pipeline-v1/evidence");
 const INVENTORY_PATH = path.join(EVIDENCE_ROOT, "live-publication-inventory-2026-07-10.json");
-const MANIFEST_PATH = path.join(EVIDENCE_ROOT, "project-kings-model-routes-v2.json");
 
 function argument(name: string): string | null {
   const index = process.argv.indexOf(name);
@@ -46,6 +46,8 @@ const { validateProductionAgentOutput } = contractsModule;
 const { createCodexProductionAgentInvoker, runProductionSemanticAgent } = runtimeModule;
 const { parseFrozenProductionAgentRouteManifest } = manifestModule;
 const { PROJECT_KINGS_PILOT_PROFILES } = profilesModule;
+const { PROJECT_KINGS_MODEL_ROUTE_MANIFEST_ID } = profileStoreModule;
+const MANIFEST_PATH = path.join(EVIDENCE_ROOT, `${PROJECT_KINGS_MODEL_ROUTE_MANIFEST_ID}.json`);
 const {
   auditProjectKingsSourceBufferReadiness,
   calculateProjectKingsLiveInventorySha256,

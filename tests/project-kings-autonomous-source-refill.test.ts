@@ -139,8 +139,8 @@ function successfulAttempt(
 
 function manifest(): ProductionReadyAgentRouteManifest {
   return {
-    schemaVersion: 2,
-    manifestId: "project-kings-routes-test-v2",
+    schemaVersion: 3,
+    manifestId: "project-kings-routes-test-v3",
     createdAt: CAPTURED_AT,
     manifestSha256: sha256("manifest"),
     selections: {
@@ -616,7 +616,7 @@ test("restart resumes a non-terminal ledger candidate without consuming a new at
   }
 });
 
-test("refill fails closed before discovery when schema-v2 model manifest is absent", async () => {
+test("refill fails closed before discovery when a production schema-v2/v3 model manifest is absent", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "autonomous-source-manifest-"));
   try {
     let discoveries = 0;
@@ -641,7 +641,7 @@ test("refill fails closed before discovery when schema-v2 model manifest is abse
         sourceFitAssessor: { async assess() { throw new Error("must not run"); } },
         uploadProvider: { async upload() { throw new Error("must not run"); } }
       }),
-      /schema-v2 route manifest/i
+      /schema-v2\/v3 route manifest/i
     );
     assert.equal(discoveries, 0);
   } finally {

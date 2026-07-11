@@ -98,7 +98,7 @@ const gitBase = execFileSync("git", ["rev-parse", requiredArgument("--base-ref")
 }).trim();
 const testOutputPath = requiredArgument("--test-output");
 const profileSnapshotPath = argument("--profiles") ??
-  "docs/project-kings-production-pipeline-v1/evidence/project-kings-production-profiles-v1.json";
+  "docs/project-kings-production-pipeline-v1/evidence/project-kings-production-profiles-v2.json";
 const modelRoutesPath = argument("--model-routes") ??
   "docs/project-kings-production-pipeline-v1/evidence/project-kings-model-routes-v4.json";
 const sourceBufferPath = argument("--source-buffer") ??

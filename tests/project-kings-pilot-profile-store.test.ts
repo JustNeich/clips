@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -11,6 +11,7 @@ import {
   buildProjectKingsPilotProfileSnapshot,
   ensureProjectKingsPilotProfiles,
   prepareProjectKingsPilotProfiles,
+  PROJECT_KINGS_MODEL_ROUTE_MANIFEST_ID,
   PROJECT_KINGS_MODEL_ROUTE_MANIFEST_SHA256,
   PROJECT_KINGS_PUBLISH_POLICY_ID
 } from "../lib/project-kings/pilot-profile-store";
@@ -23,6 +24,7 @@ import {
   PROJECT_KINGS_SOURCE_POLICY_SHA256,
   PROJECT_KINGS_SOURCE_POLICY_VERSION
 } from "../lib/project-kings/source-rights-sensitive-policy";
+import { loadFrozenProductionAgentRouteManifest } from "../lib/project-kings/production-model-route-manifest";
 import { isProductionProfileExplicitlyApproved } from "../lib/portfolio-production-store";
 import { PROJECT_KINGS_PILOT_PROFILES } from "../lib/project-kings/pilot-production-profiles";
 import { bootstrapOwner } from "../lib/team-store";
@@ -41,6 +43,54 @@ async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
     await rm(appDataDir, { recursive: true, force: true });
   }
 }
+
+test("all Project Kings production bindings resolve the exact schema-v3 route manifest v4", async () => {
+  const repoRoot = process.cwd();
+  const manifestPath = path.join(
+    repoRoot,
+    "docs/project-kings-production-pipeline-v1/evidence/project-kings-model-routes-v4.json"
+  );
+  const manifest = await loadFrozenProductionAgentRouteManifest({
+    repoCwd: repoRoot,
+    manifestPath,
+    expectedManifestId: PROJECT_KINGS_MODEL_ROUTE_MANIFEST_ID
+  });
+  assert.equal(manifest.schemaVersion, 3);
+  assert.equal(manifest.manifestId, PROJECT_KINGS_MODEL_ROUTE_MANIFEST_ID);
+  assert.equal(manifest.manifestSha256, PROJECT_KINGS_MODEL_ROUTE_MANIFEST_SHA256);
+  assert.ok(manifest.selections.source_policy);
+  assert.ok(manifest.selections.vision_qa);
+
+  const snapshotEvidence = JSON.parse(await readFile(path.join(
+    repoRoot,
+    "docs/project-kings-production-pipeline-v1/evidence/project-kings-production-profiles-v2.json"
+  ), "utf8")) as {
+    schemaVersion: string;
+    profiles: Array<ReturnType<typeof buildProjectKingsPilotProfileSnapshot>>;
+  };
+  assert.equal(snapshotEvidence.schemaVersion, "project-kings-production-profile-snapshots-v2");
+  assert.equal(snapshotEvidence.profiles.length, 3);
+  for (const key of Object.keys(PROJECT_KINGS_PILOT_PROFILES) as Array<keyof typeof PROJECT_KINGS_PILOT_PROFILES>) {
+    const expected = buildProjectKingsPilotProfileSnapshot(key);
+    const stored = snapshotEvidence.profiles.find((entry) => entry.key === key);
+    assert.ok(stored, `missing frozen profile ${key}`);
+    assert.equal(stored.modelRouteManifestId, PROJECT_KINGS_MODEL_ROUTE_MANIFEST_ID);
+    assert.equal(stored.modelRouteManifestSha256, PROJECT_KINGS_MODEL_ROUTE_MANIFEST_SHA256);
+    assert.equal(stored.profileHash, expected.profileHash);
+  }
+
+  const productionSurfaces = [
+    ".env.example",
+    "scripts/install-project-kings-semantic-worker-launchd.mjs",
+    "scripts/run-project-kings-source-fit-attestations.mts",
+    "scripts/freeze-project-kings-production-profiles.mts",
+    "scripts/freeze-project-kings-production-release.mts"
+  ];
+  for (const relativePath of productionSurfaces) {
+    const content = await readFile(path.join(repoRoot, relativePath), "utf8");
+    assert.doesNotMatch(content, /project-kings-model-routes-v2/);
+  }
+});
 
 test("pilot profile preparation is immutable, exact, idempotent and never implicit approval", async () => {
   await withIsolatedAppData(async () => {

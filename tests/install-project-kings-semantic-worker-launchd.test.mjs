@@ -58,8 +58,8 @@ test("semantic worker launchd dry-run creates one three-lane semantic-only super
     await writeFile(
       routeManifestPath,
       JSON.stringify({
-        schemaVersion: 2,
-        manifestId: "routes-v2",
+        schemaVersion: 3,
+        manifestId: "routes-v3",
         manifestSha256: "b".repeat(64)
       })
     );
@@ -95,6 +95,7 @@ test("semantic worker launchd dry-run creates one three-lane semantic-only super
     assert.equal(plan.renderKindsClaimed, false);
     assert.deepEqual(plan.supportedKinds, ["production-semantic"]);
     assert.equal(plan.credentialsEmbedded, false);
+    assert.equal(plan.routeManifestId, "routes-v3");
     assert.equal(plan.instances.length, 1);
     for (const instance of plan.instances) {
       assert.match(instance.plist, /project-kings-semantic-worker\.cjs/);

@@ -139,3 +139,18 @@ The audit facts above remain unchanged. The execution plan was corrected to one 
 `coherent candidate -> 6/6/6 source recount -> dark deploy -> three-channel shadow -> pre-live gates -> Approval A -> automatic 1x3 canary -> 3/3 public_verified -> automatic 2x3 remainder -> 9/9 public_verified -> full L5 gates -> Approval B -> L5 promotion -> observed scheduled wake`.
 
 The real 120-case Vision QA blocks unattended L5, not the bounded controlled live run. Approval A and Approval B are distinct machine-enforced records. The first live run retains an automatic one-per-channel canary, database rollback is expand/contract plus roll-forward rather than an unsafe whole-production snapshot restore, and a partial `8/9` never counts as the public MVP.
+
+## 11. Execution progress after the audit snapshot
+
+### Phase 0 — v4 binding alignment: locally complete
+
+The original P0 model-route drift in section 5 is preserved as an audit-time fact. It is now resolved in the local candidate:
+
+- all production app/lib/script/default surfaces bind `project-kings-model-routes-v4`, schema 3, internal manifest SHA `13e867148fdda8c138421218fcc1ebf23cfc06b649c1321ed319e20238f456e5`;
+- installer and autonomous refiller accept production schema 2 or 3 and their current defaults use v4;
+- the old profile snapshot v1 remains immutable historical evidence;
+- the new profile snapshot is `evidence/project-kings-production-profiles-v2.json`, file SHA-256 `484d839b81799e1c978215fc74fad1397daa1adba5af0ea08b119039103baf2e`, internal evidence SHA `3625a38faa401c3771d24dd7aa4facd62a28a37493638f82cb521c1ae8780cc2`;
+- new profile hashes are dark `43ebe0669e68f794fa64d755b491bcf3c9a7c5aa4d2eb0a15c183d872cb086d7`, light `0ff186ebde26b16613705f61790b15afa5068c0a54741a2c7c068412738821c0`, cop `82db4221f31a38d688eaaf1bf10191d594bbf77c5bd9b2c3a38a63f68158f362`;
+- targeted verification passed: 28 TypeScript tests, 2 MJS installer tests, and `tsc --noEmit --incremental false`.
+
+This is a local candidate result, not deployment or profile approval. The next blocker is the production-ready source buffer `6/6/6`; release freeze is intentionally deferred until current source/runtime/shadow evidence exists.

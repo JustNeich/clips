@@ -26,9 +26,9 @@ import {
 
 export { PROJECT_KINGS_QUALITY_POLICY_ID } from "./production-quality-policy";
 
-export const PROJECT_KINGS_MODEL_ROUTE_MANIFEST_ID = "project-kings-model-routes-v2";
+export const PROJECT_KINGS_MODEL_ROUTE_MANIFEST_ID = "project-kings-model-routes-v4";
 export const PROJECT_KINGS_MODEL_ROUTE_MANIFEST_SHA256 =
-  "f29362a09c0e1a3c98c24a9585759259455703ab8c1c879bc36f8643f2a411de";
+  "13e867148fdda8c138421218fcc1ebf23cfc06b649c1321ed319e20238f456e5";
 export const PROJECT_KINGS_PUBLISH_POLICY_ID = "project-kings-daily-3x3-v1";
 
 export const PROJECT_KINGS_TEMPLATE_ID_BY_PROFILE: Record<ProjectKingsPilotProfileKey, string> = {

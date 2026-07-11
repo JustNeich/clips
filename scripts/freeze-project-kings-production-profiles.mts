@@ -10,7 +10,7 @@ const { buildProjectKingsPilotProfileSnapshot } = profileStoreModule;
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_OUTPUT =
-  "docs/project-kings-production-pipeline-v1/evidence/project-kings-production-profiles-v1.json";
+  "docs/project-kings-production-pipeline-v1/evidence/project-kings-production-profiles-v2.json";
 const PROFILE_KEYS: readonly ProjectKingsPilotProfileKey[] = [
   "dark-joy-boy",
   "light-kingdom",

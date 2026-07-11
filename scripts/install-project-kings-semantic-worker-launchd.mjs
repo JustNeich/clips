@@ -20,6 +20,8 @@ const LABEL_PREFIX = "com.zoro.clips-project-kings-semantic-worker";
 const INSTANCE_COUNT = 1;
 const SEMANTIC_CONCURRENCY = 3;
 const SAFE_VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,159}$/;
+export const PROJECT_KINGS_DEFAULT_ROUTE_MANIFEST_FILENAME =
+  "project-kings-model-routes-v4.json";
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -106,8 +108,11 @@ async function loadCandidate(input) {
     throw new Error("Semantic worker bundle/config credential boundary is invalid.");
   }
   const routeManifest = JSON.parse(routeBytes.toString("utf-8"));
-  if (routeManifest.schemaVersion !== 2 || typeof routeManifest.manifestSha256 !== "string") {
-    throw new Error("Semantic launchd install requires a production-ready route manifest v2.");
+  if (
+    (routeManifest.schemaVersion !== 2 && routeManifest.schemaVersion !== 3) ||
+    typeof routeManifest.manifestSha256 !== "string"
+  ) {
+    throw new Error("Semantic launchd install requires a production-ready route manifest v2/v3.");
   }
   if (!input.skipRuntimePreflight) {
     const ownsPreflightWorkRoot = !input.preflightWorkRoot;
@@ -415,7 +420,13 @@ async function main() {
   );
   const routeManifestPath = path.resolve(
     argument(argv, "--route-manifest") ??
-      path.join(repoRoot, "docs", "project-kings-production-pipeline-v1", "evidence", "project-kings-model-routes-v2.json")
+      path.join(
+        repoRoot,
+        "docs",
+        "project-kings-production-pipeline-v1",
+        "evidence",
+        PROJECT_KINGS_DEFAULT_ROUTE_MANIFEST_FILENAME
+      )
   );
   const workerConfigPath = path.resolve(
     argument(argv, "--worker-config") ??
