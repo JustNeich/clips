@@ -32,6 +32,7 @@ import {
   LIGHT_KINGDOM_PROJECT_KINGS_PROFILE
 } from "../lib/project-kings/pilot-production-profiles";
 import { COPSCOPES_PROJECT_KINGS_PROFILE } from "../lib/project-kings/copscopes-production-profile";
+import { createProjectKingsStageQualityEvaluator } from "../lib/project-kings/stage-benchmark-quality";
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const EVIDENCE_ROOT = path.join(
@@ -45,16 +46,21 @@ const RATE_CARD_SOURCE =
 const BENCHMARK_VERSION = "project-kings-stage-models-2026-07-10-v9";
 const BENCHMARK_EVIDENCE_VERSION = "v9";
 const SOURCE_POLICY_BENCHMARK_VERSION =
-  "project-kings-source-policy-real-30-2026-07-10-v5";
-const SOURCE_POLICY_BENCHMARK_EVIDENCE_VERSION = "real-30-v5";
+  "project-kings-source-policy-real-30-2026-07-10-v6";
+const SOURCE_POLICY_BENCHMARK_EVIDENCE_VERSION = "real-30-v6";
 // Second direct review of the frozen labels (mismatch clustering, no model
 // adoption) — applied to the effective expected labels for v5.
 const SOURCE_POLICY_ANNOTATION_OVERRIDES_PATH =
   "docs/project-kings-production-pipeline-v1/source-policy-benchmark-reviewed-annotations-v2.overrides.json";
-// Replay store: real gpt-5.6-luna low/medium outputs recorded in the v4 run on
-// the identical dataset/prompts. Replayed calls are marked in raw evidence.
-const SOURCE_POLICY_REPLAY_RAW_PATH =
-  "docs/project-kings-production-pipeline-v1/evidence/model-benchmark-source_policy-2026-07-10-real-30-v4-raw.json";
+// Replay stores: real gpt-5.6-luna outputs recorded on the identical
+// dataset/prompts — v4 (low/medium) plus the v5 attempt (adds live high
+// calls; its EVALUATION was invalidated by the evaluator-v2 prefix bug, but
+// its raw model outputs are real and remain valid replay inputs). Replayed
+// calls are marked in raw evidence with their source file.
+const SOURCE_POLICY_REPLAY_RAW_PATHS = [
+  "docs/project-kings-production-pipeline-v1/evidence/model-benchmark-source_policy-2026-07-10-real-30-v4-raw.json",
+  "docs/project-kings-production-pipeline-v1/evidence/model-benchmark-source_policy-2026-07-10-real-30-v5-invalid-evaluator-v2-raw.json"
+] as const;
 // Owner decision 2026-07-10 (see docs/project-kings-production-pipeline-v1/
 // source-policy-gate-decision-2026-07-10.md): the source_policy gate is scored
 // at the production decision boundary. present/unknown both block production,
@@ -231,164 +237,6 @@ function basePacket<R extends ProductionAgentRole>(input: {
   } as unknown as ProductionAgentPacketByRole[R];
 }
 
-function evaluateBenchmarkQuality(input: {
-  role: ProductionAgentRole;
-  caseId: string;
-  expectedQualityLabel: string;
-  output: AnyOutput;
-}): ModelBenchmarkQualityEvaluation {
-  const record = input.output as unknown as Record<string, unknown>;
-  let actual = typeof record.decision === "string"
-    ? record.decision
-    : typeof record.action === "string"
-      ? record.action
-      : "missing";
-  if (input.role === "source_policy") {
-    const signals = record.signals && typeof record.signals === "object"
-      ? record.signals as Record<string, unknown>
-      : null;
-    const abbreviate = (value: unknown) =>
-      value === "absent" ? "a" : value === "present" ? "p" : value === "unknown" ? "u" : "x";
-    actual = signals
-      ? `sp:${[
-          "graphicViolence",
-          "unsupportedAllegation",
-          "minorInSensitiveIncident",
-          "realisticPoliticalOrPublicFigureDeepfake"
-        ].map((key) => abbreviate(signals[key])).join(",")}`
-      : "missing";
-  }
-  const evidence: string[] = [`expected=${input.expectedQualityLabel}`, `actual=${actual}`];
-  let passed = actual === input.expectedQualityLabel;
-  let critical: boolean | undefined;
-
-  if (input.role === "source_search") {
-    const candidates = Array.isArray(record.candidates) ? record.candidates : [];
-    passed &&= actual === "NO_MATCH" ? candidates.length === 0 : candidates.length > 0;
-    evidence.push(`candidates=${candidates.length}`);
-  } else if (input.role === "source_fit") {
-    if (input.caseId.includes("clean")) {
-      passed &&= record.conceptMatch === true && record.factualFit === true && record.sourceUsable === true;
-    }
-    if (input.caseId.includes("duplicate")) passed &&= record.duplicateEvent === true || record.duplicateVideo === true;
-    if (input.caseId.includes("offconcept")) passed &&= record.conceptMatch === false;
-  } else if (input.role === "source_policy") {
-    // Owner decision 2026-07-10: score at the production decision boundary.
-    // present/unknown both force policy_blocked, so the pass criterion is the
-    // block/allow decision; a false-allow (expected block, actual allow) is a
-    // critical safety failure that disqualifies the route.
-    const signals = record.signals as Record<string, unknown> | undefined;
-    const structurallyValid =
-      Boolean(signals) &&
-      Object.keys(signals ?? {}).length === 4 &&
-      record.candidateId === input.caseId &&
-      !actual.includes("x");
-    const blocks = (vector: string): boolean => vector.includes("p") || vector.includes("u");
-    const expectedDecision = blocks(input.expectedQualityLabel) ? "block" : "allow";
-    const actualDecision = blocks(actual) ? "block" : "allow";
-    passed = structurallyValid && expectedDecision === actualDecision;
-    if (structurallyValid && expectedDecision === "block" && actualDecision === "allow") {
-      critical = true;
-    }
-    evidence.push(
-      `expectedDecision=${expectedDecision}`,
-      `actualDecision=${structurallyValid ? actualDecision : "invalid"}`,
-      `signals=${JSON.stringify(signals ?? {})}`
-    );
-  } else if (input.role === "caption") {
-    const banned = Array.isArray(record.bannedWordsFound) ? record.bannedWordsFound : [];
-    passed &&=
-      typeof record.hook === "string" && record.hook.length > 0 &&
-      typeof record.action === "string" && record.action.length > 0 &&
-      typeof record.payoff === "string" && record.payoff.length > 0 &&
-      banned.length === 0;
-    evidence.push(`bannedWordsFound=${banned.length}`);
-  } else if (input.role === "montage_planner") {
-    const segments = Array.isArray(record.segments) ? record.segments as Array<Record<string, unknown>> : [];
-    const purposes = new Set(segments.map((segment) => segment.purpose));
-    passed &&= purposes.has("hook") && purposes.has("action") && purposes.has("payoff");
-    evidence.push(`segments=${segments.length}`);
-  } else if (input.role === "vision_qa") {
-    const defects = Array.isArray(record.defects) ? record.defects as Array<Record<string, unknown>> : [];
-    const defectCodes = defects
-      .map((defect) => defect.code)
-      .filter((code): code is string => typeof code === "string");
-    if (input.caseId.includes("clean")) {
-      passed &&=
-        defects.length === 0 &&
-        record.conceptMatch === true &&
-        record.duplicateVideo === false &&
-        record.duplicateEvent === false &&
-        record.hookPresent === true &&
-        record.actionPresent === true &&
-        record.payoffPresent === true &&
-        record.donorUiVisible === false &&
-        record.ctaVisible === false &&
-        record.handleVisible === false &&
-        record.watermarkVisible === false &&
-        record.foreignCaptionsVisible === false &&
-        record.mainEventPreserved === true &&
-        record.cropSafe === true &&
-        record.factualClaimsVerified === true &&
-        record.bannedWordsPresent === false;
-    }
-    if (input.caseId.includes("hardsub")) {
-      passed &&=
-        record.foreignCaptionsVisible === true &&
-        defectCodes.includes("foreign_captions");
-    }
-    if (input.caseId.includes("offconcept")) {
-      passed &&=
-        record.conceptMatch === false &&
-        defectCodes.includes("concept_mismatch");
-    }
-    evidence.push(
-      `defects=${defects.length}`,
-      `defectCodes=${defectCodes.join(",") || "none"}`,
-      `conceptMatch=${String(record.conceptMatch)}`,
-      `foreignCaptionsVisible=${String(record.foreignCaptionsVisible)}`
-    );
-  } else if (input.role === "revision") {
-    const changes = Array.isArray(record.changes) ? record.changes : [];
-    if (["deterministic_repair", "targeted_regenerate", "targeted_visual_revision"].includes(actual)) {
-      passed &&= changes.length > 0;
-    }
-    evidence.push(
-      `changes=${changes.length}`,
-      `resumeState=${String(record.resumeState)}`
-    );
-  }
-
-  return {
-    label: actual,
-    score: passed ? 1 : 0,
-    passed,
-    ...(critical === undefined ? {} : { critical }),
-    evidence
-  };
-}
-
-function qualityEvaluator(): ModelBenchmarkQualityEvaluator {
-  const rules = {
-    version: 2,
-    sourceSearch: "decision and candidate cardinality",
-    sourceFit: "decision plus fit/duplicate flags",
-    sourcePolicy:
-      "production decision boundary: block (any present/unknown signal) vs allow, with candidate binding; a false-allow is critical and disqualifies the route; owner decision 2026-07-10, floor 25/30",
-    caption: "hook-action-payoff and banned words",
-    montage: "hook-action-payoff segments",
-    vision: "decision plus required defect class",
-    revision: "exact action plus non-empty targeted changes"
-  };
-  return {
-    evaluatorId: "project-kings-stage-quality",
-    evaluatorVersion: "v2",
-    implementationSha256: sha256(`${evaluateBenchmarkQuality.toString()}\n${JSON.stringify(rules)}`),
-    config: rules,
-    evaluate: ({ role, caseId, expectedQualityLabel, output }) =>
-      evaluateBenchmarkQuality({ role, caseId, expectedQualityLabel, output })
-  };
-}
 
 async function buildDatasets(root: string): Promise<Record<ProductionAgentRole, StageModelBenchmarkDataset<any>>> {
   const darkConcept = await writeFixture(root, "dark-concept.json", DARK_JOY_BOY_PROJECT_KINGS_PROFILE, "concept_contract");
@@ -789,30 +637,36 @@ async function main(): Promise<void> {
         durationMs: number;
         rawOutput: string;
         usage: NonNullable<Awaited<ReturnType<typeof baseInvoker>>["usage"]>;
+        sourcePath: string;
       }>;
       const replayStore = new Map<string, ReplayedCall>();
       if (role === "source_policy") {
-        try {
-          const replayRaw = JSON.parse(
-            await fs.readFile(path.join(REPO_ROOT, SOURCE_POLICY_REPLAY_RAW_PATH), "utf8")
-          ) as { calls?: Array<Record<string, unknown>> };
-          for (const call of replayRaw.calls ?? []) {
-            if (
-              call.outcome === "returned" &&
-              typeof call.rawOutput === "string" &&
-              call.usage &&
-              typeof call.durationMs === "number"
-            ) {
-              const key = `${call.caseId}|${call.routeId}|${call.reasoningEffort}|${call.promptSha256}`;
-              replayStore.set(key, {
-                durationMs: call.durationMs,
-                rawOutput: call.rawOutput,
-                usage: call.usage as ReplayedCall["usage"]
-              });
+        for (const replayPath of SOURCE_POLICY_REPLAY_RAW_PATHS) {
+          try {
+            const replayRaw = JSON.parse(
+              await fs.readFile(path.join(REPO_ROOT, replayPath), "utf8")
+            ) as { calls?: Array<Record<string, unknown>> };
+            for (const call of replayRaw.calls ?? []) {
+              if (
+                call.outcome === "returned" &&
+                typeof call.rawOutput === "string" &&
+                call.usage &&
+                typeof call.durationMs === "number"
+              ) {
+                const key = `${call.caseId}|${call.routeId}|${call.reasoningEffort}|${call.promptSha256}`;
+                if (!replayStore.has(key)) {
+                  replayStore.set(key, {
+                    durationMs: call.durationMs,
+                    rawOutput: call.rawOutput,
+                    usage: call.usage as ReplayedCall["usage"],
+                    sourcePath: replayPath
+                  });
+                }
+              }
             }
+          } catch {
+            // A missing replay store simply means those calls run live.
           }
-        } catch {
-          // Missing replay store simply means every call runs live.
         }
       }
       let virtualClockMs = 0;
@@ -837,7 +691,7 @@ async function main(): Promise<void> {
                 outputSha256: sha256(replayed.rawOutput),
                 usage: replayed.usage,
                 error: null,
-                replayedFromRawEvidence: SOURCE_POLICY_REPLAY_RAW_PATH
+                replayedFromRawEvidence: replayed.sourcePath
               });
               return { rawOutput: replayed.rawOutput, usage: replayed.usage };
             }
@@ -914,7 +768,7 @@ async function main(): Promise<void> {
           dataset: datasets[role],
           candidates,
           pricing,
-          qualityEvaluator: qualityEvaluator(),
+          qualityEvaluator: createProjectKingsStageQualityEvaluator(),
           invoker,
           ...(role === "source_policy" ? { monotonicNowMs: () => virtualClockMs } : {}),
           outputPath
