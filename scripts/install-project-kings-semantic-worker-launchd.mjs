@@ -240,6 +240,7 @@ export async function buildProjectKingsSemanticWorkerLaunchdPlan(input) {
     const plistPath = path.join(paths.launchAgentsRoot, `${label}.plist`);
     const replacements = {
       LABEL: label,
+      HOME: paths.home,
       NODE_PATH: input.nodePath,
       BUNDLE_PATH: bundlePath,
       INSTANCE: String(instance),
@@ -363,6 +364,7 @@ async function restartInstances(plan) {
 
 async function install(plan) {
   await Promise.all([
+    fs.mkdir(plan.versionsRoot, { recursive: true, mode: 0o700 }),
     fs.mkdir(plan.workRoot, { recursive: true, mode: 0o700 }),
     fs.mkdir(plan.spoolRoot, { recursive: true, mode: 0o700 }),
     fs.mkdir(plan.logsRoot, { recursive: true, mode: 0o700 }),

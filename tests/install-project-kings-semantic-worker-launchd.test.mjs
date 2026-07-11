@@ -1,14 +1,35 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  access,
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 
 import {
   buildProjectKingsSemanticWorkerLaunchdPlan,
   buildProjectKingsSemanticWorkerRollbackPlan
 } from "../scripts/install-project-kings-semantic-worker-launchd.mjs";
+
+const execFileAsync = promisify(execFile);
+const installerPath = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../scripts/install-project-kings-semantic-worker-launchd.mjs"
+);
+const SAFE_LAUNCHD_PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
 
 function sha(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -120,6 +141,14 @@ test("semantic worker launchd dry-run creates one three-lane semantic-only super
       assert.match(instance.plist, /PROJECT_KINGS_SEMANTIC_WORKER_CONFIG_PATH/);
       assert.match(instance.plist, /<key>CODEX_BIN<\/key>/);
       assert.ok(instance.plist.includes(`<string>${candidate.codexBin}</string>`));
+      assert.match(
+        instance.plist,
+        new RegExp(`<key>HOME<\\/key>\\s*<string>${candidate.homeDir}<\\/string>`)
+      );
+      assert.match(
+        instance.plist,
+        new RegExp(`<key>PATH<\\/key>\\s*<string>${SAFE_LAUNCHD_PATH}<\\/string>`)
+      );
       assert.doesNotMatch(instance.plist, /never-embed-this-token/);
       assert.doesNotMatch(instance.plist, /<string>render<\/string>|<string>preview<\/string>/);
     }
@@ -157,6 +186,66 @@ test("semantic worker install fails closed without a pinned current Codex execut
 
     await rm(candidate.codexBin);
     await assert.rejects(() => build(), /existing executable regular non-symlink file/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("semantic worker install creates a missing version store before staging the release", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "semantic-launchd-install-"));
+  const installRoot = path.join(root, "missing-install-root");
+  const launchAgentsRoot = path.join(root, "missing-launch-agents");
+  const fakeBin = path.join(root, "fake-bin");
+  try {
+    const candidate = await createSemanticWorkerCandidate(root);
+    await mkdir(fakeBin, { recursive: true });
+    await writeFile(path.join(fakeBin, "launchctl"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [
+        installerPath,
+        "--install",
+        "--install-root",
+        installRoot,
+        "--launch-agents-root",
+        launchAgentsRoot,
+        "--bundle",
+        candidate.bundlePath,
+        "--bundle-manifest",
+        candidate.bundleManifestPath,
+        "--route-manifest",
+        candidate.routeManifestPath,
+        "--worker-config",
+        candidate.workerConfigPath,
+        "--codex-home",
+        candidate.codexHome,
+        "--codex-bin",
+        candidate.codexBin,
+        "--node",
+        candidate.nodePath
+      ],
+      {
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH ?? ""}`
+        },
+        timeout: 30_000
+      }
+    );
+    const result = JSON.parse(stdout);
+    const versionsStat = await stat(result.versionsRoot);
+    assert.equal(versionsStat.isDirectory(), true);
+    assert.equal(versionsStat.mode & 0o777, 0o700);
+    assert.equal((await stat(result.versionDir)).isDirectory(), true);
+    assert.equal(await realpath(result.currentLink), await realpath(result.versionDir));
+    const plist = await readFile(result.instances[0].plistPath, "utf-8");
+    assert.ok(plist.includes(`<key>HOME</key>\n    <string>${os.homedir()}</string>`));
+    assert.ok(plist.includes(`<key>PATH</key>\n    <string>${SAFE_LAUNCHD_PATH}</string>`));
+    assert.doesNotMatch(plist, /never-embed-this-token/);
+    if (process.platform === "darwin") {
+      await execFileAsync("/usr/bin/plutil", ["-lint", result.instances[0].plistPath]);
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }
