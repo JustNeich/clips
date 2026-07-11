@@ -15,7 +15,12 @@ export APP_DATA_DIR CODEX_SESSIONS_DIR HOME XDG_CACHE_HOME XDG_CONFIG_HOME XDG_D
 mkdir -p "$APP_DATA_DIR" "$CODEX_SESSIONS_DIR" "$HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME"
 
 if [ "$(id -u)" = "0" ]; then
-  chown -R clips:clips "$APP_DATA_DIR" "$CODEX_SESSIONS_DIR" "$HOME"
+  clips_uid="$(id -u clips)"
+  for runtime_dir in "$APP_DATA_DIR" "$CODEX_SESSIONS_DIR" "$HOME"; do
+    if [ "$(stat -c '%u' "$runtime_dir")" != "$clips_uid" ]; then
+      chown -R clips:clips "$runtime_dir"
+    fi
+  done
   exec gosu clips ./node_modules/.bin/next start -H 0.0.0.0 -p "$PORT"
 fi
 
