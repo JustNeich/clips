@@ -1,6 +1,9 @@
 # Project Kings autonomous source refill
 
-Статус: реализован как отдельный bounded contour; production daemon не включён и live upload не запускался.
+Статус: реализован как отдельный bounded contour и подготовлен ежедневный
+LaunchAgent. Установка по умолчанию является dry-run, `--install` только пишет
+plist, а загрузка launchd требует отдельного `--arm`. Production daemon в рамках
+этой подготовки не включался и live upload не запускался.
 
 ## Что заменено
 
@@ -41,6 +44,29 @@ Policy использует один заранее утверждённый own
 
 Ledger запрещает credential-like поля. Секреты, session/access tokens и cookies остаются только в приватном machine env и не входят в health/result/evidence. Числовые метрики `inputTokens`, `cachedInputTokens`, `outputTokens` и `reasoningOutputTokens` не являются credentials: для каждого вызова `source_policy` и `source_fit` ledger сохраняет модель, reasoning, route, attempt, duration, token counts, вычисленную стоимость, outcome и hash prompt/output. Стоимость берётся из frozen Codex rate card, а для новой модели без локальной rate card — из того же benchmark snapshot с явной пометкой `benchmark_mean`.
 
+## Daily LaunchAgent
+
+LaunchAgent запускает one-shot supervisor ежедневно в 04:10 по локальному
+времени Zoro и один раз сразу после явного arm. `KeepAlive` не используется.
+Supervisor:
+
+- при `PROJECT_KINGS_AUTONOMOUS_REFILL_ARMED!=1` завершает работу без сети,
+  моделей, download и upload;
+- допускает не более одного процесса через PID/nonce lock и безопасно убирает
+  lock только после подтверждённого завершения владельца;
+- требует Node 22, Codex CLI не ниже `0.144.1`, активный login,
+  `CODEX_HOME` и точный route manifest v4;
+- для `execute` дополнительно требует независимый
+  `PROJECT_KINGS_SOURCE_REFILL_UPLOAD_ARMED=1`;
+- пишет ledger, lock и `last-launchd-run.json` в стабильный private state dir,
+  stdout/stderr — в отдельный `~/Library/Logs/...` каталог;
+- сохраняет plist backup при replace/uninstall; rollback восстанавливает backup,
+  но оставляет unit выгруженным до нового `--arm`.
+
+Переход с исторического frozen-catalog runner выполняется тем же launchd label:
+`--arm` сначала делает `bootout` старого unit и только затем `bootstrap` нового
+ежедневного one-shot plist.
+
 ## Код и проверки
 
 - orchestration: `lib/project-kings/source-refill-contour.ts`;
@@ -48,4 +74,6 @@ Ledger запрещает credential-like поля. Секреты, session/acce
 - durable ledger: `lib/project-kings/source-refill-ledger.ts`;
 - reusable Source Fit runner: `lib/project-kings/source-fit-assessment-runner.ts`;
 - one-shot CLI: `scripts/run-project-kings-autonomous-source-refill.mts`;
+- launchd supervisor: `scripts/run-project-kings-autonomous-source-refill-launchd.mjs`;
+- installer/arm/uninstall/rollback: `scripts/install-project-kings-source-buffer-refiller-launchd.mjs`;
 - tests: `tests/project-kings-autonomous-source-refill.test.ts`.

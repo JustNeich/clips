@@ -1,14 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Repository source template for the Mac mini/Zoro Project Kings source-buffer
-  refiller. It polls the authenticated production source-buffer endpoint and may
-  sync only the configured frozen readiness evidence through the checked-in sync
-  script. It never searches, invents, qualifies, approves or uploads new sources.
+  Daily Project Kings autonomous source-buffer refill on Mac mini/Zoro.
 
-  The installer validates and copies this plist but never loads it. Activation is
-  a separate owner action after the frozen evidence and machine credential are
-  verified on Zoro.
+  The supervisor is fail-closed and reads the private config at runtime. With
+  PROJECT_KINGS_AUTONOMOUS_REFILL_ARMED other than 1 it performs no network,
+  model, download or upload work. The installer writes this plist but does not
+  load it; --arm is a separate explicit action.
 -->
 <plist version="1.0">
   <dict>
@@ -17,8 +15,7 @@
     <key>ProgramArguments</key>
     <array>
       <string>{{NODE_BIN}}</string>
-      <string>{{CLIPS_REPO}}/scripts/run-project-kings-source-buffer-refiller.mjs</string>
-      <string>run</string>
+      <string>{{CLIPS_REPO}}/scripts/run-project-kings-autonomous-source-refill-launchd.mjs</string>
       <string>--config</string>
       <string>{{USER_HOME}}/.config/assistant/project-kings-source-buffer-refiller.env</string>
     </array>
@@ -26,6 +23,8 @@
     <string>{{CLIPS_REPO}}</string>
     <key>EnvironmentVariables</key>
     <dict>
+      <key>HOME</key>
+      <string>{{USER_HOME}}</string>
       <key>PATH</key>
       <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     </dict>
@@ -33,12 +32,17 @@
     <string>Background</string>
     <key>RunAtLoad</key>
     <true/>
-    <key>KeepAlive</key>
-    <true/>
+    <key>StartCalendarInterval</key>
+    <dict>
+      <key>Hour</key>
+      <integer>4</integer>
+      <key>Minute</key>
+      <integer>10</integer>
+    </dict>
     <key>ThrottleInterval</key>
-    <integer>30</integer>
+    <integer>60</integer>
     <key>ExitTimeOut</key>
-    <integer>30</integer>
+    <integer>60</integer>
     <key>StandardOutPath</key>
     <string>{{USER_HOME}}/Library/Logs/com.zoro.clips-project-kings-source-buffer-refiller/stdout.log</string>
     <key>StandardErrorPath</key>

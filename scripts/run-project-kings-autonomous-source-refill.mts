@@ -4,6 +4,8 @@ import { chmod, readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import profileStoreModule from "../lib/project-kings/pilot-profile-store";
+
 import {
   createProjectKingsHttpSourceUploadProvider,
   createProjectKingsInstagramDiscoveryProvider,
@@ -21,6 +23,11 @@ import {
   FileProjectKingsSourceRefillLedgerStore,
   type ProjectKingsSourceRefillMode
 } from "../lib/project-kings/source-refill-ledger";
+
+const {
+  PROJECT_KINGS_MODEL_ROUTE_MANIFEST_ID,
+  PROJECT_KINGS_MODEL_ROUTE_MANIFEST_SHA256
+} = profileStoreModule;
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const DEFAULT_CONFIG = path.join(
@@ -121,6 +128,12 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     manifestPath,
     codexHome: config.CODEX_HOME?.trim() || path.join(os.homedir(), ".codex")
   });
+  if (
+    manifest.manifestId !== PROJECT_KINGS_MODEL_ROUTE_MANIFEST_ID ||
+    manifest.manifestSha256 !== PROJECT_KINGS_MODEL_ROUTE_MANIFEST_SHA256
+  ) {
+    throw new Error("Autonomous source refill requires the exact active Project Kings v4 route manifest.");
+  }
   const runtime = await readProjectKingsSourceBufferRuntime({ appUrl, token });
   const capturedAt = new Date().toISOString();
   const result = await runProjectKingsAutonomousSourceRefill({
