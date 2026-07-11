@@ -46,8 +46,8 @@ const RATE_CARD_SOURCE =
 const BENCHMARK_VERSION = "project-kings-stage-models-2026-07-10-v9";
 const BENCHMARK_EVIDENCE_VERSION = "v9";
 const SOURCE_POLICY_BENCHMARK_VERSION =
-  "project-kings-source-policy-real-30-2026-07-10-v6";
-const SOURCE_POLICY_BENCHMARK_EVIDENCE_VERSION = "real-30-v6";
+  "project-kings-source-policy-real-30-2026-07-10-v7";
+const SOURCE_POLICY_BENCHMARK_EVIDENCE_VERSION = "real-30-v7";
 // Second direct review of the frozen labels (mismatch clustering, no model
 // adoption) — applied to the effective expected labels for v5.
 const SOURCE_POLICY_ANNOTATION_OVERRIDES_PATH =
@@ -59,14 +59,19 @@ const SOURCE_POLICY_ANNOTATION_OVERRIDES_PATH =
 // calls are marked in raw evidence with their source file.
 const SOURCE_POLICY_REPLAY_RAW_PATHS = [
   "docs/project-kings-production-pipeline-v1/evidence/model-benchmark-source_policy-2026-07-10-real-30-v4-raw.json",
-  "docs/project-kings-production-pipeline-v1/evidence/model-benchmark-source_policy-2026-07-10-real-30-v5-invalid-evaluator-v2-raw.json"
+  "docs/project-kings-production-pipeline-v1/evidence/model-benchmark-source_policy-2026-07-10-real-30-v5-invalid-evaluator-v2-raw.json",
+  "docs/project-kings-production-pipeline-v1/evidence/model-benchmark-source_policy-2026-07-10-real-30-v6-raw.json"
 ] as const;
 // Owner decision 2026-07-10 (see docs/project-kings-production-pipeline-v1/
 // source-policy-gate-decision-2026-07-10.md): the source_policy gate is scored
 // at the production decision boundary. present/unknown both block production,
 // so p<->u confusion inside "block" is not a quality failure; any false-allow
 // is critical and disqualifies the route; decision accuracy floor is 25/30.
-const SOURCE_POLICY_DECISION_ACCURACY_FLOOR = 25 / 30;
+// The floor is written as 0.83 (not 25/30) because aggregate quality scores
+// are rounded to six decimals: 25/30 rounds to 0.833333, which is smaller
+// than the unrounded 0.8333333333333334 and would reject an exact 25/30.
+// Any threshold in (24/30, 25/30] selects the same routes; 0.83 is robust.
+const SOURCE_POLICY_DECISION_ACCURACY_FLOOR = 0.83;
 
 type AnyPacket = ProductionAgentPacketByRole[ProductionAgentRole];
 type AnyOutput = ProductionAgentOutputByRole[ProductionAgentRole];
@@ -743,7 +748,8 @@ async function main(): Promise<void> {
         ? [
             { routeId: "codex:gpt-5.6-luna", reasoningEffort: "low" as const },
             { routeId: "codex:gpt-5.6-luna", reasoningEffort: "medium" as const },
-            { routeId: "codex:gpt-5.6-luna", reasoningEffort: "high" as const }
+            { routeId: "codex:gpt-5.6-luna", reasoningEffort: "high" as const },
+            { routeId: "codex:gpt-5.6-luna", reasoningEffort: "x-high" as const }
           ]
         : role === "revision"
         ? [
