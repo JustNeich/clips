@@ -215,6 +215,112 @@ test("server daemon tick creates one logical-day run, resumes it and keeps a sin
   });
 });
 
+test("unfinished prior logical day blocks a new run until it is completed", { concurrency: false }, async () => {
+  await withIsolatedAppData(async (workspaceId, userId) => {
+    const profileIds = ["profile-dark", "profile-light", "profile-cop"] as const;
+    const priorRun = fakeRun({
+      id: "run-prior-8-of-9",
+      workspaceId,
+      logicalDate: "2040-01-01",
+      mode: "live",
+      status: "waiting_public"
+    });
+    const runs: ProductionRunRecord[] = [priorRun];
+    const runProfiles = new Map<string, readonly string[]>([[priorRun.id, profileIds]]);
+    let now = new Date("2040-01-02T00:00:00.000Z");
+    let starts = 0;
+    const scheduledRunIds: string[] = [];
+    const dependencies = {
+      now: () => now,
+      featureFlagEnabled: () => true,
+      resolveProfiles: () => ({ profiles: [] as ProductionProfileRecord[], approvedByUserId: userId }),
+      preflightProfiles: async () => passingPreflight(profileIds),
+      listRuns: (input: Parameters<typeof import("../lib/portfolio-production-store").listProductionRuns>[0] = {}) =>
+        runs.filter((run) =>
+          (!input.workspaceId || run.workspaceId === input.workspaceId) &&
+          (!input.modes?.length || input.modes.includes(run.mode)) &&
+          (!input.statuses?.length || input.statuses.includes(run.status)) &&
+          !input.hasOpenOutbox
+        ),
+      listRunChannels: (runId: string) => (runProfiles.get(runId) ?? []).map((profileId, index) => ({
+        id: `${runId}-channel-${index}`,
+        runId,
+        workspaceId,
+        channelId: `channel-${index}`,
+        profileId,
+        profileVersion: 1,
+        profileHash: `hash-${index}`,
+        expectedYoutubeChannelId: `UC${index}`,
+        status: runId === priorRun.id && runs[0]?.status === "waiting_public"
+          ? index === 2 ? "waiting_public" : "completed"
+          : "running",
+        targetCount: 3,
+        publicVerifiedCount: runId === priorRun.id ? index === 2 ? 2 : 3 : 0,
+        nextSlotAt: null,
+        blockerCode: null,
+        blockerMessage: null,
+        version: 1,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+        completedAt: null
+      } satisfies ProductionRunChannelRecord)),
+      startDailyRun: async ({ logicalDate }: { logicalDate: string }) => {
+        starts += 1;
+        const run = fakeRun({ id: "run-current-day", workspaceId, logicalDate, mode: "live" });
+        runs.push(run);
+        runProfiles.set(run.id, profileIds);
+        return { run };
+      },
+      scheduleRun: async ({ run }: { run: ProductionRunRecord }) => {
+        scheduledRunIds.push(run.id);
+        return scheduled(run.id);
+      },
+      stopRuntime: () => 0
+    };
+
+    const blocked = await tickProjectKingsPortfolioDaemon({
+      workspaceId,
+      leaseOwner: "mcp-machine:zoro",
+      profileIds,
+      mode: "live"
+    }, dependencies);
+    assert.equal(blocked.status, "blocked", JSON.stringify(blocked.blockers));
+    assert.equal(blocked.startedRunId, null);
+    assert.equal(starts, 0);
+    assert.deepEqual(scheduledRunIds, [priorRun.id], "the unfinished prior run should keep recovering");
+    assert.match(blocked.blockers.join(" "), /prior_logical_day_unfinished:run-prior-8-of-9:2040-01-01:waiting_public/);
+
+    for (const terminalStatus of ["blocked", "failed"] as const) {
+      runs[0] = { ...runs[0]!, status: terminalStatus, completedAt: now.toISOString() };
+      now = new Date(now.getTime() + 10_000);
+      const stillBlocked = await tickProjectKingsPortfolioDaemon({
+        workspaceId,
+        leaseOwner: "mcp-machine:zoro",
+        leaseToken: blocked.leaseToken,
+        profileIds,
+        mode: "live"
+      }, dependencies);
+      assert.equal(stillBlocked.status, "blocked");
+      assert.equal(stillBlocked.startedRunId, null);
+      assert.equal(starts, 0, `${terminalStatus} prior run must not be bypassed automatically`);
+      assert.match(stillBlocked.blockers.join(" "), new RegExp(`prior_logical_day_unfinished:.*:${terminalStatus}`));
+    }
+
+    runs[0] = { ...runs[0]!, status: "completed", completedAt: now.toISOString() };
+    now = new Date(now.getTime() + 10_000);
+    const recovered = await tickProjectKingsPortfolioDaemon({
+      workspaceId,
+      leaseOwner: "mcp-machine:zoro",
+      leaseToken: blocked.leaseToken,
+      profileIds,
+      mode: "live"
+    }, dependencies);
+    assert.equal(recovered.status, "running");
+    assert.equal(recovered.startedRunId, "run-current-day");
+    assert.equal(starts, 1);
+  });
+});
+
 test("client timeout during pending semantic work cannot open a second dispatch after the original lease horizon", { concurrency: false }, async () => {
   await withIsolatedAppData(async (workspaceId, userId) => {
     const profileIds = ["profile-dark", "profile-light", "profile-cop"] as const;

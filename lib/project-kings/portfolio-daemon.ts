@@ -660,37 +660,58 @@ export async function tickProjectKingsPortfolioDaemon(
   let startedRunId: string | null = null;
   const blockers: string[] = [];
   try {
-    const sameDay = listConfiguredRuns({
+    const configuredRuns = listConfiguredRuns({
       workspaceId,
       config,
       dependencies,
       resumableOnly: false
-    }).find((run) => run.logicalDate === logicalDate);
+    });
+    const sameDay = configuredRuns.find((run) => run.logicalDate === logicalDate);
+    const completedWithOpenOutbox = listConfiguredRuns({
+      workspaceId,
+      config,
+      dependencies,
+      resumableOnly: true
+    }).filter((run) => run.status === "completed");
+    const priorIncompleteRuns = [...new Map([
+      ...configuredRuns.filter((run) =>
+        run.logicalDate !== logicalDate && run.status !== "completed" && run.status !== "canceled"
+      ),
+      ...completedWithOpenOutbox.filter((run) => run.logicalDate !== logicalDate)
+    ].map((run) => [run.id, run])).values()]
+      .sort((left, right) => left.logicalDate.localeCompare(right.logicalDate) || left.id.localeCompare(right.id));
+    if (priorIncompleteRuns.length) {
+      blockers.push(...priorIncompleteRuns.map((run) =>
+        `prior_logical_day_unfinished:${run.id}:${run.logicalDate}:${run.status}`
+      ));
+    }
     if (!sameDay) {
-      const preflight = await dependencies.preflightProfiles({
-        workspaceId,
-        approvedByUserId: profiles.approvedByUserId,
-        profiles: profiles.profiles
-      });
-      const expectedPreflightIds = [...config.profileIds].sort();
-      const actualPreflightIds = preflight.map((profile) => profile.profileId).sort();
-      const preflightBlockers = actualPreflightIds.length === expectedPreflightIds.length &&
-          actualPreflightIds.every((profileId, index) => profileId === expectedPreflightIds[index])
-        ? preflight.flatMap((profile) =>
-        profile.blockers.map((blocker) => `${profile.profileId}: ${blocker}`)
-          )
-        : ["daily_preflight_incomplete: expected one result for each configured profile"];
-      if (preflightBlockers.length) {
-        blockers.push(...preflightBlockers);
-      } else {
-        const started = await dependencies.startDailyRun({
+      if (priorIncompleteRuns.length === 0) {
+        const preflight = await dependencies.preflightProfiles({
           workspaceId,
           approvedByUserId: profiles.approvedByUserId,
-          config,
-          logicalDate
+          profiles: profiles.profiles
         });
-        startedRunId = started.run.id;
-        blockers.push(...collectRunBlockers(started.run, dependencies.listRunChannels));
+        const expectedPreflightIds = [...config.profileIds].sort();
+        const actualPreflightIds = preflight.map((profile) => profile.profileId).sort();
+        const preflightBlockers = actualPreflightIds.length === expectedPreflightIds.length &&
+            actualPreflightIds.every((profileId, index) => profileId === expectedPreflightIds[index])
+          ? preflight.flatMap((profile) =>
+          profile.blockers.map((blocker) => `${profile.profileId}: ${blocker}`)
+            )
+          : ["daily_preflight_incomplete: expected one result for each configured profile"];
+        if (preflightBlockers.length) {
+          blockers.push(...preflightBlockers);
+        } else {
+          const started = await dependencies.startDailyRun({
+            workspaceId,
+            approvedByUserId: profiles.approvedByUserId,
+            config,
+            logicalDate
+          });
+          startedRunId = started.run.id;
+          blockers.push(...collectRunBlockers(started.run, dependencies.listRunChannels));
+        }
       }
     } else {
       startedRunId = sameDay.id;
@@ -700,7 +721,10 @@ export async function tickProjectKingsPortfolioDaemon(
     const activeRuns = listConfiguredRuns({ workspaceId, config, dependencies, resumableOnly: true });
     heartbeatRunIds = activeRuns.map((run) => run.id).sort();
     const scheduledRunIds: string[] = [];
-    for (const run of activeRuns) {
+    const schedulableRuns = priorIncompleteRuns.length
+      ? activeRuns.filter((run) => run.logicalDate !== logicalDate)
+      : activeRuns;
+    for (const run of schedulableRuns) {
       if (fenceHeartbeatError) {
         blockers.push(`portfolio_daemon_lease_lost: ${fenceHeartbeatError}`);
         break;
