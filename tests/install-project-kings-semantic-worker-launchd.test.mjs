@@ -26,67 +26,83 @@ function canonical(value) {
   return value;
 }
 
-test("semantic worker launchd dry-run creates one three-lane semantic-only supervisor without credentials", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "semantic-launchd-plan-"));
+async function createSemanticWorkerCandidate(root) {
   const bundlePath = path.join(root, "project-kings-semantic-worker.cjs");
   const bundleManifestPath = path.join(root, "manifest.json");
   const routeManifestPath = path.join(root, "route-manifest.json");
   const workerConfigPath = path.join(root, "worker-config.json");
+  const codexHome = path.join(root, "codex-home");
+  const codexBin = path.join(root, "codex-0.144.1");
+  const bundle = Buffer.from(
+    `#!/usr/bin/env node\n` +
+      `if (process.env.CODEX_BIN !== ${JSON.stringify(codexBin)}) process.exit(41);\n` +
+      `console.log('semantic-only');\n`
+  );
+  await mkdir(codexHome, { recursive: true });
+  await writeFile(bundlePath, bundle, { mode: 0o700 });
+  await writeFile(codexBin, "#!/bin/sh\nprintf 'codex-cli 0.144.1\\n'\n", { mode: 0o700 });
+  await chmod(codexBin, 0o700);
+  const unsignedManifest = {
+    schemaVersion: "project-kings-semantic-worker-bundle-v1",
+    semanticRuntimeVersion: "project-kings-semantic-v1+test",
+    stage3AppVersion: "1.0.0+runtime.test",
+    bundleSha256: sha(bundle),
+    bundleSizeBytes: bundle.byteLength,
+    supportedKinds: ["production-semantic"],
+    maxConcurrentJobsPerProcess: 3,
+    intendedLaunchdInstances: 1,
+    credentialsInBundle: false
+  };
+  await writeFile(
+    bundleManifestPath,
+    JSON.stringify({
+      ...unsignedManifest,
+      manifestSha256: sha(JSON.stringify(canonical(unsignedManifest)))
+    })
+  );
+  await writeFile(
+    routeManifestPath,
+    JSON.stringify({
+      schemaVersion: 3,
+      manifestId: "routes-v3",
+      manifestSha256: "b".repeat(64)
+    })
+  );
+  await writeFile(
+    workerConfigPath,
+    JSON.stringify({
+      serverOrigin: "https://clips.example.test",
+      sessionToken: "never-embed-this-token",
+      workerId: "worker-1",
+      label: "Semantic"
+    }),
+    { mode: 0o600 }
+  );
+  await chmod(workerConfigPath, 0o600);
+  return {
+    bundlePath,
+    bundleManifestPath,
+    routeManifestPath,
+    workerConfigPath,
+    codexHome,
+    codexBin,
+    nodePath: process.execPath,
+    homeDir: root
+  };
+}
+
+test("semantic worker launchd dry-run creates one three-lane semantic-only supervisor without credentials", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "semantic-launchd-plan-"));
   const installRoot = path.join(root, "install");
   const launchAgentsRoot = path.join(root, "LaunchAgents");
-  const bundle = Buffer.from("#!/usr/bin/env node\nconsole.log('semantic-only');\n");
   try {
-    await writeFile(bundlePath, bundle, { mode: 0o700 });
-    const unsignedManifest = {
-        schemaVersion: "project-kings-semantic-worker-bundle-v1",
-        semanticRuntimeVersion: "project-kings-semantic-v1+test",
-        stage3AppVersion: "1.0.0+runtime.test",
-        bundleSha256: sha(bundle),
-        bundleSizeBytes: bundle.byteLength,
-        supportedKinds: ["production-semantic"],
-        maxConcurrentJobsPerProcess: 3,
-        intendedLaunchdInstances: 1,
-        credentialsInBundle: false
-      };
-    await writeFile(
-      bundleManifestPath,
-      JSON.stringify({
-        ...unsignedManifest,
-        manifestSha256: sha(JSON.stringify(canonical(unsignedManifest)))
-      })
-    );
-    await writeFile(
-      routeManifestPath,
-      JSON.stringify({
-        schemaVersion: 3,
-        manifestId: "routes-v3",
-        manifestSha256: "b".repeat(64)
-      })
-    );
-    await writeFile(
-      workerConfigPath,
-      JSON.stringify({
-        serverOrigin: "https://clips.example.test",
-        sessionToken: "never-embed-this-token",
-        workerId: "worker-1",
-        label: "Semantic"
-      }),
-      { mode: 0o600 }
-    );
-    await chmod(workerConfigPath, 0o600);
+    const candidate = await createSemanticWorkerCandidate(root);
 
     const plan = await buildProjectKingsSemanticWorkerLaunchdPlan({
+      ...candidate,
       action: "dry-run",
-      bundlePath,
-      bundleManifestPath,
-      routeManifestPath,
-      workerConfigPath,
-      codexHome: path.join(root, "codex-home"),
-      nodePath: process.execPath,
-      homeDir: root,
       installRoot,
-      launchAgentsRoot,
-      skipRuntimePreflight: true
+      launchAgentsRoot
     });
     assert.equal(plan.liveDeployPerformed, false);
     assert.equal(plan.mutationAuthorized, false);
@@ -95,16 +111,52 @@ test("semantic worker launchd dry-run creates one three-lane semantic-only super
     assert.equal(plan.renderKindsClaimed, false);
     assert.deepEqual(plan.supportedKinds, ["production-semantic"]);
     assert.equal(plan.credentialsEmbedded, false);
+    assert.equal(plan.codexBin, candidate.codexBin);
+    assert.equal(plan.codexVersion, "codex-cli 0.144.1");
     assert.equal(plan.routeManifestId, "routes-v3");
     assert.equal(plan.instances.length, 1);
     for (const instance of plan.instances) {
       assert.match(instance.plist, /project-kings-semantic-worker\.cjs/);
       assert.match(instance.plist, /PROJECT_KINGS_SEMANTIC_WORKER_CONFIG_PATH/);
+      assert.match(instance.plist, /<key>CODEX_BIN<\/key>/);
+      assert.ok(instance.plist.includes(`<string>${candidate.codexBin}</string>`));
       assert.doesNotMatch(instance.plist, /never-embed-this-token/);
       assert.doesNotMatch(instance.plist, /<string>render<\/string>|<string>preview<\/string>/);
     }
     await assert.rejects(access(installRoot));
     await assert.rejects(access(launchAgentsRoot));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("semantic worker install fails closed without a pinned current Codex executable", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "semantic-launchd-codex-"));
+  try {
+    const candidate = await createSemanticWorkerCandidate(root);
+    const build = (override = {}) =>
+      buildProjectKingsSemanticWorkerLaunchdPlan({
+        ...candidate,
+        ...override,
+        action: "dry-run",
+        skipRuntimePreflight: true
+      });
+
+    await assert.rejects(() => build({ codexBin: null }), /explicit --codex-bin or CODEX_BIN/);
+
+    await writeFile(candidate.codexBin, "#!/bin/sh\nprintf 'codex-cli 0.131.0\\n'\n");
+    await chmod(candidate.codexBin, 0o700);
+    await assert.rejects(() => build(), /Codex CLI 0\.144\.1 or newer/);
+
+    await writeFile(candidate.codexBin, "#!/bin/sh\nprintf 'not-a-codex-version\\n'\n");
+    await chmod(candidate.codexBin, 0o700);
+    await assert.rejects(() => build(), /unparseable version/);
+
+    await chmod(candidate.codexBin, 0o600);
+    await assert.rejects(() => build(), /existing executable regular non-symlink file/);
+
+    await rm(candidate.codexBin);
+    await assert.rejects(() => build(), /existing executable regular non-symlink file/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

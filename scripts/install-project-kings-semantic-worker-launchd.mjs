@@ -19,6 +19,7 @@ const templatePath = path.join(
 const LABEL_PREFIX = "com.zoro.clips-project-kings-semantic-worker";
 const INSTANCE_COUNT = 1;
 const SEMANTIC_CONCURRENCY = 3;
+const MINIMUM_CODEX_VERSION = [0, 144, 1];
 const SAFE_VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,159}$/;
 export const PROJECT_KINGS_DEFAULT_ROUTE_MANIFEST_FILENAME =
   "project-kings-model-routes-v4.json";
@@ -62,13 +63,64 @@ async function assertRegularFile(filePath, label) {
   return stat;
 }
 
+async function validateCodexExecutable(codexBin, codexHome) {
+  if (typeof codexBin !== "string" || !codexBin.trim()) {
+    throw new Error("Semantic worker install requires an explicit --codex-bin or CODEX_BIN path.");
+  }
+  if (!path.isAbsolute(codexBin)) {
+    throw new Error("Semantic worker Codex executable must be an absolute path.");
+  }
+  try {
+    await assertRegularFile(codexBin, "Codex executable");
+    await fs.access(codexBin, fsConstants.X_OK);
+  } catch {
+    throw new Error("Semantic worker Codex executable must be an existing executable regular non-symlink file.");
+  }
+
+  let versionOutput;
+  try {
+    const { stdout, stderr } = await execFileAsync(codexBin, ["--version"], {
+      timeout: 10_000,
+      maxBuffer: 1024 * 1024,
+      env: {
+        ...process.env,
+        CODEX_BIN: codexBin,
+        CODEX_HOME: codexHome
+      }
+    });
+    versionOutput = [stdout, stderr]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .join("\n");
+  } catch {
+    throw new Error("Semantic worker Codex executable version check failed.");
+  }
+
+  const match = /^codex(?:-cli)?\s+(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(
+    versionOutput
+  );
+  if (!match) {
+    throw new Error("Semantic worker Codex executable returned an unparseable version.");
+  }
+  const version = match.slice(1, 4).map(Number);
+  const comparison = version.findIndex((value, index) => value !== MINIMUM_CODEX_VERSION[index]);
+  const belowMinimum =
+    comparison >= 0 && version[comparison] < MINIMUM_CODEX_VERSION[comparison];
+  const minimumPrerelease = comparison === -1 && Boolean(match[4]);
+  if (belowMinimum || minimumPrerelease) {
+    throw new Error("Semantic worker requires Codex CLI 0.144.1 or newer.");
+  }
+  return versionOutput;
+}
+
 async function loadCandidate(input) {
-  await Promise.all([
+  const [, , , , , codexVersion] = await Promise.all([
     assertRegularFile(input.bundlePath, "Semantic worker bundle"),
     assertRegularFile(input.bundleManifestPath, "Semantic worker bundle manifest"),
     assertRegularFile(input.routeManifestPath, "Frozen route manifest"),
     assertRegularFile(input.workerConfigPath, "Stage 3 worker config"),
     assertRegularFile(input.nodePath, "Node executable"),
+    validateCodexExecutable(input.codexBin, input.codexHome),
     fs.access(input.nodePath, fsConstants.X_OK)
   ]);
   const [bundleBytes, manifestRaw, routeBytes, workerConfigStat, workerConfigRaw] = await Promise.all([
@@ -129,7 +181,8 @@ async function loadCandidate(input) {
           PROJECT_KINGS_SEMANTIC_WORKER_CONFIG_PATH: input.workerConfigPath,
           PROJECT_KINGS_SEMANTIC_CODEX_HOME: input.codexHome,
           PROJECT_KINGS_SEMANTIC_ROUTE_MANIFEST_PATH: input.routeManifestPath,
-          PROJECT_KINGS_SEMANTIC_WORK_ROOT: preflightWorkRoot
+          PROJECT_KINGS_SEMANTIC_WORK_ROOT: preflightWorkRoot,
+          CODEX_BIN: input.codexBin
         }
       });
     } catch {
@@ -147,7 +200,8 @@ async function loadCandidate(input) {
     manifest,
     routeBytes,
     routeManifest,
-    routeFileSha256: sha256(routeBytes)
+    routeFileSha256: sha256(routeBytes),
+    codexVersion
   };
 }
 
@@ -191,6 +245,7 @@ export async function buildProjectKingsSemanticWorkerLaunchdPlan(input) {
       INSTANCE: String(instance),
       WORKER_CONFIG_PATH: input.workerConfigPath,
       CODEX_HOME: input.codexHome,
+      CODEX_BIN: input.codexBin,
       ROUTE_MANIFEST_PATH: routeManifestPath,
       WORK_ROOT: paths.workRoot,
       SPOOL_ROOT: paths.spoolRoot,
@@ -214,6 +269,8 @@ export async function buildProjectKingsSemanticWorkerLaunchdPlan(input) {
     supportedKinds: ["production-semantic"],
     renderKindsClaimed: false,
     credentialsEmbedded: false,
+    codexBin: input.codexBin,
+    codexVersion: candidate.codexVersion,
     semanticRuntimeVersion: candidate.manifest.semanticRuntimeVersion,
     stage3AppVersion: candidate.manifest.stage3AppVersion,
     bundleSha256: candidate.manifest.bundleSha256,
@@ -439,6 +496,8 @@ async function main() {
       )
   );
   const codexHome = path.resolve(argument(argv, "--codex-home") ?? path.join(os.homedir(), ".codex"));
+  const codexBinSource = argument(argv, "--codex-bin") ?? process.env.CODEX_BIN?.trim();
+  const codexBin = codexBinSource?.trim() ? path.resolve(codexBinSource.trim()) : null;
   const commonPaths = {
     installRoot: argument(argv, "--install-root")
       ? path.resolve(argument(argv, "--install-root"))
@@ -456,6 +515,7 @@ async function main() {
         routeManifestPath,
         workerConfigPath,
         codexHome,
+        codexBin,
         nodePath: path.resolve(argument(argv, "--node") ?? process.execPath),
         ...commonPaths
       });

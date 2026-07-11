@@ -11,7 +11,7 @@ Project Kings uses a separate bundle, `project-kings-semantic-worker.cjs`. It ad
 ## Exact job flow
 
 1. The process reads the existing Stage 3 worker session from a regular `0600` config file. The token is used only in authenticated HTTP headers and is never copied into a job, result, plist or log message.
-2. Preflight requires explicit enablement, an absolute local `CODEX_HOME`, a successful `codex login status`, and a production-ready frozen route manifest v2.
+2. Preflight requires explicit enablement, an absolute local `CODEX_HOME`, an explicit executable regular-file `CODEX_BIN` reporting Codex CLI `0.144.1` or newer, a successful `codex login status`, and a production-ready frozen route manifest. The semantic worker never falls back to the system `codex` binary.
 3. The process claims only `production-semantic`.
 4. For every artifact reference it calls `GET /api/stage3/worker/jobs/{jobId}/inputs/{inputId}` under the exact active lease.
 5. It rejects redirects, unexpected status, missing/drifted headers, excess bytes, wrong size or wrong SHA-256 before a model call.
@@ -42,19 +42,19 @@ npm run project-kings:semantic-worker:pair
 
 The command prints the worker id and config path, never the pairing/session token.
 
-Dry-run performs all artifact, permission, hash, route-manifest and three-lane supervisor plist checks without writing launchd state:
+Dry-run performs all artifact, permission, hash, route-manifest, pinned-Codex version and three-lane supervisor plist checks without writing launchd state. `--codex-bin` is mandatory unless the same explicit path is supplied through `CODEX_BIN`; no PATH/Homebrew fallback is used:
 
 ```bash
-npm run project-kings:semantic-worker:plan
+npm run project-kings:semantic-worker:plan -- --codex-bin /absolute/path/to/codex-0.144.1
 ```
 
 Install and rollback are explicit operations:
 
 ```bash
-npm run project-kings:semantic-worker:install
+npm run project-kings:semantic-worker:install -- --codex-bin /absolute/path/to/codex-0.144.1
 npm run project-kings:semantic-worker:rollback
 ```
 
-The installer uses versioned directories and an atomic `current` symlink. Rollback switches the symlink to the recorded previous version and restarts the semantic supervisor. Neither operation puts a session token into launchd.
+The installer uses versioned directories and an atomic `current` symlink. The validated absolute `CODEX_BIN` is copied into the preflight environment and launchd plist, while credentials remain absent. Rollback switches the symlink to the recorded previous version and restarts the semantic supervisor. Neither operation puts a session token into launchd.
 
 The real dry-run must remain blocked while the selected model-route manifest is legacy/read-only or lacks a real `source_policy` benchmark. This is a release gate, not an installer error to bypass.
