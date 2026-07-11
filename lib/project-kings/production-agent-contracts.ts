@@ -1176,6 +1176,15 @@ const ROLE_INSTRUCTIONS: Record<ProductionAgentRole, string> = {
   revision: "Choose only one bounded repair action tied to the supplied structured defects and attempt budget. Never weaken a quality gate."
 };
 
+const SOURCE_SEARCH_DEFINITIONS = [
+  "SOURCE SEARCH BOUNDARY:",
+  "- Judge only two things: channel-concept relevance and same-profile source supply. Return FOUND with the matching candidateIds when a supplied same-profile candidate fits the channel concept; otherwise return NO_MATCH with no candidates.",
+  "- Never reject a candidate for burned-in captions, subtitles, watermarks, aggregator or account handles, follow/subscribe overlays, calls to action, end cards, split-screen layouts, static framing, a missing action payoff, or being part of a compilation. Those defects belong to downstream Source Fit, Source Policy and Vision QA, not to search.",
+  "- A candidate that fits the channel concept must be returned as FOUND even when it visibly carries such defects; downstream roles decide whether to keep it.",
+  "- A candidate that does not fit the channel concept is NO_MATCH even when it is present in the pool and shares the profile.",
+  "- Do not widen the channel concept to admit adjacent material; keep the existing concept boundary exactly as defined in the concept artifact."
+] as const;
+
 const SOURCE_FIT_DEFINITIONS = [
   "SOURCE FIT DUPLICATE EVIDENCE RULES:",
   "- concept.positiveExamples and concept.continuityBuffer define the channel boundary and source supply; they are not proof that an event was already published or reserved.",
@@ -1230,6 +1239,7 @@ export function buildProductionAgentPrompt<R extends ProductionAgentRole>(
   return [
     `ROLE: Project Kings ${role}`,
     ROLE_INSTRUCTIONS[role],
+    ...(role === "source_search" ? SOURCE_SEARCH_DEFINITIONS : []),
     ...(role === "source_fit" ? SOURCE_FIT_DEFINITIONS : []),
     ...(role === "source_policy" ? SOURCE_POLICY_DEFINITIONS : []),
     ...(role === "vision_qa" ? VISION_QA_DEFINITIONS : []),

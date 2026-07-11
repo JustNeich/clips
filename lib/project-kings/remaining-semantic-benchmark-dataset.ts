@@ -31,6 +31,19 @@ export type RemainingSemanticBenchmarkRole =
 const ANNOTATION_SCHEMA_VERSION =
   "project-kings-remaining-semantic-benchmark-annotations-v1" as const;
 const DATASET_VERSION = "real-30-v2" as const;
+/*
+ * The source_search role carries a corrected role-boundary revision on top of
+ * the frozen shared annotations. The shared annotation identity (and therefore
+ * annotationsSha256, which is bound into every role's checkpoint keys) must
+ * stay byte-identical to real-30-v2 so caption/montage/source_fit checkpoint
+ * replay keeps working. All search-specific corrections live in the frozen
+ * overlay file below and only affect the source_search dataset and evaluator.
+ */
+const SOURCE_SEARCH_DATASET_VERSION = "real-30-v3-search-boundary" as const;
+const SOURCE_SEARCH_BOUNDARY_OVERLAY_RELATIVE_PATH =
+  "docs/project-kings-production-pipeline-v1/source-search-role-boundary-v1.overlay.json";
+const SOURCE_SEARCH_BOUNDARY_OVERLAY_SCHEMA_VERSION =
+  "project-kings-source-search-role-boundary-overlay-v1" as const;
 const SOURCE_POLICY_DATASET_RELATIVE_PATH =
   "docs/project-kings-production-pipeline-v1/evidence/source-policy-benchmark-real-30-v1/dataset.json";
 const SOURCE_POLICY_CASE_ROOT =
@@ -335,6 +348,31 @@ type RoleExpected = Readonly<{
   targetDurationSec?: number;
   sourceDurationSec?: number;
   anchorTokens?: readonly string[];
+  note?: string;
+}>;
+
+type SourceSearchBoundaryOverlayCase = Readonly<{
+  mediaId: string;
+  profileKey: ProjectKingsPilotProfileKey;
+  conceptRelevant: boolean;
+  searchEventSummary: string;
+  note: string;
+}>;
+
+type SourceSearchBoundaryOverlay = Readonly<{
+  schemaVersion: typeof SOURCE_SEARCH_BOUNDARY_OVERLAY_SCHEMA_VERSION;
+  revisionId: string;
+  baseAnnotationSetId: string;
+  baseAnnotationsSha256: string;
+  boundary: string;
+  cases: readonly SourceSearchBoundaryOverlayCase[];
+}>;
+
+export type SourceSearchBoundaryExpectations = Readonly<{
+  revisionId: string;
+  overlayRelativePath: string;
+  overlaySha256: string;
+  roleCases: readonly RoleExpected[];
 }>;
 
 export type RemainingSemanticBenchmarkAnnotations = Readonly<{
@@ -355,6 +393,7 @@ type BuiltRoleDatasets = {
     [R in RemainingSemanticBenchmarkRole]: StageModelBenchmarkDataset<R>;
   };
   annotations: RemainingSemanticBenchmarkAnnotations;
+  sourceSearchBoundary: SourceSearchBoundaryExpectations;
 };
 
 function canonicalize(value: unknown): unknown {
@@ -428,11 +467,12 @@ function basePacket<R extends RemainingSemanticBenchmarkRole>(input: {
   channelId: string;
   task: ProductionAgentPacketByRole[R]["task"];
   artifacts: readonly ProductionAgentArtifact[];
+  datasetVersion?: string;
 }): ProductionAgentPacketByRole[R] {
   return {
     schemaVersion: "production-agent-packet-v1",
     role: input.role,
-    runId: `benchmark-${input.role}-${DATASET_VERSION}`,
+    runId: `benchmark-${input.role}-${input.datasetVersion ?? DATASET_VERSION}`,
     itemId: input.caseId,
     channelId: input.channelId,
     profileVersion: "channel-production-profile-v1",
@@ -486,6 +526,66 @@ async function buildAnnotationPacket(input: {
   return Object.freeze({ ...payload, annotationsSha256: sha256Json(payload) });
 }
 
+async function loadSourceSearchBoundaryOverlay(input: {
+  overlayPath: string;
+  annotations: RemainingSemanticBenchmarkAnnotations;
+  corpusMediaIds: readonly string[];
+  annotationsByMedia: ReadonlyMap<string, HumanCaseAnnotation>;
+}): Promise<{
+  overlay: SourceSearchBoundaryOverlay;
+  overlaySha256: string;
+  byMediaId: Map<string, SourceSearchBoundaryOverlayCase>;
+}> {
+  const overlayBytes = await fs.readFile(input.overlayPath);
+  const overlay = JSON.parse(overlayBytes.toString("utf8")) as SourceSearchBoundaryOverlay;
+  if (overlay.schemaVersion !== SOURCE_SEARCH_BOUNDARY_OVERLAY_SCHEMA_VERSION) {
+    throw new Error("Unsupported source-search role-boundary overlay schema.");
+  }
+  if (typeof overlay.revisionId !== "string" || overlay.revisionId.length === 0) {
+    throw new Error("Source-search role-boundary overlay is missing a revisionId.");
+  }
+  if (overlay.baseAnnotationsSha256 !== input.annotations.annotationsSha256) {
+    throw new Error(
+      "Source-search role-boundary overlay is not bound to the loaded base annotation set."
+    );
+  }
+  if (overlay.baseAnnotationSetId !== input.annotations.annotationSetId) {
+    throw new Error(
+      "Source-search role-boundary overlay names a different base annotation set id."
+    );
+  }
+  if (!Array.isArray(overlay.cases) || overlay.cases.length !== input.corpusMediaIds.length) {
+    throw new Error("Source-search role-boundary overlay must cover every corpus case exactly once.");
+  }
+  const byMediaId = new Map<string, SourceSearchBoundaryOverlayCase>();
+  for (const overlayCase of overlay.cases) {
+    if (byMediaId.has(overlayCase.mediaId)) {
+      throw new Error(`Source-search role-boundary overlay repeats media ${overlayCase.mediaId}.`);
+    }
+    const annotation = input.annotationsByMedia.get(overlayCase.mediaId);
+    if (!annotation) {
+      throw new Error(`Source-search role-boundary overlay names unknown media ${overlayCase.mediaId}.`);
+    }
+    if (overlayCase.profileKey !== annotation.profileKey) {
+      throw new Error(`Source-search role-boundary overlay profile mismatch for ${overlayCase.mediaId}.`);
+    }
+    if (typeof overlayCase.conceptRelevant !== "boolean") {
+      throw new Error(`Source-search role-boundary overlay conceptRelevant must be boolean for ${overlayCase.mediaId}.`);
+    }
+    if (typeof overlayCase.searchEventSummary !== "string" || overlayCase.searchEventSummary.length === 0) {
+      throw new Error(`Source-search role-boundary overlay is missing searchEventSummary for ${overlayCase.mediaId}.`);
+    }
+    if (typeof overlayCase.note !== "string" || overlayCase.note.length === 0) {
+      throw new Error(`Source-search role-boundary overlay is missing note for ${overlayCase.mediaId}.`);
+    }
+    byMediaId.set(overlayCase.mediaId, overlayCase);
+  }
+  if (input.corpusMediaIds.some((mediaId) => !byMediaId.has(mediaId))) {
+    throw new Error("Source-search role-boundary overlay does not cover every corpus media id.");
+  }
+  return { overlay, overlaySha256: sha256(overlayBytes), byMediaId };
+}
+
 async function persistFrozenAnnotations(
   repoRoot: string,
   annotations: RemainingSemanticBenchmarkAnnotations
@@ -513,6 +613,8 @@ async function persistFrozenAnnotations(
 export async function buildRemainingSemanticBenchmarkDatasets(input: {
   repoRoot: string;
   fixtureRoot: string;
+  /* Test-only escape hatch; production callers use the frozen repo overlay. */
+  sourceSearchOverlayPath?: string;
 }): Promise<BuiltRoleDatasets> {
   const sourcePolicyDatasetPath = path.join(input.repoRoot, SOURCE_POLICY_DATASET_RELATIVE_PATH);
   const sourcePolicyDatasetBytes = await fs.readFile(sourcePolicyDatasetPath);
@@ -614,76 +716,21 @@ export async function buildRemainingSemanticBenchmarkDatasets(input: {
     throw new Error(`Expected 19 target and 11 reject human cases, got ${targetCases.length}/${rejectCases.length}.`);
   }
 
-  const sourceSearchExpected: RoleExpected[] = [];
-  const sourceSearchCases = resolved.map((entry, index) => {
-    // Search owns concept relevance and supply only. Downstream human Source
-    // Fit rejection (for captions, watermarks, static action, etc.) must not be
-    // leaked back into this label. Half the cases contain one same-profile
-    // source; half contain only cross-profile sources.
-    const expectedFound = index % 2 === 0;
-    const crossProfileDecoys = resolved
-      .filter((candidate) => candidate.annotation.profileKey !== entry.annotation.profileKey)
-      .slice(index % 10, (index % 10) + 2);
-    const poolEntries = [
-      ...(expectedFound ? [entry] : []),
-      ...crossProfileDecoys
-    ]
-      .filter((candidate, candidateIndex, all) => all.findIndex((other) => other.mediaId === candidate.mediaId) === candidateIndex)
-      .map((candidate) => ({
-        candidateId: `candidate-${candidate.mediaId}`,
-        sourceUrl: candidate.corpusCase.sourceUrl,
-        strategy: profileStrategy(candidate.annotation.profileKey),
-        storyEventId: candidate.annotation.storyEventId,
-        eventSummary: candidate.annotation.englishSummary,
-        profileKey: candidate.annotation.profileKey,
-        sourceAvailable: true,
-        evidenceCaseId: candidate.corpusCase.caseId
-      }));
-    const sourcePoolPromise = writeFixture({
-      fixtureRoot: input.fixtureRoot,
-      fileName: `source-pool-${String(index + 1).padStart(2, "0")}.json`,
-      id: "source-pool",
-      kind: "source_pool",
-      value: {
-        schemaVersion: "project-kings-benchmark-source-pool-v1",
-        candidates: poolEntries,
-        exhaustedStrategies: expectedFound ? [] : ["instagram", "youtube_ask", "reserve_pool"]
-      }
-    });
-    const caseId = `source-search-${String(index + 1).padStart(2, "0")}-${entry.mediaId}`;
-    const expectedCandidateIds = expectedFound ? [`candidate-${entry.mediaId}`] : [];
-    sourceSearchExpected.push({
-      caseId,
-      expectedQualityLabel: expectedFound ? "FOUND" : "NO_MATCH",
-      expectedCandidateIds
-    });
-    return { entry, caseId, expectedFound, expectedCandidateIds, sourcePoolPromise };
+  // Legacy parity-derived search expectations, frozen inside the shared
+  // annotation packet SOLELY to keep the real-30-v2 annotation identity
+  // byte-identical (annotationsSha256 is bound into the checkpoint keys of
+  // every role, so changing it would invalidate caption/montage/source_fit
+  // replay). The corrected, content-derived search expectations come from the
+  // frozen role-boundary overlay and are applied only to the source_search
+  // dataset and its evaluator expectations further below.
+  const sourceSearchExpected: RoleExpected[] = resolved.map((entry, index) => {
+    const legacyFound = index % 2 === 0;
+    return {
+      caseId: `source-search-${String(index + 1).padStart(2, "0")}-${entry.mediaId}`,
+      expectedQualityLabel: legacyFound ? "FOUND" : "NO_MATCH",
+      expectedCandidateIds: legacyFound ? [`candidate-${entry.mediaId}`] : []
+    };
   });
-  const builtSourceSearchCases = await Promise.all(sourceSearchCases.map(async (value) => ({
-    caseId: value.caseId,
-    expectedQualityLabel: value.expectedFound ? "FOUND" : "NO_MATCH",
-    packet: basePacket({
-      role: "source_search",
-      caseId: value.caseId,
-      channelId: value.entry.corpusCase.channelId,
-      task: {
-        targetCandidateCount: 1,
-        querySeeds: [
-          value.entry.annotation.profileKey === "dark-joy-boy"
-            ? "continuous warm human contact with an exotic animal"
-            : value.entry.annotation.profileKey === "copscopes-x2e"
-              ? "one visible police incident with action and payoff"
-              : "recognizable fiction visibly transformed with AI"
-        ],
-        allowedStrategies: [
-          profileStrategy(value.entry.annotation.profileKey),
-          "reserve_pool"
-        ],
-        excludedStoryEventIds: []
-      },
-      artifacts: [value.entry.concept, await value.sourcePoolPromise]
-    })
-  })));
 
   const duplicateMediaIds = new Set(targetCases.slice(0, 6).map((entry) => entry.mediaId));
   const sourceFitExpected: RoleExpected[] = [];
@@ -800,11 +847,123 @@ export async function buildRemainingSemanticBenchmarkDatasets(input: {
   });
   await persistFrozenAnnotations(input.repoRoot, annotations);
 
+  const { overlay, overlaySha256, byMediaId: overlayByMediaId } =
+    await loadSourceSearchBoundaryOverlay({
+      overlayPath:
+        input.sourceSearchOverlayPath ??
+        path.join(input.repoRoot, SOURCE_SEARCH_BOUNDARY_OVERLAY_RELATIVE_PATH),
+      annotations,
+      corpusMediaIds,
+      annotationsByMedia
+    });
+  const sourceSearchBoundaryExpected: RoleExpected[] = [];
+  const sourceSearchCases = resolved.map((entry, index) => {
+    // Search owns channel-concept relevance and same-profile supply only.
+    // Downstream Source Fit / Source Policy / Vision QA defects (burned-in
+    // captions, watermarks, overlays/CTA, static framing, missing payoff,
+    // unrelated compilations) must never leak back into this label.
+    //
+    // `candidateInPool` controls only whether the same-profile source is
+    // placed in the pool (half the cases carry one; half are cross-profile
+    // decoys only). The FOUND/NO_MATCH label is derived from content via the
+    // frozen overlay: a same-profile candidate is FOUND only when it is
+    // concept-relevant. A same-profile candidate that violates the channel
+    // concept stays in the pool as a hard distractor whose correct decision
+    // is NO_MATCH.
+    const candidateInPool = index % 2 === 0;
+    const overlayCase = overlayByMediaId.get(entry.mediaId)!;
+    const expectedFound = candidateInPool && overlayCase.conceptRelevant;
+    const crossProfileDecoys = resolved
+      .filter((candidate) => candidate.annotation.profileKey !== entry.annotation.profileKey)
+      .slice(index % 10, (index % 10) + 2);
+    const poolEntries = [
+      ...(candidateInPool ? [entry] : []),
+      ...crossProfileDecoys
+    ]
+      .filter((candidate, candidateIndex, all) => all.findIndex((other) => other.mediaId === candidate.mediaId) === candidateIndex)
+      .map((candidate) => ({
+        candidateId: `candidate-${candidate.mediaId}`,
+        sourceUrl: candidate.corpusCase.sourceUrl,
+        strategy: profileStrategy(candidate.annotation.profileKey),
+        storyEventId: candidate.annotation.storyEventId,
+        // Neutral, content-only summary from the frozen overlay. Never the
+        // human englishSummary, whose reject-case wording carries downstream
+        // rejection/usability verdicts.
+        eventSummary: overlayByMediaId.get(candidate.mediaId)!.searchEventSummary,
+        profileKey: candidate.annotation.profileKey,
+        sourceAvailable: true,
+        evidenceCaseId: candidate.corpusCase.caseId
+      }));
+    const sourcePoolPromise = writeFixture({
+      fixtureRoot: input.fixtureRoot,
+      fileName: `source-pool-${String(index + 1).padStart(2, "0")}.json`,
+      id: "source-pool",
+      kind: "source_pool",
+      value: {
+        schemaVersion: "project-kings-benchmark-source-pool-v1",
+        candidates: poolEntries,
+        exhaustedStrategies: candidateInPool ? [] : ["instagram", "youtube_ask", "reserve_pool"]
+      }
+    });
+    const caseId = `source-search-${String(index + 1).padStart(2, "0")}-${entry.mediaId}`;
+    const expectedCandidateIds = expectedFound ? [`candidate-${entry.mediaId}`] : [];
+    const note = !candidateInPool
+      ? "Decoy-only pool with no same-profile candidate present; correct decision is NO_MATCH."
+      : overlayCase.conceptRelevant
+        ? "Concept-relevant same-profile candidate present; correct decision is FOUND regardless of downstream-fit defects."
+        : `Same-profile candidate present but ${overlayCase.note}; hard distractor whose correct decision is NO_MATCH.`;
+    sourceSearchBoundaryExpected.push({
+      caseId,
+      expectedQualityLabel: expectedFound ? "FOUND" : "NO_MATCH",
+      expectedCandidateIds,
+      note
+    });
+    return { entry, caseId, expectedFound, sourcePoolPromise };
+  });
+  const builtSourceSearchCases = await Promise.all(sourceSearchCases.map(async (value) => ({
+    caseId: value.caseId,
+    expectedQualityLabel: value.expectedFound ? "FOUND" : "NO_MATCH",
+    packet: basePacket({
+      role: "source_search",
+      caseId: value.caseId,
+      channelId: value.entry.corpusCase.channelId,
+      datasetVersion: SOURCE_SEARCH_DATASET_VERSION,
+      task: {
+        targetCandidateCount: 1,
+        querySeeds: [
+          value.entry.annotation.profileKey === "dark-joy-boy"
+            ? "continuous warm human contact with an exotic animal"
+            : value.entry.annotation.profileKey === "copscopes-x2e"
+              ? "one visible police incident with action and payoff"
+              : "recognizable fiction visibly transformed with AI"
+        ],
+        allowedStrategies: [
+          profileStrategy(value.entry.annotation.profileKey),
+          "reserve_pool"
+        ],
+        excludedStoryEventIds: []
+      },
+      artifacts: [value.entry.concept, await value.sourcePoolPromise]
+    })
+  })));
+  if (
+    sourceSearchBoundaryExpected.length !== 30 ||
+    new Set(sourceSearchBoundaryExpected.map((entry) => entry.caseId)).size !== 30
+  ) {
+    throw new Error("source_search boundary expectations did not produce 30 unique typed cases.");
+  }
+  const sourceSearchBoundary: SourceSearchBoundaryExpectations = Object.freeze({
+    revisionId: overlay.revisionId,
+    overlayRelativePath: SOURCE_SEARCH_BOUNDARY_OVERLAY_RELATIVE_PATH,
+    overlaySha256,
+    roleCases: sourceSearchBoundaryExpected
+  });
+
   return {
     datasets: {
       source_search: {
         datasetId: "project-kings-source-search-real-30",
-        datasetVersion: DATASET_VERSION,
+        datasetVersion: SOURCE_SEARCH_DATASET_VERSION,
         role: "source_search",
         cases: builtSourceSearchCases
       },
@@ -827,7 +986,8 @@ export async function buildRemainingSemanticBenchmarkDatasets(input: {
         cases: montageCases
       }
     },
-    annotations
+    annotations,
+    sourceSearchBoundary
   };
 }
 
@@ -844,20 +1004,31 @@ function makeEvaluation(
 }
 
 export function createRemainingSemanticBenchmarkQualityEvaluator(
-  annotations: RemainingSemanticBenchmarkAnnotations
+  annotations: RemainingSemanticBenchmarkAnnotations,
+  sourceSearchBoundary?: SourceSearchBoundaryExpectations
 ): ModelBenchmarkQualityEvaluator {
   const expectedByRole = new Map(
     REMAINING_SEMANTIC_BENCHMARK_ROLES.flatMap((role) =>
       annotations.roleCases[role].map((entry) => [`${role}:${entry.caseId}`, entry] as const)
     )
   );
+  // The shared annotations keep the legacy parity-derived source_search labels
+  // only for checkpoint-identity stability; scoring source_search requires the
+  // corrected role-boundary expectations and fails closed without them.
+  if (sourceSearchBoundary) {
+    for (const entry of sourceSearchBoundary.roleCases) {
+      expectedByRole.set(`source_search:${entry.caseId}`, entry);
+    }
+  }
   const config = {
     version: "real-30-v1",
     sourceSearch: "exact decision; candidate must be independently annotated eligible and non-excluded",
     sourceFit: "exact decision; target PASS fields, duplicate flags, and rejected-source fail-closed behavior",
     caption: "strict PASS, length/title/banned/meta gates, hook-action-payoff and factual anchor coverage",
     montage: "strict PASS, exact duration, ordered non-overlapping hook-action-payoff and usable timeline coverage",
-    annotationsSha256: annotations.annotationsSha256
+    annotationsSha256: annotations.annotationsSha256,
+    sourceSearchBoundaryRevisionId: sourceSearchBoundary?.revisionId ?? null,
+    sourceSearchBoundaryOverlaySha256: sourceSearchBoundary?.overlaySha256 ?? null
   };
   const implementation = `${createRemainingSemanticBenchmarkQualityEvaluator.toString()}\n${makeEvaluation.toString()}\n${words.toString()}`;
   return {
@@ -870,6 +1041,11 @@ export function createRemainingSemanticBenchmarkQualityEvaluator(
         throw new Error(`Unsupported remaining-role evaluator input ${role}.`);
       }
       const benchmarkRole = role as RemainingSemanticBenchmarkRole;
+      if (benchmarkRole === "source_search" && !sourceSearchBoundary) {
+        throw new Error(
+          "source_search evaluation requires the role-boundary overlay expectations; the shared annotations keep only the legacy identity labels."
+        );
+      }
       const expected = expectedByRole.get(`${benchmarkRole}:${caseId}`);
       if (!expected) throw new Error(`Missing frozen expected result for ${role}:${caseId}.`);
       const record = output as unknown as Record<string, unknown>;

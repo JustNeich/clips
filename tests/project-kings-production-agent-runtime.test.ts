@@ -488,6 +488,22 @@ test("Vision QA prompt defines template text, foreign captions and evidence-boun
   );
 });
 
+test("Source Search prompt confines the judge to concept relevance and forbids downstream-fit rejection", () => {
+  const prompt = buildProductionAgentPrompt("source_search", sourceSearchPacket());
+
+  assert.match(prompt, /Judge only two things: channel-concept relevance and same-profile source supply/);
+  assert.match(
+    prompt,
+    /Never reject a candidate for burned-in captions, subtitles, watermarks, aggregator or account handles, follow\/subscribe overlays, calls to action, end cards, split-screen layouts, static framing, a missing action payoff, or being part of a compilation/
+  );
+  assert.match(prompt, /must be returned as FOUND even when it visibly carries such defects/);
+  assert.match(
+    prompt,
+    /does not fit the channel concept is NO_MATCH even when it is present in the pool and shares the profile/
+  );
+  assert.match(prompt, /Do not widen the channel concept/);
+});
+
 test("Source Fit prompt treats concept examples as exemplars and task lists as the duplicate ledger", () => {
   const prompt = buildProductionAgentPrompt("source_fit", sourceFitPacket());
 

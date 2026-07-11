@@ -163,7 +163,10 @@ async function main(): Promise<void> {
       fixtureRoot
     });
     const dataset = built.datasets[role];
-    const qualityEvaluator = createRemainingSemanticBenchmarkQualityEvaluator(built.annotations);
+    const qualityEvaluator = createRemainingSemanticBenchmarkQualityEvaluator(
+      built.annotations,
+      built.sourceSearchBoundary
+    );
     const rateCardBytes = await fs.readFile(RATE_CARD_PATH);
     const rateCard = JSON.parse(rateCardBytes.toString("utf8")) as {
       rates: Record<string, { input: number; cachedInput: number; output: number }>;

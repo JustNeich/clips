@@ -1,0 +1,4012 @@
+{
+  "schemaVersion": "project-kings-model-benchmark-evidence-v1",
+  "benchmarkVersion": "project-kings-montage_planner-real-30-v2",
+  "stageRole": "montage_planner",
+  "createdAt": "2026-07-11T10:00:47.847Z",
+  "bounds": {
+    "maxCases": 120,
+    "maxCandidates": 12,
+    "maxExecutions": 240,
+    "actualExecutions": 120
+  },
+  "dataset": {
+    "datasetId": "project-kings-montage-planner-real-30",
+    "datasetVersion": "real-30-v2",
+    "datasetSha256": "a743fd6a846f8d256b921416717ac76efa12142b4b55673a9eccb7d6e23a3b8c",
+    "promptSetSha256": "ae6256649a216455ebb01a1a93e2866c86dc64a771850c6ad8bc096790a926e6",
+    "outputSchemaSha256": "fe89a5584e541af4e11c310aba1c45126e51d50f4c9d6aebd77d1afbcfd1b17c",
+    "sampleSize": 30
+  },
+  "qualityEvaluator": {
+    "evaluatorId": "project-kings-remaining-semantic-real-30",
+    "evaluatorVersion": "v1",
+    "implementationSha256": "d3f0fdc1c10fdb02a817b61c437ee23fe17e9a38833aa3ce609ac73ae55414f5",
+    "configSha256": "359ed0625aeca94b7df6d12057c3051d0dcc371624671c58391717e2ecbe3edc"
+  },
+  "executionContract": {
+    "registrySha256": "e899df48af4ad54b2e55514a0ac9b87b69e66b5cea05af8216a1b6a8eaca36b8",
+    "policySha256": "06e7f06d92d5e357c10889008388c41650592bc7f6d986fdf13e365bfbb7bd11",
+    "schemaValidationMethod": "strict-production-agent-output-v1",
+    "qualityAggregationMethod": "mean-passed-evaluator-score-v1",
+    "p95Method": "nearest-rank-p95-v1",
+    "costMethod": "uncached-input-plus-cached-input-plus-total-output-v1",
+    "reasoningTokensDoubleCounted": false
+  },
+  "pricing": [
+    {
+      "routeId": "codex:gpt-5.4",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 62.5,
+      "cachedInputPerMillionTokens": 6.25,
+      "outputPerMillionTokens": 375,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10-v2.json",
+      "verifiedAt": "2026-07-10T18:20:00.000Z",
+      "sourceSha256": "4e38a43a881d6f1b2fb8a5649d902c48faef26ba228907b2d57d82bd4310e97a"
+    },
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 18.75,
+      "cachedInputPerMillionTokens": 1.875,
+      "outputPerMillionTokens": 113,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10-v2.json",
+      "verifiedAt": "2026-07-10T18:20:00.000Z",
+      "sourceSha256": "4e38a43a881d6f1b2fb8a5649d902c48faef26ba228907b2d57d82bd4310e97a"
+    },
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 25,
+      "cachedInputPerMillionTokens": 2.5,
+      "outputPerMillionTokens": 150,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10-v2.json",
+      "verifiedAt": "2026-07-10T18:20:00.000Z",
+      "sourceSha256": "4e38a43a881d6f1b2fb8a5649d902c48faef26ba228907b2d57d82bd4310e97a"
+    }
+  ],
+  "candidates": [
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "provider": "codex",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "low",
+      "samples": [
+        {
+          "caseId": "montage-01-BtDnmx6HRr_-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "8aeab83847aad0b24c8d3436369eec0dd5cfa7180b9b364e85b93aa254e0430f",
+          "startedAt": "2026-07-11T09:08:54.400Z",
+          "durationMs": 16776.254625,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 49587,
+            "cachedInputTokens": 21248,
+            "outputTokens": 549,
+            "reasoningOutputTokens": 282
+          },
+          "cost": 0.843945,
+          "costUnit": "codex_credits",
+          "outputSha256": "6d1c2d2a3a731c63dfbd3d8f9852fd3270eca1073009ba32d90d763104c627ca",
+          "error": null
+        },
+        {
+          "caseId": "montage-02-C-0YpsCAODv-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "08c285cd499ea08aed150790c279436da1da604f27dd3a5dacef26765377837a",
+          "startedAt": "2026-07-11T09:08:54.400Z",
+          "durationMs": 8462.7795,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24200,
+            "cachedInputTokens": 0,
+            "outputTokens": 212,
+            "reasoningOutputTokens": 55
+          },
+          "cost": 0.6368,
+          "costUnit": "codex_credits",
+          "outputSha256": "b326a939d153b5d8b7958b0ac450ecbc1eed29229bfd417dc06641503548bf82",
+          "error": null
+        },
+        {
+          "caseId": "montage-03-C9gLu79MklN-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "07fab1dc756dbd28fed952177a6b57e1c8eec0ea1f75998812d61cd936de4136",
+          "startedAt": "2026-07-11T09:08:54.401Z",
+          "durationMs": 10535.033458,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=4",
+              "purposes=hook,action,bridge,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24196,
+            "cachedInputTokens": 0,
+            "outputTokens": 227,
+            "reasoningOutputTokens": 69
+          },
+          "cost": 0.63895,
+          "costUnit": "codex_credits",
+          "outputSha256": "e84b0b2ca8e5636491e260d9dcd1da95e4afbf7c5c7b2151d841152e667bd094",
+          "error": null
+        },
+        {
+          "caseId": "montage-04-CsYa4skNBjP-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "93e770b846947b9302bcadb5ed512532cf44e563584b891a1d08a2fdbc07bfb8",
+          "startedAt": "2026-07-11T09:08:54.401Z",
+          "durationMs": 15823.7955,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 54305,
+            "cachedInputTokens": 23296,
+            "outputTokens": 456,
+            "reasoningOutputTokens": 177
+          },
+          "cost": 0.901865,
+          "costUnit": "codex_credits",
+          "outputSha256": "9a9b2b73bf22a18e51790b0b89800d2a79ac0176bb116fc93f24e146f27b5ad8",
+          "error": null
+        },
+        {
+          "caseId": "montage-05-Cw_QTMmA69_-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "e7f6aad1abea38458cb0d98846576567416a0f576eeb7a3a292e566f54893e68",
+          "startedAt": "2026-07-11T09:08:54.401Z",
+          "durationMs": 21856.596167,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53011,
+            "cachedInputTokens": 31232,
+            "outputTokens": 616,
+            "reasoningOutputTokens": 322
+          },
+          "cost": 0.714955,
+          "costUnit": "codex_credits",
+          "outputSha256": "7fda6a00970c0cf7ab0bc1da8b906b77c1ea9825da514234fbd5e78d6950d169",
+          "error": null
+        },
+        {
+          "caseId": "montage-06-Cxb0DmpJ7oM-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "11a4257a595441b1a9d4abe4f52acbd7e7738839601a941994292a2f40008f42",
+          "startedAt": "2026-07-11T09:08:54.401Z",
+          "durationMs": 9428.444959,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24232,
+            "cachedInputTokens": 8960,
+            "outputTokens": 220,
+            "reasoningOutputTokens": 57
+          },
+          "cost": 0.4372,
+          "costUnit": "codex_credits",
+          "outputSha256": "b7f1e0697b3d9a2cd0ed385d921332156c7cced1429bacae4f7c63cb332d40d1",
+          "error": null
+        },
+        {
+          "caseId": "montage-07-DIUYX9QStl3-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "79bf2267c58f7a70da5bc04f37446ab83b22f70b1ea8673aec12657cd9d83184",
+          "startedAt": "2026-07-11T09:08:54.401Z",
+          "durationMs": 14003.586292,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53084,
+            "cachedInputTokens": 31232,
+            "outputTokens": 385,
+            "reasoningOutputTokens": 88
+          },
+          "cost": 0.68213,
+          "costUnit": "codex_credits",
+          "outputSha256": "2e29679ec27f6b9f2b61be4729a67b4fa2ca1d0f9f7e404b924971c5c2431b46",
+          "error": null
+        },
+        {
+          "caseId": "montage-08-DKM66d2tamf-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "993dde827c789f596abfca17933fbacf33783eb03f0ee4399dde35cbfdb567ee",
+          "startedAt": "2026-07-11T09:08:54.401Z",
+          "durationMs": 19592.222125,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52968,
+            "cachedInputTokens": 31232,
+            "outputTokens": 477,
+            "reasoningOutputTokens": 178
+          },
+          "cost": 0.69303,
+          "costUnit": "codex_credits",
+          "outputSha256": "eb3eeaea332bcec4de20e56b98c465fc5e5ecce1421069816634831563a7c261",
+          "error": null
+        },
+        {
+          "caseId": "montage-09-DW5s3qoDbHC-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "3fe402b658f799f998657387a224ab0f672e603227d4e72ae9c2ca6994e5ce30",
+          "startedAt": "2026-07-11T09:08:54.401Z",
+          "durationMs": 14317.950416,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53008,
+            "cachedInputTokens": 31232,
+            "outputTokens": 416,
+            "reasoningOutputTokens": 144
+          },
+          "cost": 0.68488,
+          "costUnit": "codex_credits",
+          "outputSha256": "283689fbc91bef9d6dbe41f95478d326d209e2ac4978286b87950d5c4f5f3aa7",
+          "error": null
+        },
+        {
+          "caseId": "montage-10-DWjH5fWjBnt-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "a55a83288243f3d29e2c2b9ce25d41c33d56655c07936dd49d8df4bde9fdced8",
+          "startedAt": "2026-07-11T09:08:54.401Z",
+          "durationMs": 8547.904166,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24231,
+            "cachedInputTokens": 0,
+            "outputTokens": 217,
+            "reasoningOutputTokens": 69
+          },
+          "cost": 0.638325,
+          "costUnit": "codex_credits",
+          "outputSha256": "5800b70c5de1bd4db2aac7e3906dd00feb2ccbac794ac88d05ec396f0d7fba2e",
+          "error": null
+        },
+        {
+          "caseId": "montage-11-DXHx529DVb0-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "ddbab250a7e4253ac5bbea032df039bad47b462c5a5a24a3b554cccacf2b7977",
+          "startedAt": "2026-07-11T09:08:54.401Z",
+          "durationMs": 41529.028417,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52995,
+            "cachedInputTokens": 31232,
+            "outputTokens": 428,
+            "reasoningOutputTokens": 159
+          },
+          "cost": 0.686355,
+          "costUnit": "codex_credits",
+          "outputSha256": "226f9fda7959e48a251e8ec266742e8b6ec2fd4130b8778bde1c01ffa5df5faf",
+          "error": null
+        },
+        {
+          "caseId": "montage-12-DXNBoz7jYmd-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "7d874ad640744ae175ed39bcbb6b67bccf9c9e143b5bf3a7023ab407a4bae3a3",
+          "startedAt": "2026-07-11T09:08:54.401Z",
+          "durationMs": 13612.875917,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53014,
+            "cachedInputTokens": 0,
+            "outputTokens": 415,
+            "reasoningOutputTokens": 122
+          },
+          "cost": 1.3876,
+          "costUnit": "codex_credits",
+          "outputSha256": "ebd777ae69daedd8c656e18ba119e4498a2a9ffc159a4468df644e7ad0a1826f",
+          "error": null
+        },
+        {
+          "caseId": "montage-13-DXOzkCdjMue-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "f683e370e0f9f7c161d99e0938834e75faca6094dd19a83385bc4f66cdd394a9",
+          "startedAt": "2026-07-11T09:08:54.401Z",
+          "durationMs": 15582.775042,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53043,
+            "cachedInputTokens": 0,
+            "outputTokens": 475,
+            "reasoningOutputTokens": 193
+          },
+          "cost": 1.397325,
+          "costUnit": "codex_credits",
+          "outputSha256": "083605ad8725a2b2c7937c2058b78a3450c56c1a58a0271a9d8024122b7c0207",
+          "error": null
+        },
+        {
+          "caseId": "montage-14-DXUPExpjCs2-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "af8429979c95bb7918f4733de43d7c4d46506eccd89b7792442b46f9d4176c4b",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 22410.080458,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 0,
+            "passed": false,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=4",
+              "purposes=hook,bridge,action,payoff",
+              "coverageRatio=1.278",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53042,
+            "cachedInputTokens": 31232,
+            "outputTokens": 668,
+            "reasoningOutputTokens": 362
+          },
+          "cost": 0.72353,
+          "costUnit": "codex_credits",
+          "outputSha256": "692ed9bf1a54706eee1fb54f99e08baa652df23a54dcbf79bb5e514bd5464db1",
+          "error": null
+        },
+        {
+          "caseId": "montage-15-6QIdqyFoxFE-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "89b8afc3f8b5f588567e69fa793670d38dac7b0279cabda0991a0479025148df",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 15580.582792,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53886,
+            "cachedInputTokens": 17920,
+            "outputTokens": 474,
+            "reasoningOutputTokens": 202
+          },
+          "cost": 1.01505,
+          "costUnit": "codex_credits",
+          "outputSha256": "38b993fa737d58a3c53dc2440ec65406ab34e90264d0bd3968a2eb48d07760b7",
+          "error": null
+        },
+        {
+          "caseId": "montage-16-BwIaEb5vGDo-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "78fa9ce6016d42705f0f35f16ae7e4401e593837b29a47149b0b5209e8b5a200",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 17737.289958,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 49154,
+            "cachedInputTokens": 30208,
+            "outputTokens": 500,
+            "reasoningOutputTokens": 188
+          },
+          "cost": 0.62417,
+          "costUnit": "codex_credits",
+          "outputSha256": "fcf809e3ddf3c6a9f7f76246563908e38ff13ec49deffa0b956e942f3a0e8a56",
+          "error": null
+        },
+        {
+          "caseId": "montage-17-J6tw2l128YE-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "6de003f8ec882ddba50df9792d385b0b2d67fe4493191f385cffa40a12936e3c",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 22054.130625,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 77099,
+            "cachedInputTokens": 45568,
+            "outputTokens": 587,
+            "reasoningOutputTokens": 174
+          },
+          "cost": 0.990245,
+          "costUnit": "codex_credits",
+          "outputSha256": "9b5776a271b28d45527a46836fcd1aa11312d9f04833887ea45b55669ee76b31",
+          "error": null
+        },
+        {
+          "caseId": "montage-18-V-xIvJs0Jbo-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "7e13a8ee6e560d187634b2b413aca76d6e0aa4f828281ab0e987e82a684fc00a",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 9558.930584,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24215,
+            "cachedInputTokens": 0,
+            "outputTokens": 297,
+            "reasoningOutputTokens": 159
+          },
+          "cost": 0.649925,
+          "costUnit": "codex_credits",
+          "outputSha256": "51f172d49c95acae909ac008e221466334a4b7066e47ffe5b351d0a585dc0bec",
+          "error": null
+        },
+        {
+          "caseId": "montage-19-WkEyab1jINA-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "bcaf268d56e1f10959772b1537d8eb41dbd152d077d56b3fb96dd76ebe7d06cb",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 15516.329875,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52504,
+            "cachedInputTokens": 31232,
+            "outputTokens": 562,
+            "reasoningOutputTokens": 266
+          },
+          "cost": 0.69418,
+          "costUnit": "codex_credits",
+          "outputSha256": "6f6418af2d871f14d4c4beb1dfb0fd649be3a358f6b51ddabd92f1d697a4312b",
+          "error": null
+        },
+        {
+          "caseId": "montage-20-BtDnmx6HRr_-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "2f6fef0433747ee83fdf0f993d70775270b18569878a0d30af001151ecc7185e",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 27258.970083,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 49553,
+            "cachedInputTokens": 30208,
+            "outputTokens": 492,
+            "reasoningOutputTokens": 211
+          },
+          "cost": 0.632945,
+          "costUnit": "codex_credits",
+          "outputSha256": "4fff6bf0f31eab1393adf5e2d437e4849926bb8e348887b063de83e091dbb082",
+          "error": null
+        },
+        {
+          "caseId": "montage-21-C-0YpsCAODv-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "3e2f8414d8e1aa91b0ca8852810301fa587ca74deef2be085176bb5ed84fb522",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 14335.329291,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52989,
+            "cachedInputTokens": 17920,
+            "outputTokens": 401,
+            "reasoningOutputTokens": 103
+          },
+          "cost": 0.981675,
+          "costUnit": "codex_credits",
+          "outputSha256": "d91f5a3aaf4c3b4f14580755ef7af68633f2d75462c2dcfad9a7dc51296280ed",
+          "error": null
+        },
+        {
+          "caseId": "montage-22-C9gLu79MklN-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "25281f0be5dfeba6efad3c452922f4fb09e892075faf23c5a585a25e80c79d1d",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 16568.115542,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53011,
+            "cachedInputTokens": 31232,
+            "outputTokens": 514,
+            "reasoningOutputTokens": 226
+          },
+          "cost": 0.699655,
+          "costUnit": "codex_credits",
+          "outputSha256": "a03bb116fc7a049ba0aa2827a853042d47447f0cee95369c2a4f8b3bc757e670",
+          "error": null
+        },
+        {
+          "caseId": "montage-23-CsYa4skNBjP-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "bd93ae5f01047f37c438ada4dda191841741c70da1e71b4d3412d8b5e30db156",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 13657.214083,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53010,
+            "cachedInputTokens": 31232,
+            "outputTokens": 406,
+            "reasoningOutputTokens": 114
+          },
+          "cost": 0.68343,
+          "costUnit": "codex_credits",
+          "outputSha256": "008ef3de5f9f2ad211464922da2e7da13f80f801c89635ed52e1a3c043ad07eb",
+          "error": null
+        },
+        {
+          "caseId": "montage-24-Cw_QTMmA69_-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "5451c76c012e39b070a5e7ef01c14ff0179a60d96933c7124cb347d53fa60e4b",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 18349.992209,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53027,
+            "cachedInputTokens": 31232,
+            "outputTokens": 456,
+            "reasoningOutputTokens": 183
+          },
+          "cost": 0.691355,
+          "costUnit": "codex_credits",
+          "outputSha256": "211f377a257fcfd28bacc0984e58614e996a91e6f2c33e593cd539b6a935ace6",
+          "error": null
+        },
+        {
+          "caseId": "montage-25-Cxb0DmpJ7oM-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "c765c402c99c8bdcecad9b61ec5d564ea59d64b8842289cbe4e28c8c259fa48e",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 13355.647459,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 54284,
+            "cachedInputTokens": 17920,
+            "outputTokens": 396,
+            "reasoningOutputTokens": 112
+          },
+          "cost": 1.0133,
+          "costUnit": "codex_credits",
+          "outputSha256": "44feed31409a9361a0c402cf4f1577028c4fe918036f72b5c51004b362284fad",
+          "error": null
+        },
+        {
+          "caseId": "montage-26-DIUYX9QStl3-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "2374fbeddd94eb4e096bd58a686380b654d73222edb054079152ec1c33239715",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 15156.642583,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53006,
+            "cachedInputTokens": 31232,
+            "outputTokens": 437,
+            "reasoningOutputTokens": 140
+          },
+          "cost": 0.68798,
+          "costUnit": "codex_credits",
+          "outputSha256": "d85caaeb15ad0bde60e024c2168d3c845881c7f531fed947a4b89a5a32d1bd4e",
+          "error": null
+        },
+        {
+          "caseId": "montage-27-DKM66d2tamf-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "b0aa10d532f15ab3a704178d6fde4044a6578a27ce43f2253ab209c26caadabb",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 23569.5145,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53013,
+            "cachedInputTokens": 31232,
+            "outputTokens": 768,
+            "reasoningOutputTokens": 495
+          },
+          "cost": 0.737805,
+          "costUnit": "codex_credits",
+          "outputSha256": "61d1d23ed7be77fe0fa898d52e8802adecf7ac3e10096efee980e99273c10eb2",
+          "error": null
+        },
+        {
+          "caseId": "montage-28-DW5s3qoDbHC-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "03afe3597c024b85f008e165b1bec4da90fde6eb1890d4ad22be34723368ec32",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 17128.337084,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=4",
+              "purposes=hook,bridge,action,payoff",
+              "coverageRatio=0.875",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53032,
+            "cachedInputTokens": 31232,
+            "outputTokens": 464,
+            "reasoningOutputTokens": 160
+          },
+          "cost": 0.69268,
+          "costUnit": "codex_credits",
+          "outputSha256": "a041b51288a526cb81891b2794086128d20508a00f017090e1852c0a7a21d779",
+          "error": null
+        },
+        {
+          "caseId": "montage-29-DWjH5fWjBnt-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "a12337abfc8a4bdc63ee065e63ac46fdbcb1482e6f0fd8993247ddfc8238486e",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 17467.625541,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53112,
+            "cachedInputTokens": 8960,
+            "outputTokens": 466,
+            "reasoningOutputTokens": 172
+          },
+          "cost": 1.1961,
+          "costUnit": "codex_credits",
+          "outputSha256": "6f62c951c35df91e71325b4dbb4a8b77168fe74e46d93e75058b58f266a978eb",
+          "error": null
+        },
+        {
+          "caseId": "montage-30-DXHx529DVb0-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "5e5ca622dad46ae59ce0e6a775ebf6e381f5fc7813e3b81a8fdb5e1ee2083ef5",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 16757.848,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53099,
+            "cachedInputTokens": 8960,
+            "outputTokens": 439,
+            "reasoningOutputTokens": 151
+          },
+          "cost": 1.191725,
+          "costUnit": "codex_credits",
+          "outputSha256": "784bf338530c06c9076b533aa9f2471f8cf4867a0f4645f921f10c99e47aadc1",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 30,
+        "schemaSuccessRate": 1,
+        "qualityScore": 0.966666666667,
+        "qualityPassRate": 0.966666666667,
+        "criticalFailureCount": 0,
+        "p95LatencyMs": 27258.970083,
+        "meanCost": 0.808303666667,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": true,
+        "selectorBenchmark": {
+          "benchmarkVersion": "project-kings-montage_planner-real-30-v2",
+          "routeId": "codex:gpt-5.6-luna",
+          "reasoningEffort": "low",
+          "sampleSize": 30,
+          "qualityScore": 0.966666666667,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 27258.970083,
+          "meanCost": 0.808303666667,
+          "costUnit": "codex_credits",
+          "criticalFailureCount": 0
+        }
+      }
+    },
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "provider": "codex",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "samples": [
+        {
+          "caseId": "montage-01-BtDnmx6HRr_-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "8aeab83847aad0b24c8d3436369eec0dd5cfa7180b9b364e85b93aa254e0430f",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 32199.985541,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 49635,
+            "cachedInputTokens": 0,
+            "outputTokens": 1100,
+            "reasoningOutputTokens": 809
+          },
+          "cost": 1.405875,
+          "costUnit": "codex_credits",
+          "outputSha256": "1e87475689f69af926f27fc78671704a9c8f2675763be6927e9f16dccfd91b8d",
+          "error": null
+        },
+        {
+          "caseId": "montage-02-C-0YpsCAODv-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "08c285cd499ea08aed150790c279436da1da604f27dd3a5dacef26765377837a",
+          "startedAt": "2026-07-11T09:08:54.402Z",
+          "durationMs": 19088.072959,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53012,
+            "cachedInputTokens": 22272,
+            "outputTokens": 423,
+            "reasoningOutputTokens": 139
+          },
+          "cost": 0.88763,
+          "costUnit": "codex_credits",
+          "outputSha256": "b61615ad90b21393e9f0c743a6214bc14e85273430aa47913fd0e3af1a4390f1",
+          "error": null
+        },
+        {
+          "caseId": "montage-03-C9gLu79MklN-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "07fab1dc756dbd28fed952177a6b57e1c8eec0ea1f75998812d61cd936de4136",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 16816.159541,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53005,
+            "cachedInputTokens": 8960,
+            "outputTokens": 507,
+            "reasoningOutputTokens": 202
+          },
+          "cost": 1.199575,
+          "costUnit": "codex_credits",
+          "outputSha256": "b38118280be199ad9d27d426b7edcb7a348f2137c6f799c9abd603fec5f42c55",
+          "error": null
+        },
+        {
+          "caseId": "montage-04-CsYa4skNBjP-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "93e770b846947b9302bcadb5ed512532cf44e563584b891a1d08a2fdbc07bfb8",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 10003.091208,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24862,
+            "cachedInputTokens": 8960,
+            "outputTokens": 303,
+            "reasoningOutputTokens": 157
+          },
+          "cost": 0.4654,
+          "costUnit": "codex_credits",
+          "outputSha256": "3097ff428c1d34ab82b980ef71a3152852500de8b372cfaef4c0fa3d074eb322",
+          "error": null
+        },
+        {
+          "caseId": "montage-05-Cw_QTMmA69_-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "e7f6aad1abea38458cb0d98846576567416a0f576eeb7a3a292e566f54893e68",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 17477.954417,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52978,
+            "cachedInputTokens": 0,
+            "outputTokens": 589,
+            "reasoningOutputTokens": 306
+          },
+          "cost": 1.4128,
+          "costUnit": "codex_credits",
+          "outputSha256": "234a02b7a9f3d090c7dc2a867ead6f6ec367883049cb587c52045b4d4916c13b",
+          "error": null
+        },
+        {
+          "caseId": "montage-06-Cxb0DmpJ7oM-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "11a4257a595441b1a9d4abe4f52acbd7e7738839601a941994292a2f40008f42",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 15358.1045,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52965,
+            "cachedInputTokens": 0,
+            "outputTokens": 561,
+            "reasoningOutputTokens": 284
+          },
+          "cost": 1.408275,
+          "costUnit": "codex_credits",
+          "outputSha256": "f1219f778ad8041cfab649ba8c5b9663f45ade0bd3ffdf5f34bd64483436ef39",
+          "error": null
+        },
+        {
+          "caseId": "montage-07-DIUYX9QStl3-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "79bf2267c58f7a70da5bc04f37446ab83b22f70b1ea8673aec12657cd9d83184",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 18460.953292,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53057,
+            "cachedInputTokens": 8960,
+            "outputTokens": 623,
+            "reasoningOutputTokens": 329
+          },
+          "cost": 1.218275,
+          "costUnit": "codex_credits",
+          "outputSha256": "d8dc3a7b6199271df088f28aaa123ce787b6e877a9c3ea6b1afa3e66143878a1",
+          "error": null
+        },
+        {
+          "caseId": "montage-08-DKM66d2tamf-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "993dde827c789f596abfca17933fbacf33783eb03f0ee4399dde35cbfdb567ee",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 36184.743583,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53009,
+            "cachedInputTokens": 31232,
+            "outputTokens": 1040,
+            "reasoningOutputTokens": 783
+          },
+          "cost": 0.778505,
+          "costUnit": "codex_credits",
+          "outputSha256": "cde23f04b890e6077272e4f3f5a8cd833b76abae21a4b43b5433fab1903c3386",
+          "error": null
+        },
+        {
+          "caseId": "montage-09-DW5s3qoDbHC-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "3fe402b658f799f998657387a224ab0f672e603227d4e72ae9c2ca6994e5ce30",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 21405.616042,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53126,
+            "cachedInputTokens": 8960,
+            "outputTokens": 700,
+            "reasoningOutputTokens": 415
+          },
+          "cost": 1.23155,
+          "costUnit": "codex_credits",
+          "outputSha256": "57cf54fb8f48eb053b9251f0ee4b41fd1dd20635365091440a2ffd09edd7b963",
+          "error": null
+        },
+        {
+          "caseId": "montage-10-DWjH5fWjBnt-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "a55a83288243f3d29e2c2b9ce25d41c33d56655c07936dd49d8df4bde9fdced8",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 8934.632208,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24270,
+            "cachedInputTokens": 8960,
+            "outputTokens": 251,
+            "reasoningOutputTokens": 112
+          },
+          "cost": 0.4428,
+          "costUnit": "codex_credits",
+          "outputSha256": "2b5178a73e1b9b5ec4bf8188c62d711c898a925205aaeec57507fad5562cac53",
+          "error": null
+        },
+        {
+          "caseId": "montage-11-DXHx529DVb0-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "ddbab250a7e4253ac5bbea032df039bad47b462c5a5a24a3b554cccacf2b7977",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 22945.140292,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53214,
+            "cachedInputTokens": 31232,
+            "outputTokens": 920,
+            "reasoningOutputTokens": 624
+          },
+          "cost": 0.76563,
+          "costUnit": "codex_credits",
+          "outputSha256": "201a8eea85cfaeca7bea5e0bacc25b76808945ce1ac038d34f444a1be26ddd95",
+          "error": null
+        },
+        {
+          "caseId": "montage-12-DXNBoz7jYmd-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "7d874ad640744ae175ed39bcbb6b67bccf9c9e143b5bf3a7023ab407a4bae3a3",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 9988.942916,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=4",
+              "purposes=hook,action,bridge,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24205,
+            "cachedInputTokens": 8960,
+            "outputTokens": 263,
+            "reasoningOutputTokens": 99
+          },
+          "cost": 0.442975,
+          "costUnit": "codex_credits",
+          "outputSha256": "a4356a76b09d151069b5e1674a942b3236d6839863faca290b7b49d6c9aa480f",
+          "error": null
+        },
+        {
+          "caseId": "montage-13-DXOzkCdjMue-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "f683e370e0f9f7c161d99e0938834e75faca6094dd19a83385bc4f66cdd394a9",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 23953.180417,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53066,
+            "cachedInputTokens": 31232,
+            "outputTokens": 821,
+            "reasoningOutputTokens": 512
+          },
+          "cost": 0.74708,
+          "costUnit": "codex_credits",
+          "outputSha256": "f47664d0933f0a0f779dcc68bec7542808536ea9d7117991d96dcbe3ba265bb1",
+          "error": null
+        },
+        {
+          "caseId": "montage-14-DXUPExpjCs2-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "af8429979c95bb7918f4733de43d7c4d46506eccd89b7792442b46f9d4176c4b",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 9989.807875,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24215,
+            "cachedInputTokens": 8960,
+            "outputTokens": 285,
+            "reasoningOutputTokens": 144
+          },
+          "cost": 0.446525,
+          "costUnit": "codex_credits",
+          "outputSha256": "41a710596b6c6fc76e0066626f5d2b00c133fe499688156f7060c4462a7cb68b",
+          "error": null
+        },
+        {
+          "caseId": "montage-15-6QIdqyFoxFE-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "89b8afc3f8b5f588567e69fa793670d38dac7b0279cabda0991a0479025148df",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 26637.413584,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=4",
+              "purposes=hook,action,bridge,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52601,
+            "cachedInputTokens": 31232,
+            "outputTokens": 850,
+            "reasoningOutputTokens": 537
+          },
+          "cost": 0.739805,
+          "costUnit": "codex_credits",
+          "outputSha256": "9211ef29728b5b69aa2e969be30cc0c113d78eda0ea6f1696267a4c33643ca8b",
+          "error": null
+        },
+        {
+          "caseId": "montage-16-BwIaEb5vGDo-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "78fa9ce6016d42705f0f35f16ae7e4401e593837b29a47149b0b5209e8b5a200",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 9472.065041,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 22495,
+            "cachedInputTokens": 8960,
+            "outputTokens": 269,
+            "reasoningOutputTokens": 112
+          },
+          "cost": 0.401125,
+          "costUnit": "codex_credits",
+          "outputSha256": "0f623346372d6e54db869fd3cf3b1b3003c6195862663a819ad457e229e4a8c8",
+          "error": null
+        },
+        {
+          "caseId": "montage-17-J6tw2l128YE-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "6de003f8ec882ddba50df9792d385b0b2d67fe4493191f385cffa40a12936e3c",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 18850.04425,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.028",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52492,
+            "cachedInputTokens": 22272,
+            "outputTokens": 719,
+            "reasoningOutputTokens": 439
+          },
+          "cost": 0.91903,
+          "costUnit": "codex_credits",
+          "outputSha256": "072792b9f9a56e975e4634b15a083b19928415cf86822accad6142e6f11c28f0",
+          "error": null
+        },
+        {
+          "caseId": "montage-18-V-xIvJs0Jbo-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "7e13a8ee6e560d187634b2b413aca76d6e0aa4f828281ab0e987e82a684fc00a",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 17897.864625,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=0.944",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52500,
+            "cachedInputTokens": 31232,
+            "outputTokens": 594,
+            "reasoningOutputTokens": 308
+          },
+          "cost": 0.69888,
+          "costUnit": "codex_credits",
+          "outputSha256": "676465c74e887d57edbfe426a053966537159904f3b61052073efc15942e6cb2",
+          "error": null
+        },
+        {
+          "caseId": "montage-19-WkEyab1jINA-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "bcaf268d56e1f10959772b1537d8eb41dbd152d077d56b3fb96dd76ebe7d06cb",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 21939.017333,
+          "schemaValid": false,
+          "quality": null,
+          "usage": {
+            "inputTokens": 52563,
+            "cachedInputTokens": 31232,
+            "outputTokens": 861,
+            "reasoningOutputTokens": 552
+          },
+          "cost": 0.740505,
+          "costUnit": "codex_credits",
+          "outputSha256": "e394bf3de23ab527b52885fad188c59014badf9fc236ec829fedbe5b9c78a111",
+          "error": "output.segments[2]: is outside or overlaps the source timeline"
+        },
+        {
+          "caseId": "montage-20-BtDnmx6HRr_-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "2f6fef0433747ee83fdf0f993d70775270b18569878a0d30af001151ecc7185e",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 9166.88025,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 22469,
+            "cachedInputTokens": 8960,
+            "outputTokens": 249,
+            "reasoningOutputTokens": 113
+          },
+          "cost": 0.397475,
+          "costUnit": "codex_credits",
+          "outputSha256": "1339c6044cdb065f9fe0454567f9b995ac4c873b0a0da18f5037774c92e25a50",
+          "error": null
+        },
+        {
+          "caseId": "montage-21-C-0YpsCAODv-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "3e2f8414d8e1aa91b0ca8852810301fa587ca74deef2be085176bb5ed84fb522",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 10916.940083,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24210,
+            "cachedInputTokens": 0,
+            "outputTokens": 291,
+            "reasoningOutputTokens": 138
+          },
+          "cost": 0.6489,
+          "costUnit": "codex_credits",
+          "outputSha256": "7d94584998c900bc4e33bbc9d6ac8770ca40af6e42e5f5813de4ec60141439bb",
+          "error": null
+        },
+        {
+          "caseId": "montage-22-C9gLu79MklN-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "25281f0be5dfeba6efad3c452922f4fb09e892075faf23c5a585a25e80c79d1d",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 21440.777625,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=4",
+              "purposes=hook,action,bridge,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52994,
+            "cachedInputTokens": 8960,
+            "outputTokens": 872,
+            "reasoningOutputTokens": 569
+          },
+          "cost": 1.25405,
+          "costUnit": "codex_credits",
+          "outputSha256": "7f118be5465eb2272eac78e4e96e356b78dec671701c4db30b43ed4a7884025c",
+          "error": null
+        },
+        {
+          "caseId": "montage-23-CsYa4skNBjP-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "bd93ae5f01047f37c438ada4dda191841741c70da1e71b4d3412d8b5e30db156",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 18403.7555,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53007,
+            "cachedInputTokens": 8960,
+            "outputTokens": 612,
+            "reasoningOutputTokens": 326
+          },
+          "cost": 1.215375,
+          "costUnit": "codex_credits",
+          "outputSha256": "b1186b173bc83fa6e7cd59e55183939be81d1901d61184ce1a7d5f5b93cbfbfd",
+          "error": null
+        },
+        {
+          "caseId": "montage-24-Cw_QTMmA69_-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "5451c76c012e39b070a5e7ef01c14ff0179a60d96933c7124cb347d53fa60e4b",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 10923.10625,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24194,
+            "cachedInputTokens": 8960,
+            "outputTokens": 347,
+            "reasoningOutputTokens": 193
+          },
+          "cost": 0.4553,
+          "costUnit": "codex_credits",
+          "outputSha256": "d7c6d410e860581c00caba67f14efc6231e3c6eb8b18da57ae89553774c31640",
+          "error": null
+        },
+        {
+          "caseId": "montage-25-Cxb0DmpJ7oM-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "c765c402c99c8bdcecad9b61ec5d564ea59d64b8842289cbe4e28c8c259fa48e",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 11433.14875,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24193,
+            "cachedInputTokens": 8960,
+            "outputTokens": 377,
+            "reasoningOutputTokens": 214
+          },
+          "cost": 0.459775,
+          "costUnit": "codex_credits",
+          "outputSha256": "fa703a7fd18fb791bb6c7d3545744eccb466ca44014eac5491fac2d61b971c91",
+          "error": null
+        },
+        {
+          "caseId": "montage-26-DIUYX9QStl3-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "2374fbeddd94eb4e096bd58a686380b654d73222edb054079152ec1c33239715",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 16769.941375,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53032,
+            "cachedInputTokens": 0,
+            "outputTokens": 562,
+            "reasoningOutputTokens": 265
+          },
+          "cost": 1.4101,
+          "costUnit": "codex_credits",
+          "outputSha256": "a90b3300067172cb857e83a1f186ac2a2e6d84cedb85321f25e0c0bd2b264758",
+          "error": null
+        },
+        {
+          "caseId": "montage-27-DKM66d2tamf-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "b0aa10d532f15ab3a704178d6fde4044a6578a27ce43f2253ab209c26caadabb",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 26995.54475,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53003,
+            "cachedInputTokens": 31232,
+            "outputTokens": 994,
+            "reasoningOutputTokens": 702
+          },
+          "cost": 0.771455,
+          "costUnit": "codex_credits",
+          "outputSha256": "b051105f5688ac0afc176f61e0122495942ebd1ced507c1e78cd9f88598aafa5",
+          "error": null
+        },
+        {
+          "caseId": "montage-28-DW5s3qoDbHC-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "03afe3597c024b85f008e165b1bec4da90fde6eb1890d4ad22be34723368ec32",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 22755.79475,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 77681,
+            "cachedInputTokens": 41216,
+            "outputTokens": 893,
+            "reasoningOutputTokens": 493
+          },
+          "cost": 1.148615,
+          "costUnit": "codex_credits",
+          "outputSha256": "f69269bb12eb6a3a1b4a261b76f7f0665d0276ff618472ce6c5fb0945ad38ae9",
+          "error": null
+        },
+        {
+          "caseId": "montage-29-DWjH5fWjBnt-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "a12337abfc8a4bdc63ee065e63ac46fdbcb1482e6f0fd8993247ddfc8238486e",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 8202.876,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24209,
+            "cachedInputTokens": 8960,
+            "outputTokens": 224,
+            "reasoningOutputTokens": 87
+          },
+          "cost": 0.437225,
+          "costUnit": "codex_credits",
+          "outputSha256": "8764173fd5c8958f82bcf390f171371da312db61c2edfd2abeada1b5a0cb85b6",
+          "error": null
+        },
+        {
+          "caseId": "montage-30-DXHx529DVb0-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "5e5ca622dad46ae59ce0e6a775ebf6e381f5fc7813e3b81a8fdb5e1ee2083ef5",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 21570.325125,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53010,
+            "cachedInputTokens": 31232,
+            "outputTokens": 894,
+            "reasoningOutputTokens": 606
+          },
+          "cost": 0.75663,
+          "costUnit": "codex_credits",
+          "outputSha256": "712257d0b441c4da292f9738a51eeb8d59e00a5f22053af83463d73dc2d31bad",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 30,
+        "schemaSuccessRate": 0.966666666667,
+        "qualityScore": 0.966666666667,
+        "qualityPassRate": 0.966666666667,
+        "criticalFailureCount": 0,
+        "p95LatencyMs": 32199.985541,
+        "meanCost": 0.843571333333,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": true,
+        "selectorBenchmark": {
+          "benchmarkVersion": "project-kings-montage_planner-real-30-v2",
+          "routeId": "codex:gpt-5.6-luna",
+          "reasoningEffort": "medium",
+          "sampleSize": 30,
+          "qualityScore": 0.966666666667,
+          "schemaSuccessRate": 0.966666666667,
+          "p95LatencyMs": 32199.985541,
+          "meanCost": 0.843571333333,
+          "costUnit": "codex_credits",
+          "criticalFailureCount": 0
+        }
+      }
+    },
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "provider": "codex",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "samples": [
+        {
+          "caseId": "montage-01-BtDnmx6HRr_-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "8aeab83847aad0b24c8d3436369eec0dd5cfa7180b9b364e85b93aa254e0430f",
+          "startedAt": "2026-07-11T09:08:54.403Z",
+          "durationMs": 27320.076625,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 49642,
+            "cachedInputTokens": 21248,
+            "outputTokens": 1166,
+            "reasoningOutputTokens": 892
+          },
+          "cost": 0.93787,
+          "costUnit": "codex_credits",
+          "outputSha256": "b4e5690b9fc6452c586a169e914c283b115666493b3d713de7bec4d45116cfa8",
+          "error": null
+        },
+        {
+          "caseId": "montage-02-C-0YpsCAODv-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "08c285cd499ea08aed150790c279436da1da604f27dd3a5dacef26765377837a",
+          "startedAt": "2026-07-11T09:09:21.726Z",
+          "durationMs": 618653.110583,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
+          "costUnit": "codex_credits",
+          "outputSha256": null,
+          "error": "Codex generation timed out."
+        },
+        {
+          "caseId": "montage-03-C9gLu79MklN-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "07fab1dc756dbd28fed952177a6b57e1c8eec0ea1f75998812d61cd936de4136",
+          "startedAt": "2026-07-11T09:19:40.386Z",
+          "durationMs": 20426.968167,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=4",
+              "purposes=hook,action,bridge,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24186,
+            "cachedInputTokens": 0,
+            "outputTokens": 516,
+            "reasoningOutputTokens": 343
+          },
+          "cost": 0.68205,
+          "costUnit": "codex_credits",
+          "outputSha256": "527b4a2524889189317aa724e0a971f094b6ee18956ef4a8f3a5b171d44e0cd2",
+          "error": null
+        },
+        {
+          "caseId": "montage-04-CsYa4skNBjP-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "93e770b846947b9302bcadb5ed512532cf44e563584b891a1d08a2fdbc07bfb8",
+          "startedAt": "2026-07-11T09:20:00.814Z",
+          "durationMs": 28352.172584,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53010,
+            "cachedInputTokens": 22272,
+            "outputTokens": 1119,
+            "reasoningOutputTokens": 822
+          },
+          "cost": 0.99198,
+          "costUnit": "codex_credits",
+          "outputSha256": "a9d5b94dc3bade37aa998a592ecf8959b1b4d522b135aa820de27f6a3203fbaa",
+          "error": null
+        },
+        {
+          "caseId": "montage-05-Cw_QTMmA69_-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "e7f6aad1abea38458cb0d98846576567416a0f576eeb7a3a292e566f54893e68",
+          "startedAt": "2026-07-11T09:20:29.167Z",
+          "durationMs": 31982.516542,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53091,
+            "cachedInputTokens": 22272,
+            "outputTokens": 1460,
+            "reasoningOutputTokens": 1183
+          },
+          "cost": 1.045155,
+          "costUnit": "codex_credits",
+          "outputSha256": "e0106da9b9273df387b23d66beead46437f38d45fe353f292a707fc743ccf5e9",
+          "error": null
+        },
+        {
+          "caseId": "montage-06-Cxb0DmpJ7oM-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "11a4257a595441b1a9d4abe4f52acbd7e7738839601a941994292a2f40008f42",
+          "startedAt": "2026-07-11T09:21:01.151Z",
+          "durationMs": 18721.222208,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53195,
+            "cachedInputTokens": 0,
+            "outputTokens": 759,
+            "reasoningOutputTokens": 486
+          },
+          "cost": 1.443725,
+          "costUnit": "codex_credits",
+          "outputSha256": "e9de4cb34935e5c47fc71ed4ed298d88dffca344fbecc3e287b88bd17dabb6fe",
+          "error": null
+        },
+        {
+          "caseId": "montage-07-DIUYX9QStl3-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "79bf2267c58f7a70da5bc04f37446ab83b22f70b1ea8673aec12657cd9d83184",
+          "startedAt": "2026-07-11T09:21:19.874Z",
+          "durationMs": 21818.231333,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53099,
+            "cachedInputTokens": 22272,
+            "outputTokens": 878,
+            "reasoningOutputTokens": 595
+          },
+          "cost": 0.958055,
+          "costUnit": "codex_credits",
+          "outputSha256": "6596e23043dfaa6ccececdece91ea41f54959a7600496df4bfe32c08cd182d9d",
+          "error": null
+        },
+        {
+          "caseId": "montage-08-DKM66d2tamf-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "993dde827c789f596abfca17933fbacf33783eb03f0ee4399dde35cbfdb567ee",
+          "startedAt": "2026-07-11T09:21:41.693Z",
+          "durationMs": 26777.664958,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53032,
+            "cachedInputTokens": 22272,
+            "outputTokens": 1142,
+            "reasoningOutputTokens": 858
+          },
+          "cost": 0.99598,
+          "costUnit": "codex_credits",
+          "outputSha256": "25098fae2f2c22a53a28b3275fa9a6237a2f8b051a57ece01c991fdcf184215e",
+          "error": null
+        },
+        {
+          "caseId": "montage-09-DW5s3qoDbHC-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "3fe402b658f799f998657387a224ab0f672e603227d4e72ae9c2ca6994e5ce30",
+          "startedAt": "2026-07-11T09:22:08.471Z",
+          "durationMs": 27218.757792,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=4",
+              "purposes=hook,bridge,action,payoff",
+              "coverageRatio=0.972",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53050,
+            "cachedInputTokens": 22272,
+            "outputTokens": 1139,
+            "reasoningOutputTokens": 840
+          },
+          "cost": 0.99598,
+          "costUnit": "codex_credits",
+          "outputSha256": "8da1438f3d2d22b7d37c4afb16534641eaa0496b17b4c736053a14e0709b8698",
+          "error": null
+        },
+        {
+          "caseId": "montage-10-DWjH5fWjBnt-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "a55a83288243f3d29e2c2b9ce25d41c33d56655c07936dd49d8df4bde9fdced8",
+          "startedAt": "2026-07-11T09:22:35.690Z",
+          "durationMs": 11824.304292,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24231,
+            "cachedInputTokens": 8960,
+            "outputTokens": 434,
+            "reasoningOutputTokens": 285
+          },
+          "cost": 0.469275,
+          "costUnit": "codex_credits",
+          "outputSha256": "f42ddd1be64a9ab9a647fcfdc0c433cd5ed1ff44370c0afaae3ad244e27b26a5",
+          "error": null
+        },
+        {
+          "caseId": "montage-11-DXHx529DVb0-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "ddbab250a7e4253ac5bbea032df039bad47b462c5a5a24a3b554cccacf2b7977",
+          "startedAt": "2026-07-11T09:22:47.515Z",
+          "durationMs": 23588.943125,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53093,
+            "cachedInputTokens": 31232,
+            "outputTokens": 885,
+            "reasoningOutputTokens": 585
+          },
+          "cost": 0.757355,
+          "costUnit": "codex_credits",
+          "outputSha256": "dba5169cb0fd300a7020ded821d8e86a4c72c0242f194fd93ba9c5b8e1d9b1af",
+          "error": null
+        },
+        {
+          "caseId": "montage-12-DXNBoz7jYmd-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "7d874ad640744ae175ed39bcbb6b67bccf9c9e143b5bf3a7023ab407a4bae3a3",
+          "startedAt": "2026-07-11T09:23:11.104Z",
+          "durationMs": 38216.133833,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53580,
+            "cachedInputTokens": 8960,
+            "outputTokens": 1820,
+            "reasoningOutputTokens": 1509
+          },
+          "cost": 1.4109,
+          "costUnit": "codex_credits",
+          "outputSha256": "193ccfd13ff7244a589aef99c50f8c0bf5f11a0763cf1a577c8030f295e1de7d",
+          "error": null
+        },
+        {
+          "caseId": "montage-13-DXOzkCdjMue-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "f683e370e0f9f7c161d99e0938834e75faca6094dd19a83385bc4f66cdd394a9",
+          "startedAt": "2026-07-11T09:23:49.321Z",
+          "durationMs": 15017.929625,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24231,
+            "cachedInputTokens": 8960,
+            "outputTokens": 611,
+            "reasoningOutputTokens": 473
+          },
+          "cost": 0.495825,
+          "costUnit": "codex_credits",
+          "outputSha256": "0c5f6697f95c3d04589cda217984b5b48225e65b1c35f39a3b5fffd13b766e6b",
+          "error": null
+        },
+        {
+          "caseId": "montage-14-DXUPExpjCs2-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "af8429979c95bb7918f4733de43d7c4d46506eccd89b7792442b46f9d4176c4b",
+          "startedAt": "2026-07-11T09:24:04.339Z",
+          "durationMs": 30336.606792,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53280,
+            "cachedInputTokens": 31232,
+            "outputTokens": 1264,
+            "reasoningOutputTokens": 948
+          },
+          "cost": 0.81888,
+          "costUnit": "codex_credits",
+          "outputSha256": "139049a1dfa7de387546cef4110cc37f95c17015c046569985084568baa4ec15",
+          "error": null
+        },
+        {
+          "caseId": "montage-15-6QIdqyFoxFE-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "89b8afc3f8b5f588567e69fa793670d38dac7b0279cabda0991a0479025148df",
+          "startedAt": "2026-07-11T09:24:34.676Z",
+          "durationMs": 38292.336709,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=0.987",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52623,
+            "cachedInputTokens": 0,
+            "outputTokens": 1375,
+            "reasoningOutputTokens": 1090
+          },
+          "cost": 1.521825,
+          "costUnit": "codex_credits",
+          "outputSha256": "d8860f7fa83f9e2ddcd21e64d417f8977c05054ddd82f1303e8c26278515dfca",
+          "error": null
+        },
+        {
+          "caseId": "montage-16-BwIaEb5vGDo-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "78fa9ce6016d42705f0f35f16ae7e4401e593837b29a47149b0b5209e8b5a200",
+          "startedAt": "2026-07-11T09:25:12.969Z",
+          "durationMs": 13497.425125,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 23179,
+            "cachedInputTokens": 0,
+            "outputTokens": 538,
+            "reasoningOutputTokens": 389
+          },
+          "cost": 0.660175,
+          "costUnit": "codex_credits",
+          "outputSha256": "71e0a5f79679206a4d534182a18784ff9e7432308e8418d6f717ec1b8a09c05a",
+          "error": null
+        },
+        {
+          "caseId": "montage-17-J6tw2l128YE-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "6de003f8ec882ddba50df9792d385b0b2d67fe4493191f385cffa40a12936e3c",
+          "startedAt": "2026-07-11T09:25:26.467Z",
+          "durationMs": 47446.450791,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=4",
+              "purposes=hook,bridge,action,payoff",
+              "coverageRatio=1.028",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52694,
+            "cachedInputTokens": 31232,
+            "outputTokens": 1942,
+            "reasoningOutputTokens": 1630
+          },
+          "cost": 0.90593,
+          "costUnit": "codex_credits",
+          "outputSha256": "cf74e268d146a29781264dd6f3a6bb98b841a73a10bfb03c933b410b0cf57f69",
+          "error": null
+        },
+        {
+          "caseId": "montage-18-V-xIvJs0Jbo-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "7e13a8ee6e560d187634b2b413aca76d6e0aa4f828281ab0e987e82a684fc00a",
+          "startedAt": "2026-07-11T09:26:13.914Z",
+          "durationMs": 22413.249708,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52643,
+            "cachedInputTokens": 8960,
+            "outputTokens": 936,
+            "reasoningOutputTokens": 651
+          },
+          "cost": 1.254875,
+          "costUnit": "codex_credits",
+          "outputSha256": "4183d408e2b12c545e6800511a0a6eeb376db384af5d9f6ad563db9b03d9c36a",
+          "error": null
+        },
+        {
+          "caseId": "montage-19-WkEyab1jINA-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "bcaf268d56e1f10959772b1537d8eb41dbd152d077d56b3fb96dd76ebe7d06cb",
+          "startedAt": "2026-07-11T09:26:36.328Z",
+          "durationMs": 36811.65225,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52657,
+            "cachedInputTokens": 17920,
+            "outputTokens": 1768,
+            "reasoningOutputTokens": 1482
+          },
+          "cost": 1.178425,
+          "costUnit": "codex_credits",
+          "outputSha256": "0cba621ec1e572bdfecf6a1199f708dfb39d174f609db457e2c2ae8a176ff576",
+          "error": null
+        },
+        {
+          "caseId": "montage-20-BtDnmx6HRr_-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "2f6fef0433747ee83fdf0f993d70775270b18569878a0d30af001151ecc7185e",
+          "startedAt": "2026-07-11T09:27:13.140Z",
+          "durationMs": 46054.362583,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 49585,
+            "cachedInputTokens": 30208,
+            "outputTokens": 2179,
+            "reasoningOutputTokens": 1899
+          },
+          "cost": 0.886795,
+          "costUnit": "codex_credits",
+          "outputSha256": "205014d9b4b60a15d67f3fce8a437d6387a29d8989228303f75bf98760f015cd",
+          "error": null
+        },
+        {
+          "caseId": "montage-21-C-0YpsCAODv-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "3e2f8414d8e1aa91b0ca8852810301fa587ca74deef2be085176bb5ed84fb522",
+          "startedAt": "2026-07-11T09:27:59.194Z",
+          "durationMs": 16509.422542,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24200,
+            "cachedInputTokens": 0,
+            "outputTokens": 673,
+            "reasoningOutputTokens": 516
+          },
+          "cost": 0.70595,
+          "costUnit": "codex_credits",
+          "outputSha256": "7549ac97e19b9487c7f47d50ae3b1e2d8ddd85eade86e3244a9f9cc1adc3ae87",
+          "error": null
+        },
+        {
+          "caseId": "montage-22-C9gLu79MklN-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "25281f0be5dfeba6efad3c452922f4fb09e892075faf23c5a585a25e80c79d1d",
+          "startedAt": "2026-07-11T09:28:15.704Z",
+          "durationMs": 15395.390042,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24206,
+            "cachedInputTokens": 8960,
+            "outputTokens": 588,
+            "reasoningOutputTokens": 428
+          },
+          "cost": 0.49175,
+          "costUnit": "codex_credits",
+          "outputSha256": "9ae4da1043e64c5af6e130640a5590ea402443221ead7915c0e98668d48a2033",
+          "error": null
+        },
+        {
+          "caseId": "montage-23-CsYa4skNBjP-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "bd93ae5f01047f37c438ada4dda191841741c70da1e71b4d3412d8b5e30db156",
+          "startedAt": "2026-07-11T09:28:31.099Z",
+          "durationMs": 12221.597292,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24211,
+            "cachedInputTokens": 8960,
+            "outputTokens": 434,
+            "reasoningOutputTokens": 280
+          },
+          "cost": 0.468775,
+          "costUnit": "codex_credits",
+          "outputSha256": "bd71ef56177c0c8a44d4a1a7f391bb674cd8cd43ed53eee9e3fba8ec0184e902",
+          "error": null
+        },
+        {
+          "caseId": "montage-24-Cw_QTMmA69_-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "5451c76c012e39b070a5e7ef01c14ff0179a60d96933c7124cb347d53fa60e4b",
+          "startedAt": "2026-07-11T09:28:43.321Z",
+          "durationMs": 22207.435916,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=4",
+              "purposes=hook,action,bridge,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53088,
+            "cachedInputTokens": 31232,
+            "outputTokens": 936,
+            "reasoningOutputTokens": 619
+          },
+          "cost": 0.76488,
+          "costUnit": "codex_credits",
+          "outputSha256": "56b89c5be94fa90fc34b679d68021b8b03400f906c600daad106aaba7d29a374",
+          "error": null
+        },
+        {
+          "caseId": "montage-25-Cxb0DmpJ7oM-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "c765c402c99c8bdcecad9b61ec5d564ea59d64b8842289cbe4e28c8c259fa48e",
+          "startedAt": "2026-07-11T09:29:05.529Z",
+          "durationMs": 14931.105667,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24193,
+            "cachedInputTokens": 0,
+            "outputTokens": 433,
+            "reasoningOutputTokens": 302
+          },
+          "cost": 0.669775,
+          "costUnit": "codex_credits",
+          "outputSha256": "fe53fa0fbdbb16d70f57ac0c3d5fbbb0e3e7fb3de7cfd1ca2738bc9b55b459ef",
+          "error": null
+        },
+        {
+          "caseId": "montage-26-DIUYX9QStl3-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "2374fbeddd94eb4e096bd58a686380b654d73222edb054079152ec1c33239715",
+          "startedAt": "2026-07-11T09:29:20.461Z",
+          "durationMs": 33932.014,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53101,
+            "cachedInputTokens": 31232,
+            "outputTokens": 1578,
+            "reasoningOutputTokens": 1290
+          },
+          "cost": 0.861505,
+          "costUnit": "codex_credits",
+          "outputSha256": "a4123b4264c86b1aa7a40b48b6cc4c6542544a9357d67286b2354a05d5d79a30",
+          "error": null
+        },
+        {
+          "caseId": "montage-27-DKM66d2tamf-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "b0aa10d532f15ab3a704178d6fde4044a6578a27ce43f2253ab209c26caadabb",
+          "startedAt": "2026-07-11T09:29:54.393Z",
+          "durationMs": 19702.082667,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53114,
+            "cachedInputTokens": 22272,
+            "outputTokens": 733,
+            "reasoningOutputTokens": 444
+          },
+          "cost": 0.93668,
+          "costUnit": "codex_credits",
+          "outputSha256": "95c9c8ca6335810684c392c65b9eb93ddcb09e0b6e1472866e0a45ae6bf08e02",
+          "error": null
+        },
+        {
+          "caseId": "montage-28-DW5s3qoDbHC-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "03afe3597c024b85f008e165b1bec4da90fde6eb1890d4ad22be34723368ec32",
+          "startedAt": "2026-07-11T09:30:14.096Z",
+          "durationMs": 314429.712916,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53105,
+            "cachedInputTokens": 27392,
+            "outputTokens": 1667,
+            "reasoningOutputTokens": 1365
+          },
+          "cost": 0.961355,
+          "costUnit": "codex_credits",
+          "outputSha256": "a91ef587245ed596d629702f8f16888d4a64f2fff30ab9c2d5cdf3dba07212b0",
+          "error": null
+        },
+        {
+          "caseId": "montage-29-DWjH5fWjBnt-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "a12337abfc8a4bdc63ee065e63ac46fdbcb1482e6f0fd8993247ddfc8238486e",
+          "startedAt": "2026-07-11T09:35:28.527Z",
+          "durationMs": 12457.917125,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24209,
+            "cachedInputTokens": 0,
+            "outputTokens": 451,
+            "reasoningOutputTokens": 309
+          },
+          "cost": 0.672875,
+          "costUnit": "codex_credits",
+          "outputSha256": "db25d1864d9cd4b91957aa34e3f9232447bc0695d81b7e8288aae05ccaa53725",
+          "error": null
+        },
+        {
+          "caseId": "montage-30-DXHx529DVb0-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "5e5ca622dad46ae59ce0e6a775ebf6e381f5fc7813e3b81a8fdb5e1ee2083ef5",
+          "startedAt": "2026-07-11T09:35:40.986Z",
+          "durationMs": 23192.883375,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53193,
+            "cachedInputTokens": 22272,
+            "outputTokens": 918,
+            "reasoningOutputTokens": 637
+          },
+          "cost": 0.966405,
+          "costUnit": "codex_credits",
+          "outputSha256": "cac91ebcd221f648ee5fc158762748004c235eed60d3eeee1f0f4878c9c5581b",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 30,
+        "schemaSuccessRate": 0.966666666667,
+        "qualityScore": 0.966666666667,
+        "qualityPassRate": 0.966666666667,
+        "criticalFailureCount": 0,
+        "p95LatencyMs": 314429.712916,
+        "meanCost": null,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": false,
+        "selectorBenchmark": null
+      }
+    },
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "provider": "codex",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "x-high",
+      "samples": [
+        {
+          "caseId": "montage-01-BtDnmx6HRr_-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "8aeab83847aad0b24c8d3436369eec0dd5cfa7180b9b364e85b93aa254e0430f",
+          "startedAt": "2026-07-11T09:36:04.179Z",
+          "durationMs": 45181.040125,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 49596,
+            "cachedInputTokens": 21248,
+            "outputTokens": 2184,
+            "reasoningOutputTokens": 1879
+          },
+          "cost": 1.08942,
+          "costUnit": "codex_credits",
+          "outputSha256": "99c6513e58f6828c210ad9230a756e88c51a01da6e73f26e1cf3943533b5979a",
+          "error": null
+        },
+        {
+          "caseId": "montage-02-C-0YpsCAODv-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "08c285cd499ea08aed150790c279436da1da604f27dd3a5dacef26765377837a",
+          "startedAt": "2026-07-11T09:36:49.360Z",
+          "durationMs": 26452.901334,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53065,
+            "cachedInputTokens": 22272,
+            "outputTokens": 1107,
+            "reasoningOutputTokens": 812
+          },
+          "cost": 0.991555,
+          "costUnit": "codex_credits",
+          "outputSha256": "7769cdf4cdc3a570655bd77920910e456f7cd8035c4f4f0afce5eadbad25cce2",
+          "error": null
+        },
+        {
+          "caseId": "montage-03-C9gLu79MklN-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "07fab1dc756dbd28fed952177a6b57e1c8eec0ea1f75998812d61cd936de4136",
+          "startedAt": "2026-07-11T09:37:15.814Z",
+          "durationMs": 23866.908791,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53068,
+            "cachedInputTokens": 31232,
+            "outputTokens": 906,
+            "reasoningOutputTokens": 622
+          },
+          "cost": 0.75988,
+          "costUnit": "codex_credits",
+          "outputSha256": "2ddceb98b230329a103382369f6024ec1faf829b700928b2c3732fdd46be9b81",
+          "error": null
+        },
+        {
+          "caseId": "montage-04-CsYa4skNBjP-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "93e770b846947b9302bcadb5ed512532cf44e563584b891a1d08a2fdbc07bfb8",
+          "startedAt": "2026-07-11T09:37:39.681Z",
+          "durationMs": 16742.760041,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24201,
+            "cachedInputTokens": 0,
+            "outputTokens": 672,
+            "reasoningOutputTokens": 516
+          },
+          "cost": 0.705825,
+          "costUnit": "codex_credits",
+          "outputSha256": "de68aaefed82a583b44e0612529f8e2ecad260ba1c3cc3a48b37c9ae09399593",
+          "error": null
+        },
+        {
+          "caseId": "montage-05-Cw_QTMmA69_-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "e7f6aad1abea38458cb0d98846576567416a0f576eeb7a3a292e566f54893e68",
+          "startedAt": "2026-07-11T09:37:56.424Z",
+          "durationMs": 35167.745042,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53290,
+            "cachedInputTokens": 0,
+            "outputTokens": 1548,
+            "reasoningOutputTokens": 1262
+          },
+          "cost": 1.56445,
+          "costUnit": "codex_credits",
+          "outputSha256": "b1bb2e8e8a2460241004346b39c55294e05930b89ca70b74571a3cdb990fdcd3",
+          "error": null
+        },
+        {
+          "caseId": "montage-06-Cxb0DmpJ7oM-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "11a4257a595441b1a9d4abe4f52acbd7e7738839601a941994292a2f40008f42",
+          "startedAt": "2026-07-11T09:38:31.592Z",
+          "durationMs": 35860.988541,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53163,
+            "cachedInputTokens": 22272,
+            "outputTokens": 1391,
+            "reasoningOutputTokens": 1095
+          },
+          "cost": 1.036605,
+          "costUnit": "codex_credits",
+          "outputSha256": "6a771615205cc8de55befd74ab24f06639a41a2f1562e5fbfd9cec6f9d66b87b",
+          "error": null
+        },
+        {
+          "caseId": "montage-07-DIUYX9QStl3-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "79bf2267c58f7a70da5bc04f37446ab83b22f70b1ea8673aec12657cd9d83184",
+          "startedAt": "2026-07-11T09:39:07.454Z",
+          "durationMs": 84416.420292,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=4",
+              "purposes=hook,action,payoff,bridge",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 120545,
+            "cachedInputTokens": 91136,
+            "outputTokens": 4169,
+            "reasoningOutputTokens": 3641
+          },
+          "cost": 1.588415,
+          "costUnit": "codex_credits",
+          "outputSha256": "78a26aa669e360b0eb3363599739ba3e688e861ab909b62ac9a5582b251b5ef3",
+          "error": null
+        },
+        {
+          "caseId": "montage-08-DKM66d2tamf-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "993dde827c789f596abfca17933fbacf33783eb03f0ee4399dde35cbfdb567ee",
+          "startedAt": "2026-07-11T09:40:31.873Z",
+          "durationMs": 51067.104667,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53136,
+            "cachedInputTokens": 22272,
+            "outputTokens": 2510,
+            "reasoningOutputTokens": 2207
+          },
+          "cost": 1.20378,
+          "costUnit": "codex_credits",
+          "outputSha256": "fdaa1bd0ce4a8341c8a5dbb3a4687f170f30b77cfae59119df43bd542e45e32b",
+          "error": null
+        },
+        {
+          "caseId": "montage-09-DW5s3qoDbHC-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "3fe402b658f799f998657387a224ab0f672e603227d4e72ae9c2ca6994e5ce30",
+          "startedAt": "2026-07-11T09:41:22.941Z",
+          "durationMs": 45937.398333,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=4",
+              "purposes=hook,bridge,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53191,
+            "cachedInputTokens": 31232,
+            "outputTokens": 1999,
+            "reasoningOutputTokens": 1694
+          },
+          "cost": 0.926905,
+          "costUnit": "codex_credits",
+          "outputSha256": "71fdb8c659bd24fc80d6864f0a64870952d75037b9b9e315a4d62e76a70e5d21",
+          "error": null
+        },
+        {
+          "caseId": "montage-10-DWjH5fWjBnt-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "a55a83288243f3d29e2c2b9ce25d41c33d56655c07936dd49d8df4bde9fdced8",
+          "startedAt": "2026-07-11T09:42:08.879Z",
+          "durationMs": 26722.663125,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53184,
+            "cachedInputTokens": 31232,
+            "outputTokens": 1206,
+            "reasoningOutputTokens": 893
+          },
+          "cost": 0.80778,
+          "costUnit": "codex_credits",
+          "outputSha256": "74488ee578aca36e518b1a3905c8b446c05576e9ea77da5e6dd00d327cfffa1f",
+          "error": null
+        },
+        {
+          "caseId": "montage-11-DXHx529DVb0-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "ddbab250a7e4253ac5bbea032df039bad47b462c5a5a24a3b554cccacf2b7977",
+          "startedAt": "2026-07-11T09:42:35.602Z",
+          "durationMs": 39539.061875,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=4",
+              "purposes=hook,action,bridge,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53204,
+            "cachedInputTokens": 22272,
+            "outputTokens": 1893,
+            "reasoningOutputTokens": 1562
+          },
+          "cost": 1.11293,
+          "costUnit": "codex_credits",
+          "outputSha256": "c73f54c4b0822520e8405e4337b18cafeb48c05b131fcb36229d21981c289495",
+          "error": null
+        },
+        {
+          "caseId": "montage-12-DXNBoz7jYmd-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "7d874ad640744ae175ed39bcbb6b67bccf9c9e143b5bf3a7023ab407a4bae3a3",
+          "startedAt": "2026-07-11T09:43:15.144Z",
+          "durationMs": 46322.621583,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=4",
+              "purposes=hook,action,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53176,
+            "cachedInputTokens": 22272,
+            "outputTokens": 2283,
+            "reasoningOutputTokens": 1987
+          },
+          "cost": 1.17073,
+          "costUnit": "codex_credits",
+          "outputSha256": "6cac1350405ad51322dd744008d75a5ded67f6e17676486a8e6f188b3d61a209",
+          "error": null
+        },
+        {
+          "caseId": "montage-13-DXOzkCdjMue-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "f683e370e0f9f7c161d99e0938834e75faca6094dd19a83385bc4f66cdd394a9",
+          "startedAt": "2026-07-11T09:44:01.467Z",
+          "durationMs": 35318.796834,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53301,
+            "cachedInputTokens": 0,
+            "outputTokens": 1622,
+            "reasoningOutputTokens": 1326
+          },
+          "cost": 1.575825,
+          "costUnit": "codex_credits",
+          "outputSha256": "0b084a3d439e6d23ae065b90239c0af10d1444e28437f44c5be4d899e397b3cb",
+          "error": null
+        },
+        {
+          "caseId": "montage-14-DXUPExpjCs2-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "af8429979c95bb7918f4733de43d7c4d46506eccd89b7792442b46f9d4176c4b",
+          "startedAt": "2026-07-11T09:44:36.786Z",
+          "durationMs": 390989.623167,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53743,
+            "cachedInputTokens": 17920,
+            "outputTokens": 1458,
+            "reasoningOutputTokens": 1156
+          },
+          "cost": 1.159075,
+          "costUnit": "codex_credits",
+          "outputSha256": "34a4e7e6f6e90aa6df967c5627d72acbcff9d794e1860b7bd6718284aab565e6",
+          "error": null
+        },
+        {
+          "caseId": "montage-15-6QIdqyFoxFE-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "89b8afc3f8b5f588567e69fa793670d38dac7b0279cabda0991a0479025148df",
+          "startedAt": "2026-07-11T09:51:07.780Z",
+          "durationMs": 43901.001,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24220,
+            "cachedInputTokens": 0,
+            "outputTokens": 2205,
+            "reasoningOutputTokens": 2070
+          },
+          "cost": 0.93625,
+          "costUnit": "codex_credits",
+          "outputSha256": "cd0d60aea4f2d3cf4a27aa6d97f95c80599f6bfc3ccb23ed9b7c9e2edad7dc0b",
+          "error": null
+        },
+        {
+          "caseId": "montage-16-BwIaEb5vGDo-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "78fa9ce6016d42705f0f35f16ae7e4401e593837b29a47149b0b5209e8b5a200",
+          "startedAt": "2026-07-11T09:51:51.683Z",
+          "durationMs": 18202.298458,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 22544,
+            "cachedInputTokens": 0,
+            "outputTokens": 771,
+            "reasoningOutputTokens": 628
+          },
+          "cost": 0.67925,
+          "costUnit": "codex_credits",
+          "outputSha256": "34457ccdef86511f0b42dd898558bfe77156ebbda49985c0f31a239c8a387f23",
+          "error": null
+        },
+        {
+          "caseId": "montage-17-J6tw2l128YE-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "6de003f8ec882ddba50df9792d385b0b2d67fe4493191f385cffa40a12936e3c",
+          "startedAt": "2026-07-11T09:52:09.886Z",
+          "durationMs": 41526.204958,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52573,
+            "cachedInputTokens": 8960,
+            "outputTokens": 1956,
+            "reasoningOutputTokens": 1669
+          },
+          "cost": 1.406125,
+          "costUnit": "codex_credits",
+          "outputSha256": "37071aa32c0ae2b9f3ed0db4fc98655e749f7114ee566089ef1aa19d15d80f1b",
+          "error": null
+        },
+        {
+          "caseId": "montage-18-V-xIvJs0Jbo-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "7e13a8ee6e560d187634b2b413aca76d6e0aa4f828281ab0e987e82a684fc00a",
+          "startedAt": "2026-07-11T09:52:51.415Z",
+          "durationMs": 48017.584959,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 52640,
+            "cachedInputTokens": 31232,
+            "outputTokens": 2407,
+            "reasoningOutputTokens": 2122
+          },
+          "cost": 0.97433,
+          "costUnit": "codex_credits",
+          "outputSha256": "995178c2f81d08a701dd3b13a7135891677aa3b8456b59b66c961293a63ed3be",
+          "error": null
+        },
+        {
+          "caseId": "montage-19-WkEyab1jINA-v1",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "bcaf268d56e1f10959772b1537d8eb41dbd152d077d56b3fb96dd76ebe7d06cb",
+          "startedAt": "2026-07-11T09:53:39.433Z",
+          "durationMs": 50912.006708,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24669,
+            "cachedInputTokens": 8960,
+            "outputTokens": 2583,
+            "reasoningOutputTokens": 2434
+          },
+          "cost": 0.802575,
+          "costUnit": "codex_credits",
+          "outputSha256": "983da1db6ec753227e9ca4130d3edb8d75646d32cccdcd8e85620a279f86fdae",
+          "error": null
+        },
+        {
+          "caseId": "montage-20-BtDnmx6HRr_-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "2f6fef0433747ee83fdf0f993d70775270b18569878a0d30af001151ecc7185e",
+          "startedAt": "2026-07-11T09:54:30.348Z",
+          "durationMs": 41041.871417,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 49656,
+            "cachedInputTokens": 8960,
+            "outputTokens": 1895,
+            "reasoningOutputTokens": 1613
+          },
+          "cost": 1.32405,
+          "costUnit": "codex_credits",
+          "outputSha256": "086370a7fe5644b261fa9367119daff8724e0ddf8e1336221784aab49f20b355",
+          "error": null
+        },
+        {
+          "caseId": "montage-21-C-0YpsCAODv-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "3e2f8414d8e1aa91b0ca8852810301fa587ca74deef2be085176bb5ed84fb522",
+          "startedAt": "2026-07-11T09:55:11.392Z",
+          "durationMs": 16168.573625,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24200,
+            "cachedInputTokens": 0,
+            "outputTokens": 662,
+            "reasoningOutputTokens": 516
+          },
+          "cost": 0.7043,
+          "costUnit": "codex_credits",
+          "outputSha256": "d3673cfd8f1ba3ab93c02846aa3476a87986accd2d57d6dc7659e66d1428253a",
+          "error": null
+        },
+        {
+          "caseId": "montage-22-C9gLu79MklN-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "25281f0be5dfeba6efad3c452922f4fb09e892075faf23c5a585a25e80c79d1d",
+          "startedAt": "2026-07-11T09:55:27.561Z",
+          "durationMs": 32495.157916,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53054,
+            "cachedInputTokens": 31232,
+            "outputTokens": 1261,
+            "reasoningOutputTokens": 946
+          },
+          "cost": 0.81278,
+          "costUnit": "codex_credits",
+          "outputSha256": "0c9360ecf0c12e444607e59609691548f2253d77c655552c3955564a610ad5f9",
+          "error": null
+        },
+        {
+          "caseId": "montage-23-CsYa4skNBjP-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "bd93ae5f01047f37c438ada4dda191841741c70da1e71b4d3412d8b5e30db156",
+          "startedAt": "2026-07-11T09:56:00.057Z",
+          "durationMs": 23790.263375,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53085,
+            "cachedInputTokens": 31232,
+            "outputTokens": 930,
+            "reasoningOutputTokens": 633
+          },
+          "cost": 0.763905,
+          "costUnit": "codex_credits",
+          "outputSha256": "966fe7e164e3259506bc6533bb5d798c64b9cadb5c1c0ae2a5d845f24476e5e7",
+          "error": null
+        },
+        {
+          "caseId": "montage-24-Cw_QTMmA69_-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "5451c76c012e39b070a5e7ef01c14ff0179a60d96933c7124cb347d53fa60e4b",
+          "startedAt": "2026-07-11T09:56:23.944Z",
+          "durationMs": 41263.262375,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 54434,
+            "cachedInputTokens": 32256,
+            "outputTokens": 1495,
+            "reasoningOutputTokens": 1204
+          },
+          "cost": 0.85934,
+          "costUnit": "codex_credits",
+          "outputSha256": "5e537e9d05ac23c99c2c779b18ddc13a604ddf2f4a8ef4dc5e24bb68a5f5db90",
+          "error": null
+        },
+        {
+          "caseId": "montage-25-Cxb0DmpJ7oM-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "c765c402c99c8bdcecad9b61ec5d564ea59d64b8842289cbe4e28c8c259fa48e",
+          "startedAt": "2026-07-11T09:57:05.212Z",
+          "durationMs": 31491.754959,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53097,
+            "cachedInputTokens": 31232,
+            "outputTokens": 1298,
+            "reasoningOutputTokens": 1018
+          },
+          "cost": 0.819405,
+          "costUnit": "codex_credits",
+          "outputSha256": "1ae28c931cd28a81cc4986b082e2b92aab89224e87514d155445e0f9db071f57",
+          "error": null
+        },
+        {
+          "caseId": "montage-26-DIUYX9QStl3-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "2374fbeddd94eb4e096bd58a686380b654d73222edb054079152ec1c33239715",
+          "startedAt": "2026-07-11T09:57:36.829Z",
+          "durationMs": 27749.455541,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53140,
+            "cachedInputTokens": 31232,
+            "outputTokens": 1130,
+            "reasoningOutputTokens": 839
+          },
+          "cost": 0.79528,
+          "costUnit": "codex_credits",
+          "outputSha256": "b783897f245def7a3e8b7fe0674f38fa4c8445034c654e2ac6e6a9b77547a4c4",
+          "error": null
+        },
+        {
+          "caseId": "montage-27-DKM66d2tamf-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "b0aa10d532f15ab3a704178d6fde4044a6578a27ce43f2253ab209c26caadabb",
+          "startedAt": "2026-07-11T09:58:04.580Z",
+          "durationMs": 36598.81775,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.208",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53045,
+            "cachedInputTokens": 22272,
+            "outputTokens": 1586,
+            "reasoningOutputTokens": 1304
+          },
+          "cost": 1.062905,
+          "costUnit": "codex_credits",
+          "outputSha256": "53a6309c1b3bab50ed22a90f8243e96276cd1036cd8c969c482cc3b7dec4431e",
+          "error": null
+        },
+        {
+          "caseId": "montage-28-DW5s3qoDbHC-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "03afe3597c024b85f008e165b1bec4da90fde6eb1890d4ad22be34723368ec32",
+          "startedAt": "2026-07-11T09:58:41.180Z",
+          "durationMs": 49873.470833,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53149,
+            "cachedInputTokens": 31232,
+            "outputTokens": 2453,
+            "reasoningOutputTokens": 2174
+          },
+          "cost": 0.993955,
+          "costUnit": "codex_credits",
+          "outputSha256": "5b8bc2f0b2c00f86cad7124ea112b68af677e1f17452f19c24452303b272d7be",
+          "error": null
+        },
+        {
+          "caseId": "montage-29-DWjH5fWjBnt-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "a12337abfc8a4bdc63ee065e63ac46fdbcb1482e6f0fd8993247ddfc8238486e",
+          "startedAt": "2026-07-11T09:59:31.056Z",
+          "durationMs": 47382.428917,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=3",
+              "purposes=hook,action,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 53198,
+            "cachedInputTokens": 31232,
+            "outputTokens": 2189,
+            "reasoningOutputTokens": 1912
+          },
+          "cost": 0.95558,
+          "costUnit": "codex_credits",
+          "outputSha256": "d5e80a4b26c2e5ac16760b2415293bc5eab6fe9eca3c39174eac89120c2ac927",
+          "error": null
+        },
+        {
+          "caseId": "montage-30-DXHx529DVb0-v2",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "5e5ca622dad46ae59ce0e6a775ebf6e381f5fc7813e3b81a8fdb5e1ee2083ef5",
+          "startedAt": "2026-07-11T10:00:18.441Z",
+          "durationMs": 29399.348042,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "segments=4",
+              "purposes=hook,action,bridge,payoff",
+              "coverageRatio=1.000",
+              "timelineValid=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 24217,
+            "cachedInputTokens": 0,
+            "outputTokens": 1165,
+            "reasoningOutputTokens": 1000
+          },
+          "cost": 0.780175,
+          "costUnit": "codex_credits",
+          "outputSha256": "1353cfb079d1634cdac44b627758ff3c5e764c78557b4fb5d0f373542f59ff4c",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 30,
+        "schemaSuccessRate": 1,
+        "qualityScore": 1,
+        "qualityPassRate": 1,
+        "criticalFailureCount": 0,
+        "p95LatencyMs": 84416.420292,
+        "meanCost": 1.012112666667,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": true,
+        "selectorBenchmark": {
+          "benchmarkVersion": "project-kings-montage_planner-real-30-v2",
+          "routeId": "codex:gpt-5.6-luna",
+          "reasoningEffort": "x-high",
+          "sampleSize": 30,
+          "qualityScore": 1,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 84416.420292,
+          "meanCost": 1.012112666667,
+          "costUnit": "codex_credits",
+          "criticalFailureCount": 0
+        }
+      }
+    }
+  ],
+  "selection": null,
+  "selectionError": "Primary route codex:gpt-5.6-luna has no distinct benchmark-qualified fallback.",
+  "selectionRejections": [
+    {
+      "routeId": "codex:gpt-5.4",
+      "reason": "no benchmark result"
+    },
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "reason": "no benchmark result"
+    },
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "reason": "quality score is below the floor"
+    },
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "reason": "quality score is below the floor; schema success rate is below the floor"
+    }
+  ],
+  "evidenceSha256": "839d29d9b1a2a51b868c6d5a55b8010424982417111095a4c07a82473097a98b"
+}

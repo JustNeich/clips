@@ -1,0 +1,219 @@
+{
+  "schemaVersion": "project-kings-source-search-role-boundary-overlay-v1",
+  "revisionId": "project-kings-source-search-role-boundary-v1",
+  "baseAnnotationSetId": "project-kings-remaining-semantic-real-30-independent-v2",
+  "baseAnnotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
+  "boundary": "Search judges only channel-concept relevance and same-profile supply. Downstream Source Fit / Source Policy / Vision QA defects (burned-in captions, watermarks, overlays/CTA/end cards, static framing, missing payoff, compilations) never flow back into the search label. This overlay corrects the search-role expectations without touching the shared base annotation identity: conceptRelevant records whether the candidate belongs to the channel concept itself, and searchEventSummary is a neutral content-only pool summary that carries no rejection or usability verdict.",
+  "cases": [
+    {
+      "mediaId": "BtDnmx6HRr_",
+      "profileKey": "dark-joy-boy",
+      "conceptRelevant": true,
+      "searchEventSummary": "A man and a tiger chase, embrace, and roll together in continuous close contact.",
+      "note": "continuous warm human-animal contact — inside the dark-joy-boy concept"
+    },
+    {
+      "mediaId": "C-0YpsCAODv",
+      "profileKey": "dark-joy-boy",
+      "conceptRelevant": true,
+      "searchEventSummary": "A smiling woman carries a chimpanzee on her shoulders while both wave at the camera.",
+      "note": "warm human-animal contact — inside the dark-joy-boy concept"
+    },
+    {
+      "mediaId": "C9gLu79MklN",
+      "profileKey": "dark-joy-boy",
+      "conceptRelevant": true,
+      "searchEventSummary": "An owner feeds and plays with a diapered spider monkey in one continuous interaction.",
+      "note": "continuous human-animal interaction — inside the dark-joy-boy concept"
+    },
+    {
+      "mediaId": "CsYa4skNBjP",
+      "profileKey": "dark-joy-boy",
+      "conceptRelevant": true,
+      "searchEventSummary": "A man bottle-feeds a large lion, holds its paw, and stays close while the lion drinks.",
+      "note": "close human-animal contact — inside the dark-joy-boy concept"
+    },
+    {
+      "mediaId": "Cw_QTMmA69_",
+      "profileKey": "dark-joy-boy",
+      "conceptRelevant": true,
+      "searchEventSummary": "A woman bottle-feeds a giant liger and strokes its head in a close continuous moment.",
+      "note": "close human-animal contact — inside the dark-joy-boy concept"
+    },
+    {
+      "mediaId": "Cxb0DmpJ7oM",
+      "profileKey": "dark-joy-boy",
+      "conceptRelevant": true,
+      "searchEventSummary": "A man holds a towel-wrapped baby spider monkey close to his face.",
+      "note": "close human-animal contact — inside the dark-joy-boy concept"
+    },
+    {
+      "mediaId": "DIUYX9QStl3",
+      "profileKey": "dark-joy-boy",
+      "conceptRelevant": true,
+      "searchEventSummary": "A man swims while hugging a chimpanzee and both stay in close playful contact.",
+      "note": "continuous human-animal contact — inside the dark-joy-boy concept"
+    },
+    {
+      "mediaId": "DKM66d2tamf",
+      "profileKey": "dark-joy-boy",
+      "conceptRelevant": true,
+      "searchEventSummary": "A young tiger rests on a man's lap while he rubs its belly and it licks his hand.",
+      "note": "close human-animal contact — inside the dark-joy-boy concept"
+    },
+    {
+      "mediaId": "DW0w8RMjY3Y",
+      "profileKey": "copscopes-x2e",
+      "conceptRelevant": false,
+      "searchEventSummary": "A traffic stop stays in one static frame and plays out through dialogue captions.",
+      "note": "the stop stays static with no visible action or concrete outcome — outside the copscopes single-incident-with-payoff concept"
+    },
+    {
+      "mediaId": "DW5s3qoDbHC",
+      "profileKey": "copscopes-x2e",
+      "conceptRelevant": true,
+      "searchEventSummary": "A passenger flees a traffic stop on foot before an officer catches and restrains him.",
+      "note": "one police incident with visible action and outcome — inside the copscopes concept"
+    },
+    {
+      "mediaId": "DWjH5fWjBnt",
+      "profileKey": "copscopes-x2e",
+      "conceptRelevant": true,
+      "searchEventSummary": "Police pursue a pickup and deploy a grappler strap toward its rear wheel.",
+      "note": "one police incident with visible action and outcome — inside the copscopes concept"
+    },
+    {
+      "mediaId": "DWnxlyIDcoK",
+      "profileKey": "copscopes-x2e",
+      "conceptRelevant": false,
+      "searchEventSummary": "A seated officer argues with a civilian while dialogue subtitles carry the exchange.",
+      "note": "a static seated argument with no visible action payoff — outside the copscopes single-incident-with-payoff concept"
+    },
+    {
+      "mediaId": "DWwSVVOjMqO",
+      "profileKey": "copscopes-x2e",
+      "conceptRelevant": false,
+      "searchEventSummary": "A night crash and fire are compiled together with a separate daytime interview and burned-in subtitles.",
+      "note": "an unrelated multi-scene compilation rather than one continuous incident — outside the copscopes concept"
+    },
+    {
+      "mediaId": "DXBhsJPjSgW",
+      "profileKey": "copscopes-x2e",
+      "conceptRelevant": false,
+      "searchEventSummary": "Large word-reveal captions overlay a hospital scene, and the crash appears only as aftermath.",
+      "note": "only crash aftermath with no visible action turn — outside the copscopes single-incident-with-payoff concept"
+    },
+    {
+      "mediaId": "DXHx529DVb0",
+      "profileKey": "copscopes-x2e",
+      "conceptRelevant": true,
+      "searchEventSummary": "Dashcam shows a trooper confronting a wrong-way driver and the damaged patrol vehicle outcome.",
+      "note": "one police incident with visible action and outcome — inside the copscopes concept"
+    },
+    {
+      "mediaId": "DXNBoz7jYmd",
+      "profileKey": "copscopes-x2e",
+      "conceptRelevant": true,
+      "searchEventSummary": "Police pursue a stolen car through a neighborhood and stop it with an armed-officer outcome.",
+      "note": "one police incident with visible action and outcome — inside the copscopes concept"
+    },
+    {
+      "mediaId": "DXOzkCdjMue",
+      "profileKey": "copscopes-x2e",
+      "conceptRelevant": true,
+      "searchEventSummary": "A fleeing suspect clings to a moving car while police follow on the highway.",
+      "note": "one police incident with visible action — inside the copscopes concept"
+    },
+    {
+      "mediaId": "DXUPExpjCs2",
+      "profileKey": "copscopes-x2e",
+      "conceptRelevant": true,
+      "searchEventSummary": "Two state troopers help a choking baby until the child begins breathing again.",
+      "note": "one police rescue with visible action and outcome — inside the copscopes concept"
+    },
+    {
+      "mediaId": "1diIRo4sHtk",
+      "profileKey": "light-kingdom",
+      "conceptRelevant": true,
+      "searchEventSummary": "An AI-transformed fiction scene runs under dense foreign burned-in captions.",
+      "note": "a visible AI-transformed fiction scene — inside the light-kingdom concept (dense-caption defect is downstream-only)"
+    },
+    {
+      "mediaId": "6IlkA1MLVYA",
+      "profileKey": "light-kingdom",
+      "conceptRelevant": false,
+      "searchEventSummary": "A ranking-list interface with subscribe overlays covers the footage.",
+      "note": "a ranking-list interface rather than a visible AI-transformed fiction scene — outside the light-kingdom concept"
+    },
+    {
+      "mediaId": "6QIdqyFoxFE",
+      "profileKey": "light-kingdom",
+      "conceptRelevant": true,
+      "searchEventSummary": "Recognizable fiction is visibly rebuilt as an AI parody with a changed action payoff.",
+      "note": "a visible AI transformation of recognizable fiction — inside the light-kingdom concept"
+    },
+    {
+      "mediaId": "BwIaEb5vGDo",
+      "profileKey": "light-kingdom",
+      "conceptRelevant": true,
+      "searchEventSummary": "The Mandalorian and Grogu appear in a clean AI-rebuilt short fiction scene.",
+      "note": "a visible AI transformation of recognizable fiction — inside the light-kingdom concept"
+    },
+    {
+      "mediaId": "EYkw1ELHXq0",
+      "profileKey": "light-kingdom",
+      "conceptRelevant": true,
+      "searchEventSummary": "An AI-fiction scene runs under large burned-in captions across the frame.",
+      "note": "a visible AI-fiction scene — inside the light-kingdom concept (large-caption defect is downstream-only)"
+    },
+    {
+      "mediaId": "J6tw2l128YE",
+      "profileKey": "light-kingdom",
+      "conceptRelevant": true,
+      "searchEventSummary": "Recognizable Harry Potter characters appear in a transformed AI afterparty scene.",
+      "note": "a visible AI transformation of recognizable fiction — inside the light-kingdom concept"
+    },
+    {
+      "mediaId": "V-xIvJs0Jbo",
+      "profileKey": "light-kingdom",
+      "conceptRelevant": true,
+      "searchEventSummary": "A generated public-figure character is placed inside a recognizable Harry Potter scene.",
+      "note": "a generated character inside recognizable fiction — inside the light-kingdom concept"
+    },
+    {
+      "mediaId": "WkEyab1jINA",
+      "profileKey": "light-kingdom",
+      "conceptRelevant": true,
+      "searchEventSummary": "A generated public-figure character enters a recognizable Harry Potter fiction scene.",
+      "note": "a generated character inside recognizable fiction — inside the light-kingdom concept"
+    },
+    {
+      "mediaId": "XPKBwhDPxk0",
+      "profileKey": "light-kingdom",
+      "conceptRelevant": true,
+      "searchEventSummary": "A transformed AI-fiction scene ends with a large like-and-subscribe overlay and an end card.",
+      "note": "a visible AI-fiction scene — inside the light-kingdom concept (overlay, CTA and end-card defects are downstream-only)"
+    },
+    {
+      "mediaId": "fj6CXk2KTIs",
+      "profileKey": "light-kingdom",
+      "conceptRelevant": true,
+      "searchEventSummary": "An AI-fiction clip appears in a split-screen layout with large text and a watermark.",
+      "note": "a visible AI-fiction clip — inside the light-kingdom concept (split-screen, text and watermark defects are downstream-only)"
+    },
+    {
+      "mediaId": "n9kD935iROw",
+      "profileKey": "light-kingdom",
+      "conceptRelevant": false,
+      "searchEventSummary": "Ordinary horizontal live-action fiction footage with no visible AI transformation.",
+      "note": "plain live-action fiction with no visible AI transformation or generated element — outside the light-kingdom concept"
+    },
+    {
+      "mediaId": "oA7rziyGv8s",
+      "profileKey": "light-kingdom",
+      "conceptRelevant": true,
+      "searchEventSummary": "An AI-fiction scene carries a StrangeAI watermark and foreign burned-in captions.",
+      "note": "a visible AI-fiction scene — inside the light-kingdom concept (watermark and caption defects are downstream-only)"
+    }
+  ]
+}

@@ -33,14 +33,99 @@ test("remaining semantic benchmark freezes 30 real typed packets for every role"
     assert.match(built.annotations.annotationsSha256, /^[a-f0-9]{64}$/);
     assert.equal(new Set(built.annotations.mediaCases.map((entry) => entry.mediaId)).size, 30);
     assert.equal(built.annotations.sourceEvidence.length >= 4, true);
+    // IDENTITY REGRESSION: the shared annotation set must keep the exact
+    // frozen real-30-v2 identity. annotationsSha256 is bound into every
+    // role's checkpoint keys, so any silent change here would invalidate the
+    // already-closed caption/montage/source_fit checkpoint replay.
+    assert.equal(
+      built.annotations.annotationsSha256,
+      "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec"
+    );
+    assert.equal(built.annotations.datasetVersion, "real-30-v2");
+    assert.equal(
+      built.annotations.annotationSetId,
+      "project-kings-remaining-semantic-real-30-independent-v2"
+    );
+    // The corrected search expectations ride on the role-boundary overlay,
+    // and only the source_search dataset version reflects the revision.
+    assert.equal(built.sourceSearchBoundary.revisionId, "project-kings-source-search-role-boundary-v1");
+    assert.match(built.sourceSearchBoundary.overlaySha256, /^[a-f0-9]{64}$/);
+    assert.equal(built.datasets.source_search.datasetVersion, "real-30-v3-search-boundary");
+    assert.equal(built.datasets.caption.datasetVersion, "real-30-v2");
+    assert.equal(built.datasets.montage_planner.datasetVersion, "real-30-v2");
+    assert.equal(built.datasets.source_fit.datasetVersion, "real-30-v2");
+    // Labels of the source_search DATASET are derived from channel-concept
+    // relevance via the overlay, not index parity: three previously-FOUND
+    // concept-violating distractors flip to NO_MATCH.
     assert.equal(
       built.datasets.source_search.cases.filter((entry) => entry.expectedQualityLabel === "FOUND").length,
-      15
+      12
     );
     assert.equal(
       built.datasets.source_search.cases.filter((entry) => entry.expectedQualityLabel === "NO_MATCH").length,
-      15
+      18
     );
+
+    const searchLabelById = new Map(
+      built.datasets.source_search.cases.map((entry) => [entry.caseId, entry.expectedQualityLabel] as const)
+    );
+    // Concept-violating same-profile candidates are NO_MATCH even though present.
+    for (const noMatchId of [
+      "source-search-09-DW0w8RMjY3Y",
+      "source-search-13-DWwSVVOjMqO",
+      "source-search-29-n9kD935iROw"
+    ]) {
+      assert.equal(searchLabelById.get(noMatchId), "NO_MATCH", `${noMatchId} must be NO_MATCH`);
+    }
+    // Concept-relevant candidates with only downstream-fit defects stay FOUND.
+    for (const foundId of [
+      "source-search-19-1diIRo4sHtk",
+      "source-search-23-EYkw1ELHXq0",
+      "source-search-27-XPKBwhDPxk0"
+    ]) {
+      assert.equal(searchLabelById.get(foundId), "FOUND", `${foundId} must be FOUND`);
+    }
+
+    // No source-pool candidate summary may carry a downstream rejection or
+    // usability verdict, and the concept-violating distractors must keep their
+    // same-profile candidate in the pool.
+    const verdictPhrases = ["unusable", "violate", "does not"];
+    const overlay = JSON.parse(
+      await fs.readFile(path.join(REPO_ROOT, built.sourceSearchBoundary.overlayRelativePath), "utf8")
+    ) as { cases: Array<{ mediaId: string; searchEventSummary: string }> };
+    assert.equal(overlay.cases.length, 30);
+    for (const overlayCase of overlay.cases) {
+      const neutral = overlayCase.searchEventSummary.toLowerCase();
+      for (const verdict of verdictPhrases) {
+        assert.equal(neutral.includes(verdict), false, `${overlayCase.mediaId} searchEventSummary leaks "${verdict}"`);
+      }
+    }
+    for (const searchCase of built.datasets.source_search.cases) {
+      const poolArtifact = searchCase.packet.artifacts.find((artifact) => artifact.id === "source-pool")!;
+      const pool = JSON.parse(await fs.readFile(poolArtifact.path, "utf8")) as {
+        candidates: Array<{ candidateId: string; eventSummary: string }>;
+      };
+      for (const candidate of pool.candidates) {
+        const summary = candidate.eventSummary.toLowerCase();
+        for (const verdict of verdictPhrases) {
+          assert.equal(
+            summary.includes(verdict),
+            false,
+            `pool ${searchCase.caseId} leaks verdict "${verdict}": ${candidate.eventSummary}`
+          );
+        }
+      }
+      const candidateIds = pool.candidates.map((candidate) => candidate.candidateId);
+      if (searchCase.caseId === "source-search-09-DW0w8RMjY3Y") {
+        assert.equal(candidateIds.includes("candidate-DW0w8RMjY3Y"), true);
+      }
+      if (searchCase.caseId === "source-search-13-DWwSVVOjMqO") {
+        assert.equal(candidateIds.includes("candidate-DWwSVVOjMqO"), true);
+      }
+      if (searchCase.caseId === "source-search-29-n9kD935iROw") {
+        assert.equal(candidateIds.includes("candidate-n9kD935iROw"), true);
+      }
+    }
 
     const allArtifacts = Object.values(built.datasets).flatMap((dataset) =>
       dataset.cases.flatMap((entry) => entry.packet.artifacts)
@@ -57,11 +142,59 @@ test("remaining semantic benchmark freezes 30 real typed packets for every role"
   }
 });
 
+test("source-search boundary overlay fails closed when it is not bound to the base annotations", async () => {
+  const fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kings-remaining-overlay-tamper-"));
+  try {
+    const overlayPath = path.join(
+      REPO_ROOT,
+      "docs/project-kings-production-pipeline-v1/source-search-role-boundary-v1.overlay.json"
+    );
+    const overlay = JSON.parse(await fs.readFile(overlayPath, "utf8")) as Record<string, unknown>;
+    const tamperedPath = path.join(fixtureRoot, "tampered-overlay.json");
+    await fs.writeFile(
+      tamperedPath,
+      JSON.stringify({ ...overlay, baseAnnotationsSha256: "f".repeat(64) }, null, 2),
+      "utf8"
+    );
+    const tamperedFixtureRoot = path.join(fixtureRoot, "fixtures");
+    await fs.mkdir(tamperedFixtureRoot, { recursive: true });
+    await assert.rejects(
+      () =>
+        buildRemainingSemanticBenchmarkDatasets({
+          repoRoot: REPO_ROOT,
+          fixtureRoot: tamperedFixtureRoot,
+          sourceSearchOverlayPath: tamperedPath
+        }),
+      /not bound to the loaded base annotation set/
+    );
+  } finally {
+    await fs.rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
 test("remaining semantic scorer rejects plausible-looking outputs that violate frozen truth", async () => {
   const fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kings-remaining-scorer-test-"));
   try {
     const built = await buildRemainingSemanticBenchmarkDatasets({ repoRoot: REPO_ROOT, fixtureRoot });
-    const evaluator = createRemainingSemanticBenchmarkQualityEvaluator(built.annotations);
+    const evaluator = createRemainingSemanticBenchmarkQualityEvaluator(
+      built.annotations,
+      built.sourceSearchBoundary
+    );
+
+    // Without the boundary expectations, source_search scoring fails closed
+    // instead of silently reusing the legacy identity labels.
+    const legacyEvaluator = createRemainingSemanticBenchmarkQualityEvaluator(built.annotations);
+    await assert.rejects(
+      async () =>
+        legacyEvaluator.evaluate({
+          role: "source_search",
+          caseId: built.datasets.source_search.cases[0]!.caseId,
+          expectedQualityLabel: built.datasets.source_search.cases[0]!.expectedQualityLabel,
+          packet: built.datasets.source_search.cases[0]!.packet,
+          output: { decision: "NO_MATCH", candidates: [], exhaustedStrategies: [] }
+        }),
+      /role-boundary overlay expectations/
+    );
 
     const searchCase = built.datasets.source_search.cases.find((entry) => entry.expectedQualityLabel === "FOUND")!;
     const badSearch = await evaluator.evaluate({
