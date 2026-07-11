@@ -18,11 +18,11 @@ const { PROJECT_KINGS_V1_MODEL_REGISTRY } = routingModule;
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const EVIDENCE_ROOT = path.join(REPO_ROOT, "docs/project-kings-production-pipeline-v1/evidence");
-const OUTPUT_PATH = path.join(EVIDENCE_ROOT, "project-kings-model-routes-v3.json");
+const OUTPUT_PATH = path.join(EVIDENCE_ROOT, "project-kings-model-routes-v4.json");
 
 // Real-30 evidence for the five production roles benchmarked on real media
-// (2026-07-11, gpt-5.6-luna only). vision_qa intentionally stays on its
-// synthetic v7 evidence: its real launch gate is the 120-case blind corpus,
+// (2026-07-11, gpt-5.6-luna only). vision_qa uses luna routes selected on the
+// synthetic v10 set; its REAL launch gate remains the 120-case blind corpus,
 // which by design requires campaign-scoped final_approved materials that only
 // exist after shadow runs.
 const INPUTS: Record<ProductionModelAgentRole, string> = {
@@ -31,7 +31,7 @@ const INPUTS: Record<ProductionModelAgentRole, string> = {
   source_policy: "model-benchmark-source_policy-2026-07-10-real-30-v9.json",
   caption: "model-benchmark-caption-2026-07-10-real-30-v2.json",
   montage_planner: "model-benchmark-montage_planner-2026-07-10-real-30-v2.json",
-  vision_qa: "model-benchmark-vision_qa-2026-07-10-v7.json"
+  vision_qa: "model-benchmark-vision_qa-2026-07-10-v10.json"
 };
 
 // These MUST mirror the policies the real-30 runs were selected under
@@ -43,7 +43,7 @@ const POLICIES: Record<ProductionModelAgentRole, ModelSelectionPolicy> = {
   source_policy: { requiresVision: true, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 30, minimumQualityScore: 0.83, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 90_000, allowFailClosedSingleRoute: true },
   caption: { requiresVision: true, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 30, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 240_000, allowFailClosedSingleRoute: true },
   montage_planner: { requiresVision: true, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 30, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 240_000, allowFailClosedSingleRoute: true },
-  vision_qa: { requiresVision: true, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 3, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 45_000 }
+  vision_qa: { requiresVision: true, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 3, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 45_000, allowFailClosedSingleRoute: true }
 };
 
 type BenchmarkEvidence = {
@@ -149,7 +149,7 @@ for (const role of PRODUCTION_MODEL_AGENT_ROLES) {
 
 const payload = {
   schemaVersion: 3 as const,
-  manifestId: "project-kings-model-routes-v3",
+  manifestId: "project-kings-model-routes-v4",
   createdAt: new Date().toISOString(),
   evidence: evidenceEntries,
   selections

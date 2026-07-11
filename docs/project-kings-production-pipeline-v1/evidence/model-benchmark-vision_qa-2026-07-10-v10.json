@@ -1,0 +1,466 @@
+{
+  "schemaVersion": "project-kings-model-benchmark-evidence-v1",
+  "benchmarkVersion": "project-kings-stage-models-2026-07-10-v10",
+  "stageRole": "vision_qa",
+  "createdAt": "2026-07-11T12:33:49.418Z",
+  "bounds": {
+    "maxCases": 120,
+    "maxCandidates": 12,
+    "maxExecutions": 240,
+    "actualExecutions": 9
+  },
+  "dataset": {
+    "datasetId": "project-kings-vision-qa",
+    "datasetVersion": "v3",
+    "datasetSha256": "32f78450a91dba76663f7d91ced5084c48632bface7b0d2c022fdb3454986fce",
+    "promptSetSha256": "c5360f50ffca6f6897db01cc4e886e79eef03dea056d276372a65a8967be56ec",
+    "outputSchemaSha256": "3a45a226d7654b48996e88bf4fa89b4b8ef4e721c527cf9eb701875ffe458bd7",
+    "sampleSize": 3
+  },
+  "qualityEvaluator": {
+    "evaluatorId": "project-kings-stage-quality",
+    "evaluatorVersion": "v3",
+    "implementationSha256": "837795c6edcda146fc69ad7fc755160bea04b2c7da2f94e75f7ded884593c8ff",
+    "configSha256": "9ab55a5c29d2b252beb332ab33d33e8c03a465cb07883860999161ef7f27bcac"
+  },
+  "executionContract": {
+    "registrySha256": "e899df48af4ad54b2e55514a0ac9b87b69e66b5cea05af8216a1b6a8eaca36b8",
+    "policySha256": "cd37c15bdf02e2555d469829f55200a56b88314a904a8a91dd79c59906741f23",
+    "schemaValidationMethod": "strict-production-agent-output-v1",
+    "qualityAggregationMethod": "mean-passed-evaluator-score-v1",
+    "p95Method": "nearest-rank-p95-v1",
+    "costMethod": "uncached-input-plus-cached-input-plus-total-output-v1",
+    "reasoningTokensDoubleCounted": false
+  },
+  "pricing": [
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 18.75,
+      "cachedInputPerMillionTokens": 1.875,
+      "outputPerMillionTokens": 113,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10-v2.json",
+      "verifiedAt": "2026-07-10T18:20:00.000Z",
+      "sourceSha256": "4e38a43a881d6f1b2fb8a5649d902c48faef26ba228907b2d57d82bd4310e97a"
+    },
+    {
+      "routeId": "codex:gpt-5.4",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 62.5,
+      "cachedInputPerMillionTokens": 6.25,
+      "outputPerMillionTokens": 375,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10-v2.json",
+      "verifiedAt": "2026-07-10T18:20:00.000Z",
+      "sourceSha256": "4e38a43a881d6f1b2fb8a5649d902c48faef26ba228907b2d57d82bd4310e97a"
+    },
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "costUnit": "codex_credits",
+      "inputPerMillionTokens": 25,
+      "cachedInputPerMillionTokens": 2.5,
+      "outputPerMillionTokens": 150,
+      "source": "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10-v2.json",
+      "verifiedAt": "2026-07-10T18:20:00.000Z",
+      "sourceSha256": "4e38a43a881d6f1b2fb8a5649d902c48faef26ba228907b2d57d82bd4310e97a"
+    }
+  ],
+  "candidates": [
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "provider": "codex",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "low",
+      "samples": [
+        {
+          "caseId": "vision-clean",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "f5524fc8086e788bd86f88f98b2a09047713920a045e0ea9860a2a3d904f60ad",
+          "startedAt": "2026-07-11T12:29:34.680Z",
+          "durationMs": 13045.097209,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "defects=0",
+              "defectCodes=none",
+              "conceptMatch=true",
+              "foreignCaptionsVisible=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 48313,
+            "cachedInputTokens": 21248,
+            "outputTokens": 423,
+            "reasoningOutputTokens": 131
+          },
+          "cost": 0.793195,
+          "costUnit": "codex_credits",
+          "outputSha256": "2495ca10aa54cfb904a378183f392c53541cc1b18b6bd8441e7aa94946051412",
+          "error": null
+        },
+        {
+          "caseId": "vision-hardsub",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "a1d32b695891ea6c6d5de77f3cac19bd754ab9f475fccc578eb3c9aeac05f22b",
+          "startedAt": "2026-07-11T12:29:47.726Z",
+          "durationMs": 17446.962625,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "defects=2",
+              "defectCodes=foreign_captions,factual_claim_unverified",
+              "conceptMatch=true",
+              "foreignCaptionsVisible=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 47010,
+            "cachedInputTokens": 21248,
+            "outputTokens": 706,
+            "reasoningOutputTokens": 328
+          },
+          "cost": 0.80307,
+          "costUnit": "codex_credits",
+          "outputSha256": "a19a143fa4046973110565c7b9c256b00ee896acc4e7f41ccf38ab303ad12d34",
+          "error": null
+        },
+        {
+          "caseId": "vision-offconcept",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "3bdc263450dd98921eabef64976ab49ca530ca12a1492d70b07dacf349baf5e4",
+          "startedAt": "2026-07-11T12:30:05.173Z",
+          "durationMs": 16602.383334,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "defects=6",
+              "defectCodes=concept_mismatch,missing_payoff,donor_ui,cta,foreign_captions,main_event_lost",
+              "conceptMatch=false",
+              "foreignCaptionsVisible=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 22255,
+            "cachedInputTokens": 0,
+            "outputTokens": 583,
+            "reasoningOutputTokens": 210
+          },
+          "cost": 0.643825,
+          "costUnit": "codex_credits",
+          "outputSha256": "4d01fee7346a4e8f0eeab7cd7ce69552ba2fe4089e19949cf6000a5a3dc6989b",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 3,
+        "schemaSuccessRate": 1,
+        "qualityScore": 1,
+        "qualityPassRate": 1,
+        "criticalFailureCount": 0,
+        "p95LatencyMs": 17446.962625,
+        "meanCost": 0.746696666667,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": true,
+        "selectorBenchmark": {
+          "benchmarkVersion": "project-kings-stage-models-2026-07-10-v10",
+          "routeId": "codex:gpt-5.6-luna",
+          "reasoningEffort": "low",
+          "sampleSize": 3,
+          "qualityScore": 1,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 17446.962625,
+          "meanCost": 0.746696666667,
+          "costUnit": "codex_credits",
+          "criticalFailureCount": 0
+        }
+      }
+    },
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "provider": "codex",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
+      "samples": [
+        {
+          "caseId": "vision-clean",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "f5524fc8086e788bd86f88f98b2a09047713920a045e0ea9860a2a3d904f60ad",
+          "startedAt": "2026-07-11T12:30:21.776Z",
+          "durationMs": 18965.293,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "defects=0",
+              "defectCodes=none",
+              "conceptMatch=true",
+              "foreignCaptionsVisible=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 73220,
+            "cachedInputTokens": 45568,
+            "outputTokens": 650,
+            "reasoningOutputTokens": 233
+          },
+          "cost": 0.90272,
+          "costUnit": "codex_credits",
+          "outputSha256": "2495ca10aa54cfb904a378183f392c53541cc1b18b6bd8441e7aa94946051412",
+          "error": null
+        },
+        {
+          "caseId": "vision-hardsub",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "a1d32b695891ea6c6d5de77f3cac19bd754ab9f475fccc578eb3c9aeac05f22b",
+          "startedAt": "2026-07-11T12:30:40.741Z",
+          "durationMs": 19809.413042,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "defects=1",
+              "defectCodes=foreign_captions",
+              "conceptMatch=true",
+              "foreignCaptionsVisible=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 48456,
+            "cachedInputTokens": 0,
+            "outputTokens": 805,
+            "reasoningOutputTokens": 472
+          },
+          "cost": 1.33215,
+          "costUnit": "codex_credits",
+          "outputSha256": "7b8a52e045aecb42316566559a96bdea1ef1722ad8b22c45ca1ba4416616357f",
+          "error": null
+        },
+        {
+          "caseId": "vision-offconcept",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "3bdc263450dd98921eabef64976ab49ca530ca12a1492d70b07dacf349baf5e4",
+          "startedAt": "2026-07-11T12:31:00.551Z",
+          "durationMs": 31341.066583,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "defects=5",
+              "defectCodes=concept_mismatch,donor_ui,cta,missing_payoff,main_event_lost",
+              "conceptMatch=false",
+              "foreignCaptionsVisible=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 47675,
+            "cachedInputTokens": 21248,
+            "outputTokens": 1377,
+            "reasoningOutputTokens": 833
+          },
+          "cost": 0.920345,
+          "costUnit": "codex_credits",
+          "outputSha256": "28839d81f1c8b4cb0e8e1c400508311b5d9183c2fc1a3f335de9887bbbc45c81",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 3,
+        "schemaSuccessRate": 1,
+        "qualityScore": 1,
+        "qualityPassRate": 1,
+        "criticalFailureCount": 0,
+        "p95LatencyMs": 31341.066583,
+        "meanCost": 1.051738333333,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": true,
+        "selectorBenchmark": {
+          "benchmarkVersion": "project-kings-stage-models-2026-07-10-v10",
+          "routeId": "codex:gpt-5.6-luna",
+          "reasoningEffort": "medium",
+          "sampleSize": 3,
+          "qualityScore": 1,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 31341.066583,
+          "meanCost": 1.051738333333,
+          "costUnit": "codex_credits",
+          "criticalFailureCount": 0
+        }
+      }
+    },
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "provider": "codex",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "high",
+      "samples": [
+        {
+          "caseId": "vision-clean",
+          "expectedQualityLabel": "PASS",
+          "promptSha256": "f5524fc8086e788bd86f88f98b2a09047713920a045e0ea9860a2a3d904f60ad",
+          "startedAt": "2026-07-11T12:31:31.892Z",
+          "durationMs": 26377.126209,
+          "schemaValid": true,
+          "quality": {
+            "label": "PASS",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=PASS",
+              "actual=PASS",
+              "defects=0",
+              "defectCodes=none",
+              "conceptMatch=true",
+              "foreignCaptionsVisible=false"
+            ]
+          },
+          "usage": {
+            "inputTokens": 73754,
+            "cachedInputTokens": 45568,
+            "outputTokens": 1110,
+            "reasoningOutputTokens": 728
+          },
+          "cost": 0.98507,
+          "costUnit": "codex_credits",
+          "outputSha256": "2495ca10aa54cfb904a378183f392c53541cc1b18b6bd8441e7aa94946051412",
+          "error": null
+        },
+        {
+          "caseId": "vision-hardsub",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "a1d32b695891ea6c6d5de77f3cac19bd754ab9f475fccc578eb3c9aeac05f22b",
+          "startedAt": "2026-07-11T12:31:58.269Z",
+          "durationMs": 26658.836583,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "defects=1",
+              "defectCodes=foreign_captions",
+              "conceptMatch=true",
+              "foreignCaptionsVisible=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 47509,
+            "cachedInputTokens": 0,
+            "outputTokens": 1141,
+            "reasoningOutputTokens": 745
+          },
+          "cost": 1.358875,
+          "costUnit": "codex_credits",
+          "outputSha256": "7b8a52e045aecb42316566559a96bdea1ef1722ad8b22c45ca1ba4416616357f",
+          "error": null
+        },
+        {
+          "caseId": "vision-offconcept",
+          "expectedQualityLabel": "FAIL",
+          "promptSha256": "3bdc263450dd98921eabef64976ab49ca530ca12a1492d70b07dacf349baf5e4",
+          "startedAt": "2026-07-11T12:32:24.928Z",
+          "durationMs": 84489.048708,
+          "schemaValid": true,
+          "quality": {
+            "label": "FAIL",
+            "score": 1,
+            "passed": true,
+            "critical": false,
+            "evidence": [
+              "expected=FAIL",
+              "actual=FAIL",
+              "defects=6",
+              "defectCodes=concept_mismatch,missing_payoff,donor_ui,cta,foreign_captions,factual_claim_unverified",
+              "conceptMatch=false",
+              "foreignCaptionsVisible=true"
+            ]
+          },
+          "usage": {
+            "inputTokens": 73349,
+            "cachedInputTokens": 33280,
+            "outputTokens": 4344,
+            "reasoningOutputTokens": 3703
+          },
+          "cost": 1.736525,
+          "costUnit": "codex_credits",
+          "outputSha256": "9574add714eab30456622ab75875b7e01a68c83accb78b0796d7dce95cba22e1",
+          "error": null
+        }
+      ],
+      "aggregate": {
+        "sampleSize": 3,
+        "schemaSuccessRate": 1,
+        "qualityScore": 1,
+        "qualityPassRate": 1,
+        "criticalFailureCount": 0,
+        "p95LatencyMs": 84489.048708,
+        "meanCost": 1.360156666667,
+        "costUnit": "codex_credits",
+        "completeUsageAndCostEvidence": true,
+        "selectorBenchmark": {
+          "benchmarkVersion": "project-kings-stage-models-2026-07-10-v10",
+          "routeId": "codex:gpt-5.6-luna",
+          "reasoningEffort": "high",
+          "sampleSize": 3,
+          "qualityScore": 1,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 84489.048708,
+          "meanCost": 1.360156666667,
+          "costUnit": "codex_credits",
+          "criticalFailureCount": 0
+        }
+      }
+    }
+  ],
+  "selection": {
+    "primary": {
+      "routeId": "codex:gpt-5.6-luna",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "low"
+    },
+    "fallback": {
+      "routeId": "codex:gpt-5.6-luna",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "medium"
+    },
+    "fallbackMode": "same_route_reasoning"
+  },
+  "selectionError": null,
+  "selectionRejections": [],
+  "evidenceSha256": "3697468782c449e27ce50ae504ef5cf527cbda8c0d41412a944e79fe5dfa1b34"
+}

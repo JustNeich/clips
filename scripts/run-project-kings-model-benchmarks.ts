@@ -43,8 +43,8 @@ const RATE_CARD_PATH = path.join(EVIDENCE_ROOT, "codex-rate-card-2026-07-10-v2.j
 const RATE_CARD_VERIFIED_AT = "2026-07-10T18:20:00.000Z";
 const RATE_CARD_SOURCE =
   "OpenAI Codex rate card captured in docs/project-kings-production-pipeline-v1/evidence/codex-rate-card-2026-07-10-v2.json";
-const BENCHMARK_VERSION = "project-kings-stage-models-2026-07-10-v9";
-const BENCHMARK_EVIDENCE_VERSION = "v9";
+const BENCHMARK_VERSION = "project-kings-stage-models-2026-07-10-v10";
+const BENCHMARK_EVIDENCE_VERSION = "v10";
 const SOURCE_POLICY_BENCHMARK_VERSION =
   "project-kings-source-policy-real-30-2026-07-10-v9";
 const SOURCE_POLICY_BENCHMARK_EVIDENCE_VERSION = "real-30-v9";
@@ -572,7 +572,7 @@ const STAGE_POLICIES: Record<ProductionAgentRole, ModelSelectionPolicy> = {
   source_policy: { requiresVision: true, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: SOURCE_POLICY_PRODUCTION_MINIMUM_SAMPLE_SIZE, minimumQualityScore: SOURCE_POLICY_DECISION_ACCURACY_FLOOR, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 90_000, allowFailClosedSingleRoute: true },
   caption: { requiresVision: false, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 3, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 240_000 },
   montage_planner: { requiresVision: false, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 3, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 240_000 },
-  vision_qa: { requiresVision: true, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 3, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 45_000 },
+  vision_qa: { requiresVision: true, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 3, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 45_000, allowFailClosedSingleRoute: true },
   revision: { requiresVision: false, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 3, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 90_000 }
 };
 
@@ -753,6 +753,12 @@ async function main(): Promise<void> {
             { routeId: "codex:gpt-5.6-luna", reasoningEffort: "medium" as const },
             { routeId: "codex:gpt-5.6-luna", reasoningEffort: "high" as const },
             { routeId: "codex:gpt-5.6-luna", reasoningEffort: "x-high" as const }
+          ]
+        : role === "vision_qa"
+        ? [
+            { routeId: "codex:gpt-5.6-luna", reasoningEffort: "low" as const },
+            { routeId: "codex:gpt-5.6-luna", reasoningEffort: "medium" as const },
+            { routeId: "codex:gpt-5.6-luna", reasoningEffort: "high" as const }
           ]
         : role === "revision"
         ? [
