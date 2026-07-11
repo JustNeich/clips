@@ -6,6 +6,8 @@ import test from "node:test";
 
 import { GET as getAdminFlows } from "../app/api/admin/flows/route";
 import { POST as ownerControlRoute } from "../app/api/admin/control/route";
+import { GET as getStage3PreviewJob } from "../app/api/stage3/preview/jobs/[id]/route";
+import { POST as uploadSourceRoute } from "../app/api/pipeline/source-upload/route";
 import { appendChatEvent, createChannel, createOrGetChatByUrl } from "../lib/chat-history";
 import { buildPublicationSlotCandidateFromDateAndIndex, DEFAULT_CHANNEL_PUBLISH_SETTINGS } from "../lib/channel-publishing";
 import {
@@ -16,9 +18,17 @@ import { createMcpAccessToken } from "../lib/mcp-token-store";
 import {
   createChannelPublication,
   createRenderExport,
-  getChannelPublicationById
+  getChannelPublicationById,
+  markChannelPublicationScheduled,
+  saveChannelPublishIntegration
 } from "../lib/publication-store";
 import { completeStage3Job, enqueueStage3Job, getStage3Job } from "../lib/stage3-job-store";
+import {
+  createSourceJob,
+  finalizeSourceJobSuccess,
+  getSourceJob,
+  markSourceJobStageRunning
+} from "../lib/source-job-store";
 import { bootstrapOwner } from "../lib/team-store";
 
 async function withIsolatedAppData<T>(run: (appDataDir: string) => Promise<T>): Promise<T> {
@@ -127,7 +137,7 @@ async function appendStage2CaptionEvent(chatId: string): Promise<void> {
           {
             option: 1,
             top: "SERVER SNAPSHOT TOP",
-            bottom: "Server-side Stage 2 caption text must reach the MCP render snapshot.",
+            bottom: "Server-side Stage 2 caption text must reach the MCP render snapshot at a readable length.",
             highlights: { top: [], bottom: [] }
           }
         ],
@@ -324,6 +334,254 @@ test("clips_owner_render_preview enqueues a headless preview job (or degrades wh
   });
 });
 
+test("machine flow:read can poll and download its completed preview artifact", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "preview-reader",
+      scopes: ["flow:read"]
+    });
+    const artifactPath = path.join(appDataDir, "preview.mp4");
+    await writeFile(artifactPath, "preview-video");
+    const job = enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "preview",
+      payloadJson: JSON.stringify({ chatId: chat.id, channelId: channel.id })
+    });
+    completeStage3Job(job.id, {
+      artifact: {
+        fileName: "preview.mp4",
+        filePath: artifactPath,
+        mimeType: "video/mp4",
+        sizeBytes: 13
+      }
+    });
+
+    const poll = await getStage3PreviewJob(
+      new Request(`http://localhost/api/stage3/preview/jobs/${job.id}`, {
+        headers: { authorization: `Bearer ${machine.secret}` }
+      }),
+      { params: Promise.resolve({ id: job.id }) }
+    );
+    assert.equal(poll.status, 200);
+    const body = (await poll.json()) as { job: { status: string; artifact: { downloadUrl: string } } };
+    assert.equal(body.job.status, "completed");
+    assert.equal(body.job.artifact.downloadUrl, `/api/stage3/preview/jobs/${job.id}?download=1`);
+
+    const download = await getStage3PreviewJob(
+      new Request(`http://localhost/api/stage3/preview/jobs/${job.id}?download=1`, {
+        headers: { authorization: `Bearer ${machine.secret}` }
+      }),
+      { params: Promise.resolve({ id: job.id }) }
+    );
+    assert.equal(download.status, 200);
+    assert.equal(await download.text(), "preview-video");
+  });
+});
+
+test("owner control queues only the exact completed render carrying judge PASS evidence", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner } = await seedOwnerControl(appDataDir);
+    const channel = await createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Judge First Channel",
+      username: "judge-first"
+    });
+    saveChannelPublishIntegration({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      userId: owner.user.id,
+      status: "connected",
+      credential: null,
+      googleAccountEmail: "owner@example.com",
+      selectedYoutubeChannelId: "youtube-judge-first",
+      selectedYoutubeChannelTitle: "Judge First",
+      selectedYoutubeChannelCustomUrl: "@judge-first",
+      availableChannels: [{ id: "youtube-judge-first", title: "Judge First", customUrl: "@judge-first" }],
+      scopes: ["youtube.upload"],
+      lastError: null
+    });
+    const chat = await createOrGetChatByUrl("https://youtube.com/watch?v=judge-first-1", channel.id);
+    const artifactPath = path.join(appDataDir, "judge-first.mp4");
+    await writeFile(artifactPath, "judge-first-video");
+    const job = enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "render",
+      payloadJson: JSON.stringify({ chatId: chat.id, channelId: channel.id })
+    });
+    const renderExport = createRenderExport({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      chatId: chat.id,
+      stage3JobId: job.id,
+      artifactFileName: "judge-first.mp4",
+      artifactFilePath: artifactPath,
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 17,
+      renderTitle: "Judge first",
+      sourceUrl: chat.url,
+      snapshotJson: "{}",
+      createdByUserId: owner.user.id
+    });
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "judge-first-agent",
+      scopes: ["publication:write"]
+    });
+
+    const rejected = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_queue_approved_render",
+      input: {
+        channelId: channel.id,
+        stage3JobId: job.id,
+        judgeVerdict: "REWORK",
+        judgeEvidenceSha256: "a".repeat(64)
+      }
+    });
+    assert.equal(rejected.status, 400);
+
+    const queued = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_queue_approved_render",
+      input: {
+        channelId: channel.id,
+        stage3JobId: job.id,
+        expectedSourceUrl: chat.url,
+        judgeVerdict: "PASS",
+        judgeEvidenceSha256: "b".repeat(64)
+      }
+    });
+    assert.equal(queued.status, 200);
+    const payload = (await queued.json()) as { publication: { id: string; renderExportId: string; sourceUrl: string } };
+    assert.equal(payload.publication.renderExportId, renderExport.id);
+    assert.equal(payload.publication.sourceUrl, chat.url);
+    assert.equal(getChannelPublicationById(payload.publication.id)?.renderExportId, renderExport.id);
+
+    markChannelPublicationScheduled({
+      publicationId: payload.publication.id,
+      youtubeVideoId: "already-uploaded-video",
+      youtubeVideoUrl: "https://youtube.com/watch?v=already-uploaded-video"
+    });
+    const secondJob = enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "render",
+      payloadJson: JSON.stringify({ chatId: chat.id, channelId: channel.id })
+    });
+    const secondExport = createRenderExport({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      chatId: chat.id,
+      stage3JobId: secondJob.id,
+      artifactFileName: "judge-first-second.mp4",
+      artifactFilePath: artifactPath,
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 17,
+      renderTitle: "Judge first second render",
+      sourceUrl: chat.url,
+      snapshotJson: "{}",
+      createdByUserId: owner.user.id
+    });
+    const wrongActiveRender = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_queue_approved_render",
+      input: {
+        channelId: channel.id,
+        stage3JobId: secondJob.id,
+        expectedSourceUrl: chat.url,
+        judgeVerdict: "PASS",
+        judgeEvidenceSha256: "c".repeat(64)
+      }
+    });
+    assert.equal(wrongActiveRender.status, 409);
+    assert.notEqual(secondExport.id, renderExport.id);
+    assert.equal(getChannelPublicationById(payload.publication.id)?.renderExportId, renderExport.id);
+  });
+});
+
+test("machine pipeline scope can upload a real MP4 and request agent decomposition", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel } = await seedOwnerControl(appDataDir);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "source-uploader",
+      scopes: ["pipeline:run"]
+    });
+    const bytes = Buffer.alloc(32);
+    bytes.write("ftyp", 4, "ascii");
+    const response = await uploadSourceRoute(
+      new Request("http://localhost/api/pipeline/source-upload", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${machine.secret}`,
+          "content-type": "video/mp4",
+          "x-channel-id": channel.id,
+          "x-file-name": "project-kings.mp4",
+          "x-agent-decomposition": "true"
+        },
+        body: bytes
+      })
+    );
+    assert.equal(response.status, 202);
+    const payload = (await response.json()) as { job: { jobId: string } };
+    assert.equal(getSourceJob(payload.job.jobId)?.request.agentDecomposition, true);
+  });
+});
+
+test("owner control stops one exact running source job and it cannot revive", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    const queued = createSourceJob({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      request: {
+        sourceUrl: chat.url,
+        autoRunStage2: false,
+        agentDecomposition: true,
+        trigger: "fetch",
+        chat: { id: chat.id, channelId: channel.id },
+        channel: { id: channel.id, name: channel.name, username: channel.username }
+      }
+    });
+    assert.equal(markSourceJobStageRunning(queued.jobId, "prepare", "running")?.status, "running");
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "source-stop-agent",
+      scopes: ["pipeline:run"]
+    });
+    const rejected = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_stop_source_job",
+      input: { jobId: queued.jobId, intent: "stop source job" }
+    });
+    assert.equal(rejected.status, 400);
+    const stopped = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_stop_source_job",
+      input: { jobId: queued.jobId, intent: `stop source job ${queued.jobId}` }
+    });
+    assert.equal(stopped.status, 200);
+    assert.equal(getSourceJob(queued.jobId)?.status, "failed");
+    assert.equal(markSourceJobStageRunning(queued.jobId, "comments", "must not revive")?.status, "failed");
+    finalizeSourceJobSuccess(queued.jobId, {
+      chatId: chat.id,
+      channelId: channel.id,
+      sourceUrl: chat.url,
+      stage1Ready: true,
+      title: "late result",
+      commentsAvailable: false,
+      commentsError: null,
+      commentsPayload: null,
+      autoStage2RunId: null
+    });
+    assert.equal(getSourceJob(queued.jobId)?.status, "failed");
+  });
+});
+
 test("owner control blocks channel-story render_video until an editor/judge snapshot is approved", async () => {
   await withIsolatedAppData(async (appDataDir) => {
     const { owner, channel, chat } = await seedOwnerControl(appDataDir);
@@ -438,7 +696,7 @@ test("owner control blocks channel-story render_video until an editor/judge snap
         }
       }
     });
-    assert.equal(approved.status, 202);
+    assert.equal(approved.status, 202, JSON.stringify(await approved.clone().json()));
     const rendered = (await approved.json()) as { job: { id: string } };
     const enqueued = getStage3Job(rendered.job.id);
     assert.ok(enqueued);
@@ -511,7 +769,7 @@ test("owner control enqueues a Stage 3 render job", async () => {
       input: { channelId: channel.id, chatId: chat.id }
     });
     // No Stage 3 worker runs in the test harness, so the job stays queued (202).
-    assert.equal(renderResponse.status, 202);
+    assert.equal(renderResponse.status, 202, JSON.stringify(await renderResponse.clone().json()));
     const rendered = (await renderResponse.json()) as {
       job: { id: string; kind: string; status: string };
       pollUrl: string;
@@ -550,7 +808,7 @@ test("owner control embeds managedTemplateState in the render snapshot for a man
       tool: "clips_owner_render_video",
       input: { channelId: channel.id, chatId: chat.id, templateId: created.template.id }
     });
-    assert.equal(renderResponse.status, 202);
+    assert.equal(renderResponse.status, 202, JSON.stringify(await renderResponse.clone().json()));
     const rendered = (await renderResponse.json()) as { job: { id: string } };
 
     // The managed template must be resolved on the cloud at enqueue time and
@@ -608,7 +866,7 @@ test("owner control render_video builds a full caption snapshot with upright sou
     assert.equal(payload.snapshot?.topText, "SERVER SNAPSHOT TOP");
     assert.equal(
       payload.snapshot?.bottomText,
-      "Server-side Stage 2 caption text must reach the MCP render snapshot."
+      "Server-side Stage 2 caption text must reach the MCP render snapshot at a readable length."
     );
     assert.equal(payload.snapshot?.sourceOverlayText, "source: owner mcp");
     assert.equal(payload.snapshot?.renderPlan?.durationMode, "source_full");
@@ -760,7 +1018,7 @@ test("owner control render_video merges a caller renderPlan patch onto the full 
     assert.equal(payload.snapshot?.topText, "SERVER SNAPSHOT TOP");
     assert.equal(
       payload.snapshot?.bottomText,
-      "Server-side Stage 2 caption text must reach the MCP render snapshot."
+      "Server-side Stage 2 caption text must reach the MCP render snapshot at a readable length."
     );
     assert.ok(payload.snapshot?.templateSnapshot?.snapshotHash);
     assert.ok(payload.snapshot?.textFit?.fitHash);
@@ -894,7 +1152,7 @@ test("owner control render_video reuses the latest editor source crop instead of
 
     assert.equal(
       payload.snapshot?.bottomText,
-      "Server-side Stage 2 caption text must reach the MCP render snapshot."
+      "Server-side Stage 2 caption text must reach the MCP render snapshot at a readable length."
     );
     assert.equal(payload.snapshot?.clipStartSec, 3.5);
     assert.equal(payload.snapshot?.clipDurationSec, 7.75);
@@ -928,7 +1186,7 @@ test("owner control render_video drops stale server text fit when caller patches
         channelId: channel.id,
         chatId: chat.id,
         snapshot: {
-          topText: "CALLER PATCH TOP",
+          topText: "CALLER PATCH TOP LINE",
           renderPlan: {
             sourceCrop: {
               enabled: true,
@@ -943,7 +1201,7 @@ test("owner control render_video drops stale server text fit when caller patches
         }
       }
     });
-    assert.equal(renderResponse.status, 202);
+    assert.equal(renderResponse.status, 202, JSON.stringify(await renderResponse.clone().json()));
     const rendered = (await renderResponse.json()) as { job: { id: string } };
     const enqueued = getStage3Job(rendered.job.id);
     assert.ok(enqueued);
@@ -962,10 +1220,10 @@ test("owner control render_video drops stale server text fit when caller patches
       };
     };
 
-    assert.equal(payload.snapshot?.topText, "CALLER PATCH TOP");
+    assert.equal(payload.snapshot?.topText, "CALLER PATCH TOP LINE");
     assert.equal(
       payload.snapshot?.bottomText,
-      "Server-side Stage 2 caption text must reach the MCP render snapshot."
+      "Server-side Stage 2 caption text must reach the MCP render snapshot at a readable length."
     );
     assert.equal(payload.snapshot?.templateSnapshot, undefined);
     assert.equal(payload.snapshot?.textFit, undefined);

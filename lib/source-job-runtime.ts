@@ -175,15 +175,28 @@ async function maybeEnqueueStage2(job: SourceJobRecord): Promise<string | null> 
   return run.runId;
 }
 
+function markSourceStageRunningOrThrow(jobId: string, stageId: Parameters<typeof markSourceJobStageRunning>[1], detail: string): void {
+  const current = markSourceJobStageRunning(jobId, stageId, detail);
+  if (!current || current.status !== "running") {
+    throw new Error(`Source job ${jobId} was stopped before ${stageId}.`);
+  }
+}
+
+function assertSourceJobStillRunning(jobId: string): void {
+  if (getSourceJob(jobId)?.status !== "running") {
+    throw new Error(`Source job ${jobId} was stopped.`);
+  }
+}
+
 export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobResult> {
-  markSourceJobStageRunning(job.jobId, "prepare", "Готовим чат и источник.");
+  markSourceStageRunningOrThrow(job.jobId, "prepare", "Готовим чат и источник.");
 
   const chat = await getChatById(job.chatId);
   if (!chat) {
     throw new Error("Chat not found for source job.");
   }
 
-  markSourceJobStageRunning(
+  markSourceStageRunningOrThrow(
     job.jobId,
     "prepare",
     isUploadedSourceUrl(job.sourceUrl)
@@ -198,7 +211,7 @@ export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobR
         }
       : null,
     onRetryScheduled: ({ attempt, maxAttempts, retryAt, providerErrorSummary }) => {
-      markSourceJobRetryScheduled(job.jobId, {
+      const current = markSourceJobRetryScheduled(job.jobId, {
         detail: "Visolix временно недоступен. Повторяем через 5 с.",
         attempt,
         maxAttempts,
@@ -206,6 +219,9 @@ export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobR
         retryEligible: providerErrorSummary.primaryRetryEligible,
         providerErrorSummary
       });
+      if (!current || current.status !== "running") {
+        throw new Error(`Source job ${job.jobId} was stopped during source retry.`);
+      }
     }
   });
 
@@ -213,7 +229,7 @@ export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobR
   let commentsAvailable = false;
   let commentsError: string | null = null;
 
-  markSourceJobStageRunning(job.jobId, "comments", "Пробуем загрузить комментарии.");
+  markSourceStageRunningOrThrow(job.jobId, "comments", "Пробуем загрузить комментарии.");
   const commentsResolution = await fetchCommentsForUrl(job.sourceUrl);
   if (commentsResolution.payload) {
     commentsPayload = commentsResolution.payload;
@@ -227,7 +243,7 @@ export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobR
   // this is a no-op for every human source job. Best-effort: a decomposition
   // failure must not fail the source job or alter its result.
   if (job.request.agentDecomposition) {
-    markSourceJobStageRunning(job.jobId, "comments", "Готовим агентскую декомпозицию источника.");
+    markSourceStageRunningOrThrow(job.jobId, "comments", "Готовим агентскую декомпозицию источника.");
     try {
       await runSourceDecomposition({
         workspaceId: job.workspaceId,
@@ -249,7 +265,7 @@ export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobR
 
   let autoStage2RunId: string | null = null;
   if (job.request.autoRunStage2) {
-    markSourceJobStageRunning(job.jobId, "stage2", "Проверяем автостарт второго этапа.");
+    markSourceStageRunningOrThrow(job.jobId, "stage2", "Проверяем автостарт второго этапа.");
     autoStage2RunId = await maybeEnqueueStage2(job);
   }
 
@@ -276,6 +292,7 @@ export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobR
     autoStage2RunId
   };
 
+  assertSourceJobStillRunning(job.jobId);
   await appendSourceSuccessEvent(result, commentsPayload);
   return result;
 }

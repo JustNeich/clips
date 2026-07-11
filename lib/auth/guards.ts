@@ -124,6 +124,28 @@ export async function requireOwnerOrMcpMachineScope(request: Request, requiredSc
   };
 }
 
+export async function requireAuthOrMcpMachineScope(request: Request, requiredScope: McpMachineCredentialScope) {
+  const authorization = request.headers.get("authorization") ?? "";
+  const bearer = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? "";
+  if (bearer) {
+    const machineAuth = authenticateMcpMachineCredentialForScope(bearer, requiredScope);
+    if (machineAuth) {
+      return {
+        actor: "mcp_machine" as const,
+        workspace: machineAuth.workspace,
+        user: machineAuth.user,
+        credential: machineAuth.credential
+      };
+    }
+  }
+
+  const auth = await requireAuth(request);
+  return {
+    actor: "user_session" as const,
+    ...auth
+  };
+}
+
 export function requireOneOfRoles(roles: AppRole[], currentRole: AppRole): void {
   if (!roles.includes(currentRole)) {
     throw new Response(JSON.stringify({ error: "Доступ запрещен." }), {

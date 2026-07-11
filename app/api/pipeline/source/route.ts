@@ -1,5 +1,10 @@
 import { createOrGetChatByUrl, getChatById } from "../../../../lib/chat-history";
-import { requireAuth, requireChannelOperate, requireChannelVisibility } from "../../../../lib/auth/guards";
+import {
+  requireAuth,
+  requireAuthOrMcpMachineScope,
+  requireChannelOperate,
+  requireChannelVisibility
+} from "../../../../lib/auth/guards";
 import { findActiveStage2RunForChat } from "../../../../lib/stage2-progress-store";
 import {
   enqueueAndScheduleSourceJob,
@@ -76,7 +81,7 @@ function serializeSourceJobDetail(job: SourceJobRecord): SourceJobDetail {
 }
 
 async function requireSourceJobVisibility(
-  auth: Awaited<ReturnType<typeof requireAuth>>,
+  auth: Awaited<ReturnType<typeof requireAuthOrMcpMachineScope>>,
   job: SourceJobRecord
 ): Promise<void> {
   if (job.workspaceId !== auth.workspace.id) {
@@ -85,7 +90,9 @@ async function requireSourceJobVisibility(
       headers: { "Content-Type": "application/json" }
     });
   }
-  await requireChannelVisibility(auth, job.channelId);
+  if (auth.actor === "user_session") {
+    await requireChannelVisibility(auth, job.channelId);
+  }
 }
 
 function normalizeTrigger(value: unknown): SourceJobTrigger {
@@ -102,7 +109,7 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuthOrMcpMachineScope(request, "flow:read");
     scheduleSourceJobProcessing();
 
     if (jobId) {
@@ -115,7 +122,9 @@ export async function GET(request: Request): Promise<Response> {
     if (!chat || chat.workspaceId !== auth.workspace.id) {
       return Response.json({ error: "Chat not found." }, { status: 404 });
     }
-    await requireChannelVisibility(auth, chat.channelId);
+    if (auth.actor === "user_session") {
+      await requireChannelVisibility(auth, chat.channelId);
+    }
     const jobs = listSourceJobsForChat(chat.id, auth.workspace.id).map(serializeSourceJobSummary);
     return Response.json({ jobs }, { status: 200 });
   } catch (error) {

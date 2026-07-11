@@ -545,6 +545,9 @@ export function markSourceJobStageRunning(
   detail: string
 ): SourceJobRecord | null {
   return mutateSourceJob(jobId, (record) => {
+    if (record.status === "completed" || record.status === "failed") {
+      return record;
+    }
     const progress = updateProgress(record, {
       status: "running",
       activeStageId: stageId,
@@ -580,6 +583,9 @@ export function markSourceJobRetryScheduled(
   }
 ): SourceJobRecord | null {
   return mutateSourceJob(jobId, (record) => {
+    if (record.status === "completed" || record.status === "failed") {
+      return record;
+    }
     const progress = updateProgress(record, {
       status: "running",
       activeStageId: "retry",
@@ -608,6 +614,9 @@ export function finalizeSourceJobSuccess(
   resultData: SourceJobResult
 ): SourceJobRecord | null {
   const completed = mutateSourceJob(jobId, (record) => {
+    if (record.status !== "running") {
+      return record;
+    }
     const finishedAt = nowIso();
     const progress = {
       ...record.progress,
@@ -635,7 +644,7 @@ export function finalizeSourceJobSuccess(
       finishedAt
     };
   });
-  if (completed) {
+  if (completed?.status === "completed") {
     tryAppendFlowAuditEvent({
       workspaceId: completed.workspaceId,
       userId: completed.creatorUserId,
@@ -673,6 +682,9 @@ export function finalizeSourceJobFailure(
   }
 ): SourceJobRecord | null {
   const failed = mutateSourceJob(jobId, (record) => {
+    if (record.status === "completed" || record.status === "failed") {
+      return record;
+    }
     const finishedAt = nowIso();
     const progress = {
       ...record.progress,
@@ -696,7 +708,7 @@ export function finalizeSourceJobFailure(
       finishedAt
     };
   });
-  if (failed) {
+  if (failed?.status === "failed" && failed.errorMessage === errorMessage) {
     tryAppendFlowAuditEvent({
       workspaceId: failed.workspaceId,
       userId: failed.creatorUserId,

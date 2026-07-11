@@ -30,6 +30,7 @@
     "macmini:healthcheck": "node scripts/clips-macmini-healthcheck.mjs",
     "market:stats-refresh": "node scripts/market-stats-refresh.mjs",
     "copscopes:daily-production": "node scripts/run-copscopes-daily-production.mjs",
+    "project-kings:daily": "node --import tsx scripts/run-project-kings-daily.ts",
     "stage2-worker": "tsx scripts/viral-shorts-worker.ts",
     "stage3-worker": "tsx apps/stage3-worker/index.ts",
     "ghostface:apply-template": "tsx scripts/apply-ghostface-country-channel-template.ts",

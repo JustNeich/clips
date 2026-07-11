@@ -1,4 +1,4 @@
-import { requireAuth } from "../../../../../../lib/auth/guards";
+import { requireAuthOrMcpMachineScope } from "../../../../../../lib/auth/guards";
 import { buildStage3JobEnvelope, buildStage3JobErrorBody } from "../../../../../../lib/stage3-job-http";
 import { getStage3JobOrThrow } from "../../../../../../lib/stage3-job-runtime";
 import { createNodeFileResponse } from "../../../../../../lib/node-file-response";
@@ -16,7 +16,7 @@ type RouteContext = {
 
 export async function GET(request: Request, context: RouteContext): Promise<Response> {
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuthOrMcpMachineScope(request, "flow:read");
     const { id } = await context.params;
     sweepExpiredLocalStage3Jobs();
     const job = getStage3JobOrThrow(id);

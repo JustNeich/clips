@@ -104,5 +104,12 @@ Core tools exposed by `clips-owner`:
 - `clips_owner_pair_stage3_worker`
 - `clips_owner_run_copscopes_daily_pool`
 - `clips_owner_run_video_pipeline`
+- `clips_owner_run_agent_pipeline`
+- `clips_owner_render_preview`
+- `clips_owner_render_video`
+- `clips_owner_queue_approved_render`
+- `clips_owner_stop_source_job`
 
 For current end-to-end production videos, prefer `clips_owner_run_copscopes_daily_pool` or `clips_owner_run_video_pipeline` without `sourceUrl`; that uses the existing daily-pool runner. With `sourceUrl`, `clips_owner_run_video_pipeline` creates/opens the chat and queues Stage 2, then a selected Stage 2 option still has to be rendered through Stage 3.
+
+The Project Kings judge-first path renders with `publishAfterRender=false`, reads the preview/final artifact with `flow:read`, and calls `clips_owner_queue_approved_render` only after an independent `PASS` plus a SHA-256 evidence digest. The queued publication points to that exact completed render, so QA cannot race the upload. A machine credential with `pipeline:run` may use the existing source-upload endpoint and request agent decomposition; regular signed-in channel operators keep their existing upload access. Automated upload callers send a stable `X-Idempotency-Key`: retrying that logical upload returns its existing chat/job instead of creating a second maker. `clips_owner_stop_source_job` is only for safe recovery of one exact queued/running job and requires the job id in `intent`.

@@ -229,6 +229,23 @@ server.registerTool(
 );
 
 server.registerTool(
+  "clips_owner_queue_approved_render",
+  {
+    title: "Queue a judge-approved render",
+    description:
+      "Queue the exact completed MP4 that an independent judge already passed. This keeps render/QA separate from upload.",
+    inputSchema: z.object({
+      ...channelRefSchema,
+      stage3JobId: z.string(),
+      expectedSourceUrl: z.string().optional(),
+      judgeVerdict: z.literal("PASS"),
+      judgeEvidenceSha256: z.string().regex(/^[a-f0-9]{64}$/i)
+    })
+  },
+  async (input) => ownerControl("clips_owner_queue_approved_render", input)
+);
+
+server.registerTool(
   "clips_owner_list_members",
   {
     title: "List Clips workspace members",
@@ -470,6 +487,19 @@ server.registerTool(
     })
   },
   async (input) => ownerControl("clips_owner_run_agent_pipeline", input)
+);
+
+server.registerTool(
+  "clips_owner_stop_source_job",
+  {
+    title: "Stop one Project Kings source job",
+    description: "Fail one exact queued/running source job during safe recovery so it cannot block the next run.",
+    inputSchema: z.object({
+      jobId: z.string(),
+      intent: z.string()
+    })
+  },
+  async (input) => ownerControl("clips_owner_stop_source_job", input)
 );
 
 server.registerTool(

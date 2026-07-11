@@ -17,6 +17,7 @@ import {
   validateChannelAssetMime
 } from "../../../../lib/channel-assets";
 import {
+  createOrUpdateQueuedPublicationFromRenderExport,
   deleteChannelPublicationWithRemoteSync,
   restoreCanceledChannelPublicationToQueue,
   updateChannelPublicationFromEditor
@@ -31,6 +32,7 @@ import {
   getChannelPublicationById,
   getChannelPublishIntegration,
   getChannelPublishSettings,
+  getRenderExportByStage3JobId,
   listApprovedRenderExportsForChannel,
   listChannelPublications
 } from "../../../../lib/publication-store";
@@ -55,6 +57,7 @@ import {
   type Stage2RunMode
 } from "../../../../lib/stage2-progress-store";
 import { enqueueAndScheduleSourceJob, getActiveSourceJobForChat } from "../../../../lib/source-job-runtime";
+import { finalizeSourceJobFailure, getSourceJob } from "../../../../lib/source-job-store";
 import { getSourceDecompositionForChat } from "../../../../lib/source-decomposition-store";
 import { resolvePublicAppOrigin } from "../../../../lib/public-app-origin";
 import {
@@ -141,6 +144,7 @@ const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
   clips_owner_get_template: "flow:read",
   clips_owner_update_template: "entity:write",
   clips_owner_render_video: "pipeline:run",
+  clips_owner_queue_approved_render: "publication:write",
   clips_owner_list_members: "flow:read",
   clips_owner_list_channel_access: "flow:read",
   clips_owner_set_channel_access: "entity:write",
@@ -158,6 +162,7 @@ const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
   clips_owner_run_copscopes_daily_pool: "pipeline:run",
   // AGENT-ONLY tools. Additive; the human manual flow does not use these.
   clips_owner_run_agent_pipeline: "pipeline:run",
+  clips_owner_stop_source_job: "pipeline:run",
   clips_flow_get_source_decomposition: "flow:read"
 };
 
@@ -340,6 +345,7 @@ function summarizeChannel(channel: Channel): Record<string, unknown> {
     archivedAt: channel.archivedAt ?? null,
     templateId: channel.templateId,
     defaultClipDurationSec: channel.defaultClipDurationSec,
+    stage2HardConstraints: channel.stage2HardConstraints,
     publishing: {
       ready: isChannelPublishIntegrationReady(integration),
       settings,
@@ -1241,6 +1247,91 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     };
   }
 
+  if (tool === "clips_owner_queue_approved_render") {
+    const channel = await requireChannel(auth.workspace.id, input);
+    const stage3JobId = resolveString(input.stage3JobId);
+    const judgeEvidenceSha256 = resolveString(input.judgeEvidenceSha256);
+    if (!stage3JobId) {
+      throw new Response(JSON.stringify({ error: "stage3JobId is required." }), { status: 400 });
+    }
+    if (resolveString(input.judgeVerdict)?.toUpperCase() !== "PASS") {
+      throw new Response(JSON.stringify({ error: "judgeVerdict must be PASS." }), { status: 400 });
+    }
+    if (!judgeEvidenceSha256 || !/^[a-f0-9]{64}$/i.test(judgeEvidenceSha256)) {
+      throw new Response(JSON.stringify({ error: "judgeEvidenceSha256 must be a SHA-256 hex digest." }), {
+        status: 400
+      });
+    }
+    const renderExport = getRenderExportByStage3JobId(stage3JobId);
+    if (!renderExport || renderExport.workspaceId !== auth.workspace.id || renderExport.channelId !== channel.id) {
+      throw new Response(JSON.stringify({ error: "Completed render export not found for this channel." }), {
+        status: 404
+      });
+    }
+    const expectedSourceUrl = resolveString(input.expectedSourceUrl);
+    if (expectedSourceUrl && normalizeSupportedUrl(expectedSourceUrl) !== normalizeSupportedUrl(renderExport.sourceUrl)) {
+      throw new Response(JSON.stringify({ error: "Render source does not match expectedSourceUrl." }), { status: 409 });
+    }
+    const chat = await getChatById(renderExport.chatId);
+    if (!chat || chat.workspaceId !== auth.workspace.id || chat.channelId !== channel.id) {
+      throw new Response(JSON.stringify({ error: "Render chat not found for this channel." }), { status: 404 });
+    }
+    const stage2Event = findLatestStage2Event(chat);
+    const publication = createOrUpdateQueuedPublicationFromRenderExport({
+      workspaceId: auth.workspace.id,
+      channelId: channel.id,
+      chatId: chat.id,
+      chatTitle: chat.title,
+      renderExport,
+      stage2Result: stage2Event?.payload ?? null,
+      createdByUserId: auth.user.id,
+      publishAfterRender: true
+    });
+    if (!publication) {
+      throw new Response(JSON.stringify({ error: "Approved render was not queued for publication." }), { status: 409 });
+    }
+    if (publication.renderExportId !== renderExport.id) {
+      throw new Response(
+        JSON.stringify({
+          error: "This chat already has an active publication for a different render. Reconcile it before queueing another MP4."
+        }),
+        { status: 409 }
+      );
+    }
+    if (!["queued", "uploading", "scheduled", "published"].includes(publication.status)) {
+      throw new Response(
+        JSON.stringify({ error: publication.lastError ?? `Approved render is not in a publishable state (${publication.status}).` }),
+        { status: 409 }
+      );
+    }
+    scheduleChannelPublicationProcessing();
+    auditControl({
+      auth,
+      action: "owner_control.approved_render.queued",
+      entityType: "channel_publication",
+      entityId: publication.id,
+      channelId: channel.id,
+      chatId: chat.id,
+      status: publication.status,
+      payload: {
+        stage3JobId,
+        renderExportId: renderExport.id,
+        judgeEvidenceSha256
+      }
+    });
+    return {
+      channel: summarizeChannel(channel),
+      renderExport: {
+        id: renderExport.id,
+        stage3JobId: renderExport.stage3JobId,
+        sourceUrl: renderExport.sourceUrl,
+        artifactFileName: renderExport.artifactFileName,
+        artifactSizeBytes: renderExport.artifactSizeBytes
+      },
+      publication
+    };
+  }
+
   if (tool === "clips_owner_run_copscopes_daily_pool") {
     return runOwnerDailyPool(auth, input);
   }
@@ -1405,6 +1496,37 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       nextStep:
         "Poll the source job to completion, then read clips_flow_get_source_decomposition{chatId} for comments/frames/subtitles/meta."
     };
+  }
+
+  if (tool === "clips_owner_stop_source_job") {
+    const jobId = resolveString(input.jobId);
+    const intent = resolveString(input.intent);
+    if (!jobId) {
+      throw new Response(JSON.stringify({ error: "jobId is required." }), { status: 400 });
+    }
+    if (!intent || !intent.includes(jobId)) {
+      throw new Response(JSON.stringify({ error: "intent must contain the exact source job id." }), { status: 400 });
+    }
+    const job = getSourceJob(jobId);
+    if (!job || job.workspaceId !== auth.workspace.id) {
+      throw new Response(JSON.stringify({ error: "Source job not found." }), { status: 404 });
+    }
+    const stopped = ["queued", "running"].includes(job.status)
+      ? finalizeSourceJobFailure(job.jobId, "Stopped by Project Kings safe recovery before a new run.", {
+          retryEligible: false
+        })
+      : job;
+    auditControl({
+      auth,
+      action: "owner_control.source_job.stopped",
+      entityType: "source_job",
+      entityId: job.jobId,
+      channelId: job.channelId,
+      chatId: job.chatId,
+      status: stopped?.status ?? job.status,
+      payload: { intent, priorStatus: job.status }
+    });
+    return { job: stopped };
   }
 
   if (tool === "clips_flow_get_source_decomposition") {

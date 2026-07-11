@@ -1,8 +1,14 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
-import { createOrGetChatBySource } from "../../../../lib/chat-history";
-import { requireAuth, requireChannelOperate } from "../../../../lib/auth/guards";
+import {
+  createOrGetChatBySource,
+  findChatsBySourceUrl,
+  getChannelById
+} from "../../../../lib/chat-history";
+import { requireAuthOrMcpMachineScope, requireChannelOperate } from "../../../../lib/auth/guards";
 import { getRuntimeCapabilities } from "../../../../lib/runtime-capabilities";
 import { enqueueAndScheduleSourceJob } from "../../../../lib/source-job-runtime";
+import { listSourceJobsForChat } from "../../../../lib/source-job-store";
 import type { SourceJobDetail, SourceJobResult } from "../../../components/types";
 import { getWorkspaceCodexIntegration } from "../../../../lib/team-store";
 import { newId } from "../../../../lib/db/client";
@@ -16,6 +22,8 @@ import {
 export const runtime = "nodejs";
 
 const MAX_UPLOADED_SOURCE_BYTES = 512 * 1024 * 1024;
+const MAX_IDEMPOTENCY_KEY_LENGTH = 200;
+const idempotentUploadLocks = new Map<string, Promise<void>>();
 
 function readRequiredHeader(request: Request, name: string): string | null {
   const value = request.headers.get(name)?.trim();
@@ -32,6 +40,51 @@ function decodeHeaderFileName(value: string): string {
 
 function normalizeAutoRunHeader(request: Request): boolean {
   return normalizeAutoRunValue(request.headers.get("X-Auto-Run-Stage2") ?? undefined);
+}
+
+function readIdempotencyKey(request: Request): string | null {
+  const raw = request.headers.get("X-Idempotency-Key");
+  if (raw === null) {
+    return null;
+  }
+  const key = raw.trim();
+  if (!key || key.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
+    throw new Response(
+      JSON.stringify({ error: `X-Idempotency-Key must contain 1-${MAX_IDEMPOTENCY_KEY_LENGTH} characters.` }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+  return key;
+}
+
+function buildIdempotentUploadedSourceUrl(input: {
+  workspaceId: string;
+  channelId: string;
+  idempotencyKey: string;
+}): string {
+  const uploadId = `idem-${createHash("sha256")
+    .update(`${input.workspaceId}\0${input.channelId}\0${input.idempotencyKey}`)
+    .digest("hex")}`;
+  return buildUploadedSourceUrl(uploadId, "idempotent-upload.mp4");
+}
+
+async function withIdempotentUploadLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
+  const previous = idempotentUploadLocks.get(key) ?? Promise.resolve();
+  let release: () => void = () => {};
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queued = previous.then(() => current);
+  idempotentUploadLocks.set(key, queued);
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (idempotentUploadLocks.get(key) === queued) {
+      idempotentUploadLocks.delete(key);
+    }
+  }
 }
 
 function normalizeAutoRunValue(value: string | undefined): boolean {
@@ -120,14 +173,70 @@ function serializeSourceJobDetail(job: {
   };
 }
 
+async function findIdempotentUploadReplay(input: {
+  workspaceId: string;
+  channelId: string;
+  sourceUrl: string;
+}): Promise<Response | null> {
+  const chats = await findChatsBySourceUrl({
+    workspaceId: input.workspaceId,
+    sourceUrl: input.sourceUrl
+  });
+  const chat = chats.find((candidate) => candidate.channelId === input.channelId);
+  if (!chat) {
+    return null;
+  }
+  const existing = listSourceJobsForChat(chat.id, input.workspaceId, 1)[0];
+  if (!existing) {
+    return null;
+  }
+  return Response.json(
+    {
+      chat,
+      job: serializeSourceJobDetail(existing),
+      idempotentReplay: true
+    },
+    {
+      status: existing.status === "queued" || existing.status === "running" ? 202 : 200,
+      headers: { "X-Idempotent-Replay": "true" }
+    }
+  );
+}
+
+async function runUploadedSourceOperation(input: {
+  workspaceId: string;
+  channelId: string;
+  fileName: string;
+  idempotencyKey: string | null;
+  operation: (sourceUrl: string) => Promise<Response>;
+}): Promise<Response> {
+  if (!input.idempotencyKey) {
+    return input.operation(buildUploadedSourceUrl(newId(), input.fileName));
+  }
+  const sourceUrl = buildIdempotentUploadedSourceUrl({
+    workspaceId: input.workspaceId,
+    channelId: input.channelId,
+    idempotencyKey: input.idempotencyKey
+  });
+  return withIdempotentUploadLock(sourceUrl, async () => {
+    const replay = await findIdempotentUploadReplay({
+      workspaceId: input.workspaceId,
+      channelId: input.channelId,
+      sourceUrl
+    });
+    return replay ?? input.operation(sourceUrl);
+  });
+}
+
 async function enqueueUploadedSourceJob(input: {
-  auth: Awaited<ReturnType<typeof requireAuth>>;
-  operate: Awaited<ReturnType<typeof requireChannelOperate>>;
+  auth: { workspace: { id: string }; user: { id: string } };
+  operate: { channel: { id: string; name: string; username: string } };
   channelId: string;
   sourceUrl: string;
   title: string;
   eventText: string;
   autoRunStage2Requested: boolean;
+  agentDecompositionRequested: boolean;
 }): Promise<Response> {
   const chat = await createOrGetChatBySource({
     rawUrl: input.sourceUrl,
@@ -149,6 +258,7 @@ async function enqueueUploadedSourceJob(input: {
     request: {
       sourceUrl: input.sourceUrl,
       autoRunStage2,
+      agentDecomposition: input.agentDecompositionRequested,
       trigger: "fetch",
       chat: {
         id: chat.id,
@@ -167,7 +277,24 @@ async function enqueueUploadedSourceJob(input: {
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const auth = await requireAuth(request);
+    const auth = await requireAuthOrMcpMachineScope(request, "pipeline:run");
+    const requireUploadChannel = async (channelId: string) => {
+      if (auth.actor !== "mcp_machine") {
+        return requireChannelOperate(auth, channelId);
+      }
+      const channel = await getChannelById(channelId);
+      if (!channel || channel.workspaceId !== auth.workspace.id) {
+        throw new Response(JSON.stringify({ error: "Канал не найден." }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+      return { channel };
+    };
+    const agentDecompositionRequested = normalizeAutoRunValue(
+      request.headers.get("X-Agent-Decomposition") ?? undefined
+    );
+    const idempotencyKey = readIdempotencyKey(request);
     const rawContentType = request.headers.get("Content-Type")?.trim().toLowerCase() ?? "";
     const contentType = rawContentType.split(";")[0] ?? "";
     if (rawContentType.includes("multipart/form-data")) {
@@ -201,52 +328,68 @@ export async function POST(request: Request): Promise<Response> {
         return Response.json({ error: "Загружать можно только готовые mp4 файлы." }, { status: 400 });
       }
 
-      const operate = await requireChannelOperate(auth, channelId);
+      const operate = await requireUploadChannel(channelId);
       if (parsed.files.length === 1) {
         const singleFile = parsed.files[0]!;
         const fileName = sanitizeUploadedFileName(singleFile.name);
         const title = path.parse(fileName).name;
-        const sourceUrl = buildUploadedSourceUrl(newId(), fileName);
-        await storeUploadedSourceMedia({
-          sourceUrl,
-          fileName,
-          title,
-          sourceStream: createReadableStreamFromBytes(singleFile.bytes),
-          maxBytes: MAX_UPLOADED_SOURCE_BYTES
-        });
-
-        return enqueueUploadedSourceJob({
-          auth,
-          operate,
+        return await runUploadedSourceOperation({
+          workspaceId: auth.workspace.id,
           channelId,
-          sourceUrl,
-          title,
-          eventText: `Видео загружено: ${fileName}`,
-          autoRunStage2Requested: normalizeMultipartAutoRunField(parsed.fields)
+          fileName,
+          idempotencyKey,
+          operation: async (sourceUrl) => {
+            await storeUploadedSourceMedia({
+              sourceUrl,
+              fileName,
+              title,
+              sourceStream: createReadableStreamFromBytes(singleFile.bytes),
+              maxBytes: MAX_UPLOADED_SOURCE_BYTES
+            });
+
+            return enqueueUploadedSourceJob({
+              auth,
+              operate,
+              channelId,
+              sourceUrl,
+              title,
+              eventText: `Видео загружено: ${fileName}`,
+              autoRunStage2Requested: normalizeMultipartAutoRunField(parsed.fields),
+              agentDecompositionRequested
+            });
+          }
         });
       }
 
       const fileName = buildCompositeUploadFileName(parsed.files.map((file) => file.name));
-      const sourceUrl = buildUploadedSourceUrl(newId(), fileName);
-      await storeUploadedCompositeSourceMedia({
-        sourceUrl,
-        fileName,
-        title: path.parse(fileName).name,
-        parts: parsed.files.map((file) => ({
-          fileName: file.name,
-          bytes: file.bytes
-        })),
-        maxBytes: MAX_UPLOADED_SOURCE_BYTES
-      });
-
-      return enqueueUploadedSourceJob({
-        auth,
-        operate,
+      return await runUploadedSourceOperation({
+        workspaceId: auth.workspace.id,
         channelId,
-        sourceUrl,
-        title: path.parse(fileName).name,
-        eventText: `Видео собрано из ${parsed.files.length} mp4: ${path.parse(fileName).name}`,
-        autoRunStage2Requested: normalizeMultipartAutoRunField(parsed.fields)
+        fileName,
+        idempotencyKey,
+        operation: async (sourceUrl) => {
+          await storeUploadedCompositeSourceMedia({
+            sourceUrl,
+            fileName,
+            title: path.parse(fileName).name,
+            parts: parsed.files.map((file) => ({
+              fileName: file.name,
+              bytes: file.bytes
+            })),
+            maxBytes: MAX_UPLOADED_SOURCE_BYTES
+          });
+
+          return enqueueUploadedSourceJob({
+            auth,
+            operate,
+            channelId,
+            sourceUrl,
+            title: path.parse(fileName).name,
+            eventText: `Видео собрано из ${parsed.files.length} mp4: ${path.parse(fileName).name}`,
+            autoRunStage2Requested: normalizeMultipartAutoRunField(parsed.fields),
+            agentDecompositionRequested
+          });
+        }
       });
     }
 
@@ -279,27 +422,33 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: "Загрузите mp4 с Content-Type video/mp4." }, { status: 400 });
     }
 
-    const operate = await requireChannelOperate(auth, channelId);
-    const uploadId = newId();
-    const sourceUrl = buildUploadedSourceUrl(uploadId, fileName);
-
-    await storeUploadedSourceMedia({
-      sourceUrl,
-      fileName,
-      title: path.parse(fileName).name,
-      sourceStream: request.body,
-      maxBytes: MAX_UPLOADED_SOURCE_BYTES,
-      requireMp4Signature: true
-    });
-
-    return enqueueUploadedSourceJob({
-      auth,
-      operate,
+    const operate = await requireUploadChannel(channelId);
+    return await runUploadedSourceOperation({
+      workspaceId: auth.workspace.id,
       channelId,
-      sourceUrl,
-      title: path.parse(fileName).name,
-      eventText: `Видео загружено: ${fileName}`,
-      autoRunStage2Requested: normalizeAutoRunHeader(request)
+      fileName,
+      idempotencyKey,
+      operation: async (sourceUrl) => {
+        await storeUploadedSourceMedia({
+          sourceUrl,
+          fileName,
+          title: path.parse(fileName).name,
+          sourceStream: request.body!,
+          maxBytes: MAX_UPLOADED_SOURCE_BYTES,
+          requireMp4Signature: true
+        });
+
+        return enqueueUploadedSourceJob({
+          auth,
+          operate,
+          channelId,
+          sourceUrl,
+          title: path.parse(fileName).name,
+          eventText: `Видео загружено: ${fileName}`,
+          autoRunStage2Requested: normalizeAutoRunHeader(request),
+          agentDecompositionRequested
+        });
+      }
     });
   } catch (error) {
     if (error instanceof Response) {

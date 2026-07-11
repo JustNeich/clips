@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "evidenceSnapshot": "2026-07-11",
+  "channels": {
+    "dark": [
+      { "sourceUrl": "https://www.instagram.com/reel/BtDnmx6HRr_/", "preapproved": true, "note": "Human and tiger close interaction; current source-fit PASS." },
+      { "sourceUrl": "https://www.instagram.com/reel/CsYa4skNBjP/", "preapproved": true, "note": "Bottle-feeding a lion; current source-fit PASS." },
+      { "sourceUrl": "https://www.instagram.com/reel/Cxb0DmpJ7oM/", "preapproved": true, "note": "Close interaction with a baby monkey; current source-fit PASS." },
+      { "sourceUrl": "https://www.instagram.com/reel/C9gLu79MklN/", "preapproved": true, "note": "Feeding and play with a spider monkey; current source-fit PASS." },
+      { "sourceUrl": "https://www.instagram.com/reel/Cw_QTMmA69_/", "preapproved": true, "note": "Bottle-feeding and stroking a liger; current source-fit PASS." },
+      { "sourceUrl": "https://www.instagram.com/reel/DIUYX9QStl3/", "preapproved": true, "note": "Human and chimp pool contact; current source-fit PASS." },
+      { "sourceUrl": "https://www.instagram.com/reel/DKM66d2tamf/", "preapproved": false, "note": "Older PASS; requires fresh maker and judge." },
+      { "sourceUrl": "https://www.instagram.com/reel/DDR2PcXRP4j/", "preapproved": false, "note": "Older PASS; requires fresh maker and judge." },
+      { "sourceUrl": "https://www.instagram.com/reel/DKVNp4JS57c/", "preapproved": false, "note": "Older PASS; requires fresh maker and judge." },
+      { "sourceUrl": "https://www.instagram.com/reel/DYDvRg-OqIV/", "preapproved": false, "note": "Older PASS; requires fresh maker and judge." },
+      { "sourceUrl": "https://www.instagram.com/reel/Cr3zfGRp0kS/", "preapproved": false, "note": "Legacy human TARGET only; requires fresh maker and judge." },
+      { "sourceUrl": "https://www.instagram.com/reel/Cj1NyTvpnut/", "preapproved": false, "note": "Legacy human TARGET only; requires fresh maker and judge." }
+    ],
+    "light": [
+      { "sourceUrl": "https://www.youtube.com/watch?v=BwIaEb5vGDo", "preapproved": true, "note": "Grogu/Mandalorian AI scene; current source-fit PASS." },
+      { "sourceUrl": "https://www.youtube.com/watch?v=ZaS7YodS3DQ", "preapproved": true, "note": "Batman/Gotham lightning scene; current source-fit PASS." },
+      { "sourceUrl": "https://www.instagram.com/reel/DaVKaXkpIbC/", "preapproved": true, "note": "Batman/Catwoman AI scene; current source-fit PASS." },
+      { "sourceUrl": "https://www.youtube.com/watch?v=xq131G5ZcU4", "preapproved": true, "note": "Current source-fit PASS." },
+      { "sourceUrl": "https://www.instagram.com/reel/DaDxHb1poeD/", "preapproved": true, "note": "Current source-fit PASS." },
+      { "sourceUrl": "https://www.instagram.com/reel/DYl89L5Ry_n/", "preapproved": true, "note": "Current source-fit PASS." },
+      { "sourceUrl": "https://www.instagram.com/reel/DZULhPeI62U/", "preapproved": true, "note": "Current source-fit PASS." },
+      { "sourceUrl": "https://www.youtube.com/watch?v=03YR9XjETHo", "preapproved": false, "note": "Current source-fit PASS; fresh buffer judge required." },
+      { "sourceUrl": "https://www.youtube.com/watch?v=J6tw2l128YE", "preapproved": false, "note": "Current source-fit PASS; fresh buffer judge required." },
+      { "sourceUrl": "https://www.instagram.com/reel/DaADZ3AxOqO/", "preapproved": false, "note": "Current source-fit PASS; fresh buffer judge required." },
+      { "sourceUrl": "https://www.instagram.com/reel/DYejZ-RxFEJ/", "preapproved": false, "note": "Current source-fit PASS; fresh buffer judge required." },
+      { "sourceUrl": "https://www.instagram.com/reel/DZsb9A6Jf0q/", "preapproved": false, "note": "Current source-fit PASS; fresh buffer judge required." }
+    ],
+    "cop": [
+      { "sourceUrl": "https://www.instagram.com/reel/DW7IFS5jU0_/", "preapproved": true, "note": "Pursuit ends in a visible van rollover; current PASS." },
+      { "sourceUrl": "https://www.instagram.com/reel/DWjH5fWjBnt/", "preapproved": true, "note": "Grappler used on a fleeing pickup; current PASS." },
+      { "sourceUrl": "https://www.instagram.com/reel/DY14gTEtg3H/", "preapproved": true, "note": "Visible pursuit and unusual surrender; current PASS." },
+      { "sourceUrl": "https://www.instagram.com/reel/DWTlKz_jO0m/", "preapproved": true, "note": "Motorcycle stop and escape; current PASS." },
+      { "sourceUrl": "https://www.instagram.com/reel/DWnxlyIDcoK/", "preapproved": false, "note": "WIP preapproval only; requires a fresh maker and judge because talking-head or hard subtitles must fail." },
+      { "sourceUrl": "https://www.instagram.com/reel/DW5oCZGjPCs/", "preapproved": true, "note": "Visible officer confrontation; current source-fit PASS and no live publication duplicate." },
+      { "sourceUrl": "https://www.instagram.com/reel/DXNBoz7jYmd/", "preapproved": false, "note": "Current PASS; describe only visible facts." },
+      { "sourceUrl": "https://www.instagram.com/reel/DXUPExpjCs2/", "preapproved": false, "note": "Older PASS involving an infant emergency; policy recheck required." },
+      { "sourceUrl": "https://www.instagram.com/reel/DaLw1gqNi8x/", "preapproved": false, "note": "Discovery only; fresh maker and judge required." },
+      { "sourceUrl": "https://www.instagram.com/reel/DaI-_qLNsp1/", "preapproved": false, "note": "Discovery only; fresh maker and judge required." }
+    ]
+  }
+}
