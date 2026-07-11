@@ -1,6 +1,8 @@
 # Project Kings Production Pipeline v1
 
-Status: `candidate-frozen / acceptance-pending`.
+Status: `historical frozen snapshot / launch-blocked`.
+
+> Current execution note (2026-07-11): [`LOOP-AUDIT.md`](./LOOP-AUDIT.md) and [`LOOP-SPEC.md`](./LOOP-SPEC.md) are the authoritative audit and MVP execution contract. The manifest below remains preserved evidence of the previous milestone, but an independent audit found incompatible v2/v4 route bindings and non-production-ready source qualification. It is not deploy authorization and not a launch-ready verdict.
 
 Это управляющий инженерный контракт, приведённый в соответствие с замороженным release candidate. Один неизменяемый кандидат зафиксирован: `ProductionReleaseManifest` `docs/project-kings-production-pipeline-v1/evidence/production-release-manifest.json`, `releaseCandidateSha256` `abd6e78236ba7482f5c3be3ff3edb546af8f95456766cb8c103253702715550b`. Код, созданный до аудита, вошёл в этот кандидат, но остаётся провизорным до тех пор, пока на замороженном кандидате не пройдут все затронутые gate.
 
