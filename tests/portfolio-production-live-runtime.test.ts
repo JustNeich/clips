@@ -7,6 +7,7 @@ import {
   createPortfolioLiveDispatcher,
   decidePortfolioLiveRecoveryBudget,
   resolvePortfolioProductionAgentChannelId,
+  resolvePortfolioPublicVerificationPollingBudget,
   type PortfolioLiveEventHandler,
   type PortfolioLiveEventKind,
   type PortfolioLiveRuntimeOptions,
@@ -139,6 +140,48 @@ test("semantic packet identity uses stable YouTube UC id, never the Clips databa
         expectedYoutubeChannelId: item.channelId
       }),
     /24-character YouTube UC channel ID/
+  );
+});
+
+test("public verification polling cannot cross its immutable 24-hour deadline", () => {
+  const event = {
+    ...eventFixture("public_verify.requested"),
+    payload: {
+      publicationId: "publication-deadline",
+      youtubeVideoId: "youtube-video-deadline",
+      publicVerificationStartedAt: "2040-01-01T00:00:00.000Z",
+      publicVerificationDeadlineAt: "2040-01-02T00:00:00.000Z"
+    }
+  };
+  assert.deepEqual(
+    resolvePortfolioPublicVerificationPollingBudget(
+      event,
+      new Date("2040-01-01T23:58:00.000Z")
+    ),
+    {
+      deadlineAt: "2040-01-02T00:00:00.000Z",
+      maxElapsedMs: 2 * 60_000
+    }
+  );
+  assert.throws(
+    () => resolvePortfolioPublicVerificationPollingBudget(
+      event,
+      new Date("2040-01-02T00:00:00.000Z")
+    ),
+    /deadline reached/
+  );
+  assert.throws(
+    () => resolvePortfolioPublicVerificationPollingBudget(
+      {
+        ...event,
+        payload: {
+          ...event.payload,
+          publicVerificationDeadlineAt: "2040-01-02T00:00:00.001Z"
+        }
+      },
+      new Date("2040-01-01T23:58:00.000Z")
+    ),
+    /missing its immutable 24-hour deadline/
   );
 });
 

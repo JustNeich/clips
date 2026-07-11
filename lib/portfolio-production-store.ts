@@ -120,6 +120,9 @@ const ITEM_COMPLETED_STATES = new Set<ProductionItemState>([
 const RUN_TERMINAL_STATES = new Set<ProductionRunStatus>(["completed", "blocked", "canceled", "failed"]);
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
 const LOGICAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+export const PRODUCTION_PUBLIC_VERIFICATION_WINDOW_MS = 24 * 60 * 60_000;
+const PRODUCTION_PUBLIC_VERIFICATION_CONTINUATION_DELAY_MS = 5 * 60_000;
+const PRODUCTION_PUBLIC_VERIFICATION_MAX_ATTEMPTS_PER_WINDOW = 12;
 
 export type ProductionStoreErrorCode =
   | "invalid_input"
@@ -770,6 +773,66 @@ export type AppendProductionOutboxInput = {
   availableAt?: string | null;
   maxAttempts?: number | null;
 };
+
+export function buildProductionPublicVerificationOutboxIntent(input: {
+  publicationId: string;
+  youtubeVideoId: string;
+  scheduledAt: string;
+}): Pick<AppendProductionOutboxInput, "eventKind" | "payload" | "availableAt" | "maxAttempts"> {
+  const publicationId = requiredText(input.publicationId, "publicationId", 64);
+  const youtubeVideoId = requiredText(input.youtubeVideoId, "youtubeVideoId", 128);
+  const scheduledAtMs = Date.parse(requiredText(input.scheduledAt, "scheduledAt", 80));
+  if (!Number.isFinite(scheduledAtMs)) {
+    fail("invalid_input", "scheduledAt must be a valid timestamp.", { scheduledAt: input.scheduledAt });
+  }
+  const scheduledAt = new Date(scheduledAtMs).toISOString();
+  const publicVerificationDeadlineAt = new Date(
+    scheduledAtMs + PRODUCTION_PUBLIC_VERIFICATION_WINDOW_MS
+  ).toISOString();
+  return {
+    eventKind: "public_verify.requested",
+    payload: {
+      publicationId,
+      youtubeVideoId,
+      publicVerificationStartedAt: scheduledAt,
+      publicVerificationDeadlineAt
+    },
+    availableAt: scheduledAt,
+    maxAttempts: PRODUCTION_PUBLIC_VERIFICATION_MAX_ATTEMPTS_PER_WINDOW
+  };
+}
+
+export function resolveProductionPublicVerificationDeadlineAt(
+  outbox: Pick<ProductionOutboxRecord, "eventKind" | "payload">
+): string | null {
+  if (outbox.eventKind !== "public_verify.requested") return null;
+  const rawStartedAt = outbox.payload.publicVerificationStartedAt;
+  const raw = outbox.payload.publicVerificationDeadlineAt;
+  if (
+    typeof rawStartedAt !== "string" ||
+    !rawStartedAt.trim() ||
+    typeof raw !== "string" ||
+    !raw.trim()
+  ) return null;
+  const startedAtMs = Date.parse(rawStartedAt);
+  const deadlineMs = Date.parse(raw);
+  if (
+    !Number.isFinite(startedAtMs) ||
+    !Number.isFinite(deadlineMs) ||
+    deadlineMs !== startedAtMs + PRODUCTION_PUBLIC_VERIFICATION_WINDOW_MS
+  ) return null;
+  return new Date(deadlineMs).toISOString();
+}
+
+function productionPublicVerificationDeadlineReached(
+  outbox: Pick<ProductionOutboxRecord, "eventKind" | "payload">,
+  stamp: string
+): boolean {
+  const deadlineAt = resolveProductionPublicVerificationDeadlineAt(outbox);
+  if (!deadlineAt) return false;
+  const stampMs = Date.parse(stamp);
+  return Number.isFinite(stampMs) && stampMs >= Date.parse(deadlineAt);
+}
 
 function appendOutboxTx(db: DatabaseSync, input: AppendProductionOutboxInput, stamp: string): ProductionOutboxRecord {
   const item = requireItem(db, requiredText(input.productionItemId, "productionItemId", 64));
@@ -2319,6 +2382,73 @@ function projectDeadProductionOutboxTx(db: DatabaseSync, outboxId: string, stamp
       .run("cancel_reconciliation_continues", stamp, stamp, outbox.id);
     return;
   }
+  const publicVerificationDeadlineAt = resolveProductionPublicVerificationDeadlineAt(outbox);
+  const publicVerificationDeadlineMs = publicVerificationDeadlineAt
+    ? Date.parse(publicVerificationDeadlineAt)
+    : Number.NaN;
+  const stampMs = Date.parse(stamp);
+  const payloadPublicationId = typeof outbox.payload.publicationId === "string"
+    ? outbox.payload.publicationId.trim()
+    : "";
+  const payloadYoutubeVideoId = typeof outbox.payload.youtubeVideoId === "string"
+    ? outbox.payload.youtubeVideoId.trim()
+    : "";
+  const publicVerificationCanContinue =
+    outbox.eventKind === "public_verify.requested" &&
+    ["publication_scheduled", "upload_outcome_unknown", "cancel_requested"].includes(item.state) &&
+    Boolean(publicVerificationDeadlineAt) &&
+    Number.isFinite(stampMs) &&
+    stampMs < publicVerificationDeadlineMs &&
+    Boolean(item.publicationId) &&
+    Boolean(item.youtubeVideoId) &&
+    payloadPublicationId === item.publicationId &&
+    payloadYoutubeVideoId === item.youtubeVideoId;
+  if (publicVerificationCanContinue) {
+    // A polling-window dead letter is not a failed upload. Requeue only the
+    // frozen verification intent; never reopen publication.requested.
+    appendEventTx(db, {
+      workspaceId: item.workspaceId,
+      runId: item.runId,
+      channelId: item.channelId,
+      productionItemId: item.id,
+      eventType: "production.item.public_verification_continues",
+      fromState: item.state,
+      toState: item.state,
+      payload: {
+        outboxId: outbox.id,
+        dedupeKey: outbox.dedupeKey,
+        publicationId: item.publicationId,
+        youtubeVideoId: item.youtubeVideoId,
+        publicVerificationDeadlineAt,
+        lastError: outbox.lastError
+      },
+      createdAt: stamp
+    });
+    appendOutboxTx(db, {
+      workspaceId: item.workspaceId,
+      runId: item.runId,
+      channelId: item.channelId,
+      productionItemId: item.id,
+      eventKind: "public_verify.requested",
+      dedupeKey: `public_verify.requested:continue:${outbox.id}`,
+      payload: {
+        ...outbox.payload,
+        publicationId: item.publicationId,
+        youtubeVideoId: item.youtubeVideoId,
+        publicVerificationDeadlineAt,
+        predecessorOutboxId: outbox.id
+      },
+      availableAt: new Date(Math.min(
+        stampMs + PRODUCTION_PUBLIC_VERIFICATION_CONTINUATION_DELAY_MS,
+        publicVerificationDeadlineMs
+      )).toISOString(),
+      maxAttempts: outbox.maxAttempts
+    }, stamp);
+    db.prepare(`UPDATE production_outbox SET dead_letter_code = ?, projected_at = ?, updated_at = ?
+      WHERE id = ? AND status = 'dead' AND projected_at IS NULL`)
+      .run("public_verification_continues", stamp, stamp, outbox.id);
+    return;
+  }
   const classification = classifyProductionOutboxDeadLetter({
     eventKind: outbox.eventKind,
     error: outbox.lastError
@@ -2596,7 +2726,8 @@ export function claimProductionOutbox(input: {
       ORDER BY created_at ASC, id ASC`).all(stamp, ...scopeParams) as Row[];
     for (const expiredRow of expiredRows) {
       const expired = mapOutbox(expiredRow);
-      const terminal = expired.attempts >= expired.maxAttempts;
+      const terminal = expired.attempts >= expired.maxAttempts ||
+        productionPublicVerificationDeadlineReached(expired, stamp);
       db.prepare(`UPDATE production_outbox SET status = ?, lease_owner = NULL, lease_token = NULL,
         lease_expires_at = NULL, last_error = CASE WHEN ? THEN COALESCE(last_error, ?) ELSE last_error END,
         updated_at = ? WHERE id = ? AND status = 'processing'`)
@@ -2824,10 +2955,20 @@ export function retryProductionOutbox(input: {
     if (record.status !== "processing" || record.leaseToken !== input.leaseToken) {
       fail("lease_conflict", "Outbox lease token does not match an active claim.");
     }
-    const terminal = record.attempts >= record.maxAttempts;
+    const terminal = record.attempts >= record.maxAttempts ||
+      productionPublicVerificationDeadlineReached(record, stamp);
+    const requestedAvailableAt = input.availableAt ?? stamp;
+    const publicVerificationDeadlineAt = resolveProductionPublicVerificationDeadlineAt(record);
+    const requestedAvailableAtMs = Date.parse(requestedAvailableAt);
+    const retryAvailableAt = !terminal &&
+      publicVerificationDeadlineAt &&
+      Number.isFinite(requestedAvailableAtMs) &&
+      requestedAvailableAtMs > Date.parse(publicVerificationDeadlineAt)
+      ? publicVerificationDeadlineAt
+      : requestedAvailableAt;
     db.prepare(`UPDATE production_outbox SET status = ?, available_at = ?, lease_owner = NULL,
       lease_token = NULL, lease_expires_at = NULL, last_error = ?, updated_at = ? WHERE id = ?`)
-      .run(terminal ? "dead" : "pending", input.availableAt ?? stamp,
+      .run(terminal ? "dead" : "pending", retryAvailableAt,
         requiredText(input.error, "error", 2000), stamp, record.id);
     if (terminal) projectDeadProductionOutboxTx(db, record.id, stamp);
     return mapOutbox(readRow(db, "production_outbox", record.id)!);

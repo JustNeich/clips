@@ -24,6 +24,7 @@ import {
 } from "./publication-store";
 import {
   buildProductionOutboxDedupeKey,
+  buildProductionPublicVerificationOutboxIntent,
   calculateQualityVerdictBindingSha256,
   createReplacementProductionItem,
   getProductionItem,
@@ -37,6 +38,7 @@ import {
   recordAgentAttempt,
   recordPublicVerification,
   recordQualityVerdict,
+  resolveProductionPublicVerificationDeadlineAt,
   transitionProductionItem,
   type AgentAttemptRecord,
   type ProductionItemRecord,
@@ -113,6 +115,7 @@ const SOURCE_TIMEOUT_MS = 6 * 60_000;
 const PREVIEW_TIMEOUT_MS = 5 * 60_000;
 const FINAL_RENDER_TIMEOUT_MS = 12 * 60_000;
 const PUBLICATION_TIMEOUT_MS = 6 * 60_000;
+const PUBLIC_VERIFICATION_POLLING_WINDOW_MS = 5 * 60_000;
 const SEMANTIC_JOB_TIMEOUT_MS = 13 * 60_000;
 const REVISION_LEDGER_ARTIFACT_ID = "revision-ledger";
 
@@ -158,6 +161,26 @@ export type PortfolioLiveRecoveryBudget = {
   remainingReworks: number;
   remainingReplacements: number;
 };
+
+export function resolvePortfolioPublicVerificationPollingBudget(
+  event: Pick<ProductionOutboxRecord, "eventKind" | "payload">,
+  now: Date
+): { deadlineAt: string; maxElapsedMs: number } {
+  const deadlineAt = resolveProductionPublicVerificationDeadlineAt(event);
+  if (!deadlineAt) {
+    throw new Error("Public verification event is missing its immutable 24-hour deadline.");
+  }
+  const nowMs = now.getTime();
+  if (!Number.isFinite(nowMs)) throw new Error("Public verification clock is invalid.");
+  const remainingMs = Date.parse(deadlineAt) - nowMs;
+  if (remainingMs <= 0) {
+    throw new Error(`Public verification deadline reached at ${deadlineAt}.`);
+  }
+  return {
+    deadlineAt,
+    maxElapsedMs: Math.min(PUBLIC_VERIFICATION_POLLING_WINDOW_MS, remainingMs)
+  };
+}
 
 export function decidePortfolioLiveRecoveryBudget(
   item: Pick<ProductionItemRecord, "attempts" | "attemptBudget" | "generation">
@@ -2229,6 +2252,11 @@ function persistObservedScheduledPublication(input: {
 }): ProductionItemRecord {
   const youtubeVideoId = input.publication.youtubeVideoId;
   if (!youtubeVideoId) throw new Error("Scheduled publication has no YouTube video ID.");
+  const publicVerificationOutbox = buildProductionPublicVerificationOutboxIntent({
+    publicationId: input.publication.id,
+    youtubeVideoId,
+    scheduledAt: input.publication.scheduledAt
+  });
   let item = requireItem(input.item.id);
   if (item.publicationId && item.publicationId !== input.publication.id) {
     throw new Error("Production item is already bound to another publication intent.");
@@ -2242,14 +2270,7 @@ function persistObservedScheduledPublication(input: {
       eventType: "production.upload_outcome_observed_after_fence",
       eventPayload: { publicationId: input.publication.id, youtubeVideoId },
       patch: { publicationId: input.publication.id, youtubeVideoId },
-      outbox: item.state === "cancel_requested"
-        ? {
-            eventKind: "public_verify.requested",
-            payload: { publicationId: input.publication.id, youtubeVideoId },
-            availableAt: input.publication.scheduledAt,
-            maxAttempts: 12
-          }
-        : undefined
+      outbox: item.state === "cancel_requested" ? publicVerificationOutbox : undefined
     });
   }
   if (item.state === "upload_outcome_unknown" && !getProductionRun(item.runId)?.status.startsWith("cancel")) {
@@ -2259,12 +2280,7 @@ function persistObservedScheduledPublication(input: {
       toState: "publication_scheduled",
       eventType: "production.publication_scheduled",
       patch: { publicationId: input.publication.id, youtubeVideoId, lastError: null },
-      outbox: {
-        eventKind: "public_verify.requested",
-        payload: { publicationId: input.publication.id, youtubeVideoId },
-        availableAt: input.publication.scheduledAt,
-        maxAttempts: 12
-      }
+      outbox: publicVerificationOutbox
     });
   }
   return item;
@@ -2459,6 +2475,16 @@ async function handlePublicVerify(
     !item.publicationId ||
     !item.youtubeVideoId
   ) return;
+  if (
+    event.payload.publicationId !== item.publicationId ||
+    event.payload.youtubeVideoId !== item.youtubeVideoId
+  ) {
+    throw new Error("Public verification immutable publication identity mismatch.");
+  }
+  const pollingBudget = resolvePortfolioPublicVerificationPollingBudget(
+    event,
+    options.now?.() ?? new Date()
+  );
   const integration = getChannelPublishIntegration(item.channelId);
   const result = await reconcileYouTubePublicVerification(
     {
@@ -2486,7 +2512,7 @@ async function handlePublicVerify(
       maxAttempts: 7,
       initialRetryDelayMs: 5_000,
       maxRetryDelayMs: 120_000,
-      maxElapsedMs: 5 * 60_000
+      maxElapsedMs: pollingBudget.maxElapsedMs
     }
   );
   const attemptNo = listPublicVerifications(item.id).length + 1;
@@ -2532,7 +2558,10 @@ async function handlePublicVerify(
       });
       return;
     }
-    throw new Error(`Public verification delayed: ${result.reason}`);
+    const deadlineReached = (options.now?.() ?? new Date()).getTime() >= Date.parse(pollingBudget.deadlineAt);
+    throw new Error(deadlineReached
+      ? `Public verification deadline reached at ${pollingBudget.deadlineAt}: ${result.reason}`
+      : `Public verification delayed: ${result.reason}`);
   }
 }
 

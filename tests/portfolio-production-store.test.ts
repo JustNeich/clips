@@ -14,6 +14,7 @@ import {
   ackProductionOutboxAsSupersededGeneration,
   appendProductionOutbox,
   buildProductionOutboxDedupeKey,
+  buildProductionPublicVerificationOutboxIntent,
   calculateChannelSourceQualificationEvidenceSha256,
   calculateQualityVerdictBindingSha256,
   cancelProductionRun,
@@ -1388,6 +1389,203 @@ test("an exhausted cancellation poll never terminalizes an upload-unknown item a
     assert.equal(successor?.status, "pending");
     assert.equal(successor?.attempts, 0);
     assert.match(successor?.dedupeKey ?? "", new RegExp(claimed.id));
+  });
+});
+
+test("public verification intent freezes one exact 24-hour deadline with the uploaded video identity", () => {
+  const intent = buildProductionPublicVerificationOutboxIntent({
+    publicationId: "publication-deadline-contract",
+    youtubeVideoId: "youtube-video-deadline-contract",
+    scheduledAt: "2040-01-01T00:00:00.000Z"
+  });
+  assert.deepEqual(intent, {
+    eventKind: "public_verify.requested",
+    payload: {
+      publicationId: "publication-deadline-contract",
+      youtubeVideoId: "youtube-video-deadline-contract",
+      publicVerificationStartedAt: "2040-01-01T00:00:00.000Z",
+      publicVerificationDeadlineAt: "2040-01-02T00:00:00.000Z"
+    },
+    availableAt: "2040-01-01T00:00:00.000Z",
+    maxAttempts: 12
+  });
+});
+
+test("public verification retry wake is clamped to the exact 24-hour deadline", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedPortfolio({ targetPerChannel: 1 });
+    const item = createProductionItem({
+      runId: seeded.run.id,
+      runChannelId: seeded.runChannels[0].id,
+      itemSlot: 1
+    });
+    const event = appendProductionOutbox({
+      workspaceId: item.workspaceId,
+      runId: item.runId,
+      channelId: item.channelId,
+      productionItemId: item.id,
+      ...buildProductionPublicVerificationOutboxIntent({
+        publicationId: "publication-retry-wake",
+        youtubeVideoId: "youtube-video-retry-wake",
+        scheduledAt: "2040-01-01T00:00:00.000Z"
+      }),
+      maxAttempts: 2
+    });
+    const claimed = claimProductionOutbox({
+      owner: "public-verifier",
+      leaseMs: 30_000,
+      limit: 1,
+      now: "2040-01-01T23:59:58.000Z"
+    })[0]!;
+    assert.equal(claimed.id, event.id);
+    const pending = retryProductionOutbox({
+      outboxId: claimed.id,
+      leaseToken: claimed.leaseToken!,
+      error: "Public verification delayed: RSS_VIDEO_NOT_FOUND",
+      availableAt: "2040-01-02T00:00:03.000Z",
+      now: "2040-01-01T23:59:58.000Z"
+    });
+    assert.equal(pending.status, "pending");
+    assert.equal(pending.availableAt, "2040-01-02T00:00:00.000Z");
+  });
+});
+
+test("exhausted public verification windows continue with the same IDs before 24h and fail exactly at the deadline", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedPortfolio({ targetPerChannel: 1 });
+    let item = createProductionItem({
+      runId: seeded.run.id,
+      runChannelId: seeded.runChannels[0].id,
+      itemSlot: 1
+    });
+    item = advanceToScheduled({
+      item,
+      workspaceId: seeded.workspaceId,
+      channelId: seeded.channels[0].id,
+      suffix: "public-deadline",
+      publicationId: "publication-public-deadline",
+      youtubeVideoId: "youtube-video-public-deadline"
+    });
+    const intent = buildProductionPublicVerificationOutboxIntent({
+      publicationId: item.publicationId!,
+      youtubeVideoId: item.youtubeVideoId!,
+      scheduledAt: "2040-01-01T00:00:00.000Z"
+    });
+    const firstWindow = appendProductionOutbox({
+      workspaceId: item.workspaceId,
+      runId: item.runId,
+      channelId: item.channelId,
+      productionItemId: item.id,
+      ...intent,
+      maxAttempts: 1
+    });
+    const firstClaim = claimProductionOutbox({
+      owner: "public-verifier",
+      leaseMs: 30_000,
+      limit: 1,
+      now: "2040-01-01T00:00:01.000Z"
+    })[0]!;
+    assert.equal(firstClaim.id, firstWindow.id);
+    const continued = retryProductionOutbox({
+      outboxId: firstClaim.id,
+      leaseToken: firstClaim.leaseToken!,
+      error: "Public verification delayed: RSS_VIDEO_NOT_FOUND",
+      now: "2040-01-01T00:00:02.000Z"
+    });
+    assert.equal(continued.status, "dead");
+    assert.equal(continued.deadLetterCode, "public_verification_continues");
+
+    const beforeDeadline = getProductionItem(item.id)!;
+    assert.equal(beforeDeadline.state, "publication_scheduled");
+    assert.equal(beforeDeadline.publicationId, item.publicationId);
+    assert.equal(beforeDeadline.youtubeVideoId, item.youtubeVideoId);
+    let outbox = listProductionOutbox({ runId: item.runId, productionItemId: item.id });
+    assert.equal(outbox.length, 2);
+    const successor = outbox.find((entry) => entry.id !== firstWindow.id)!;
+    assert.equal(successor.eventKind, "public_verify.requested");
+    assert.equal(successor.status, "pending");
+    assert.equal(successor.payload.publicationId, item.publicationId);
+    assert.equal(successor.payload.youtubeVideoId, item.youtubeVideoId);
+    assert.equal(successor.payload.publicVerificationStartedAt, "2040-01-01T00:00:00.000Z");
+    assert.equal(successor.payload.publicVerificationDeadlineAt, "2040-01-02T00:00:00.000Z");
+    assert.equal(successor.payload.predecessorOutboxId, firstWindow.id);
+    assert.equal(outbox.some((entry) => entry.eventKind === "publication.requested"), false);
+
+    const deadlineClaim = claimProductionOutbox({
+      owner: "public-verifier",
+      leaseMs: 30_000,
+      limit: 1,
+      now: "2040-01-02T00:00:00.000Z"
+    })[0]!;
+    assert.equal(deadlineClaim.id, successor.id);
+    const terminal = retryProductionOutbox({
+      outboxId: deadlineClaim.id,
+      leaseToken: deadlineClaim.leaseToken!,
+      error: "Public verification deadline reached: RSS_VIDEO_NOT_FOUND",
+      now: "2040-01-02T00:00:00.000Z"
+    });
+    assert.equal(terminal.status, "dead");
+    assert.equal(terminal.deadLetterCode, "outbox_retry_exhausted");
+    assert.equal(getProductionItem(item.id)?.state, "failed");
+    assert.equal(getProductionItem(item.id)?.publicationId, item.publicationId);
+    assert.equal(getProductionItem(item.id)?.youtubeVideoId, item.youtubeVideoId);
+    outbox = listProductionOutbox({ runId: item.runId, productionItemId: item.id });
+    assert.equal(outbox.length, 2);
+    assert.equal(outbox.some((entry) => entry.eventKind === "publication.requested"), false);
+    assert.ok(listProductionEvents({ runId: item.runId, productionItemId: item.id }).some(
+      (event) => event.eventType === "production.item.public_verification_continues"
+    ));
+  });
+});
+
+test("an expired public verification lease at the 24-hour deadline terminalizes without another window", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedPortfolio({ targetPerChannel: 1 });
+    let item = createProductionItem({
+      runId: seeded.run.id,
+      runChannelId: seeded.runChannels[0].id,
+      itemSlot: 1
+    });
+    item = advanceToScheduled({
+      item,
+      workspaceId: seeded.workspaceId,
+      channelId: seeded.channels[0].id,
+      suffix: "public-deadline-lease",
+      publicationId: "publication-public-deadline-lease",
+      youtubeVideoId: "youtube-video-public-deadline-lease"
+    });
+    const event = appendProductionOutbox({
+      workspaceId: item.workspaceId,
+      runId: item.runId,
+      channelId: item.channelId,
+      productionItemId: item.id,
+      ...buildProductionPublicVerificationOutboxIntent({
+        publicationId: item.publicationId!,
+        youtubeVideoId: item.youtubeVideoId!,
+        scheduledAt: "2040-01-01T00:00:00.000Z"
+      })
+    });
+    const claimed = claimProductionOutbox({
+      owner: "crashed-public-verifier",
+      leaseMs: 500,
+      limit: 1,
+      now: "2040-01-01T23:59:59.000Z"
+    })[0]!;
+    assert.equal(claimed.id, event.id);
+    assert.equal(claimProductionOutbox({
+      owner: "deadline-watchdog",
+      leaseMs: 30_000,
+      limit: 1,
+      now: "2040-01-02T00:00:00.000Z"
+    }).length, 0);
+
+    const outbox = listProductionOutbox({ runId: item.runId, productionItemId: item.id });
+    assert.equal(outbox.length, 1);
+    assert.equal(outbox[0]?.status, "dead");
+    assert.equal(outbox[0]?.deadLetterCode, "outbox_retry_exhausted");
+    assert.equal(getProductionItem(item.id)?.state, "failed");
+    assert.equal(getProductionItem(item.id)?.publicationId, item.publicationId);
+    assert.equal(getProductionItem(item.id)?.youtubeVideoId, item.youtubeVideoId);
   });
 });
 
