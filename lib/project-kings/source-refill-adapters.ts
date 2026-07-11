@@ -495,29 +495,29 @@ export function createProjectKingsLocalMediaEvidenceProvider(input: {
 
       const asrPath = path.join(candidateRoot, "source-asr.txt");
       if (!(await fs.stat(asrPath).catch(() => null))) {
-        const whisperRoot = path.join(candidateRoot, "whisper");
-        await fs.mkdir(whisperRoot, { recursive: true, mode: 0o700 });
-        await retryCommand({
-          run,
-          command: input.whisperBinary ?? "whisper",
-          args: [
-            downloaded.mediaPath,
-            "--model", input.whisperModel ?? "tiny",
-            "--output_format", "txt",
-            "--output_dir", whisperRoot,
-            "--language", "en"
-          ],
-          timeoutMs: 10 * 60_000,
-          attempts: 1
-        });
-        const generatedPath = path.join(
-          whisperRoot,
-          `${path.basename(downloaded.mediaPath, path.extname(downloaded.mediaPath))}.txt`
-        );
-        const transcript = await fs.readFile(generatedPath, "utf8").catch((error: NodeJS.ErrnoException) => {
-          if (error.code === "ENOENT") return "";
-          throw error;
-        });
+        let transcript = "";
+        if (media.audioCodec) {
+          const whisperRoot = path.join(candidateRoot, "whisper");
+          await fs.mkdir(whisperRoot, { recursive: true, mode: 0o700 });
+          await retryCommand({
+            run,
+            command: input.whisperBinary ?? "whisper",
+            args: [
+              downloaded.mediaPath,
+              "--model", input.whisperModel ?? "tiny",
+              "--output_format", "txt",
+              "--output_dir", whisperRoot,
+              "--language", "en"
+            ],
+            timeoutMs: 10 * 60_000,
+            attempts: 1
+          });
+          const generatedPath = path.join(
+            whisperRoot,
+            `${path.basename(downloaded.mediaPath, path.extname(downloaded.mediaPath))}.txt`
+          );
+          transcript = await fs.readFile(generatedPath, "utf8");
+        }
         await writeTextArtifact(asrPath, transcript);
       }
       const asr = {
