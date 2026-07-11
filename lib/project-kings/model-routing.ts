@@ -54,6 +54,12 @@ export type ModelSelectionPolicy = Readonly<{
   minimumQualityScore: number;
   minimumSchemaSuccessRate: number;
   maximumP95LatencyMs: number;
+  // Owner directive 2026-07-11: opt-in single-route production policy. When true
+  // and no distinct-route fallback and no same-route reasoning alternative
+  // qualifies, the selection is allowed to declare an explicit fail-closed state
+  // (fallback: null, fallbackMode: "fail_closed_none") instead of throwing. Model
+  // outage resilience is intentionally NOT provided; the pipeline must fail closed.
+  allowFailClosedSingleRoute?: boolean;
 }>;
 
 export type SelectedModelRoute = Readonly<{
@@ -61,11 +67,16 @@ export type SelectedModelRoute = Readonly<{
   benchmark: ModelBenchmarkResult;
 }>;
 
-export type ModelSelectionFallbackMode = "distinct_route" | "same_route_reasoning";
+export type ModelSelectionFallbackMode =
+  | "distinct_route"
+  | "same_route_reasoning"
+  | "fail_closed_none";
 
 export type ModelSelection = Readonly<{
   primary: SelectedModelRoute;
-  fallback: SelectedModelRoute;
+  // null ONLY in fail_closed_none mode: there is no fallback model route and the
+  // pipeline must fail closed on primary-route infrastructure/model failure.
+  fallback: SelectedModelRoute | null;
   fallbackMode: ModelSelectionFallbackMode;
   policy: ModelSelectionPolicy;
 }>;
@@ -300,6 +311,12 @@ function validateSelectionPolicy(policy: ModelSelectionPolicy): void {
   if (!Number.isFinite(policy.maximumP95LatencyMs) || policy.maximumP95LatencyMs < 1) {
     issues.push("maximumP95LatencyMs must be positive");
   }
+  if (
+    policy.allowFailClosedSingleRoute !== undefined &&
+    typeof policy.allowFailClosedSingleRoute !== "boolean"
+  ) {
+    issues.push("allowFailClosedSingleRoute must be a boolean when present");
+  }
   if (issues.length > 0) {
     throw new ModelSelectionError(`Model selection policy is invalid: ${issues.join("; ")}`, []);
   }
@@ -475,6 +492,21 @@ export function selectBenchmarkedModelRoutes(input: {
       (candidate) => candidate.benchmark.reasoningEffort !== primary.benchmark.reasoningEffort
     );
     if (sameRouteAlternatives.length === 0) {
+      // Owner directive 2026-07-11: when the policy explicitly opts in, a single
+      // qualifying luna route becomes an auditable fail-closed selection instead of
+      // a throw. There is NO fallback model route; on primary-route failure the
+      // pipeline must fail closed via existing recovery machinery, never degrade to
+      // another model. Without the opt-in flag the behavior stays exactly as before.
+      if (input.policy.allowFailClosedSingleRoute === true) {
+        return deepFreeze(
+          structuredClone({
+            primary,
+            fallback: null,
+            fallbackMode: "fail_closed_none" as const,
+            policy: input.policy
+          })
+        );
+      }
       throw new ModelSelectionError(
         `Primary route ${primary.route.routeId} has no distinct benchmark-qualified fallback.`,
         rejections

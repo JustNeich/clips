@@ -232,7 +232,7 @@ test("stage benchmark selects the cheapest passing route and registers a tested 
   const result = await runStageSpecificModelBenchmark(deterministicRunOptions({ calls }));
 
   assert.equal(result.selection.primary.route.routeId, "codex:gpt-5.4-mini");
-  assert.equal(result.selection.fallback.route.routeId, "codex:gpt-5.4");
+  assert.equal(result.selection.fallback?.route.routeId, "codex:gpt-5.4");
   assert.equal(result.selection.primary.benchmark.reasoningEffort, "medium");
   assert.deepEqual(calls, [
     "codex:gpt-5.4-mini:medium:case-1",
@@ -241,7 +241,7 @@ test("stage benchmark selects the cheapest passing route and registers a tested 
     "codex:gpt-5.4:medium:case-2"
   ]);
   assert.equal(result.evidence.selection?.primary.routeId, "codex:gpt-5.4-mini");
-  assert.equal(result.evidence.selection?.fallback.routeId, "codex:gpt-5.4");
+  assert.equal(result.evidence.selection?.fallback?.routeId, "codex:gpt-5.4");
   assert.equal(result.evidence.candidates[0]?.aggregate.schemaSuccessRate, 1);
   assert.equal(result.evidence.candidates[0]?.aggregate.qualityScore, 1);
   assert.equal(result.evidence.candidates[0]?.aggregate.p95LatencyMs, 100);

@@ -109,6 +109,9 @@ function candidatesForRole(role: RemainingSemanticBenchmarkRole): Array<{
   return result;
 }
 
+// Owner directive 2026-07-11: production routes run gpt-5.6-luna exclusively. When
+// only one luna route passes the floors, allow an explicit fail-closed single-route
+// selection instead of throwing. Floors are unchanged.
 const POLICIES: Record<RemainingSemanticBenchmarkRole, ModelSelectionPolicy> = {
   source_search: {
     requiresVision: false,
@@ -118,7 +121,8 @@ const POLICIES: Record<RemainingSemanticBenchmarkRole, ModelSelectionPolicy> = {
     minimumSampleSize: 30,
     minimumQualityScore: 1,
     minimumSchemaSuccessRate: 1,
-    maximumP95LatencyMs: 300_000
+    maximumP95LatencyMs: 300_000,
+    allowFailClosedSingleRoute: true
   },
   source_fit: {
     requiresVision: true,
@@ -128,7 +132,8 @@ const POLICIES: Record<RemainingSemanticBenchmarkRole, ModelSelectionPolicy> = {
     minimumSampleSize: 30,
     minimumQualityScore: 1,
     minimumSchemaSuccessRate: 1,
-    maximumP95LatencyMs: 90_000
+    maximumP95LatencyMs: 90_000,
+    allowFailClosedSingleRoute: true
   },
   caption: {
     requiresVision: true,
@@ -138,7 +143,8 @@ const POLICIES: Record<RemainingSemanticBenchmarkRole, ModelSelectionPolicy> = {
     minimumSampleSize: 30,
     minimumQualityScore: 1,
     minimumSchemaSuccessRate: 1,
-    maximumP95LatencyMs: 240_000
+    maximumP95LatencyMs: 240_000,
+    allowFailClosedSingleRoute: true
   },
   montage_planner: {
     requiresVision: true,
@@ -148,7 +154,8 @@ const POLICIES: Record<RemainingSemanticBenchmarkRole, ModelSelectionPolicy> = {
     minimumSampleSize: 30,
     minimumQualityScore: 1,
     minimumSchemaSuccessRate: 1,
-    maximumP95LatencyMs: 240_000
+    maximumP95LatencyMs: 240_000,
+    allowFailClosedSingleRoute: true
   }
 };
 
@@ -298,8 +305,11 @@ async function main(): Promise<void> {
       });
       outcome = "pass";
       evidenceSha256 = result.evidence.evidenceSha256;
+      const fallbackLabel = result.selection.fallback
+        ? `${result.selection.fallback.route.model}/${result.selection.fallback.benchmark.reasoningEffort}`
+        : "fail-closed-none";
       process.stdout.write(
-        `${role}: PASS primary=${result.selection.primary.route.model}/${result.selection.primary.benchmark.reasoningEffort} fallback=${result.selection.fallback.route.model}/${result.selection.fallback.benchmark.reasoningEffort} evidence=${result.evidence.evidenceSha256}\n`
+        `${role}: PASS primary=${result.selection.primary.route.model}/${result.selection.primary.benchmark.reasoningEffort} fallback=${fallbackLabel} evidence=${result.evidence.evidenceSha256}\n`
       );
     } catch (error) {
       runError = compactError(error);

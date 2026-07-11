@@ -567,7 +567,9 @@ async function buildDatasets(root: string): Promise<Record<ProductionAgentRole, 
 const STAGE_POLICIES: Record<ProductionAgentRole, ModelSelectionPolicy> = {
   source_search: { requiresVision: false, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 3, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 300_000 },
   source_fit: { requiresVision: false, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 3, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 90_000 },
-  source_policy: { requiresVision: true, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: SOURCE_POLICY_PRODUCTION_MINIMUM_SAMPLE_SIZE, minimumQualityScore: SOURCE_POLICY_DECISION_ACCURACY_FLOOR, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 90_000 },
+  // Owner directive 2026-07-11: source_policy runs gpt-5.6-luna exclusively; allow
+  // an explicit fail-closed single-route selection when only one luna route passes.
+  source_policy: { requiresVision: true, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: SOURCE_POLICY_PRODUCTION_MINIMUM_SAMPLE_SIZE, minimumQualityScore: SOURCE_POLICY_DECISION_ACCURACY_FLOOR, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 90_000, allowFailClosedSingleRoute: true },
   caption: { requiresVision: false, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 3, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 240_000 },
   montage_planner: { requiresVision: false, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 3, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 240_000 },
   vision_qa: { requiresVision: true, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 3, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 45_000 },
@@ -783,7 +785,11 @@ async function main(): Promise<void> {
           outputPath
         });
         roleOutcome = "pass";
-        process.stdout.write(`${role}: ${result.evidence.selection?.primary.model}/${result.evidence.selection?.primary.reasoningEffort} -> fallback ${result.evidence.selection?.fallback.model}/${result.evidence.selection?.fallback.reasoningEffort}\n`);
+        const selectionEvidence = result.evidence.selection;
+        const fallbackLabel = selectionEvidence?.fallback
+          ? `${selectionEvidence.fallback.model}/${selectionEvidence.fallback.reasoningEffort}`
+          : "fail-closed-none";
+        process.stdout.write(`${role}: ${selectionEvidence?.primary.model}/${selectionEvidence?.primary.reasoningEffort} -> fallback ${fallbackLabel}\n`);
       } catch (error) {
         if (!(error instanceof ModelBenchmarkHarnessError) || !error.evidence) throw error;
         roleError = error.message;

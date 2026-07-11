@@ -140,9 +140,9 @@ async function writeProductionReadyManifest(root: string) {
       }
     },
     fallback: {
-      ...legacy.selections.vision_qa.fallback,
+      ...legacy.selections.vision_qa.fallback!,
       benchmark: {
-        ...legacy.selections.vision_qa.fallback.benchmark,
+        ...legacy.selections.vision_qa.fallback!.benchmark,
         benchmarkVersion: "isolated-source-policy-test-v1",
         sampleSize: 30
       }

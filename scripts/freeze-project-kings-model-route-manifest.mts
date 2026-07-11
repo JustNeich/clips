@@ -44,7 +44,8 @@ type BenchmarkEvidence = {
   evidenceSha256: string;
   selection: {
     primary: { routeId: string; model: string; reasoningEffort: string };
-    fallback: { routeId: string; model: string; reasoningEffort: string };
+    fallback: { routeId: string; model: string; reasoningEffort: string } | null;
+    fallbackMode: "distinct_route" | "same_route_reasoning" | "fail_closed_none";
   } | null;
   candidates: Array<{
     routeId: string;
@@ -125,13 +126,14 @@ for (const role of PRODUCTION_MODEL_AGENT_ROLES) {
   };
   selections[role] = {
     primary: selectedRoute(evidence, selected.primary),
-    fallback: selectedRoute(evidence, selected.fallback),
+    fallback: selected.fallback ? selectedRoute(evidence, selected.fallback) : null,
+    fallbackMode: selected.fallbackMode,
     policy: POLICIES[role]
   };
 }
 
 const payload = {
-  schemaVersion: 2 as const,
+  schemaVersion: 3 as const,
   manifestId: "project-kings-model-routes-v3",
   createdAt: new Date().toISOString(),
   evidence: evidenceEntries,

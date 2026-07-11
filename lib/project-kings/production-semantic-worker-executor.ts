@@ -278,7 +278,7 @@ function assertLocalCodexOnlyManifest(manifest: ProductionReadyAgentRouteManifes
     if (
       !selection ||
       selection.primary.route.provider !== "codex" ||
-      selection.fallback.route.provider !== "codex"
+      (selection.fallback !== null && selection.fallback.route.provider !== "codex")
     ) {
       throw new ProductionSemanticWorkerPreflightError(
         `Semantic worker route ${role} must use the locally authenticated Codex provider.`

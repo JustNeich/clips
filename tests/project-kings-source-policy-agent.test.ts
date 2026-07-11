@@ -223,6 +223,28 @@ test("source_policy model selection cannot claim production readiness below 30 b
   );
 });
 
+test("source_policy fail-closed selection validates with a null fallback and explicit mode", () => {
+  const base = selection();
+  assert.doesNotThrow(() =>
+    validateProductionAgentModelSelection(
+      { primary: base.primary, fallback: null, fallbackMode: "fail_closed_none", policy: base.policy },
+      "source_policy"
+    )
+  );
+});
+
+test("source_policy rejects a null fallback that does not declare fail-closed mode", () => {
+  const base = selection();
+  assert.throws(
+    () =>
+      validateProductionAgentModelSelection(
+        { primary: base.primary, fallback: null, policy: base.policy },
+        "source_policy"
+      ),
+    /explicit fail_closed_none fallbackMode/i
+  );
+});
+
 test("runner reads exact frozen bytes and creates only a hash-bound sensitive assessment", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "source-policy-runner-"));
   try {

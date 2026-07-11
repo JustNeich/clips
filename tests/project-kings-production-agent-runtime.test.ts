@@ -532,6 +532,44 @@ test("an unapproved fallback route is rejected before invocation", async () => {
   assert.equal(calls, 0);
 });
 
+test("a fail-closed null-fallback selection surfaces a retryable infra failure without switching models", async () => {
+  const base = selection();
+  const failClosed = {
+    primary: base.primary,
+    fallback: null,
+    fallbackMode: "fail_closed_none" as const,
+    policy: base.policy
+  };
+  let calls = 0;
+  await assert.rejects(
+    () =>
+      runProductionSemanticAgent({
+        role: "source_search",
+        packet: sourceSearchPacket(),
+        selection: failClosed,
+        invoker: async () => {
+          calls += 1;
+          throw new Error("codex exec transport reset");
+        }
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof ProductionAgentRunError);
+      // Only the primary route is attempted; there is no silent switch to a
+      // fallback model. The single attempt keeps the existing retryable
+      // "invoke_error" classification the Stage 3 lease requeues on.
+      assert.equal(error.attempts.length, 1);
+      assert.equal(error.attempts[0]?.outcome, "invoke_error");
+      assert.match(
+        error.attempts[0]?.error ?? "",
+        /frozen manifest declares fail-closed: no fallback route/
+      );
+      assert.match(error.message, /frozen manifest declares fail-closed: no fallback route/);
+      return true;
+    }
+  );
+  assert.equal(calls, 1);
+});
+
 test("missing Codex JSONL token usage fails closed instead of producing incomplete telemetry", async () => {
   await assert.rejects(
     () =>

@@ -302,7 +302,7 @@ test("benchmark selection chooses faster route when its cost is less than 10 per
     ]
   });
   assert.equal(selection.primary.route.routeId, "codex:gpt-5.4-mini");
-  assert.equal(selection.fallback.route.routeId, "codex:gpt-5.4");
+  assert.equal(selection.fallback?.route.routeId, "codex:gpt-5.4");
   assert.equal(selection.fallbackMode, "distinct_route");
   assert.equal(Object.isFrozen(selection), true);
 });
@@ -319,8 +319,8 @@ test("same-route reasoning fallback is used only when no distinct route qualifie
   });
   assert.equal(selection.primary.route.routeId, "codex:gpt-5.6-luna");
   assert.equal(selection.primary.benchmark.reasoningEffort, "low");
-  assert.equal(selection.fallback.route.routeId, "codex:gpt-5.6-luna");
-  assert.equal(selection.fallback.benchmark.reasoningEffort, "medium");
+  assert.equal(selection.fallback?.route.routeId, "codex:gpt-5.6-luna");
+  assert.equal(selection.fallback?.benchmark.reasoningEffort, "medium");
   assert.equal(selection.fallbackMode, "same_route_reasoning");
 
   const distinct = selectBenchmarkedModelRoutes({
@@ -333,7 +333,7 @@ test("same-route reasoning fallback is used only when no distinct route qualifie
     ]
   });
   assert.equal(distinct.primary.route.routeId, "codex:gpt-5.6-luna");
-  assert.equal(distinct.fallback.route.routeId, "codex:gpt-5.4-mini");
+  assert.equal(distinct.fallback?.route.routeId, "codex:gpt-5.4-mini");
   assert.equal(distinct.fallbackMode, "distinct_route");
 });
 
@@ -388,7 +388,7 @@ test("benchmark selection keeps the cheapest route when the cost difference is e
     ]
   });
   assert.equal(selection.primary.route.routeId, "codex:gpt-5.4");
-  assert.equal(selection.fallback.route.routeId, "codex:gpt-5.4-mini");
+  assert.equal(selection.fallback?.route.routeId, "codex:gpt-5.4-mini");
 });
 
 test("benchmark selection filters quality, schema success, and p95 latency", () => {
@@ -457,6 +457,70 @@ test("benchmark selection enforces minimum reasoning and a distinct qualified fa
       return true;
     }
   );
+});
+
+test("without the fail-closed opt-in a single passing route still throws (behavior unchanged)", () => {
+  assert.throws(
+    () =>
+      selectBenchmarkedModelRoutes({
+        registry: PROJECT_KINGS_V1_MODEL_REGISTRY,
+        policy: DEFAULT_SELECTION_POLICY,
+        benchmarks: [benchmark({ routeId: "codex:gpt-5.6-luna" })]
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof ModelSelectionError);
+      assert.match(error.message, /no distinct benchmark-qualified fallback/i);
+      return true;
+    }
+  );
+});
+
+test("fail-closed opt-in returns a null fallback when only one luna route passes the floors", () => {
+  const selection = selectBenchmarkedModelRoutes({
+    registry: PROJECT_KINGS_V1_MODEL_REGISTRY,
+    policy: { ...DEFAULT_SELECTION_POLICY, allowFailClosedSingleRoute: true },
+    benchmarks: [benchmark({ routeId: "codex:gpt-5.6-luna" })]
+  });
+  assert.equal(selection.primary.route.routeId, "codex:gpt-5.6-luna");
+  assert.equal(selection.fallback, null);
+  assert.equal(selection.fallbackMode, "fail_closed_none");
+  assert.equal(Object.isFrozen(selection), true);
+});
+
+test("fail-closed opt-in still prefers a same-route reasoning alternative over fail-closed", () => {
+  const selection = selectBenchmarkedModelRoutes({
+    registry: PROJECT_KINGS_V1_MODEL_REGISTRY,
+    policy: {
+      ...DEFAULT_SELECTION_POLICY,
+      minimumReasoning: "low",
+      allowFailClosedSingleRoute: true
+    },
+    benchmarks: [
+      benchmark({ routeId: "codex:gpt-5.6-luna", reasoningEffort: "low", meanCost: 0.01, p95LatencyMs: 3_000 }),
+      benchmark({ routeId: "codex:gpt-5.6-luna", reasoningEffort: "medium", meanCost: 0.02, p95LatencyMs: 6_000 })
+    ]
+  });
+  assert.equal(selection.fallbackMode, "same_route_reasoning");
+  assert.equal(selection.fallback?.route.routeId, "codex:gpt-5.6-luna");
+  assert.equal(selection.fallback?.benchmark.reasoningEffort, "medium");
+});
+
+test("fail-closed opt-in still prefers a distinct qualified route over fail-closed", () => {
+  const selection = selectBenchmarkedModelRoutes({
+    registry: PROJECT_KINGS_V1_MODEL_REGISTRY,
+    policy: {
+      ...DEFAULT_SELECTION_POLICY,
+      minimumReasoning: "low",
+      allowFailClosedSingleRoute: true
+    },
+    benchmarks: [
+      benchmark({ routeId: "codex:gpt-5.6-luna", reasoningEffort: "low", meanCost: 0.01, p95LatencyMs: 3_000 }),
+      benchmark({ routeId: "codex:gpt-5.4-mini", reasoningEffort: "low", meanCost: 0.05, p95LatencyMs: 4_000 })
+    ]
+  });
+  assert.equal(selection.primary.route.routeId, "codex:gpt-5.6-luna");
+  assert.equal(selection.fallback?.route.routeId, "codex:gpt-5.4-mini");
+  assert.equal(selection.fallbackMode, "distinct_route");
 });
 
 test("unknown context limits fail closed when a stage declares a minimum context requirement", () => {

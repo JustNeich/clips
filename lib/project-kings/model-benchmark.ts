@@ -25,6 +25,7 @@ import {
   type ModelRegistry,
   type ModelRouteDefinition,
   type ModelSelection,
+  type ModelSelectionFallbackMode,
   type ModelSelectionPolicy
 } from "./model-routing";
 import { PRODUCTION_AGENT_OUTPUT_SCHEMAS } from "./production-agent-contracts";
@@ -167,11 +168,13 @@ export type FrozenModelBenchmarkEvidence = Readonly<{
       model: string;
       reasoningEffort: ModelReasoningEffort;
     }>;
+    // null ONLY in fail_closed_none mode: no fallback model route was selected.
     fallback: Readonly<{
       routeId: string;
       model: string;
       reasoningEffort: ModelReasoningEffort;
-    }>;
+    }> | null;
+    fallbackMode: ModelSelectionFallbackMode;
   }> | null;
   selectionError: string | null;
   selectionRejections: readonly Readonly<{ routeId: string; reason: string }>[];
@@ -441,11 +444,14 @@ function buildSelectionEvidence(selection: ModelSelection): NonNullable<FrozenMo
       model: selection.primary.route.model,
       reasoningEffort: selection.primary.benchmark.reasoningEffort
     },
-    fallback: {
-      routeId: selection.fallback.route.routeId,
-      model: selection.fallback.route.model,
-      reasoningEffort: selection.fallback.benchmark.reasoningEffort
-    }
+    fallback: selection.fallback
+      ? {
+          routeId: selection.fallback.route.routeId,
+          model: selection.fallback.route.model,
+          reasoningEffort: selection.fallback.benchmark.reasoningEffort
+        }
+      : null,
+    fallbackMode: selection.fallbackMode
   };
 }
 

@@ -33,7 +33,7 @@ export const LEGACY_PRODUCTION_MODEL_AGENT_ROLES = [
 ] as const satisfies readonly LegacyProductionModelAgentRole[];
 
 export type FrozenProductionAgentRouteManifest = Readonly<{
-  schemaVersion: 1 | 2;
+  schemaVersion: 1 | 2 | 3;
   manifestId: string;
   createdAt: string;
   evidence: Readonly<
@@ -48,7 +48,7 @@ export type FrozenProductionAgentRouteManifest = Readonly<{
 }>;
 
 export type ProductionReadyAgentRouteManifest = Readonly<{
-  schemaVersion: 2;
+  schemaVersion: 2 | 3;
   manifestId: string;
   createdAt: string;
   evidence: Readonly<Record<ProductionModelAgentRole, ProductionAgentRouteManifestEvidence>>;
@@ -134,10 +134,10 @@ export function parseFrozenProductionAgentRouteManifest(
     ["schemaVersion", "manifestId", "createdAt", "evidence", "selections", "manifestSha256"],
     "manifest"
   );
-  if (raw.schemaVersion !== 1 && raw.schemaVersion !== 2) {
+  if (raw.schemaVersion !== 1 && raw.schemaVersion !== 2 && raw.schemaVersion !== 3) {
     throw new ProductionAgentRouteManifestError(
       "manifest_invalid",
-      "manifest.schemaVersion must equal 1 (legacy read-only) or 2 (production)."
+      "manifest.schemaVersion must equal 1 (legacy read-only), 2 (production), or 3 (production with fail-closed single-route support)."
     );
   }
   const schemaVersion = raw.schemaVersion;
@@ -200,9 +200,10 @@ export function parseFrozenProductionAgentRouteManifest(
       roleEvidence.benchmarkVersion,
       `manifest.evidence.${role}.benchmarkVersion`
     );
+    const roleFallback = selections[role].fallback;
     if (
       benchmarkVersion !== selections[role].primary.benchmark.benchmarkVersion ||
-      benchmarkVersion !== selections[role].fallback.benchmark.benchmarkVersion
+      (roleFallback !== null && benchmarkVersion !== roleFallback.benchmark.benchmarkVersion)
     ) {
       throw new ProductionAgentRouteManifestError(
         "manifest_invalid",
@@ -279,13 +280,13 @@ export async function loadFrozenProductionAgentRouteManifest(input: {
     expectedManifestId: input.expectedManifestId
   });
   if (
-    parsed.schemaVersion !== 2 ||
+    (parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3) ||
     !parsed.selections.source_policy ||
     !parsed.evidence.source_policy
   ) {
     throw new ProductionAgentRouteManifestError(
       "manifest_legacy_read_only",
-      "Route manifest schema v1 is historical read-only evidence. Production remains blocked until a schema v2 manifest includes a real source_policy benchmark selection."
+      "Route manifest schema v1 is historical read-only evidence. Production remains blocked until a schema v2/v3 manifest includes a real source_policy benchmark selection."
     );
   }
   return parsed as ProductionReadyAgentRouteManifest;

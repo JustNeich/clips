@@ -48,9 +48,9 @@ test("remaining semantic benchmark freezes 30 real typed packets for every role"
     );
     // The corrected search expectations ride on the role-boundary overlay,
     // and only the source_search dataset version reflects the revision.
-    assert.equal(built.sourceSearchBoundary.revisionId, "project-kings-source-search-role-boundary-v1");
+    assert.equal(built.sourceSearchBoundary.revisionId, "project-kings-source-search-role-boundary-v2");
     assert.match(built.sourceSearchBoundary.overlaySha256, /^[a-f0-9]{64}$/);
-    assert.equal(built.datasets.source_search.datasetVersion, "real-30-v3-search-boundary");
+    assert.equal(built.datasets.source_search.datasetVersion, "real-30-v4-search-boundary");
     assert.equal(built.datasets.caption.datasetVersion, "real-30-v2");
     assert.equal(built.datasets.montage_planner.datasetVersion, "real-30-v2");
     assert.equal(built.datasets.source_fit.datasetVersion, "real-30-v2");
@@ -147,7 +147,7 @@ test("source-search boundary overlay fails closed when it is not bound to the ba
   try {
     const overlayPath = path.join(
       REPO_ROOT,
-      "docs/project-kings-production-pipeline-v1/source-search-role-boundary-v1.overlay.json"
+      "docs/project-kings-production-pipeline-v1/source-search-role-boundary-v2.overlay.json"
     );
     const overlay = JSON.parse(await fs.readFile(overlayPath, "utf8")) as Record<string, unknown>;
     const tamperedPath = path.join(fixtureRoot, "tampered-overlay.json");

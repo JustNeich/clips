@@ -251,7 +251,7 @@ function sourceRefillAgentAttempts(input: {
     const benchmark =
       input.selection.primary.route.routeId === attempt.routeId
         ? input.selection.primary.benchmark
-        : input.selection.fallback.route.routeId === attempt.routeId
+        : input.selection.fallback && input.selection.fallback.route.routeId === attempt.routeId
           ? input.selection.fallback.benchmark
           : null;
     let costMicros: number | null = null;

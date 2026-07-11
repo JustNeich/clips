@@ -188,6 +188,60 @@ test("frozen route manifest rejects an unbenchmarked or policy-ineligible select
   );
 });
 
+test("frozen route manifest v3 accepts an explicit fail-closed single-route selection", () => {
+  const original = manifestFixture();
+  const failClosedVisionQa = {
+    ...original.selections.vision_qa,
+    fallback: null,
+    fallbackMode: "fail_closed_none" as const
+  };
+  const payload = {
+    schemaVersion: 3 as const,
+    manifestId: original.manifestId,
+    createdAt: original.createdAt,
+    evidence: original.evidence,
+    selections: {
+      ...original.selections,
+      vision_qa: failClosedVisionQa
+    }
+  };
+  const manifest = parseFrozenProductionAgentRouteManifest(
+    {
+      ...payload,
+      manifestSha256: calculateProductionAgentRouteManifestSha256(payload)
+    },
+    { expectedManifestId: "project-kings-model-routes-v3" }
+  );
+  assert.equal(manifest.schemaVersion, 3);
+  assert.equal(manifest.selections.vision_qa.fallback, null);
+  assert.equal(manifest.selections.vision_qa.fallbackMode, "fail_closed_none");
+});
+
+test("frozen route manifest rejects a null fallback that omits explicit fail-closed mode", () => {
+  const original = manifestFixture();
+  const holeWithoutHash = {
+    schemaVersion: 3 as const,
+    manifestId: original.manifestId,
+    createdAt: original.createdAt,
+    evidence: original.evidence,
+    selections: {
+      ...original.selections,
+      vision_qa: { ...original.selections.vision_qa, fallback: null }
+    }
+  };
+  const hole = {
+    ...holeWithoutHash,
+    manifestSha256: calculateProductionAgentRouteManifestSha256(holeWithoutHash)
+  };
+  assert.throws(
+    () => parseFrozenProductionAgentRouteManifest(hole),
+    (error: unknown) =>
+      error instanceof ProductionAgentRouteManifestError &&
+      error.code === "manifest_invalid" &&
+      /fail_closed_none/.test(error.message)
+  );
+});
+
 test("route-specific benchmark evidence cannot be relabeled as another agent role", () => {
   const original = manifestFixture();
   const relabeledWithoutHash = {
@@ -241,7 +295,7 @@ test("the checked-in v1 Project Kings manifest remains parseable only as histori
   assert.equal(manifest.manifestSha256, "f29362a09c0e1a3c98c24a9585759259455703ab8c1c879bc36f8643f2a411de");
   assert.equal(manifest.selections.source_policy, undefined);
   assert.equal(manifest.selections.vision_qa.primary.route.model, "gpt-5.4-mini");
-  assert.equal(manifest.selections.vision_qa.fallback.route.model, "gpt-5.4");
+  assert.equal(manifest.selections.vision_qa.fallback?.route.model, "gpt-5.4");
   await assert.rejects(
     loadFrozenProductionAgentRouteManifest({
       repoCwd: process.cwd(),

@@ -64,9 +64,17 @@ export type ProductionAgentModelRoute = Readonly<{
   }>;
 }>;
 
+export type ProductionAgentFallbackMode =
+  | "distinct_route"
+  | "same_route_reasoning"
+  | "fail_closed_none";
+
 export type ProductionAgentModelSelection = Readonly<{
   primary: ProductionAgentModelRoute;
-  fallback: ProductionAgentModelRoute;
+  // null ONLY when fallbackMode is "fail_closed_none": the frozen manifest
+  // declares no fallback model route and the pipeline must fail closed.
+  fallback: ProductionAgentModelRoute | null;
+  fallbackMode?: ProductionAgentFallbackMode;
   policy: Readonly<{
     requiresVision: boolean;
     requiresJsonSchema: boolean;
@@ -252,6 +260,17 @@ export function validateProductionAgentModelSelection(
     );
   }
   validateBenchmarkedRoute(selection.primary, selection, role, "primary");
+  if (selection.fallback === null) {
+    // A null fallback is only legitimate when the selection explicitly declares
+    // fail-closed mode. Otherwise the absence is an implicit hole, not an audited
+    // owner-approved single-route decision.
+    if (selection.fallbackMode !== "fail_closed_none") {
+      throw new ProductionAgentConfigurationError(
+        "A null fallback route requires an explicit fail_closed_none fallbackMode."
+      );
+    }
+    return;
+  }
   validateBenchmarkedRoute(selection.fallback, selection, role, "fallback");
   if (selection.primary.route.routeId === selection.fallback.route.routeId) {
     throw new ProductionAgentConfigurationError("Primary and fallback routes must be distinct.");
@@ -457,7 +476,16 @@ export async function runProductionSemanticAgent<R extends ProductionAgentRole>(
   const prompt = buildProductionAgentPrompt(input.role, packet);
   const promptSha256 = sha256(prompt);
   const outputSchema = PRODUCTION_AGENT_OUTPUT_SCHEMAS[input.role];
-  const routes = [input.selection.primary, input.selection.fallback].slice(0, maxAttempts);
+  // Fail closed: when the frozen manifest declares no fallback model route
+  // (fallback === null), the only authorized route is the primary. On a
+  // retryable primary-route failure the run ends and throws ProductionAgentRunError,
+  // which the Stage 3 lease already classifies as a retryable infrastructure
+  // failure (attempt increment + backoff + requeue). No silent model substitution.
+  const failClosedNoFallback = input.selection.fallback === null;
+  const orderedRoutes = failClosedNoFallback
+    ? [input.selection.primary]
+    : [input.selection.primary, input.selection.fallback];
+  const routes = orderedRoutes.slice(0, maxAttempts);
   const now = input.now ?? (() => new Date());
   const monotonicNowMs = input.monotonicNowMs ?? (() => performance.now());
   const attempts: ProductionAgentAttemptTelemetry[] = [];
@@ -519,6 +547,15 @@ export async function runProductionSemanticAgent<R extends ProductionAgentRole>(
       };
     } catch (error) {
       const isSchemaError = rawOutput !== null;
+      const isNonRetryable = error instanceof ProductionAgentNonRetryableInvocationError;
+      // When there is no fallback model route, a retryable primary infrastructure
+      // failure must surface explicitly as a fail-closed state (same retryable
+      // "invoke_error" classification the Stage 3 lease requeues on) rather than a
+      // silent switch to another model.
+      const attemptError =
+        failClosedNoFallback && !isSchemaError && !isNonRetryable
+          ? `primary model route failed and the frozen manifest declares fail-closed: no fallback route: ${normalizeError(error)}`
+          : normalizeError(error);
       attempts.push(
         telemetry({
           attempt: index + 1,
@@ -530,10 +567,10 @@ export async function runProductionSemanticAgent<R extends ProductionAgentRole>(
           outputSha256: rawOutput === null ? null : sha256(rawOutput),
           usage,
           outcome: isSchemaError ? "schema_error" : "invoke_error",
-          error: normalizeError(error)
+          error: attemptError
         })
       );
-      if (error instanceof ProductionAgentNonRetryableInvocationError) {
+      if (isNonRetryable) {
         break;
       }
     }
