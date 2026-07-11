@@ -123,7 +123,21 @@ export type ProjectKingsReplaySuite = {
   content: ProjectKingsReplayEvidence;
 };
 
+// Test-observability snapshot: the isolated replay DB is torn down when the
+// scenario returns, so the outbox must be captured before teardown to prove the
+// virtual clock (not the real wall clock) stamped every availableAt.
+export type ProjectKingsReplayOutboxAudit = {
+  scenarioId: ReplayScenarioId;
+  finishedAt: string;
+  outbox: Array<{ id: string; eventKind: string; status: string; availableAt: string }>;
+};
+
 type ReplayScenarioId = ProjectKingsReplayEvidence["scenarioId"];
+
+// Mutable virtual clock (epoch ms) owned by each scenario runner. The same
+// object is shared with run-start dependencies, the simulation dispatcher, the
+// outbox dispatch loop, and reconcile so replay time stays fully coherent.
+type ReplayClock = { ms: number };
 
 const FIXED_APPROVED_AT = "2026-07-10T08:00:00.000Z";
 const TEMPLATE_ID_BY_PROFILE: Record<ProjectKingsPilotProfileKey, string> = {
@@ -432,10 +446,17 @@ function seedReplayPortfolio(scenarioId: ReplayScenarioId): {
   return { workspaceId, userId, profiles };
 }
 
-function replayDependencies(scenarioId: ReplayScenarioId): PortfolioOrchestratorDependencies {
+function replayDependencies(
+  scenarioId: ReplayScenarioId,
+  clock: ReplayClock
+): PortfolioOrchestratorDependencies {
   return {
     featureFlagEnabled: () => true,
-    now: () => new Date(FIXED_APPROVED_AT),
+    // One virtual clock drives run-start store writes (source reservation
+    // availableAt), the outbox dispatch, and reconcile. Reading a frozen
+    // FIXED_APPROVED_AT here while dispatch advanced a different clock is what
+    // made replay outbox events land in the virtual future and stall forever.
+    now: () => new Date(clock.ms),
     validateLiveProfile: async (profile) => ({
       liveFactsHash: hash({ scenarioId, profileId: profile.id, status: "frozen-local-replay" }),
       checks: [
@@ -464,6 +485,7 @@ async function startReplayRun(input: {
   scenarioId: ReplayScenarioId;
   logicalDate: string;
   mode: "simulation" | "shadow";
+  clock: ReplayClock;
 }): Promise<PortfolioRunSummary> {
   const seeded = seedReplayPortfolio(input.scenarioId);
   return startPortfolioProductionRun(
@@ -476,7 +498,7 @@ async function startReplayRun(input: {
       publishPolicyId: PROJECT_KINGS_PUBLISH_POLICY_ID,
       idempotencyKey: replayAlias(input.scenarioId, input.logicalDate)
     },
-    replayDependencies(input.scenarioId)
+    replayDependencies(input.scenarioId, input.clock)
   );
 }
 
@@ -484,6 +506,7 @@ async function dispatchUntilTerminal(input: {
   runId: string;
   dispatcher: PortfolioOutboxDispatcher;
   startedAtMs: number;
+  clock: ReplayClock;
   maxTicks?: number;
 }): Promise<{
   summary: PortfolioRunSummary;
@@ -493,7 +516,8 @@ async function dispatchUntilTerminal(input: {
   retried: number;
   dead: number;
 }> {
-  let clockMs = input.startedAtMs;
+  const clock = input.clock;
+  clock.ms = input.startedAtMs;
   let delivered = 0;
   let retried = 0;
   let dead = 0;
@@ -504,27 +528,28 @@ async function dispatchUntilTerminal(input: {
       limit: 100,
       leaseMs: 5_000,
       retryDelayMs: 1_000,
-      now: new Date(clockMs)
+      now: new Date(clock.ms)
     });
     delivered += batch.delivered;
     retried += batch.retried;
     dead += batch.dead;
     const summary = reconcilePortfolioProductionRun({
       runId: input.runId,
-      leaseOwner: `replay-reconcile-${tick}`
+      leaseOwner: `replay-reconcile-${tick}`,
+      now: new Date(clock.ms)
     });
     if (["completed", "blocked", "failed"].includes(summary.run.status)) {
       let drainTicks = 0;
       while (listProductionOutbox({ runId: input.runId, status: "pending" }).length > 0 && drainTicks < 10) {
         drainTicks += 1;
-        clockMs += 1_000;
+        clock.ms += 1_000;
         const drain = await dispatchPortfolioProductionOutbox({
           owner: `replay-terminal-drain-${drainTicks}`,
           dispatcher: input.dispatcher,
           limit: 100,
           leaseMs: 5_000,
           retryDelayMs: 1_000,
-          now: new Date(clockMs)
+          now: new Date(clock.ms)
         });
         delivered += drain.delivered;
         retried += drain.retried;
@@ -534,13 +559,13 @@ async function dispatchUntilTerminal(input: {
       return {
         summary,
         ticks: tick + drainTicks,
-        logicalFinishedAtMs: clockMs,
+        logicalFinishedAtMs: clock.ms,
         delivered,
         retried,
         dead
       };
     }
-    clockMs += 1_000;
+    clock.ms += 1_000;
   }
   throw new Error(`Replay did not settle in ${input.maxTicks ?? 100} ticks.`);
 }
@@ -571,15 +596,18 @@ export async function runHistoricalJuly9Replay(options: {
       sourceSession: { sessionId: string; rootTranscriptSha256: string; subagentTranscriptSetSha256: string };
     };
     const startedAt = "2026-07-11T10:00:00.000Z";
+    const clock: ReplayClock = { ms: new Date(startedAt).getTime() };
     const started = await startReplayRun({
       scenarioId: "historical-july-9",
       logicalDate: "2026-07-09",
-      mode: "shadow"
+      mode: "shadow",
+      clock
     });
     const replay = await runPortfolioSimulationUntilSettled({
       runId: started.run.id,
       startTime: new Date(startedAt),
-      maxTicks: 100
+      maxTicks: 100,
+      clock
     });
     const summary = replay.summary;
     if (summary.run.status !== "completed") {
@@ -684,10 +712,12 @@ export async function runInfrastructureRecoveryReplay(): Promise<ProjectKingsRep
   return withIsolatedReplayDb("infrastructure-recovery", async () => {
     const startedAt = "2026-07-11T11:00:00.000Z";
     const startedAtMs = new Date(startedAt).getTime();
+    const clock: ReplayClock = { ms: startedAtMs };
     const started = await startReplayRun({
       scenarioId: "infrastructure-recovery",
       logicalDate: "2026-07-10",
-      mode: "simulation"
+      mode: "simulation",
+      clock
     });
     const lostClaim = claimProductionOutbox({
       owner: "replay-lost-worker",
@@ -703,7 +733,8 @@ export async function runInfrastructureRecoveryReplay(): Promise<ProjectKingsRep
     let provider429Count = 0;
     let completion502Count = 0;
     const base = createPortfolioSimulationDispatcher({
-      faults: { uploadOutcomeUnknownOnce: true }
+      faults: { uploadOutcomeUnknownOnce: true },
+      now: () => new Date(clock.ms)
     });
     const dispatcher: PortfolioOutboxDispatcher = async (event) => {
       if (event.eventKind === "source_fit.requested" && provider429Count === 0) {
@@ -720,6 +751,7 @@ export async function runInfrastructureRecoveryReplay(): Promise<ProjectKingsRep
       runId: started.run.id,
       dispatcher,
       startedAtMs: startedAtMs + 1_001,
+      clock,
       maxTicks: 100
     });
     const events = listProductionEvents({ runId: started.run.id });
@@ -879,7 +911,7 @@ function recordReplayGate(input: {
   });
 }
 
-function reserveReplacementSource(item: ProductionItemRecord): ProductionItemRecord {
+function reserveReplacementSource(item: ProductionItemRecord, now?: string): ProductionItemRecord {
   const attemptedCandidateIds = new Set(
     listProductionRunChannelAttemptedCandidateIds(item.runChannelId)
   );
@@ -897,6 +929,7 @@ function reserveReplacementSource(item: ProductionItemRecord): ProductionItemRec
     candidateId: candidate.id,
     itemId: item.id,
     expectedItemVersion: item.version,
+    now,
     outbox: {
       eventKind: "source_ingest.requested",
       payload: { candidateId: candidate.id, replay: "content-rework" },
@@ -905,14 +938,19 @@ function reserveReplacementSource(item: ProductionItemRecord): ProductionItemRec
   }).item;
 }
 
-export async function runContentReworkReplay(): Promise<ProjectKingsReplayEvidence> {
+export async function runContentReworkReplay(options: {
+  onOutboxAudit?: (audit: ProjectKingsReplayOutboxAudit) => void;
+} = {}): Promise<ProjectKingsReplayEvidence> {
   return withIsolatedReplayDb("content-rework", async () => {
     const startedAt = "2026-07-11T12:00:00.000Z";
     const startedAtMs = new Date(startedAt).getTime();
+    const clock: ReplayClock = { ms: startedAtMs };
+    const nowIso = () => new Date(clock.ms).toISOString();
     const started = await startReplayRun({
       scenarioId: "content-rework",
       logicalDate: "2026-07-10",
-      mode: "shadow"
+      mode: "shadow",
+      clock
     });
     const initialTarget = [...started.items].sort(
       (left, right) => left.channelId.localeCompare(right.channelId) || left.itemSlot - right.itemSlot
@@ -929,7 +967,7 @@ export async function runContentReworkReplay(): Promise<ProjectKingsReplayEviden
     let unsafeCropDefectCodes: string[] = [];
     let replacementBudgetBeforeFinal: ReturnType<typeof decidePortfolioLiveRecoveryBudget> | null = null;
     let replacementBudgetAtGenerationThree: ReturnType<typeof decidePortfolioLiveRecoveryBudget> | null = null;
-    const base = createPortfolioSimulationDispatcher();
+    const base = createPortfolioSimulationDispatcher({ now: () => new Date(clock.ms) });
 
     const handleSourceContentFault = async (item: ProductionItemRecord): Promise<void> => {
       sourceContractResult = validateProductionAgentOutput("source_fit", {
@@ -979,7 +1017,8 @@ export async function runContentReworkReplay(): Promise<ProjectKingsReplayEviden
         toState: "quarantined",
         eventType: "replay.source.quarantined",
         eventPayload: { defectCodes: defects.map((defect) => defect.code) },
-        patch: { lastError: "duplicate_video+duplicate_event+concept_mismatch" }
+        patch: { lastError: "duplicate_video+duplicate_event+concept_mismatch" },
+        now: nowIso()
       });
       quarantineChannelSourceCandidate({
         candidateId: item.sourceCandidateId!,
@@ -991,7 +1030,7 @@ export async function runContentReworkReplay(): Promise<ProjectKingsReplayEviden
         attemptBudget: 3
       });
       secondGenerationId = replacement.id;
-      reserveReplacementSource(replacement);
+      reserveReplacementSource(replacement, nowIso());
     };
 
     const handlePreviewContentFaults = async (initialItem: ProductionItemRecord): Promise<void> => {
@@ -1004,7 +1043,8 @@ export async function runContentReworkReplay(): Promise<ProjectKingsReplayEviden
           previewSha256: hash("content-approved-preview-v1"),
           templateSha256: hash("content-template-v1"),
           settingsSha256: hash("content-settings-v1")
-        }
+        },
+        now: nowIso()
       });
       const approvedBindingSha256 = calculateQualityVerdictBindingSha256({
         gateType: "preview",
@@ -1037,14 +1077,16 @@ export async function runContentReworkReplay(): Promise<ProjectKingsReplayEviden
         itemId: item.id,
         expectedVersion: item.version,
         toState: "preview_approved",
-        eventType: "replay.preview.approved"
+        eventType: "replay.preview.approved",
+        now: nowIso()
       });
       item = transitionProductionItem({
         itemId: item.id,
         expectedVersion: item.version,
         toState: "rework",
         resumeState: "preview_ready",
-        eventType: "replay.preview.binding_changed"
+        eventType: "replay.preview.binding_changed",
+        now: nowIso()
       });
       item = transitionProductionItem({
         itemId: item.id,
@@ -1054,7 +1096,8 @@ export async function runContentReworkReplay(): Promise<ProjectKingsReplayEviden
         patch: {
           previewSha256: hash("content-stale-preview-v2"),
           settingsSha256: hash("content-settings-v2")
-        }
+        },
+        now: nowIso()
       });
       const staleVerdict = getLatestQualityVerdictForArtifact({
         productionItemId: item.id,
@@ -1181,7 +1224,8 @@ export async function runContentReworkReplay(): Promise<ProjectKingsReplayEviden
             resumeState: "preview_ready",
             eventType: "replay.preview.targeted_revision",
             eventPayload: { attempt },
-            patch: { incrementAttempts: true }
+            patch: { incrementAttempts: true },
+            now: nowIso()
           });
           item = transitionProductionItem({
             itemId: item.id,
@@ -1192,7 +1236,8 @@ export async function runContentReworkReplay(): Promise<ProjectKingsReplayEviden
             patch: {
               previewSha256: hash({ contentPreviewRevision: attempt + 2 }),
               settingsSha256: hash({ contentSettingsRevision: attempt + 2 })
-            }
+            },
+            now: nowIso()
           });
         } else {
           if (decision.action !== "replace_source") {
@@ -1209,7 +1254,8 @@ export async function runContentReworkReplay(): Promise<ProjectKingsReplayEviden
             toState: "replaced",
             eventType: "replay.preview.replacement_budget_exhausted",
             eventPayload: { attempt, decision: decision.action },
-            patch: { incrementAttempts: true, lastError: "unsafe_crop_after_three_revisions" }
+            patch: { incrementAttempts: true, lastError: "unsafe_crop_after_three_revisions" },
+            now: nowIso()
           });
         }
       }
@@ -1230,7 +1276,7 @@ export async function runContentReworkReplay(): Promise<ProjectKingsReplayEviden
         attemptBudget: replacement.attemptBudget,
         generation: replacement.generation
       });
-      reserveReplacementSource(replacement);
+      reserveReplacementSource(replacement, nowIso());
     };
 
     const dispatcher: PortfolioOutboxDispatcher = async (event) => {
@@ -1250,6 +1296,7 @@ export async function runContentReworkReplay(): Promise<ProjectKingsReplayEviden
       runId: started.run.id,
       dispatcher,
       startedAtMs,
+      clock,
       maxTicks: 150
     });
     if (!secondGenerationId || !thirdGenerationId || !sourceContractResult) {
@@ -1305,7 +1352,7 @@ export async function runContentReworkReplay(): Promise<ProjectKingsReplayEviden
       0, settled.summary.items.every((item) => !item.publicationId && !item.youtubeVideoId));
     addAssertion(assertions, "no dead outbox record", settled.dead, 0, settled.dead === 0);
 
-    return finalizeEvidence({
+    const evidence = finalizeEvidence({
       schemaVersion: "project-kings-replay-evidence-v1",
       scenarioId: "content-rework",
       runId: replayAlias("content-rework", "2026-07-10"),
@@ -1356,6 +1403,20 @@ export async function runContentReworkReplay(): Promise<ProjectKingsReplayEviden
       externalEffects: zeroExternalEffects(),
       outcome: "pass"
     });
+    // Capture the isolated-DB outbox before withIsolatedReplayDb tears it down,
+    // so a regression test can prove every availableAt was stamped on the
+    // virtual clock and never leaked past the virtual finishedAt.
+    options.onOutboxAudit?.({
+      scenarioId: "content-rework",
+      finishedAt: evidence.clock.finishedAt,
+      outbox: listProductionOutbox({ runId: started.run.id }).map((event) => ({
+        id: event.id,
+        eventKind: event.eventKind,
+        status: event.status,
+        availableAt: event.availableAt
+      }))
+    });
+    return evidence;
   });
 }
 

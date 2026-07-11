@@ -35,9 +35,9 @@ function recordSimulationAgent(
   item: ProductionItemRecord,
   role: string,
   output: unknown,
-  qualityBindingSha256?: string | null
+  qualityBindingSha256?: string | null,
+  stamp: string = new Date().toISOString()
 ): AgentAttemptRecord {
-  const stamp = new Date().toISOString();
   const attemptNo = listAgentAttempts({
     runId: item.runId,
     productionItemId: item.id
@@ -109,13 +109,19 @@ export type PortfolioSimulationFaults = {
 
 export function createPortfolioSimulationDispatcher(input: {
   faults?: PortfolioSimulationFaults;
+  // Optional virtual clock. Deterministic replay/simulation contours pass it so
+  // every time-dependent store write (outbox availableAt via transitionProductionItem,
+  // recordPublicVerification) is stamped on the virtual clock, not the real one.
+  now?: () => Date;
 } = {}): (event: ProductionOutboxRecord) => Promise<void> {
   const remainingFailures = new Map(
     Object.entries(input.faults?.failBeforeEvent ?? {})
   );
+  const now = input.now ?? (() => new Date());
   let uploadOutcomeUnknownRemaining = input.faults?.uploadOutcomeUnknownOnce === true;
 
   return async (event) => {
+    const stampIso = now().toISOString();
     const failures = remainingFailures.get(event.eventKind) ?? 0;
     if (failures > 0) {
       remainingFailures.set(event.eventKind, failures - 1);
@@ -140,7 +146,8 @@ export function createPortfolioSimulationDispatcher(input: {
           eventKind: "source_fit.requested",
           payload: { sourceSha256 },
           maxAttempts: 3
-        }
+        },
+        now: stampIso
       });
       return;
     }
@@ -151,7 +158,7 @@ export function createPortfolioSimulationDispatcher(input: {
         artifactSha256: item.sourceSha256!,
         sourceSha256: item.sourceSha256
       });
-      const attempt = recordSimulationAgent(item, "source_fit", { decision: "PASS" }, bindingSha256);
+      const attempt = recordSimulationAgent(item, "source_fit", { decision: "PASS" }, bindingSha256, stampIso);
       recordPassGate(item, "source", item.sourceSha256!, attempt);
       transitionProductionItem({
         itemId: item.id,
@@ -162,14 +169,15 @@ export function createPortfolioSimulationDispatcher(input: {
           eventKind: "brief.requested",
           payload: { sourceSha256: item.sourceSha256 },
           maxAttempts: 3
-        }
+        },
+        now: stampIso
       });
       return;
     }
 
     if (event.eventKind === "brief.requested") {
-      recordSimulationAgent(item, "caption", { title: "Simulation title", hook: "Hook" });
-      recordSimulationAgent(item, "montage_planner", { clipStartSec: 0, durationSec: 30 });
+      recordSimulationAgent(item, "caption", { title: "Simulation title", hook: "Hook" }, null, stampIso);
+      recordSimulationAgent(item, "montage_planner", { clipStartSec: 0, durationSec: 30 }, null, stampIso);
       transitionProductionItem({
         itemId: item.id,
         expectedVersion: item.version,
@@ -179,7 +187,8 @@ export function createPortfolioSimulationDispatcher(input: {
           eventKind: "preview.requested",
           payload: { sourceSha256: item.sourceSha256 },
           maxAttempts: 3
-        }
+        },
+        now: stampIso
       });
       return;
     }
@@ -197,7 +206,8 @@ export function createPortfolioSimulationDispatcher(input: {
         expectedVersion: item.version,
         toState: "preview_ready",
         eventType: "simulation.preview_ready",
-        patch: { previewSha256, templateSha256, settingsSha256 }
+        patch: { previewSha256, templateSha256, settingsSha256 },
+        now: stampIso
       });
       const bindingSha256 = calculateQualityVerdictBindingSha256({
         gateType: "preview",
@@ -211,7 +221,8 @@ export function createPortfolioSimulationDispatcher(input: {
         item,
         "vision_qa",
         { decision: "PASS", artifact: previewSha256 },
-        bindingSha256
+        bindingSha256,
+        stampIso
       );
       recordPassGate(item, "preview", previewSha256, attempt);
       transitionProductionItem({
@@ -223,7 +234,8 @@ export function createPortfolioSimulationDispatcher(input: {
           eventKind: "final_render.requested",
           payload: { previewSha256 },
           maxAttempts: 3
-        }
+        },
+        now: stampIso
       });
       return;
     }
@@ -235,7 +247,8 @@ export function createPortfolioSimulationDispatcher(input: {
         expectedVersion: item.version,
         toState: "final_rendered",
         eventType: "simulation.final_rendered",
-        patch: { finalArtifactSha256 }
+        patch: { finalArtifactSha256 },
+        now: stampIso
       });
       const bindingSha256 = calculateQualityVerdictBindingSha256({
         gateType: "final",
@@ -249,14 +262,16 @@ export function createPortfolioSimulationDispatcher(input: {
         item,
         "vision_qa",
         { decision: "PASS", artifact: finalArtifactSha256 },
-        bindingSha256
+        bindingSha256,
+        stampIso
       );
       recordPassGate(item, "final", finalArtifactSha256, attempt);
       item = transitionProductionItem({
         itemId: item.id,
         expectedVersion: item.version,
         toState: "final_approved",
-        eventType: "simulation.final_approved"
+        eventType: "simulation.final_approved",
+        now: stampIso
       });
       if (run.mode === "shadow") return;
       const publicationId = `simulation-publication-${item.id}`;
@@ -266,7 +281,8 @@ export function createPortfolioSimulationDispatcher(input: {
         expectedVersion: item.version,
         toState: "publication_scheduled",
         eventType: "simulation.publication_scheduled",
-        patch: { publicationId, youtubeVideoId }
+        patch: { publicationId, youtubeVideoId },
+        now: stampIso
       });
       if (uploadOutcomeUnknownRemaining) {
         uploadOutcomeUnknownRemaining = false;
@@ -279,7 +295,8 @@ export function createPortfolioSimulationDispatcher(input: {
             eventKind: "upload.reconcile",
             payload: { publicationId, youtubeVideoId },
             maxAttempts: 3
-          }
+          },
+          now: stampIso
         });
         return;
       }
@@ -297,7 +314,8 @@ export function createPortfolioSimulationDispatcher(input: {
         pagePlayable: true,
         pageCanonicalVideoId: youtubeVideoId,
         pageChannelId: item.expectedYoutubeChannelId,
-        evidence: { simulation: true, exactPage: true }
+        evidence: { simulation: true, exactPage: true },
+        now: stampIso
       });
       return;
     }
@@ -314,7 +332,8 @@ export function createPortfolioSimulationDispatcher(input: {
         patch: {
           publicationId: item.publicationId,
           youtubeVideoId: item.youtubeVideoId
-        }
+        },
+        now: stampIso
       });
       recordPublicVerification({
         productionItemId: item.id,
@@ -330,7 +349,8 @@ export function createPortfolioSimulationDispatcher(input: {
         pagePlayable: true,
         pageCanonicalVideoId: item.youtubeVideoId,
         pageChannelId: item.expectedYoutubeChannelId,
-        evidence: { simulation: true, reconciledExistingUpload: true }
+        evidence: { simulation: true, reconciledExistingUpload: true },
+        now: stampIso
       });
       return;
     }
@@ -344,6 +364,11 @@ export async function runPortfolioSimulationUntilSettled(input: {
   dispatcher?: (event: ProductionOutboxRecord) => Promise<void>;
   maxTicks?: number;
   startTime?: Date;
+  // Shared mutable virtual clock. When provided, one clock drives the default
+  // dispatcher's store writes, the outbox dispatch, and the reconcile pass, and
+  // this loop advances it. Kept coherent with the run-start clock so no write
+  // stamps availableAt in the virtual future.
+  clock?: { ms: number };
 }): Promise<{
   summary: PortfolioRunSummary;
   ticks: number;
@@ -351,9 +376,9 @@ export async function runPortfolioSimulationUntilSettled(input: {
   retried: number;
   dead: number;
 }> {
-  const dispatcher = input.dispatcher ?? createPortfolioSimulationDispatcher();
+  const clock = input.clock ?? { ms: (input.startTime ?? new Date()).getTime() };
+  const dispatcher = input.dispatcher ?? createPortfolioSimulationDispatcher({ now: () => new Date(clock.ms) });
   const maxTicks = input.maxTicks ?? 50;
-  let clockMs = (input.startTime ?? new Date()).getTime();
   let delivered = 0;
   let retried = 0;
   let dead = 0;
@@ -364,14 +389,15 @@ export async function runPortfolioSimulationUntilSettled(input: {
       limit: 100,
       leaseMs: 60_000,
       retryDelayMs: 1_000,
-      now: new Date(clockMs)
+      now: new Date(clock.ms)
     });
     delivered += batch.delivered;
     retried += batch.retried;
     dead += batch.dead;
     const summary = reconcilePortfolioProductionRun({
       runId: input.runId,
-      leaseOwner: `simulation-reconcile-${input.runId}`
+      leaseOwner: `simulation-reconcile-${input.runId}`,
+      now: new Date(clock.ms)
     });
     const terminal =
       summary.run.status === "completed" ||
@@ -383,9 +409,9 @@ export async function runPortfolioSimulationUntilSettled(input: {
       return { summary, ticks: tick, delivered, retried, dead };
     }
     if (batch.claimed === 0) {
-      clockMs += 1_000;
+      clock.ms += 1_000;
     } else {
-      clockMs += 10;
+      clock.ms += 10;
     }
   }
   return {

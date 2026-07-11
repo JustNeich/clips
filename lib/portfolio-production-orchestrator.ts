@@ -395,6 +395,10 @@ function reserveInitialSources(input: {
   run: ProductionRunRecord;
   canaryPolicy: ProductionCanaryPolicy;
   canaryItemIds: readonly string[];
+  // Optional caller clock (ISO). Deterministic replay/simulation contours run
+  // on a virtual clock; the store must stamp outbox availableAt with it, or the
+  // reservation events land in the virtual future and never become claimable.
+  now?: string;
 }): void {
   const items = listProductionItems({ runId: input.run.id }).sort(
     (left, right) => left.channelId.localeCompare(right.channelId) || left.itemSlot - right.itemSlot
@@ -461,7 +465,7 @@ function reserveInitialSources(input: {
       }];
     });
     if (reservations.length > 0) {
-      reserveChannelSourceCandidatesAtomically(reservations);
+      reserveChannelSourceCandidatesAtomically(reservations, { now: input.now });
     }
     return;
   }
@@ -492,6 +496,7 @@ function reserveInitialSources(input: {
       candidateId: candidate.id,
       itemId: item.id,
       expectedItemVersion: item.version,
+      now: input.now,
       ...(releaseNow
         ? {
             outbox: {
@@ -518,6 +523,9 @@ export async function startPortfolioProductionRun(
   dependencies: PortfolioOrchestratorDependencies
 ): Promise<PortfolioRunSummary & { existing: boolean; preflight: ProductionProfilePreflight[] }> {
   assertStartInput(input);
+  // Caller-provided virtual clock (deterministic replay/simulation). Undefined
+  // in production, so the store falls back to the real wall clock.
+  const startNow = dependencies.now?.().toISOString();
   if (
     input.mode === "live" &&
     !(dependencies.featureFlagEnabled?.(PORTFOLIO_PIPELINE_FEATURE_FLAG) ?? false)
@@ -614,7 +622,7 @@ export async function startPortfolioProductionRun(
         ["ready", "running", "waiting_public"].includes(existing.status)
       ) {
         findOrCreateItems(existing);
-        reserveInitialSources({ run: existing, canaryPolicy, canaryItemIds: [] });
+        reserveInitialSources({ run: existing, canaryPolicy, canaryItemIds: [], now: startNow });
       }
       return { ...buildSummary(existing.id), existing: true, preflight: storedPreflight };
     }
@@ -674,7 +682,7 @@ export async function startPortfolioProductionRun(
       ["ready", "running", "waiting_public"].includes(created.run.status)
     ) {
       findOrCreateItems(created.run);
-      reserveInitialSources({ run: created.run, canaryPolicy, canaryItemIds: [] });
+      reserveInitialSources({ run: created.run, canaryPolicy, canaryItemIds: [], now: startNow });
     }
     return { ...buildSummary(created.run.id), existing: true, preflight };
   }
@@ -749,7 +757,7 @@ export async function startPortfolioProductionRun(
   const canaryItemIds = canaryPolicy === "first_item_per_channel_public_verified"
     ? firstItemIdsByChannel(items)
     : [];
-  reserveInitialSources({ run, canaryPolicy, canaryItemIds });
+  reserveInitialSources({ run, canaryPolicy, canaryItemIds, now: startNow });
   const summary = buildSummary(run.id);
   return {
     ...summary,
@@ -760,7 +768,7 @@ export async function startPortfolioProductionRun(
   };
 }
 
-function releasePostCanaryItems(run: ProductionRunRecord, items: ProductionItemRecord[]): void {
+function releasePostCanaryItems(run: ProductionRunRecord, items: ProductionItemRecord[], now?: string): void {
   if (run.mode !== "live" || resolveRunCanaryPolicy(run) !== "first_item_per_channel_public_verified") return;
   const sorted = [...items].sort(
     (left, right) => left.channelId.localeCompare(right.channelId) || left.itemSlot - right.itemSlot
@@ -785,7 +793,8 @@ function releasePostCanaryItems(run: ProductionRunRecord, items: ProductionItemR
           candidateId: item.sourceCandidateId
         }),
         payload: { candidateId: item.sourceCandidateId },
-        maxAttempts: 3
+        maxAttempts: 3,
+        now
       });
     } catch (error) {
       if (!asErrorMessage(error).includes("already exists")) throw error;
@@ -797,7 +806,14 @@ export function reconcilePortfolioProductionRun(input: {
   runId: string;
   leaseOwner: string;
   leaseMs?: number;
+  // Optional caller clock (Date or ISO). Deterministic replay/simulation
+  // contours pass their virtual clock so any outbox the reconcile creates
+  // (source reservation, post-canary release) stays claimable on that clock.
+  now?: Date | string;
 }): PortfolioRunSummary & { acquired: boolean } {
+  const reconcileNow = input.now === undefined
+    ? undefined
+    : typeof input.now === "string" ? input.now : input.now.toISOString();
   const claimed = claimProductionRunLease({
     runId: input.runId,
     owner: input.leaseOwner,
@@ -814,9 +830,9 @@ export function reconcilePortfolioProductionRun(input: {
         ? firstItemIdsByChannel(items)
         : [];
     if (!cancellationRequested) {
-      reserveInitialSources({ run, canaryPolicy, canaryItemIds });
+      reserveInitialSources({ run, canaryPolicy, canaryItemIds, now: reconcileNow });
       items = listProductionItems({ runId: run.id });
-      releasePostCanaryItems(run, items);
+      releasePostCanaryItems(run, items, reconcileNow);
     }
     items = listProductionItems({ runId: run.id });
     const cancellationItems = cancellationRequested

@@ -6,9 +6,9 @@
   "logicalDate": "2026-07-10",
   "clock": {
     "startedAt": "2026-07-11T11:00:00.000Z",
-    "finishedAt": "2026-07-11T11:00:24.001Z",
-    "logicalDurationMs": 24001,
-    "ticks": 24
+    "finishedAt": "2026-07-11T11:00:23.001Z",
+    "logicalDurationMs": 23001,
+    "ticks": 23
   },
   "sourceEvidence": {
     "durableStore": "production_runs + production_items + production_outbox",
@@ -137,5 +137,5 @@
     "publicVideosCreated": 0
   },
   "outcome": "pass",
-  "evidenceSha256": "aff7d3826a549e7aa7b741a9adf83ec84aedd8b0f07cecf6b5cbfafd1b755373"
+  "evidenceSha256": "f989975a1490af280724b45a54c83695d5cd6ec90835826f700739729c12a04c"
 }

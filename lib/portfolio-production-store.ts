@@ -1355,6 +1355,10 @@ export type TransitionProductionItemInput = {
   eventPayload?: Record<string, unknown>;
   patch?: ProductionItemTransitionPatch;
   outbox?: Omit<AppendProductionOutboxInput, "workspaceId" | "runId" | "channelId" | "productionItemId"> | null;
+  // Optional caller clock (ISO). Deterministic replay/simulation contours run on a
+  // virtual clock; stamping with the real wall clock would make outbox availableAt
+  // land in the virtual future and never become claimable.
+  now?: string | null;
 };
 
 function patchedText(current: string | null, value: string | null | undefined, field: string, maxLength = 2048): string | null {
@@ -1540,7 +1544,7 @@ function applyProductionItemTransitionTx(db: DatabaseSync, input: TransitionProd
 }
 
 export function transitionProductionItem(input: TransitionProductionItemInput): ProductionItemRecord {
-  return runInTransaction((db) => applyProductionItemTransitionTx(db, input, nowIso()));
+  return runInTransaction((db) => applyProductionItemTransitionTx(db, input, input.now ?? nowIso()));
 }
 
 export function transitionProductionRun(input: {
@@ -1612,8 +1616,10 @@ export function transitionProductionRunChannel(input: {
   });
 }
 
-export function appendProductionOutbox(input: AppendProductionOutboxInput): ProductionOutboxRecord {
-  return runInTransaction((db) => appendOutboxTx(db, input, nowIso()));
+export function appendProductionOutbox(
+  input: AppendProductionOutboxInput & { now?: string | null }
+): ProductionOutboxRecord {
+  return runInTransaction((db) => appendOutboxTx(db, input, input.now ?? nowIso()));
 }
 
 export type UpsertChannelSourceCandidateInput = {
@@ -1838,6 +1844,8 @@ export type ReserveChannelSourceCandidateInput = {
   itemId: string;
   expectedItemVersion: number;
   outbox?: Omit<AppendProductionOutboxInput, "workspaceId" | "runId" | "channelId" | "productionItemId"> | null;
+  // Optional caller clock (ISO); see TransitionProductionItemInput.now.
+  now?: string | null;
 };
 
 function reserveChannelSourceCandidateTx(
@@ -1967,11 +1975,12 @@ export function listProductionRunChannelAttemptedCandidateIds(runChannelId: stri
 export function reserveChannelSourceCandidate(
   input: ReserveChannelSourceCandidateInput
 ): { candidate: ChannelSourceCandidateRecord; item: ProductionItemRecord } {
-  return runInTransaction((db) => reserveChannelSourceCandidateTx(db, input, nowIso()));
+  return runInTransaction((db) => reserveChannelSourceCandidateTx(db, input, input.now ?? nowIso()));
 }
 
 export function reserveChannelSourceCandidatesAtomically(
-  inputs: readonly ReserveChannelSourceCandidateInput[]
+  inputs: readonly ReserveChannelSourceCandidateInput[],
+  options: { now?: string | null } = {}
 ): Array<{ candidate: ChannelSourceCandidateRecord; item: ProductionItemRecord }> {
   if (!Array.isArray(inputs) || inputs.length < 1 || inputs.length > 100) {
     fail("invalid_input", "Atomic source reservation batch must contain between 1 and 100 entries.");
@@ -1982,7 +1991,7 @@ export function reserveChannelSourceCandidatesAtomically(
     fail("invalid_input", "Atomic source reservation batch requires unique candidate and item IDs.");
   }
   return runInTransaction((db) => {
-    const stamp = nowIso();
+    const stamp = options.now ?? nowIso();
     return inputs.map((input) => reserveChannelSourceCandidateTx(db, input, stamp));
   });
 }
@@ -3335,6 +3344,8 @@ export type RecordPublicVerificationInput = {
   pageChannelId?: string | null;
   failureCode?: string | null;
   evidence: Record<string, unknown>;
+  // Optional caller clock (ISO); see TransitionProductionItemInput.now.
+  now?: string | null;
 };
 
 export function recordPublicVerification(input: RecordPublicVerificationInput): {
@@ -3373,7 +3384,7 @@ export function recordPublicVerification(input: RecordPublicVerificationInput): 
       }
     }
     const id = newId();
-    const stamp = nowIso();
+    const stamp = input.now ?? nowIso();
     try {
       db.prepare(`INSERT INTO public_verifications
         (id, workspace_id, run_id, production_item_id, publication_id, expected_youtube_channel_id,
@@ -3447,6 +3458,8 @@ export function cancelProductionRun(input: {
   runId: string;
   expectedVersion: number;
   reason: string;
+  // Optional caller clock (ISO); see TransitionProductionItemInput.now.
+  now?: string | null;
 }): {
   run: ProductionRunRecord;
   canceledItemIds: string[];
@@ -3468,7 +3481,7 @@ export function cancelProductionRun(input: {
       .all(run.id) as Row[]).map(mapItem);
     const canceledItemIds: string[] = [];
     const conflicts: Array<{ itemId: string; reason: string }> = [];
-    const stamp = nowIso();
+    const stamp = input.now ?? nowIso();
     for (const item of items) {
       if (ITEM_COMPLETED_STATES.has(item.state) || item.state === "cancel_requested") continue;
       const publication = item.publicationId

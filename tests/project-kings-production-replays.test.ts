@@ -5,8 +5,10 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  runContentReworkReplay,
   runProjectKingsReplaySuite,
   type ProjectKingsReplayEvidence,
+  type ProjectKingsReplayOutboxAudit,
   type ProjectKingsReplaySuite
 } from "../lib/project-kings/production-replays";
 
@@ -124,4 +126,45 @@ test("two independent executions produce identical evidence", async () => {
   const { suite: first } = await generateWithoutNetwork();
   const second = await runProjectKingsReplaySuite({ repoRoot });
   assert.deepEqual(second, first);
+});
+
+// Regression guard for the real/virtual clock-mixing bomb: the replay engine
+// drives a virtual clock (dispatch now + reconcile now + run-start
+// dependencies.now), but the durable store used to stamp outbox availableAt with
+// the REAL wall clock. Once real time passed the replay's virtual start date,
+// every freshly appended outbox event landed in the virtual future
+// (availableAt > any dispatch now) and became permanently unclaimable — the run
+// stalled with pending events at attempts 0 ("Historical replay did not
+// complete"). This test proves the store now stamps availableAt on the virtual
+// clock: inside a replay's isolated DB, no outbox record may carry availableAt
+// later than the replay's own virtual finishedAt.
+test("replay outbox availableAt never leaks past the virtual finishedAt", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    throw new Error("Project Kings replay attempted forbidden network access.");
+  }) as typeof fetch;
+  let audit: ProjectKingsReplayOutboxAudit | null = null;
+  try {
+    await runContentReworkReplay({
+      onOutboxAudit: (report) => {
+        audit = report;
+      }
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.ok(audit, "content replay did not emit an outbox audit snapshot.");
+  const captured = audit as ProjectKingsReplayOutboxAudit;
+  assert.ok(captured.outbox.length > 0, "content replay produced no outbox records to audit.");
+  const finishedAtMs = new Date(captured.finishedAt).getTime();
+  const leaked = captured.outbox.filter(
+    (event) => new Date(event.availableAt).getTime() > finishedAtMs
+  );
+  assert.deepEqual(
+    leaked,
+    [],
+    `Outbox availableAt stamped past the virtual finishedAt (${captured.finishedAt}); ` +
+      "the store is mixing the real wall clock into a virtual-clock replay."
+  );
 });

@@ -6,9 +6,9 @@
   "logicalDate": "2026-07-10",
   "clock": {
     "startedAt": "2026-07-11T12:00:00.000Z",
-    "finishedAt": "2026-07-11T12:00:22.000Z",
-    "logicalDurationMs": 22000,
-    "ticks": 23
+    "finishedAt": "2026-07-11T12:00:21.000Z",
+    "logicalDurationMs": 21000,
+    "ticks": 22
   },
   "sourceEvidence": {
     "channelProfiles": "PROJECT_KINGS_PILOT_PROFILES",
@@ -189,5 +189,5 @@
     "publicVideosCreated": 0
   },
   "outcome": "pass",
-  "evidenceSha256": "792217fd3d3044c99dedd94b9840dabb9f173caa18e884d27687b4dd765326c2"
+  "evidenceSha256": "8b172183707ce28ba9dfa06a9ae7906623b233ef2035cef2b32385622a6a23da"
 }
