@@ -3,15 +3,19 @@ import { execFileSync } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import {
+import releaseManifestModule from "../lib/project-kings/production-release-manifest";
+import type {
+  ProductionReleaseEvidence,
+  ProductionReleaseFile
+} from "../lib/project-kings/production-release-manifest";
+
+const {
   buildProjectKingsProductionReleaseManifest,
   isProjectKingsReleaseIncludedPath,
   isProjectKingsReleaseProhibitedPath,
   normalizeProductionReleasePath,
-  verifyProjectKingsProductionReleaseManifest,
-  type ProductionReleaseEvidence,
-  type ProductionReleaseFile
-} from "../lib/project-kings/production-release-manifest";
+  verifyProjectKingsProductionReleaseManifest
+} = releaseManifestModule;
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
@@ -44,10 +48,13 @@ function relativeToRepo(value: string): string {
 }
 
 function gitLines(args: string[]): string[] {
-  return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" })
-    .split(/\r?\n/)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
+  // NUL-delimit path output so non-ASCII / special filenames arrive as raw
+  // UTF-8 without git's default core.quotePath escaping (which would wrap
+  // e.g. Cyrillic experiments/ paths in quotes and defeat prefix matching).
+  const [subcommand, ...rest] = args;
+  return execFileSync("git", [subcommand, "-z", ...rest], { cwd: repoRoot, encoding: "utf8" })
+    .split("\0")
+    .filter((entry) => entry.length > 0);
 }
 
 async function sha256File(relativePath: string): Promise<{ sha256: string; bytes: number }> {
@@ -93,7 +100,7 @@ const testOutputPath = requiredArgument("--test-output");
 const profileSnapshotPath = argument("--profiles") ??
   "docs/project-kings-production-pipeline-v1/evidence/project-kings-production-profiles-v1.json";
 const modelRoutesPath = argument("--model-routes") ??
-  "docs/project-kings-production-pipeline-v1/evidence/project-kings-model-routes-v2.json";
+  "docs/project-kings-production-pipeline-v1/evidence/project-kings-model-routes-v4.json";
 const sourceBufferPath = argument("--source-buffer") ??
   "docs/project-kings-production-pipeline-v1/evidence/source-buffer-readiness-2026-07-10-v13.json";
 const rightsPolicyPath = argument("--rights-policy") ??

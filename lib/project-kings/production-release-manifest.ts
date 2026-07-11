@@ -4,6 +4,7 @@ export const PROJECT_KINGS_RELEASE_MANIFEST_SCHEMA = "project-kings-production-r
 
 export const PROJECT_KINGS_RELEASE_INCLUDED_PREFIXES = Object.freeze([
   "app/",
+  "apps/",
   "docs/",
   "lib/",
   "scripts/",
@@ -13,6 +14,7 @@ export const PROJECT_KINGS_RELEASE_INCLUDED_PREFIXES = Object.freeze([
 
 export const PROJECT_KINGS_RELEASE_INCLUDED_ROOT_FILES = Object.freeze([
   ".env.example",
+  ".gitignore",
   "instrumentation.ts",
   "package.json",
   "package-lock.json"
