@@ -114,7 +114,7 @@ import {
   listProductionOutbox,
   listPublicVerifications,
   ProductionStoreError,
-  requeueProjectedUploadProtocolSourceFitDeadLetter,
+  requeueProjectedRecoverableSourceFitDeadLetter,
   requeueProductionItemRevision
 } from "../../../../lib/portfolio-production-store";
 import {
@@ -1078,7 +1078,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       }
       const sourceFitIntent = projectedSourceFitIntents[0];
       if (sourceFitIntent) {
-        const recovered = requeueProjectedUploadProtocolSourceFitDeadLetter({
+        const recovered = requeueProjectedRecoverableSourceFitDeadLetter({
           itemId: item.id,
           expectedItemVersion: item.version,
           outboxId: sourceFitIntent.id,

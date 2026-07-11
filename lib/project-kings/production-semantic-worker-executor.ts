@@ -214,10 +214,23 @@ export async function downloadLeasedProductionSemanticInput(input: {
     );
   }
   const contentLength = response.headers.get("content-length");
+  const contentEncodings = (response.headers.get("content-encoding") ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  const hasTransportEncoding = contentEncodings.some((entry) => entry !== "identity");
   const responseInputId = response.headers.get("x-production-semantic-input-id");
   const responseSha256 = response.headers.get("x-production-semantic-sha256")?.toLowerCase();
+  // HTTP clients expose the decoded response body, while a proxy may retain
+  // Content-Length for the compressed wire representation. In that case the
+  // header cannot be compared with the immutable decoded byte count. The
+  // bounded body read and exact decoded SHA-256 check below remain mandatory.
+  const contentLengthMatches =
+    contentLength === null ||
+    hasTransportEncoding ||
+    contentLength === String(input.ref.sizeBytes);
   if (
-    contentLength !== String(input.ref.sizeBytes) ||
+    !contentLengthMatches ||
     responseInputId !== input.ref.inputId ||
     responseSha256 !== input.ref.sha256
   ) {

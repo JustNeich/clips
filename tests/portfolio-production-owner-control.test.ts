@@ -133,7 +133,9 @@ async function seedSyntheticRun() {
   return { owner, profile, run: created.run };
 }
 
-async function seedProjectedUploadProtocolSourceFitFailure() {
+async function seedProjectedUploadProtocolSourceFitFailure(
+  failure = "packet.task.sourceUrl: must use HTTPS"
+) {
   const seeded = await seedSyntheticRun();
   const runChannel = listProductionRunChannels(seeded.run.id)[0]!;
   getDb().prepare("UPDATE production_runs SET status = 'running' WHERE id = ?")
@@ -210,7 +212,7 @@ async function seedProjectedUploadProtocolSourceFitFailure() {
     retryProductionOutbox({
       outboxId: claimed[0]!.id,
       leaseToken: claimed[0]!.leaseToken!,
-      error: "packet.task.sourceUrl: must use HTTPS",
+      error: failure,
       availableAt: now,
       now
     });
@@ -795,6 +797,41 @@ test("owner retry reopens the exact upload-protocol source-fit intent without re
   });
 });
 
+test("owner retry reopens the exact compressed semantic-input source-fit intent after the transport fix", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedProjectedUploadProtocolSourceFitFailure(
+      "A leased semantic input failed immutable size or SHA-256 verification."
+    );
+    const machine = createMcpMachineCredential({
+      workspaceId: seeded.owner.workspace.id,
+      ownerUserId: seeded.owner.user.id,
+      machineId: "portfolio-source-fit-compression-retry",
+      scopes: ["flow:read", "control:write"]
+    });
+    const response = await postOwnerControl(machine.secret, "clips_owner_retry_production_item", {
+      runId: seeded.run.id,
+      itemId: seeded.item.id,
+      expectedVersion: seeded.item.version,
+      reason: "retry the same source after decoded size and SHA verification was deployed"
+    });
+    assert.equal(response.status, 202, await response.clone().text());
+    const result = (await response.json()) as {
+      item: { id: string; state: string; sourceCandidateId: string | null };
+      retryIntent: { outboxId: string; status: string; preservedSource: boolean };
+    };
+    assert.equal(result.item.id, seeded.item.id);
+    assert.equal(result.item.state, "source_ingested");
+    assert.equal(result.item.sourceCandidateId, seeded.candidate.id);
+    assert.equal(result.retryIntent.outboxId, seeded.outbox.id);
+    assert.equal(result.retryIntent.status, "pending");
+    assert.equal(result.retryIntent.preservedSource, true);
+    assert.equal(listProductionItems({
+      runId: seeded.run.id,
+      includeHistorical: true
+    }).length, 1);
+  });
+});
+
 test("owner source-fit recovery stays fail-closed after external effects or a terminal run", { concurrency: false }, async () => {
   await withIsolatedAppData(async () => {
     const seeded = await seedProjectedUploadProtocolSourceFitFailure();
@@ -874,7 +911,7 @@ test("owner source-fit recovery rejects a different dead-letter cause without cr
     assert.equal(response.status, 409);
     const body = (await response.json()) as { code: string; error: string };
     assert.equal(body.code, "invalid_transition");
-    assert.match(body.error, /exact projected upload-protocol source-fit dead letter/);
+    assert.match(body.error, /exact recoverable uploaded-source source-fit dead letter/);
     assert.equal(listProductionItems({
       runId: seeded.run.id,
       includeHistorical: true

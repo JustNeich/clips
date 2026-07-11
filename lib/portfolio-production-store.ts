@@ -2582,21 +2582,24 @@ export function requeueProductionItemRevision(input: {
   });
 }
 
-const PROJECT_KINGS_UPLOAD_PROTOCOL_SOURCE_FIT_ERROR =
-  "packet.task.sourceUrl: must use HTTPS";
+const PROJECT_KINGS_RECOVERABLE_SOURCE_FIT_INFRA_ERRORS = new Set([
+  "packet.task.sourceUrl: must use HTTPS",
+  "A leased semantic input failed immutable size or SHA-256 verification."
+]);
 
 /**
- * Recover the one pre-upload failure mode where the immutable source-fit
- * intent was rejected before any external effect because the production
- * contract did not yet accept the canonical upload:// source protocol.
+ * Recover only the explicitly enumerated pre-upload rollout faults where the
+ * immutable source-fit intent was rejected before any external effect: the
+ * original upload:// contract mismatch or the verified HTTP content-encoding
+ * length mismatch in semantic input transport.
  *
  * This is deliberately narrower than ordinary owner retry. A projected dead
  * letter normally remains terminal and receives a new source generation. The
- * exact contract fault below may instead replay the same source-fit intent,
- * but only while every item, candidate, channel and outbox binding still
- * proves that no publication/render boundary was crossed.
+ * exact faults below may instead replay the same source-fit intent, but only
+ * while every item, candidate, channel and outbox binding still proves that
+ * no publication/render boundary was crossed.
  */
-export function requeueProjectedUploadProtocolSourceFitDeadLetter(input: {
+export function requeueProjectedRecoverableSourceFitDeadLetter(input: {
   itemId: string;
   expectedItemVersion: number;
   outboxId: string;
@@ -2707,13 +2710,14 @@ export function requeueProjectedUploadProtocolSourceFitDeadLetter(input: {
       outbox.attempts < outbox.maxAttempts ||
       outbox.deadLetterCode !== "outbox_retry_exhausted" ||
       !outbox.projectedAt ||
-      outbox.lastError !== PROJECT_KINGS_UPLOAD_PROTOCOL_SOURCE_FIT_ERROR ||
+      !outbox.lastError ||
+      !PROJECT_KINGS_RECOVERABLE_SOURCE_FIT_INFRA_ERRORS.has(outbox.lastError) ||
       outbox.leaseOwner ||
       outbox.leaseToken ||
       outbox.leaseExpiresAt ||
       outbox.deliveredAt
     ) {
-      fail("invalid_transition", "Outbox is not the exact projected upload-protocol source-fit dead letter.", {
+      fail("invalid_transition", "Outbox is not an exact recoverable uploaded-source source-fit dead letter.", {
         itemId: item.id,
         outboxId: outbox.id,
         eventKind: outbox.eventKind,

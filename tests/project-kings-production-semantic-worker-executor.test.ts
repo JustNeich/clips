@@ -278,6 +278,99 @@ test("leased input downloader rejects size/SHA drift before materializing bytes"
   }
 });
 
+test("leased input downloader accepts a compressed wire length only after exact decoded size and SHA verification", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "semantic-input-compressed-"));
+  const expected = "exact input";
+  const jobPayload = payload(expected);
+  const ref = jobPayload.packet.artifacts[0]!;
+  const destination = path.join(root, "artifact.json");
+  try {
+    const artifact = await downloadLeasedProductionSemanticInput({
+      serverOrigin: "https://clips.example.test",
+      sessionToken: "secret-worker-token",
+      jobId: "job-compressed",
+      ref,
+      destinationPath: destination,
+      fetchImpl: async () =>
+        new Response(expected, {
+          headers: {
+            // A real fetch exposes decoded bytes but preserves the proxy's
+            // compressed wire length, as observed behind Render Brotli.
+            "content-encoding": "br",
+            "content-length": "5",
+            "x-production-semantic-input-id": ref.inputId,
+            "x-production-semantic-sha256": ref.sha256
+          }
+        })
+    });
+    assert.equal(artifact.sha256, ref.sha256);
+    assert.equal(await readFile(destination, "utf-8"), expected);
+
+    await rm(destination);
+    await assert.rejects(
+      downloadLeasedProductionSemanticInput({
+        serverOrigin: "https://clips.example.test",
+        sessionToken: "secret-worker-token",
+        jobId: "job-compressed-short",
+        ref,
+        destinationPath: destination,
+        fetchImpl: async () =>
+          new Response("short", {
+            headers: {
+              "content-encoding": "br",
+              "content-length": "3",
+              "x-production-semantic-input-id": ref.inputId,
+              "x-production-semantic-sha256": ref.sha256
+            }
+          })
+      }),
+      /size mismatch/
+    );
+    await assert.rejects(access(destination));
+
+    const withoutLength = await downloadLeasedProductionSemanticInput({
+      serverOrigin: "https://clips.example.test",
+      sessionToken: "secret-worker-token",
+      jobId: "job-without-content-length",
+      ref,
+      destinationPath: destination,
+      fetchImpl: async () =>
+        new Response(expected, {
+          headers: {
+            "x-production-semantic-input-id": ref.inputId,
+            "x-production-semantic-sha256": ref.sha256
+          }
+        })
+    });
+    assert.equal(withoutLength.sha256, ref.sha256);
+    assert.equal(await readFile(destination, "utf-8"), expected);
+    await rm(destination);
+
+    await assert.rejects(
+      downloadLeasedProductionSemanticInput({
+        serverOrigin: "https://clips.example.test",
+        sessionToken: "secret-worker-token",
+        jobId: "job-compressed-tampered",
+        ref,
+        destinationPath: destination,
+        fetchImpl: async () =>
+          new Response("exact inpuX", {
+            headers: {
+              "content-encoding": "br",
+              "content-length": "5",
+              "x-production-semantic-input-id": ref.inputId,
+              "x-production-semantic-sha256": ref.sha256
+            }
+          })
+      }),
+      /SHA-256 mismatch/
+    );
+    await assert.rejects(access(destination));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("executor downloads exact leased inputs, builds a local typed packet and validates the result", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "semantic-executor-run-"));
   const content = '{"concept":"exact"}';
