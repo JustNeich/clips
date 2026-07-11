@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "project-kings-live-publication-inventory-verification-v1",
+  "verifiedAt": "2026-07-11T15:36:24.104Z",
+  "inventoryRelativePath": "docs/project-kings-production-pipeline-v1/evidence/live-publication-inventory-2026-07-11-v1.json",
+  "inventoryFileSha256": "810b32385895e3cc9d7a26086d9ccba26d734500567fc37450a69826c96b948b",
+  "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+  "previousLiveInventorySha256": "7828773a24800afced27a9efd178c2af8585c4484f9ab023f40a77ab33d250cf",
+  "checks": {
+    "ownerSurface": {
+      "tool": "clips_owner_list_publications",
+      "actor": "owner_session",
+      "httpStatusByChannel": [200, 200, 200],
+      "businessMutationPerformed": false
+    },
+    "publicSurface": {
+      "surface": "YouTube public RSS",
+      "httpStatusByChannel": [200, 200, 200],
+      "allSelectedYoutubeVideoIdsMatched": true
+    },
+    "parser": "parseProjectKingsLivePublicationInventory",
+    "hashFunction": "calculateProjectKingsLiveInventorySha256",
+    "queuedPublicationCount": 0,
+    "totalRecentPublications": 16
+  },
+  "channels": [
+    {
+      "channelId": "4b59c5cf412e4c07b192f3312361c2eb",
+      "youtubeChannelId": "UCwO37rtHMhHX8caUr5Rc0Bw",
+      "ownerRowsSelected": 6,
+      "publicRssMatches": 6
+    },
+    {
+      "channelId": "43923d42c1c0495282f29d4c6e09b0b4",
+      "youtubeChannelId": "UC0LWZYpYuYAWK55WmvDqxbg",
+      "ownerRowsSelected": 7,
+      "publicRssMatches": 7
+    },
+    {
+      "channelId": "6187aeeea7bd47188e08089c5916edc1",
+      "youtubeChannelId": "UCJhBMXXQ5GrTbrhqjwT1leg",
+      "ownerRowsSelected": 3,
+      "publicRssMatches": 3
+    }
+  ],
+  "drift": {
+    "detected": true,
+    "reason": "The prior Light publication 0a1a52486d484352a4c05d40f85ad3b3 is now public as YouTube video IkTOuHRIIQk and is no longer queued."
+  }
+}
