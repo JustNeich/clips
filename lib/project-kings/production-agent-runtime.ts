@@ -273,9 +273,18 @@ export function validateProductionAgentModelSelection(
   }
   validateBenchmarkedRoute(selection.fallback, selection, role, "fallback");
   if (selection.primary.route.routeId === selection.fallback.route.routeId) {
-    throw new ProductionAgentConfigurationError("Primary and fallback routes must be distinct.");
-  }
-  if (!selection.primary.route.capabilities.fallbackRouteIds.includes(selection.fallback.route.routeId)) {
+    // Same-route fallback is legitimate only as the explicit degraded mode
+    // (owner decision 2026-07-10): the same model at a different
+    // benchmark-qualified reasoning effort, labeled same_route_reasoning.
+    if (selection.fallbackMode !== "same_route_reasoning") {
+      throw new ProductionAgentConfigurationError("Primary and fallback routes must be distinct.");
+    }
+    if (selection.primary.benchmark.reasoningEffort === selection.fallback.benchmark.reasoningEffort) {
+      throw new ProductionAgentConfigurationError(
+        "Same-route fallback must use a different reasoning effort than primary."
+      );
+    }
+  } else if (!selection.primary.route.capabilities.fallbackRouteIds.includes(selection.fallback.route.routeId)) {
     throw new ProductionAgentConfigurationError("Fallback route is not the benchmarked fallback authorized by primary.");
   }
   if (selection.primary.benchmark.benchmarkVersion !== selection.fallback.benchmark.benchmarkVersion) {

@@ -46,8 +46,8 @@ const RATE_CARD_SOURCE =
 const BENCHMARK_VERSION = "project-kings-stage-models-2026-07-10-v9";
 const BENCHMARK_EVIDENCE_VERSION = "v9";
 const SOURCE_POLICY_BENCHMARK_VERSION =
-  "project-kings-source-policy-real-30-2026-07-10-v8";
-const SOURCE_POLICY_BENCHMARK_EVIDENCE_VERSION = "real-30-v8";
+  "project-kings-source-policy-real-30-2026-07-10-v9";
+const SOURCE_POLICY_BENCHMARK_EVIDENCE_VERSION = "real-30-v9";
 // Second direct review of the frozen labels (mismatch clustering, no model
 // adoption) — applied to the effective expected labels for v5.
 const SOURCE_POLICY_ANNOTATION_OVERRIDES_PATH =
@@ -752,9 +752,7 @@ async function main(): Promise<void> {
             { routeId: "codex:gpt-5.6-luna", reasoningEffort: "low" as const },
             { routeId: "codex:gpt-5.6-luna", reasoningEffort: "medium" as const },
             { routeId: "codex:gpt-5.6-luna", reasoningEffort: "high" as const },
-            { routeId: "codex:gpt-5.6-luna", reasoningEffort: "x-high" as const },
-            { routeId: "codex:gpt-5.4", reasoningEffort: "high" as const },
-            { routeId: "codex:gpt-5.4", reasoningEffort: "x-high" as const }
+            { routeId: "codex:gpt-5.6-luna", reasoningEffort: "x-high" as const }
           ]
         : role === "revision"
         ? [

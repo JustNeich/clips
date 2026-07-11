@@ -119,7 +119,15 @@ const POLICIES: Record<RemainingSemanticBenchmarkRole, ModelSelectionPolicy> = {
     minimumReasoning: "low",
     minimumContextTokens: 0,
     minimumSampleSize: 30,
-    minimumQualityScore: 1,
+    // Owner decision 2026-07-11 (docs/project-kings-production-pipeline-v1/
+    // source-search-gate-decision-2026-07-11.md): floor 28/30. Two boundary
+    // cases proved sampling-unstable across three identical-input runs, and
+    // search errors carry no safety cost (a wrong FOUND wastes one downstream
+    // fit check; a wrong NO_MATCH skips one buffer candidate). Written as
+    // 0.93: aggregates round to six decimals, so 28/30 -> 0.933333 which the
+    // exact fraction 28/30 would reject; any threshold in (27/30, 28/30]
+    // selects identically.
+    minimumQualityScore: 0.93,
     minimumSchemaSuccessRate: 1,
     maximumP95LatencyMs: 300_000,
     allowFailClosedSingleRoute: true

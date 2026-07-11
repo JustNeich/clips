@@ -2,7 +2,7 @@
   "schemaVersion": "project-kings-model-benchmark-evidence-v1",
   "benchmarkVersion": "project-kings-montage_planner-real-30-v2",
   "stageRole": "montage_planner",
-  "createdAt": "2026-07-11T12:24:21.426Z",
+  "createdAt": "2026-07-11T10:00:47.847Z",
   "bounds": {
     "maxCases": 120,
     "maxCandidates": 12,
@@ -20,12 +20,12 @@
   "qualityEvaluator": {
     "evaluatorId": "project-kings-remaining-semantic-real-30",
     "evaluatorVersion": "v1",
-    "implementationSha256": "9fc4cf1f375c4363cb261034999d58a728030d0a7fd5a09ea2def1f01338e4aa",
-    "configSha256": "de61c3e9396a2a3491da9c4bec25843a87e30262238df5b6266bc44941eeb8c6"
+    "implementationSha256": "d3f0fdc1c10fdb02a817b61c437ee23fe17e9a38833aa3ce609ac73ae55414f5",
+    "configSha256": "359ed0625aeca94b7df6d12057c3051d0dcc371624671c58391717e2ecbe3edc"
   },
   "executionContract": {
     "registrySha256": "e899df48af4ad54b2e55514a0ac9b87b69e66b5cea05af8216a1b6a8eaca36b8",
-    "policySha256": "a96d7f787c23dd905726d62bccf0bfc382ebc9ccab95eac59c3dd5f92f7b7a34",
+    "policySha256": "06e7f06d92d5e357c10889008388c41650592bc7f6d986fdf13e365bfbb7bd11",
     "schemaValidationMethod": "strict-production-agent-output-v1",
     "qualityAggregationMethod": "mean-passed-evaluator-score-v1",
     "p95Method": "nearest-rank-p95-v1",
@@ -75,7 +75,7 @@
           "caseId": "montage-01-BtDnmx6HRr_-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "8aeab83847aad0b24c8d3436369eec0dd5cfa7180b9b364e85b93aa254e0430f",
-          "startedAt": "2026-07-11T12:23:54.701Z",
+          "startedAt": "2026-07-11T09:08:54.400Z",
           "durationMs": 16776.254625,
           "schemaValid": true,
           "quality": {
@@ -107,7 +107,7 @@
           "caseId": "montage-02-C-0YpsCAODv-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "08c285cd499ea08aed150790c279436da1da604f27dd3a5dacef26765377837a",
-          "startedAt": "2026-07-11T12:23:54.702Z",
+          "startedAt": "2026-07-11T09:08:54.400Z",
           "durationMs": 8462.7795,
           "schemaValid": true,
           "quality": {
@@ -139,7 +139,7 @@
           "caseId": "montage-03-C9gLu79MklN-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "07fab1dc756dbd28fed952177a6b57e1c8eec0ea1f75998812d61cd936de4136",
-          "startedAt": "2026-07-11T12:23:54.702Z",
+          "startedAt": "2026-07-11T09:08:54.401Z",
           "durationMs": 10535.033458,
           "schemaValid": true,
           "quality": {
@@ -171,7 +171,7 @@
           "caseId": "montage-04-CsYa4skNBjP-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "93e770b846947b9302bcadb5ed512532cf44e563584b891a1d08a2fdbc07bfb8",
-          "startedAt": "2026-07-11T12:23:54.702Z",
+          "startedAt": "2026-07-11T09:08:54.401Z",
           "durationMs": 15823.7955,
           "schemaValid": true,
           "quality": {
@@ -203,7 +203,7 @@
           "caseId": "montage-05-Cw_QTMmA69_-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "e7f6aad1abea38458cb0d98846576567416a0f576eeb7a3a292e566f54893e68",
-          "startedAt": "2026-07-11T12:23:54.703Z",
+          "startedAt": "2026-07-11T09:08:54.401Z",
           "durationMs": 21856.596167,
           "schemaValid": true,
           "quality": {
@@ -235,7 +235,7 @@
           "caseId": "montage-06-Cxb0DmpJ7oM-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "11a4257a595441b1a9d4abe4f52acbd7e7738839601a941994292a2f40008f42",
-          "startedAt": "2026-07-11T12:23:54.703Z",
+          "startedAt": "2026-07-11T09:08:54.401Z",
           "durationMs": 9428.444959,
           "schemaValid": true,
           "quality": {
@@ -267,7 +267,7 @@
           "caseId": "montage-07-DIUYX9QStl3-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "79bf2267c58f7a70da5bc04f37446ab83b22f70b1ea8673aec12657cd9d83184",
-          "startedAt": "2026-07-11T12:23:54.703Z",
+          "startedAt": "2026-07-11T09:08:54.401Z",
           "durationMs": 14003.586292,
           "schemaValid": true,
           "quality": {
@@ -299,7 +299,7 @@
           "caseId": "montage-08-DKM66d2tamf-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "993dde827c789f596abfca17933fbacf33783eb03f0ee4399dde35cbfdb567ee",
-          "startedAt": "2026-07-11T12:23:54.703Z",
+          "startedAt": "2026-07-11T09:08:54.401Z",
           "durationMs": 19592.222125,
           "schemaValid": true,
           "quality": {
@@ -331,7 +331,7 @@
           "caseId": "montage-09-DW5s3qoDbHC-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "3fe402b658f799f998657387a224ab0f672e603227d4e72ae9c2ca6994e5ce30",
-          "startedAt": "2026-07-11T12:23:54.703Z",
+          "startedAt": "2026-07-11T09:08:54.401Z",
           "durationMs": 14317.950416,
           "schemaValid": true,
           "quality": {
@@ -363,7 +363,7 @@
           "caseId": "montage-10-DWjH5fWjBnt-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "a55a83288243f3d29e2c2b9ce25d41c33d56655c07936dd49d8df4bde9fdced8",
-          "startedAt": "2026-07-11T12:23:54.703Z",
+          "startedAt": "2026-07-11T09:08:54.401Z",
           "durationMs": 8547.904166,
           "schemaValid": true,
           "quality": {
@@ -395,7 +395,7 @@
           "caseId": "montage-11-DXHx529DVb0-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "ddbab250a7e4253ac5bbea032df039bad47b462c5a5a24a3b554cccacf2b7977",
-          "startedAt": "2026-07-11T12:23:54.703Z",
+          "startedAt": "2026-07-11T09:08:54.401Z",
           "durationMs": 41529.028417,
           "schemaValid": true,
           "quality": {
@@ -427,7 +427,7 @@
           "caseId": "montage-12-DXNBoz7jYmd-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "7d874ad640744ae175ed39bcbb6b67bccf9c9e143b5bf3a7023ab407a4bae3a3",
-          "startedAt": "2026-07-11T12:23:54.703Z",
+          "startedAt": "2026-07-11T09:08:54.401Z",
           "durationMs": 13612.875917,
           "schemaValid": true,
           "quality": {
@@ -459,7 +459,7 @@
           "caseId": "montage-13-DXOzkCdjMue-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "f683e370e0f9f7c161d99e0938834e75faca6094dd19a83385bc4f66cdd394a9",
-          "startedAt": "2026-07-11T12:23:54.703Z",
+          "startedAt": "2026-07-11T09:08:54.401Z",
           "durationMs": 15582.775042,
           "schemaValid": true,
           "quality": {
@@ -491,7 +491,7 @@
           "caseId": "montage-14-DXUPExpjCs2-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "af8429979c95bb7918f4733de43d7c4d46506eccd89b7792442b46f9d4176c4b",
-          "startedAt": "2026-07-11T12:23:54.703Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 22410.080458,
           "schemaValid": true,
           "quality": {
@@ -523,7 +523,7 @@
           "caseId": "montage-15-6QIdqyFoxFE-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "89b8afc3f8b5f588567e69fa793670d38dac7b0279cabda0991a0479025148df",
-          "startedAt": "2026-07-11T12:23:54.704Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 15580.582792,
           "schemaValid": true,
           "quality": {
@@ -555,7 +555,7 @@
           "caseId": "montage-16-BwIaEb5vGDo-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "78fa9ce6016d42705f0f35f16ae7e4401e593837b29a47149b0b5209e8b5a200",
-          "startedAt": "2026-07-11T12:23:54.704Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 17737.289958,
           "schemaValid": true,
           "quality": {
@@ -587,7 +587,7 @@
           "caseId": "montage-17-J6tw2l128YE-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "6de003f8ec882ddba50df9792d385b0b2d67fe4493191f385cffa40a12936e3c",
-          "startedAt": "2026-07-11T12:23:54.704Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 22054.130625,
           "schemaValid": true,
           "quality": {
@@ -619,7 +619,7 @@
           "caseId": "montage-18-V-xIvJs0Jbo-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "7e13a8ee6e560d187634b2b413aca76d6e0aa4f828281ab0e987e82a684fc00a",
-          "startedAt": "2026-07-11T12:23:54.704Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 9558.930584,
           "schemaValid": true,
           "quality": {
@@ -651,7 +651,7 @@
           "caseId": "montage-19-WkEyab1jINA-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "bcaf268d56e1f10959772b1537d8eb41dbd152d077d56b3fb96dd76ebe7d06cb",
-          "startedAt": "2026-07-11T12:23:54.704Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 15516.329875,
           "schemaValid": true,
           "quality": {
@@ -683,7 +683,7 @@
           "caseId": "montage-20-BtDnmx6HRr_-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "2f6fef0433747ee83fdf0f993d70775270b18569878a0d30af001151ecc7185e",
-          "startedAt": "2026-07-11T12:23:54.704Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 27258.970083,
           "schemaValid": true,
           "quality": {
@@ -715,7 +715,7 @@
           "caseId": "montage-21-C-0YpsCAODv-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "3e2f8414d8e1aa91b0ca8852810301fa587ca74deef2be085176bb5ed84fb522",
-          "startedAt": "2026-07-11T12:23:54.704Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 14335.329291,
           "schemaValid": true,
           "quality": {
@@ -747,7 +747,7 @@
           "caseId": "montage-22-C9gLu79MklN-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "25281f0be5dfeba6efad3c452922f4fb09e892075faf23c5a585a25e80c79d1d",
-          "startedAt": "2026-07-11T12:23:54.704Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 16568.115542,
           "schemaValid": true,
           "quality": {
@@ -779,7 +779,7 @@
           "caseId": "montage-23-CsYa4skNBjP-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "bd93ae5f01047f37c438ada4dda191841741c70da1e71b4d3412d8b5e30db156",
-          "startedAt": "2026-07-11T12:23:54.704Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 13657.214083,
           "schemaValid": true,
           "quality": {
@@ -811,7 +811,7 @@
           "caseId": "montage-24-Cw_QTMmA69_-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "5451c76c012e39b070a5e7ef01c14ff0179a60d96933c7124cb347d53fa60e4b",
-          "startedAt": "2026-07-11T12:23:54.704Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 18349.992209,
           "schemaValid": true,
           "quality": {
@@ -843,7 +843,7 @@
           "caseId": "montage-25-Cxb0DmpJ7oM-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "c765c402c99c8bdcecad9b61ec5d564ea59d64b8842289cbe4e28c8c259fa48e",
-          "startedAt": "2026-07-11T12:23:54.704Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 13355.647459,
           "schemaValid": true,
           "quality": {
@@ -875,7 +875,7 @@
           "caseId": "montage-26-DIUYX9QStl3-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "2374fbeddd94eb4e096bd58a686380b654d73222edb054079152ec1c33239715",
-          "startedAt": "2026-07-11T12:23:54.704Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 15156.642583,
           "schemaValid": true,
           "quality": {
@@ -907,7 +907,7 @@
           "caseId": "montage-27-DKM66d2tamf-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "b0aa10d532f15ab3a704178d6fde4044a6578a27ce43f2253ab209c26caadabb",
-          "startedAt": "2026-07-11T12:23:54.704Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 23569.5145,
           "schemaValid": true,
           "quality": {
@@ -939,7 +939,7 @@
           "caseId": "montage-28-DW5s3qoDbHC-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "03afe3597c024b85f008e165b1bec4da90fde6eb1890d4ad22be34723368ec32",
-          "startedAt": "2026-07-11T12:23:54.704Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 17128.337084,
           "schemaValid": true,
           "quality": {
@@ -971,7 +971,7 @@
           "caseId": "montage-29-DWjH5fWjBnt-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "a12337abfc8a4bdc63ee065e63ac46fdbcb1482e6f0fd8993247ddfc8238486e",
-          "startedAt": "2026-07-11T12:23:54.704Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 17467.625541,
           "schemaValid": true,
           "quality": {
@@ -1003,7 +1003,7 @@
           "caseId": "montage-30-DXHx529DVb0-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "5e5ca622dad46ae59ce0e6a775ebf6e381f5fc7813e3b81a8fdb5e1ee2083ef5",
-          "startedAt": "2026-07-11T12:23:54.704Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 16757.848,
           "schemaValid": true,
           "quality": {
@@ -1066,7 +1066,7 @@
           "caseId": "montage-01-BtDnmx6HRr_-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "8aeab83847aad0b24c8d3436369eec0dd5cfa7180b9b364e85b93aa254e0430f",
-          "startedAt": "2026-07-11T12:23:54.705Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 32199.985541,
           "schemaValid": true,
           "quality": {
@@ -1098,7 +1098,7 @@
           "caseId": "montage-02-C-0YpsCAODv-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "08c285cd499ea08aed150790c279436da1da604f27dd3a5dacef26765377837a",
-          "startedAt": "2026-07-11T12:23:54.705Z",
+          "startedAt": "2026-07-11T09:08:54.402Z",
           "durationMs": 19088.072959,
           "schemaValid": true,
           "quality": {
@@ -1130,7 +1130,7 @@
           "caseId": "montage-03-C9gLu79MklN-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "07fab1dc756dbd28fed952177a6b57e1c8eec0ea1f75998812d61cd936de4136",
-          "startedAt": "2026-07-11T12:23:54.705Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 16816.159541,
           "schemaValid": true,
           "quality": {
@@ -1162,7 +1162,7 @@
           "caseId": "montage-04-CsYa4skNBjP-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "93e770b846947b9302bcadb5ed512532cf44e563584b891a1d08a2fdbc07bfb8",
-          "startedAt": "2026-07-11T12:23:54.705Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 10003.091208,
           "schemaValid": true,
           "quality": {
@@ -1194,7 +1194,7 @@
           "caseId": "montage-05-Cw_QTMmA69_-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "e7f6aad1abea38458cb0d98846576567416a0f576eeb7a3a292e566f54893e68",
-          "startedAt": "2026-07-11T12:23:54.705Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 17477.954417,
           "schemaValid": true,
           "quality": {
@@ -1226,7 +1226,7 @@
           "caseId": "montage-06-Cxb0DmpJ7oM-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "11a4257a595441b1a9d4abe4f52acbd7e7738839601a941994292a2f40008f42",
-          "startedAt": "2026-07-11T12:23:54.705Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 15358.1045,
           "schemaValid": true,
           "quality": {
@@ -1258,7 +1258,7 @@
           "caseId": "montage-07-DIUYX9QStl3-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "79bf2267c58f7a70da5bc04f37446ab83b22f70b1ea8673aec12657cd9d83184",
-          "startedAt": "2026-07-11T12:23:54.705Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 18460.953292,
           "schemaValid": true,
           "quality": {
@@ -1290,7 +1290,7 @@
           "caseId": "montage-08-DKM66d2tamf-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "993dde827c789f596abfca17933fbacf33783eb03f0ee4399dde35cbfdb567ee",
-          "startedAt": "2026-07-11T12:23:54.705Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 36184.743583,
           "schemaValid": true,
           "quality": {
@@ -1322,7 +1322,7 @@
           "caseId": "montage-09-DW5s3qoDbHC-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "3fe402b658f799f998657387a224ab0f672e603227d4e72ae9c2ca6994e5ce30",
-          "startedAt": "2026-07-11T12:23:54.705Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 21405.616042,
           "schemaValid": true,
           "quality": {
@@ -1354,7 +1354,7 @@
           "caseId": "montage-10-DWjH5fWjBnt-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "a55a83288243f3d29e2c2b9ce25d41c33d56655c07936dd49d8df4bde9fdced8",
-          "startedAt": "2026-07-11T12:23:54.706Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 8934.632208,
           "schemaValid": true,
           "quality": {
@@ -1386,7 +1386,7 @@
           "caseId": "montage-11-DXHx529DVb0-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "ddbab250a7e4253ac5bbea032df039bad47b462c5a5a24a3b554cccacf2b7977",
-          "startedAt": "2026-07-11T12:23:54.706Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 22945.140292,
           "schemaValid": true,
           "quality": {
@@ -1418,7 +1418,7 @@
           "caseId": "montage-12-DXNBoz7jYmd-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "7d874ad640744ae175ed39bcbb6b67bccf9c9e143b5bf3a7023ab407a4bae3a3",
-          "startedAt": "2026-07-11T12:23:54.706Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 9988.942916,
           "schemaValid": true,
           "quality": {
@@ -1450,7 +1450,7 @@
           "caseId": "montage-13-DXOzkCdjMue-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "f683e370e0f9f7c161d99e0938834e75faca6094dd19a83385bc4f66cdd394a9",
-          "startedAt": "2026-07-11T12:23:54.706Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 23953.180417,
           "schemaValid": true,
           "quality": {
@@ -1482,7 +1482,7 @@
           "caseId": "montage-14-DXUPExpjCs2-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "af8429979c95bb7918f4733de43d7c4d46506eccd89b7792442b46f9d4176c4b",
-          "startedAt": "2026-07-11T12:23:54.706Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 9989.807875,
           "schemaValid": true,
           "quality": {
@@ -1514,7 +1514,7 @@
           "caseId": "montage-15-6QIdqyFoxFE-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "89b8afc3f8b5f588567e69fa793670d38dac7b0279cabda0991a0479025148df",
-          "startedAt": "2026-07-11T12:23:54.706Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 26637.413584,
           "schemaValid": true,
           "quality": {
@@ -1546,7 +1546,7 @@
           "caseId": "montage-16-BwIaEb5vGDo-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "78fa9ce6016d42705f0f35f16ae7e4401e593837b29a47149b0b5209e8b5a200",
-          "startedAt": "2026-07-11T12:23:54.706Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 9472.065041,
           "schemaValid": true,
           "quality": {
@@ -1578,7 +1578,7 @@
           "caseId": "montage-17-J6tw2l128YE-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "6de003f8ec882ddba50df9792d385b0b2d67fe4493191f385cffa40a12936e3c",
-          "startedAt": "2026-07-11T12:23:54.707Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 18850.04425,
           "schemaValid": true,
           "quality": {
@@ -1610,7 +1610,7 @@
           "caseId": "montage-18-V-xIvJs0Jbo-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "7e13a8ee6e560d187634b2b413aca76d6e0aa4f828281ab0e987e82a684fc00a",
-          "startedAt": "2026-07-11T12:23:54.707Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 17897.864625,
           "schemaValid": true,
           "quality": {
@@ -1642,7 +1642,7 @@
           "caseId": "montage-19-WkEyab1jINA-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "bcaf268d56e1f10959772b1537d8eb41dbd152d077d56b3fb96dd76ebe7d06cb",
-          "startedAt": "2026-07-11T12:23:54.707Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 21939.017333,
           "schemaValid": false,
           "quality": null,
@@ -1661,7 +1661,7 @@
           "caseId": "montage-20-BtDnmx6HRr_-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "2f6fef0433747ee83fdf0f993d70775270b18569878a0d30af001151ecc7185e",
-          "startedAt": "2026-07-11T12:23:54.707Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 9166.88025,
           "schemaValid": true,
           "quality": {
@@ -1693,7 +1693,7 @@
           "caseId": "montage-21-C-0YpsCAODv-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "3e2f8414d8e1aa91b0ca8852810301fa587ca74deef2be085176bb5ed84fb522",
-          "startedAt": "2026-07-11T12:23:54.707Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 10916.940083,
           "schemaValid": true,
           "quality": {
@@ -1725,7 +1725,7 @@
           "caseId": "montage-22-C9gLu79MklN-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "25281f0be5dfeba6efad3c452922f4fb09e892075faf23c5a585a25e80c79d1d",
-          "startedAt": "2026-07-11T12:23:54.707Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 21440.777625,
           "schemaValid": true,
           "quality": {
@@ -1757,7 +1757,7 @@
           "caseId": "montage-23-CsYa4skNBjP-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "bd93ae5f01047f37c438ada4dda191841741c70da1e71b4d3412d8b5e30db156",
-          "startedAt": "2026-07-11T12:23:54.707Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 18403.7555,
           "schemaValid": true,
           "quality": {
@@ -1789,7 +1789,7 @@
           "caseId": "montage-24-Cw_QTMmA69_-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "5451c76c012e39b070a5e7ef01c14ff0179a60d96933c7124cb347d53fa60e4b",
-          "startedAt": "2026-07-11T12:23:54.707Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 10923.10625,
           "schemaValid": true,
           "quality": {
@@ -1821,7 +1821,7 @@
           "caseId": "montage-25-Cxb0DmpJ7oM-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "c765c402c99c8bdcecad9b61ec5d564ea59d64b8842289cbe4e28c8c259fa48e",
-          "startedAt": "2026-07-11T12:23:54.707Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 11433.14875,
           "schemaValid": true,
           "quality": {
@@ -1853,7 +1853,7 @@
           "caseId": "montage-26-DIUYX9QStl3-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "2374fbeddd94eb4e096bd58a686380b654d73222edb054079152ec1c33239715",
-          "startedAt": "2026-07-11T12:23:54.707Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 16769.941375,
           "schemaValid": true,
           "quality": {
@@ -1885,7 +1885,7 @@
           "caseId": "montage-27-DKM66d2tamf-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "b0aa10d532f15ab3a704178d6fde4044a6578a27ce43f2253ab209c26caadabb",
-          "startedAt": "2026-07-11T12:23:54.707Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 26995.54475,
           "schemaValid": true,
           "quality": {
@@ -1917,7 +1917,7 @@
           "caseId": "montage-28-DW5s3qoDbHC-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "03afe3597c024b85f008e165b1bec4da90fde6eb1890d4ad22be34723368ec32",
-          "startedAt": "2026-07-11T12:23:54.707Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 22755.79475,
           "schemaValid": true,
           "quality": {
@@ -1949,7 +1949,7 @@
           "caseId": "montage-29-DWjH5fWjBnt-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "a12337abfc8a4bdc63ee065e63ac46fdbcb1482e6f0fd8993247ddfc8238486e",
-          "startedAt": "2026-07-11T12:23:54.707Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 8202.876,
           "schemaValid": true,
           "quality": {
@@ -1981,7 +1981,7 @@
           "caseId": "montage-30-DXHx529DVb0-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "5e5ca622dad46ae59ce0e6a775ebf6e381f5fc7813e3b81a8fdb5e1ee2083ef5",
-          "startedAt": "2026-07-11T12:23:54.707Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 21570.325125,
           "schemaValid": true,
           "quality": {
@@ -2044,7 +2044,7 @@
           "caseId": "montage-01-BtDnmx6HRr_-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "8aeab83847aad0b24c8d3436369eec0dd5cfa7180b9b364e85b93aa254e0430f",
-          "startedAt": "2026-07-11T12:23:54.707Z",
+          "startedAt": "2026-07-11T09:08:54.403Z",
           "durationMs": 27320.076625,
           "schemaValid": true,
           "quality": {
@@ -2076,39 +2076,21 @@
           "caseId": "montage-02-C-0YpsCAODv-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "08c285cd499ea08aed150790c279436da1da604f27dd3a5dacef26765377837a",
-          "startedAt": "2026-07-11T12:23:54.707Z",
-          "durationMs": 26713.759917,
-          "schemaValid": true,
-          "quality": {
-            "label": "PASS",
-            "score": 1,
-            "passed": true,
-            "critical": false,
-            "evidence": [
-              "expected=PASS",
-              "actual=PASS",
-              "segments=3",
-              "purposes=hook,action,payoff",
-              "coverageRatio=1.000",
-              "timelineValid=true"
-            ]
-          },
-          "usage": {
-            "inputTokens": 54046,
-            "cachedInputTokens": 23296,
-            "outputTokens": 1058,
-            "reasoningOutputTokens": 774
-          },
-          "cost": 0.98569,
+          "startedAt": "2026-07-11T09:09:21.726Z",
+          "durationMs": 618653.110583,
+          "schemaValid": false,
+          "quality": null,
+          "usage": null,
+          "cost": null,
           "costUnit": "codex_credits",
-          "outputSha256": "96a78b131512889d3a73fc31c54c8ffd6f8f2884da8ac39ca3ca9f4e64c6d9ea",
-          "error": null
+          "outputSha256": null,
+          "error": "Codex generation timed out."
         },
         {
           "caseId": "montage-03-C9gLu79MklN-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "07fab1dc756dbd28fed952177a6b57e1c8eec0ea1f75998812d61cd936de4136",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:19:40.386Z",
           "durationMs": 20426.968167,
           "schemaValid": true,
           "quality": {
@@ -2140,7 +2122,7 @@
           "caseId": "montage-04-CsYa4skNBjP-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "93e770b846947b9302bcadb5ed512532cf44e563584b891a1d08a2fdbc07bfb8",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:20:00.814Z",
           "durationMs": 28352.172584,
           "schemaValid": true,
           "quality": {
@@ -2172,7 +2154,7 @@
           "caseId": "montage-05-Cw_QTMmA69_-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "e7f6aad1abea38458cb0d98846576567416a0f576eeb7a3a292e566f54893e68",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:20:29.167Z",
           "durationMs": 31982.516542,
           "schemaValid": true,
           "quality": {
@@ -2204,7 +2186,7 @@
           "caseId": "montage-06-Cxb0DmpJ7oM-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "11a4257a595441b1a9d4abe4f52acbd7e7738839601a941994292a2f40008f42",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:21:01.151Z",
           "durationMs": 18721.222208,
           "schemaValid": true,
           "quality": {
@@ -2236,7 +2218,7 @@
           "caseId": "montage-07-DIUYX9QStl3-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "79bf2267c58f7a70da5bc04f37446ab83b22f70b1ea8673aec12657cd9d83184",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:21:19.874Z",
           "durationMs": 21818.231333,
           "schemaValid": true,
           "quality": {
@@ -2268,7 +2250,7 @@
           "caseId": "montage-08-DKM66d2tamf-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "993dde827c789f596abfca17933fbacf33783eb03f0ee4399dde35cbfdb567ee",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:21:41.693Z",
           "durationMs": 26777.664958,
           "schemaValid": true,
           "quality": {
@@ -2300,7 +2282,7 @@
           "caseId": "montage-09-DW5s3qoDbHC-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "3fe402b658f799f998657387a224ab0f672e603227d4e72ae9c2ca6994e5ce30",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:22:08.471Z",
           "durationMs": 27218.757792,
           "schemaValid": true,
           "quality": {
@@ -2332,7 +2314,7 @@
           "caseId": "montage-10-DWjH5fWjBnt-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "a55a83288243f3d29e2c2b9ce25d41c33d56655c07936dd49d8df4bde9fdced8",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:22:35.690Z",
           "durationMs": 11824.304292,
           "schemaValid": true,
           "quality": {
@@ -2364,7 +2346,7 @@
           "caseId": "montage-11-DXHx529DVb0-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "ddbab250a7e4253ac5bbea032df039bad47b462c5a5a24a3b554cccacf2b7977",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:22:47.515Z",
           "durationMs": 23588.943125,
           "schemaValid": true,
           "quality": {
@@ -2396,7 +2378,7 @@
           "caseId": "montage-12-DXNBoz7jYmd-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "7d874ad640744ae175ed39bcbb6b67bccf9c9e143b5bf3a7023ab407a4bae3a3",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:23:11.104Z",
           "durationMs": 38216.133833,
           "schemaValid": true,
           "quality": {
@@ -2428,7 +2410,7 @@
           "caseId": "montage-13-DXOzkCdjMue-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "f683e370e0f9f7c161d99e0938834e75faca6094dd19a83385bc4f66cdd394a9",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:23:49.321Z",
           "durationMs": 15017.929625,
           "schemaValid": true,
           "quality": {
@@ -2460,7 +2442,7 @@
           "caseId": "montage-14-DXUPExpjCs2-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "af8429979c95bb7918f4733de43d7c4d46506eccd89b7792442b46f9d4176c4b",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:24:04.339Z",
           "durationMs": 30336.606792,
           "schemaValid": true,
           "quality": {
@@ -2492,7 +2474,7 @@
           "caseId": "montage-15-6QIdqyFoxFE-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "89b8afc3f8b5f588567e69fa793670d38dac7b0279cabda0991a0479025148df",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:24:34.676Z",
           "durationMs": 38292.336709,
           "schemaValid": true,
           "quality": {
@@ -2524,7 +2506,7 @@
           "caseId": "montage-16-BwIaEb5vGDo-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "78fa9ce6016d42705f0f35f16ae7e4401e593837b29a47149b0b5209e8b5a200",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:25:12.969Z",
           "durationMs": 13497.425125,
           "schemaValid": true,
           "quality": {
@@ -2556,7 +2538,7 @@
           "caseId": "montage-17-J6tw2l128YE-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "6de003f8ec882ddba50df9792d385b0b2d67fe4493191f385cffa40a12936e3c",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:25:26.467Z",
           "durationMs": 47446.450791,
           "schemaValid": true,
           "quality": {
@@ -2588,7 +2570,7 @@
           "caseId": "montage-18-V-xIvJs0Jbo-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "7e13a8ee6e560d187634b2b413aca76d6e0aa4f828281ab0e987e82a684fc00a",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:26:13.914Z",
           "durationMs": 22413.249708,
           "schemaValid": true,
           "quality": {
@@ -2620,7 +2602,7 @@
           "caseId": "montage-19-WkEyab1jINA-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "bcaf268d56e1f10959772b1537d8eb41dbd152d077d56b3fb96dd76ebe7d06cb",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:26:36.328Z",
           "durationMs": 36811.65225,
           "schemaValid": true,
           "quality": {
@@ -2652,7 +2634,7 @@
           "caseId": "montage-20-BtDnmx6HRr_-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "2f6fef0433747ee83fdf0f993d70775270b18569878a0d30af001151ecc7185e",
-          "startedAt": "2026-07-11T12:24:21.423Z",
+          "startedAt": "2026-07-11T09:27:13.140Z",
           "durationMs": 46054.362583,
           "schemaValid": true,
           "quality": {
@@ -2684,7 +2666,7 @@
           "caseId": "montage-21-C-0YpsCAODv-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "3e2f8414d8e1aa91b0ca8852810301fa587ca74deef2be085176bb5ed84fb522",
-          "startedAt": "2026-07-11T12:24:21.424Z",
+          "startedAt": "2026-07-11T09:27:59.194Z",
           "durationMs": 16509.422542,
           "schemaValid": true,
           "quality": {
@@ -2716,7 +2698,7 @@
           "caseId": "montage-22-C9gLu79MklN-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "25281f0be5dfeba6efad3c452922f4fb09e892075faf23c5a585a25e80c79d1d",
-          "startedAt": "2026-07-11T12:24:21.424Z",
+          "startedAt": "2026-07-11T09:28:15.704Z",
           "durationMs": 15395.390042,
           "schemaValid": true,
           "quality": {
@@ -2748,7 +2730,7 @@
           "caseId": "montage-23-CsYa4skNBjP-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "bd93ae5f01047f37c438ada4dda191841741c70da1e71b4d3412d8b5e30db156",
-          "startedAt": "2026-07-11T12:24:21.424Z",
+          "startedAt": "2026-07-11T09:28:31.099Z",
           "durationMs": 12221.597292,
           "schemaValid": true,
           "quality": {
@@ -2780,7 +2762,7 @@
           "caseId": "montage-24-Cw_QTMmA69_-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "5451c76c012e39b070a5e7ef01c14ff0179a60d96933c7124cb347d53fa60e4b",
-          "startedAt": "2026-07-11T12:24:21.424Z",
+          "startedAt": "2026-07-11T09:28:43.321Z",
           "durationMs": 22207.435916,
           "schemaValid": true,
           "quality": {
@@ -2812,7 +2794,7 @@
           "caseId": "montage-25-Cxb0DmpJ7oM-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "c765c402c99c8bdcecad9b61ec5d564ea59d64b8842289cbe4e28c8c259fa48e",
-          "startedAt": "2026-07-11T12:24:21.424Z",
+          "startedAt": "2026-07-11T09:29:05.529Z",
           "durationMs": 14931.105667,
           "schemaValid": true,
           "quality": {
@@ -2844,7 +2826,7 @@
           "caseId": "montage-26-DIUYX9QStl3-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "2374fbeddd94eb4e096bd58a686380b654d73222edb054079152ec1c33239715",
-          "startedAt": "2026-07-11T12:24:21.424Z",
+          "startedAt": "2026-07-11T09:29:20.461Z",
           "durationMs": 33932.014,
           "schemaValid": true,
           "quality": {
@@ -2876,7 +2858,7 @@
           "caseId": "montage-27-DKM66d2tamf-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "b0aa10d532f15ab3a704178d6fde4044a6578a27ce43f2253ab209c26caadabb",
-          "startedAt": "2026-07-11T12:24:21.424Z",
+          "startedAt": "2026-07-11T09:29:54.393Z",
           "durationMs": 19702.082667,
           "schemaValid": true,
           "quality": {
@@ -2908,7 +2890,7 @@
           "caseId": "montage-28-DW5s3qoDbHC-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "03afe3597c024b85f008e165b1bec4da90fde6eb1890d4ad22be34723368ec32",
-          "startedAt": "2026-07-11T12:24:21.424Z",
+          "startedAt": "2026-07-11T09:30:14.096Z",
           "durationMs": 314429.712916,
           "schemaValid": true,
           "quality": {
@@ -2940,7 +2922,7 @@
           "caseId": "montage-29-DWjH5fWjBnt-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "a12337abfc8a4bdc63ee065e63ac46fdbcb1482e6f0fd8993247ddfc8238486e",
-          "startedAt": "2026-07-11T12:24:21.424Z",
+          "startedAt": "2026-07-11T09:35:28.527Z",
           "durationMs": 12457.917125,
           "schemaValid": true,
           "quality": {
@@ -2972,7 +2954,7 @@
           "caseId": "montage-30-DXHx529DVb0-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "5e5ca622dad46ae59ce0e6a775ebf6e381f5fc7813e3b81a8fdb5e1ee2083ef5",
-          "startedAt": "2026-07-11T12:24:21.424Z",
+          "startedAt": "2026-07-11T09:35:40.986Z",
           "durationMs": 23192.883375,
           "schemaValid": true,
           "quality": {
@@ -3003,26 +2985,15 @@
       ],
       "aggregate": {
         "sampleSize": 30,
-        "schemaSuccessRate": 1,
-        "qualityScore": 1,
-        "qualityPassRate": 1,
+        "schemaSuccessRate": 0.966666666667,
+        "qualityScore": 0.966666666667,
+        "qualityPassRate": 0.966666666667,
         "criticalFailureCount": 0,
-        "p95LatencyMs": 47446.450791,
-        "meanCost": 0.8965565,
+        "p95LatencyMs": 314429.712916,
+        "meanCost": null,
         "costUnit": "codex_credits",
-        "completeUsageAndCostEvidence": true,
-        "selectorBenchmark": {
-          "benchmarkVersion": "project-kings-montage_planner-real-30-v2",
-          "routeId": "codex:gpt-5.6-luna",
-          "reasoningEffort": "high",
-          "sampleSize": 30,
-          "qualityScore": 1,
-          "schemaSuccessRate": 1,
-          "p95LatencyMs": 47446.450791,
-          "meanCost": 0.8965565,
-          "costUnit": "codex_credits",
-          "criticalFailureCount": 0
-        }
+        "completeUsageAndCostEvidence": false,
+        "selectorBenchmark": null
       }
     },
     {
@@ -3035,7 +3006,7 @@
           "caseId": "montage-01-BtDnmx6HRr_-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "8aeab83847aad0b24c8d3436369eec0dd5cfa7180b9b364e85b93aa254e0430f",
-          "startedAt": "2026-07-11T12:24:21.424Z",
+          "startedAt": "2026-07-11T09:36:04.179Z",
           "durationMs": 45181.040125,
           "schemaValid": true,
           "quality": {
@@ -3067,7 +3038,7 @@
           "caseId": "montage-02-C-0YpsCAODv-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "08c285cd499ea08aed150790c279436da1da604f27dd3a5dacef26765377837a",
-          "startedAt": "2026-07-11T12:24:21.424Z",
+          "startedAt": "2026-07-11T09:36:49.360Z",
           "durationMs": 26452.901334,
           "schemaValid": true,
           "quality": {
@@ -3099,7 +3070,7 @@
           "caseId": "montage-03-C9gLu79MklN-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "07fab1dc756dbd28fed952177a6b57e1c8eec0ea1f75998812d61cd936de4136",
-          "startedAt": "2026-07-11T12:24:21.424Z",
+          "startedAt": "2026-07-11T09:37:15.814Z",
           "durationMs": 23866.908791,
           "schemaValid": true,
           "quality": {
@@ -3131,7 +3102,7 @@
           "caseId": "montage-04-CsYa4skNBjP-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "93e770b846947b9302bcadb5ed512532cf44e563584b891a1d08a2fdbc07bfb8",
-          "startedAt": "2026-07-11T12:24:21.424Z",
+          "startedAt": "2026-07-11T09:37:39.681Z",
           "durationMs": 16742.760041,
           "schemaValid": true,
           "quality": {
@@ -3163,7 +3134,7 @@
           "caseId": "montage-05-Cw_QTMmA69_-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "e7f6aad1abea38458cb0d98846576567416a0f576eeb7a3a292e566f54893e68",
-          "startedAt": "2026-07-11T12:24:21.424Z",
+          "startedAt": "2026-07-11T09:37:56.424Z",
           "durationMs": 35167.745042,
           "schemaValid": true,
           "quality": {
@@ -3195,7 +3166,7 @@
           "caseId": "montage-06-Cxb0DmpJ7oM-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "11a4257a595441b1a9d4abe4f52acbd7e7738839601a941994292a2f40008f42",
-          "startedAt": "2026-07-11T12:24:21.424Z",
+          "startedAt": "2026-07-11T09:38:31.592Z",
           "durationMs": 35860.988541,
           "schemaValid": true,
           "quality": {
@@ -3227,7 +3198,7 @@
           "caseId": "montage-07-DIUYX9QStl3-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "79bf2267c58f7a70da5bc04f37446ab83b22f70b1ea8673aec12657cd9d83184",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:39:07.454Z",
           "durationMs": 84416.420292,
           "schemaValid": true,
           "quality": {
@@ -3259,7 +3230,7 @@
           "caseId": "montage-08-DKM66d2tamf-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "993dde827c789f596abfca17933fbacf33783eb03f0ee4399dde35cbfdb567ee",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:40:31.873Z",
           "durationMs": 51067.104667,
           "schemaValid": true,
           "quality": {
@@ -3291,7 +3262,7 @@
           "caseId": "montage-09-DW5s3qoDbHC-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "3fe402b658f799f998657387a224ab0f672e603227d4e72ae9c2ca6994e5ce30",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:41:22.941Z",
           "durationMs": 45937.398333,
           "schemaValid": true,
           "quality": {
@@ -3323,7 +3294,7 @@
           "caseId": "montage-10-DWjH5fWjBnt-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "a55a83288243f3d29e2c2b9ce25d41c33d56655c07936dd49d8df4bde9fdced8",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:42:08.879Z",
           "durationMs": 26722.663125,
           "schemaValid": true,
           "quality": {
@@ -3355,7 +3326,7 @@
           "caseId": "montage-11-DXHx529DVb0-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "ddbab250a7e4253ac5bbea032df039bad47b462c5a5a24a3b554cccacf2b7977",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:42:35.602Z",
           "durationMs": 39539.061875,
           "schemaValid": true,
           "quality": {
@@ -3387,7 +3358,7 @@
           "caseId": "montage-12-DXNBoz7jYmd-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "7d874ad640744ae175ed39bcbb6b67bccf9c9e143b5bf3a7023ab407a4bae3a3",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:43:15.144Z",
           "durationMs": 46322.621583,
           "schemaValid": true,
           "quality": {
@@ -3419,7 +3390,7 @@
           "caseId": "montage-13-DXOzkCdjMue-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "f683e370e0f9f7c161d99e0938834e75faca6094dd19a83385bc4f66cdd394a9",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:44:01.467Z",
           "durationMs": 35318.796834,
           "schemaValid": true,
           "quality": {
@@ -3451,7 +3422,7 @@
           "caseId": "montage-14-DXUPExpjCs2-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "af8429979c95bb7918f4733de43d7c4d46506eccd89b7792442b46f9d4176c4b",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:44:36.786Z",
           "durationMs": 390989.623167,
           "schemaValid": true,
           "quality": {
@@ -3483,7 +3454,7 @@
           "caseId": "montage-15-6QIdqyFoxFE-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "89b8afc3f8b5f588567e69fa793670d38dac7b0279cabda0991a0479025148df",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:51:07.780Z",
           "durationMs": 43901.001,
           "schemaValid": true,
           "quality": {
@@ -3515,7 +3486,7 @@
           "caseId": "montage-16-BwIaEb5vGDo-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "78fa9ce6016d42705f0f35f16ae7e4401e593837b29a47149b0b5209e8b5a200",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:51:51.683Z",
           "durationMs": 18202.298458,
           "schemaValid": true,
           "quality": {
@@ -3547,7 +3518,7 @@
           "caseId": "montage-17-J6tw2l128YE-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "6de003f8ec882ddba50df9792d385b0b2d67fe4493191f385cffa40a12936e3c",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:52:09.886Z",
           "durationMs": 41526.204958,
           "schemaValid": true,
           "quality": {
@@ -3579,7 +3550,7 @@
           "caseId": "montage-18-V-xIvJs0Jbo-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "7e13a8ee6e560d187634b2b413aca76d6e0aa4f828281ab0e987e82a684fc00a",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:52:51.415Z",
           "durationMs": 48017.584959,
           "schemaValid": true,
           "quality": {
@@ -3611,7 +3582,7 @@
           "caseId": "montage-19-WkEyab1jINA-v1",
           "expectedQualityLabel": "PASS",
           "promptSha256": "bcaf268d56e1f10959772b1537d8eb41dbd152d077d56b3fb96dd76ebe7d06cb",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:53:39.433Z",
           "durationMs": 50912.006708,
           "schemaValid": true,
           "quality": {
@@ -3643,7 +3614,7 @@
           "caseId": "montage-20-BtDnmx6HRr_-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "2f6fef0433747ee83fdf0f993d70775270b18569878a0d30af001151ecc7185e",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:54:30.348Z",
           "durationMs": 41041.871417,
           "schemaValid": true,
           "quality": {
@@ -3675,7 +3646,7 @@
           "caseId": "montage-21-C-0YpsCAODv-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "3e2f8414d8e1aa91b0ca8852810301fa587ca74deef2be085176bb5ed84fb522",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:55:11.392Z",
           "durationMs": 16168.573625,
           "schemaValid": true,
           "quality": {
@@ -3707,7 +3678,7 @@
           "caseId": "montage-22-C9gLu79MklN-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "25281f0be5dfeba6efad3c452922f4fb09e892075faf23c5a585a25e80c79d1d",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:55:27.561Z",
           "durationMs": 32495.157916,
           "schemaValid": true,
           "quality": {
@@ -3739,7 +3710,7 @@
           "caseId": "montage-23-CsYa4skNBjP-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "bd93ae5f01047f37c438ada4dda191841741c70da1e71b4d3412d8b5e30db156",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:56:00.057Z",
           "durationMs": 23790.263375,
           "schemaValid": true,
           "quality": {
@@ -3771,7 +3742,7 @@
           "caseId": "montage-24-Cw_QTMmA69_-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "5451c76c012e39b070a5e7ef01c14ff0179a60d96933c7124cb347d53fa60e4b",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:56:23.944Z",
           "durationMs": 41263.262375,
           "schemaValid": true,
           "quality": {
@@ -3803,7 +3774,7 @@
           "caseId": "montage-25-Cxb0DmpJ7oM-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "c765c402c99c8bdcecad9b61ec5d564ea59d64b8842289cbe4e28c8c259fa48e",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:57:05.212Z",
           "durationMs": 31491.754959,
           "schemaValid": true,
           "quality": {
@@ -3835,7 +3806,7 @@
           "caseId": "montage-26-DIUYX9QStl3-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "2374fbeddd94eb4e096bd58a686380b654d73222edb054079152ec1c33239715",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:57:36.829Z",
           "durationMs": 27749.455541,
           "schemaValid": true,
           "quality": {
@@ -3867,7 +3838,7 @@
           "caseId": "montage-27-DKM66d2tamf-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "b0aa10d532f15ab3a704178d6fde4044a6578a27ce43f2253ab209c26caadabb",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:58:04.580Z",
           "durationMs": 36598.81775,
           "schemaValid": true,
           "quality": {
@@ -3899,7 +3870,7 @@
           "caseId": "montage-28-DW5s3qoDbHC-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "03afe3597c024b85f008e165b1bec4da90fde6eb1890d4ad22be34723368ec32",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:58:41.180Z",
           "durationMs": 49873.470833,
           "schemaValid": true,
           "quality": {
@@ -3931,7 +3902,7 @@
           "caseId": "montage-29-DWjH5fWjBnt-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "a12337abfc8a4bdc63ee065e63ac46fdbcb1482e6f0fd8993247ddfc8238486e",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T09:59:31.056Z",
           "durationMs": 47382.428917,
           "schemaValid": true,
           "quality": {
@@ -3963,7 +3934,7 @@
           "caseId": "montage-30-DXHx529DVb0-v2",
           "expectedQualityLabel": "PASS",
           "promptSha256": "5e5ca622dad46ae59ce0e6a775ebf6e381f5fc7813e3b81a8fdb5e1ee2083ef5",
-          "startedAt": "2026-07-11T12:24:21.425Z",
+          "startedAt": "2026-07-11T10:00:18.441Z",
           "durationMs": 29399.348042,
           "schemaValid": true,
           "quality": {
@@ -4017,20 +3988,25 @@
       }
     }
   ],
-  "selection": {
-    "primary": {
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "high"
+  "selection": null,
+  "selectionError": "Primary route codex:gpt-5.6-luna has no distinct benchmark-qualified fallback.",
+  "selectionRejections": [
+    {
+      "routeId": "codex:gpt-5.4",
+      "reason": "no benchmark result"
     },
-    "fallback": {
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "x-high"
+    {
+      "routeId": "codex:gpt-5.4-mini",
+      "reason": "no benchmark result"
     },
-    "fallbackMode": "same_route_reasoning"
-  },
-  "selectionError": null,
-  "selectionRejections": [],
-  "evidenceSha256": "9f19b1dfd9cc90ecbf8d6af8e386d979e3a76f5155926c8770d2b5b324a4715b"
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "reason": "quality score is below the floor"
+    },
+    {
+      "routeId": "codex:gpt-5.6-luna",
+      "reason": "quality score is below the floor; schema success rate is below the floor"
+    }
+  ],
+  "evidenceSha256": "839d29d9b1a2a51b868c6d5a55b8010424982417111095a4c07a82473097a98b"
 }

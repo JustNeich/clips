@@ -2,22 +2,18 @@
   "schemaVersion": "project-kings-remaining-semantic-model-raw-evidence-v1",
   "benchmarkVersion": "project-kings-caption-real-30-v2",
   "stageRole": "caption",
-  "createdAt": "2026-07-11T12:23:54.490Z",
+  "createdAt": "2026-07-11T10:15:16.401Z",
   "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-  "benchmarkEvidenceSha256": "b10a9e04d413490ee39099c0a8befc202ed69dbd97ed91954c4d1282c3b97c46",
-  "outcome": "pass",
-  "error": null,
-  "callCount": 120,
+  "benchmarkEvidenceSha256": "0f343eb5c68b9f827144667319b677dbb9efc89a846b3820573eadc2c3f3a8a7",
+  "outcome": "blocked",
+  "error": "ModelBenchmarkHarnessError: Primary route codex:gpt-5.6-luna has no distinct benchmark-qualified fallback.\n    at runStageSpecificModelBenchmark (/Users/neich/Documents/Macedonian Imperium/clips automations/lib/project-kings/model-benchmark.ts:726:11)\n    at async main (/Users/neich/Documents/Macedonian Imperium/clips automations/scripts/run-project-kings-remaining-semantic-benchmarks.mts:284:22)",
+  "callCount": 90,
   "checkpoint": {
     "relativePath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl",
-    "resumedSuccessCount": 120,
-    "liveCallCount": 0
+    "resumedSuccessCount": 60,
+    "liveCallCount": 30
   },
   "candidates": [
-    {
-      "routeId": "codex:gpt-5.6-luna",
-      "reasoningEffort": "low"
-    },
     {
       "routeId": "codex:gpt-5.6-luna",
       "reasoningEffort": "medium"
@@ -32,786 +28,6 @@
     }
   ],
   "calls": [
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "5f1689f1a488ea259d0a1dd75f32ca3ac5e8ca10fcc4c75a504333175bc81a52",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-01-BtDnmx6HRr_-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "1b184d5bf712586d0f528303276f1aabf3b8e383e3e45c390a4b49ed3674395d",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:13:48.860Z",
-      "durationMs": 16652.979125,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"A man runs alongside a tiger. They chase, embrace, and roll together—ending in close contact.\",\"title\":\"He Chased a Tiger—Then They Rolled Together\",\"hook\":\"A man runs alongside a tiger.\",\"action\":\"They chase, embrace, and roll together.\",\"payoff\":\"The two remain in close contact.\",\"factualClaims\":[\"A man and a tiger chase, embrace, roll together, and remain in close contact.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "461f29fafc106ba38a38e131655144ad43f2ea8c289e5979c9db8f3a2ecc1643",
-      "usage": {
-        "inputTokens": 49477,
-        "cachedInputTokens": 21248,
-        "outputTokens": 516,
-        "reasoningOutputTokens": 270
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "11952fd8de080ee0ecbab3c33162b0761cb58e39356e0ae7175855f8df07cff6",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-02-C-0YpsCAODv-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "3313bf5cdb41d53daed96ce21cec5512878bc9237473a671ccdd6fa1e3952218",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:14:05.515Z",
-      "durationMs": 18425.235416,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"A chimpanzee joins the wave. A smiling woman carries it on her shoulders while both wave at the camera. Their shared smile is the sweetest payoff.\",\"title\":\"A Chimpanzee Waves Along\",\"hook\":\"A chimpanzee joins the wave.\",\"action\":\"A smiling woman carries the chimpanzee on her shoulders while both wave at the camera.\",\"payoff\":\"Their shared smile is the sweetest payoff.\",\"factualClaims\":[\"A smiling woman carries a chimpanzee on her shoulders.\",\"Both the woman and chimpanzee wave at the camera.\",\"The pair are smiling.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "bd11f8cf718f5c10f7611cbf6d7217e363b796d1e021c64f62d13838ec4a0114",
-      "usage": {
-        "inputTokens": 52933,
-        "cachedInputTokens": 22272,
-        "outputTokens": 506,
-        "reasoningOutputTokens": 232
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "0713706202a9a33b12b7ac0d82371ac33763a4011473bdffc0f4eed75bb1aff0",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-03-C9gLu79MklN-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "c710f739900aefa2585aaac1f61d20229c33e1d864d5f7d84fae2e9e5c501d79",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:14:23.943Z",
-      "durationMs": 18816.915583,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"This owner feeds and plays with a diapered spider monkey—all in one continuous interaction.\",\"title\":\"SPIDER MONKEY PLAYTIME\",\"hook\":\"This owner has a tiny playmate\",\"action\":\"He feeds and plays with a diapered spider monkey\",\"payoff\":\"One continuous interaction\",\"factualClaims\":[\"An owner feeds and plays with a diapered spider monkey in one continuous interaction.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "3e4c306876341a20f713d947330ded95e22fbffa51d6142c49bc4c16c86917c6",
-      "usage": {
-        "inputTokens": 52907,
-        "cachedInputTokens": 22272,
-        "outputTokens": 438,
-        "reasoningOutputTokens": 206
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "d642d754f8cf6c36d1bd9a34c122c5e4d9d2fd07484be9a550873062a21065f3",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-04-CsYa4skNBjP-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "00795b3cd32dde6a4f35967ed969dd2ffaf6eb4b04212e8857792f29b1cf8878",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:14:42.763Z",
-      "durationMs": 14392.34725,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"A man bottle-feeds a lion while holding its paw—and the big cat calmly drinks in this close encounter.\",\"title\":\"Bottle-Feeding a Lion\",\"hook\":\"A man feeds a lion by bottle.\",\"action\":\"He holds the lion’s paw as it drinks.\",\"payoff\":\"The lion calmly stays close.\",\"factualClaims\":[\"A man bottle-feeds a large lion.\",\"He holds the lion’s paw while it drinks.\",\"The interaction remains close and calm.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "93f65d4ef0759e2ac307826a66374d8ae69495c1fccd619ef37399de9394299a",
-      "usage": {
-        "inputTokens": 52776,
-        "cachedInputTokens": 22272,
-        "outputTokens": 355,
-        "reasoningOutputTokens": 102
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "5e2980b932b4f58b0a170dcb26d04aa11e1ef7696f20d1961e62b4febd82910e",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-05-Cw_QTMmA69_-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "45abee5c7fe4d917eb9fc3cdb419dd25f9d1d2c13d481ec36dfe58a278a82ad4",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:14:57.158Z",
-      "durationMs": 13376.215417,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"A woman bottle-feeds a giant liger—then gently strokes its head.\",\"title\":\"Bottle-Feeding a Giant Liger\",\"hook\":\"A woman gets incredibly close to a giant liger.\",\"action\":\"She bottle-feeds it and strokes its head.\",\"payoff\":\"The liger calmly leans into the gentle contact.\",\"factualClaims\":[\"A woman bottle-feeds a giant liger.\",\"She strokes the liger's head in a close continuous moment.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "e6c65269a87130c17194c70e2dcc0571bfc6f3d7ea638be6941c749ce057c8d9",
-      "usage": {
-        "inputTokens": 52841,
-        "cachedInputTokens": 8960,
-        "outputTokens": 390,
-        "reasoningOutputTokens": 143
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "73b02396f2e15405dc7468aa9d3c224b0cf61e511183a6958eade3a48613a381",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-06-Cxb0DmpJ7oM-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "502b9a6c6ac793588912ef08df1ddaffaf9ef632cb8050eb090e18d7c0ec9243",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:15:10.535Z",
-      "durationMs": 13875.225875,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"A man holds a towel-wrapped baby spider monkey close to his face—and the little monkey calmly stays there.\",\"title\":\"A Tiny Guest Gets Comfortable\",\"hook\":\"He brings a baby spider monkey in for a close look.\",\"action\":\"Wrapped in a towel, the monkey stays close to his face.\",\"payoff\":\"A calm, tender moment between them.\",\"factualClaims\":[\"A man holds a towel-wrapped baby spider monkey close to his face.\",\"The monkey remains close to him during the interaction.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "ed3c74ec09b6d302fd2c1a9afb11caaf08bca568bb20326e037ea7db81a786fa",
-      "usage": {
-        "inputTokens": 52939,
-        "cachedInputTokens": 31232,
-        "outputTokens": 376,
-        "reasoningOutputTokens": 117
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "abbc6730c53ce5c9299f00b2cde353d5cb770c36d304ab2559667c2a5f2121cc",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-07-DIUYX9QStl3-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "e387617b99ff7741e3e79f1321a07b3ebf5301c89723e883f4b024b9b41a470a",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:15:24.413Z",
-      "durationMs": 13525.735458,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"This chimpanzee wanted a swim buddy. A man holds him close as they move through the pool together—and both stay locked in a playful embrace.\",\"title\":\"A Chimpanzee’s Perfect Swim Buddy\",\"hook\":\"This chimpanzee wanted a swim buddy.\",\"action\":\"A man holds him close as they move through the pool together.\",\"payoff\":\"Both stay locked in a playful embrace.\",\"factualClaims\":[\"A man swims while hugging a chimpanzee.\",\"The man and chimpanzee remain in close playful contact.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "5fb2c83e148f59850781a6a7aaea3e611dea2e4b0357743f1bb8f8ffb9392caf",
-      "usage": {
-        "inputTokens": 52907,
-        "cachedInputTokens": 22272,
-        "outputTokens": 414,
-        "reasoningOutputTokens": 148
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "e7d8e4c4080faa2ca0fc6a2faf2e2e90f9eb61974e4263a575c2b2f728db6edb",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-08-DKM66d2tamf-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "4750e9975536fd8b8216d6e74f419f9e52e28cf18f8ace176a97d56dec354995",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:15:37.941Z",
-      "durationMs": 19344.782875,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"A tiger cub settles on his lap, enjoys a gentle belly rub, then licks his hand.\",\"title\":\"The Tiger Cub’s Sweet Response\",\"hook\":\"A tiger cub settles on his lap\",\"action\":\"He gently rubs its belly\",\"payoff\":\"The cub licks his hand\",\"factualClaims\":[\"A young tiger rests on a man's lap.\",\"The man rubs the tiger's belly.\",\"The tiger licks his hand.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "1551825d3b74f6192ce88ae93bf441de7e90f24cb58f380e9d29ab49331247bd",
-      "usage": {
-        "inputTokens": 52895,
-        "cachedInputTokens": 8960,
-        "outputTokens": 425,
-        "reasoningOutputTokens": 182
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "7f2b0282f64fa7f105b9cffd70a9c1ce208c981294b41552ced985071e7db586",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-09-DW5s3qoDbHC-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "9c5234990dd15e7f5031ef1200ec19ccc9f269e107a8a5e29357e1bed4423b6c",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:15:57.288Z",
-      "durationMs": 12424.394125,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"A passenger flees a traffic stop on foot—but the officer catches and restrains him.\",\"title\":\"He Ran From a Traffic Stop\",\"hook\":\"Why did he run?\",\"action\":\"A passenger flees the traffic stop on foot.\",\"payoff\":\"The officer catches and restrains him.\",\"factualClaims\":[\"A passenger flees a traffic stop on foot.\",\"An officer catches and restrains him.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "39a5614b11c7b4d5b1d373b3c1a38906166fd9890837378e975e8247f48bf5c9",
-      "usage": {
-        "inputTokens": 52973,
-        "cachedInputTokens": 0,
-        "outputTokens": 375,
-        "reasoningOutputTokens": 128
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "d34156501e49956e0ede1f75b7d40972c9704cbeaa9a5b4fff7aad228668dda2",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-10-DWjH5fWjBnt-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "7216486a0ad7bdf90689437d6d0cf65025755f07efd44f50514effb7f2fcfaa7",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:16:09.713Z",
-      "durationMs": 14678.755667,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"A pickup tries to flee, but police deploy a grappler strap toward its rear wheel. Watch the chase change in seconds.\",\"title\":\"Police Deploy a Grappler Strap\",\"hook\":\"A pickup tries to flee\",\"action\":\"Police deploy a grappler strap toward its rear wheel\",\"payoff\":\"The chase changes in seconds\",\"factualClaims\":[\"Police pursue a pickup.\",\"Police deploy a grappler strap toward its rear wheel.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "c4e082dd424dee8d3f59813d3e97a8f9341e1f8d7f23e32d17b3c76bcd55f7cd",
-      "usage": {
-        "inputTokens": 52940,
-        "cachedInputTokens": 17920,
-        "outputTokens": 436,
-        "reasoningOutputTokens": 189
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "564db454bdf716ee5116a79664b4a7c99c796018469e08dca130ff0a24f8dcfc",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-11-DXHx529DVb0-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "c881de64086e97bfd1fac09ca0a9ab194ee9af1d52765ddbdaacee929ced897c",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:16:24.393Z",
-      "durationMs": 15771.421,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"A trooper confronts a wrong-way driver. The final frame shows the patrol vehicle damaged after the stop.\",\"title\":\"Wrong-Way Driver Meets a Trooper\",\"hook\":\"A trooper confronts a wrong-way driver.\",\"action\":\"The trooper stops the dangerous driver.\",\"payoff\":\"The patrol vehicle is shown damaged after the stop.\",\"factualClaims\":[\"Dashcam footage shows a trooper confronting a wrong-way driver.\",\"The patrol vehicle is visibly damaged in the final frame.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "a97e225b946792a23c91a3eaa64063521f50493ad9813704e50a7fcb8abb00b8",
-      "usage": {
-        "inputTokens": 52925,
-        "cachedInputTokens": 17920,
-        "outputTokens": 445,
-        "reasoningOutputTokens": 184
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "8941ccd5ebce92e25cbe68fa1b81f8528e59f50150b161b23ad28abf1378cecc",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-12-DXNBoz7jYmd-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "aa797c12510aa9ec01387be18e6a8f4d95cc8d21a20e1edfd9e3c9fedd156981",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:16:40.165Z",
-      "durationMs": 13234.969417,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"Police chase a stolen car through a neighborhood before an armed-officer stop ends the pursuit.\",\"title\":\"Stolen Car Chase Ends With Armed Officers\",\"hook\":\"A stolen car races through a neighborhood with police close behind.\",\"action\":\"Officers pursue the vehicle through residential streets.\",\"payoff\":\"The car is stopped as armed officers move in.\",\"factualClaims\":[\"Police pursue a stolen car through a neighborhood.\",\"The pursuit ends with an armed-officer stop.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "4b5de0edc48af296b13b35d0a591283d6931c8d186000db1949eee47023ca79b",
-      "usage": {
-        "inputTokens": 52944,
-        "cachedInputTokens": 17920,
-        "outputTokens": 429,
-        "reasoningOutputTokens": 175
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "2e29721a57b25313d15450f0ec4059c208a9372ba7d59a2d3e065592098eab3e",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-13-DXOzkCdjMue-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "c773922d6412c35c69200257fe386efde4e9d91d336c09416db28489d69903a3",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:16:53.402Z",
-      "durationMs": 19010.290792,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"A fleeing suspect clings to a moving car while police follow on the highway. Watch the footage as the dangerous escape attempt unfolds.\",\"title\":\"Suspect Clings to Moving Car During Police Pursuit\",\"hook\":\"A fleeing suspect clings to a moving car.\",\"action\":\"Police follow as the vehicle continues down the highway.\",\"payoff\":\"The escape attempt unfolds in full view.\",\"factualClaims\":[\"A fleeing suspect clings to a moving car while police follow on the highway.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "e8f32d2688d89d790c41264b1561b81bdd8225e172079ac23156b783522b7353",
-      "usage": {
-        "inputTokens": 52927,
-        "cachedInputTokens": 22272,
-        "outputTokens": 466,
-        "reasoningOutputTokens": 213
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "31f517b8661e8af5ddac42cf3ebef5f6ccd9ca520f143ce2b4262f3db9015885",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-14-DXUPExpjCs2-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "537b8e081faccb741836e75a384154a11756650d218bf544422499899a73441a",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:17:12.415Z",
-      "durationMs": 13574.399042,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"A baby is choking. Two state troopers provide urgent aid until the child begins breathing again.\",\"title\":\"Troopers Help Choking Baby\",\"hook\":\"A baby is choking.\",\"action\":\"Two state troopers provide urgent aid.\",\"payoff\":\"The child begins breathing again.\",\"factualClaims\":[\"Two state troopers help a choking baby until the child begins breathing again.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "845e72a7930d8fba8f5c1e01d3a6d120d737a39d97fc25b638462386ce637c97",
-      "usage": {
-        "inputTokens": 52946,
-        "cachedInputTokens": 31232,
-        "outputTokens": 395,
-        "reasoningOutputTokens": 159
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "c52880b1156d3b507813996fa1f2c05be11120d7d9adc2a7d7debb830f0ef3cd",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-15-6QIdqyFoxFE-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "419d2943930d6e41d9e430540e86a4ec87562fb1a78fa8bafc69c47a04f71e20",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:17:25.992Z",
-      "durationMs": 15342.43525,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"Harry Potter gets an AI twist: a bouquet, an iPhone 17, and a very different payoff.\",\"title\":\"Harry Potter’s AI Twist\",\"hook\":\"A familiar Hogwarts moment takes an unexpected turn.\",\"action\":\"Harry brings flowers, then presents an iPhone 17.\",\"payoff\":\"The scene ends with Hermione delivering a sharp slap.\",\"factualClaims\":[\"The frames show recognizable Harry Potter characters.\",\"Harry is shown holding a bouquet of flowers.\",\"An iPhone 17 box is visibly presented.\",\"Hermione is shown slapping Harry.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "c490f62f145f69590bc03353ce5ad9e941c80bdb7de7a87a3604646d7a5b2f5b",
-      "usage": {
-        "inputTokens": 52416,
-        "cachedInputTokens": 31232,
-        "outputTokens": 365,
-        "reasoningOutputTokens": 104
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "a65e350234c0f9d091509a86f40cd428a8f494774c875b5a17de7c630c8e8f06",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-16-BwIaEb5vGDo-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "6a47846884be349e57b287134c1639ca0c745c1fd654293bb1f72a10c7420c97",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:17:41.335Z",
-      "durationMs": 15004.141125,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"The Mandalorian and Grogu return in an AI-rebuilt scene. Watch the familiar duo take on a whole new visual style.\",\"title\":\"THE MANDALORIAN, REBUILT BY AI\",\"hook\":\"The Mandalorian and Grogu return.\",\"action\":\"Their scene is rebuilt with AI.\",\"payoff\":\"A familiar duo gets a whole new visual style.\",\"factualClaims\":[\"The Mandalorian and Grogu appear in a clean AI-rebuilt short fiction scene.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "3126b6489ae294bd0a2a4d90894539d2720f23841b3b5b6e578f27891cbcf273",
-      "usage": {
-        "inputTokens": 49056,
-        "cachedInputTokens": 30208,
-        "outputTokens": 441,
-        "reasoningOutputTokens": 187
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "d7bc6ebb7497fea29d5ae5119770f6e3eca5ff09316ccc2e30a500e36d596e49",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-17-J6tw2l128YE-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "747cc6cb33a33d1c7b8bc33484048d47b3181dae89faef795de44d6ea167144a",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:17:56.342Z",
-      "durationMs": 16061.390292,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"Harry Potter characters enter an AI afterparty—wild faces, money in hand, and a whispered moment turn the transformed scene into pure chaos.\",\"title\":\"Harry Potter’s AI Afterparty\",\"hook\":\"Harry Potter characters enter an AI afterparty.\",\"action\":\"Wild faces, money in hand, and a whispered moment follow.\",\"payoff\":\"The transformed scene turns into pure chaos.\",\"factualClaims\":[\"Recognizable Harry Potter characters appear in a transformed AI afterparty scene.\",\"The supplied frames show exaggerated expressions, money, and a close whispered interaction.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "c6858fe64551e3a312ae7f493283d21e3cf24dba8e471f2a16e46339212a70ff",
-      "usage": {
-        "inputTokens": 52420,
-        "cachedInputTokens": 17920,
-        "outputTokens": 510,
-        "reasoningOutputTokens": 245
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "e58c279b22021da0419470742ac9715193bb1251fa953c055d3ff87484bfba3d",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-18-V-xIvJs0Jbo-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "71ae416d468c8583c757c4635962672451475034ebce62071113bddf5e6dd87b",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:18:12.406Z",
-      "durationMs": 17194.056083,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"Harry Potter gets an AI twist: a generated public-figure character joins the trio, then reveals a magical cameo.\",\"title\":\"Harry Potter Gets an AI Cameo\",\"hook\":\"Harry Potter gets an AI twist\",\"action\":\"A generated public-figure character joins the trio\",\"payoff\":\"A magical cameo unfolds\",\"factualClaims\":[\"A generated public-figure character is placed inside a recognizable Harry Potter scene.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "225f92ee25fcb8ecd49d55b9271ae4ff45db0fd765f7ae98e1e74b4e152915b5",
-      "usage": {
-        "inputTokens": 52367,
-        "cachedInputTokens": 31232,
-        "outputTokens": 383,
-        "reasoningOutputTokens": 143
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "e44af1776a3355c4763f11caacf10a235d676125aefae5a270d871e3bd4a4819",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-19-WkEyab1jINA-v1",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "3ea7083e1d294d938a13fda0bc5918f36d098d5423ac1ec5c2561cd61a726172",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:18:29.600Z",
-      "durationMs": 15263.295333,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"Trump enters Hogwarts. The students meet him—then his handwritten introduction changes the scene.\",\"title\":\"Trump Enters Hogwarts\",\"hook\":\"Trump enters Hogwarts.\",\"action\":\"The students meet him.\",\"payoff\":\"His handwritten introduction changes the scene.\",\"factualClaims\":[\"A generated public-figure character enters a recognizable Harry Potter fiction scene.\",\"The scene shows students meeting the character and a handwritten introduction.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "74fd091f63947fb1765162cc4cdf83f6d175b854af942a74b800716ef15042fe",
-      "usage": {
-        "inputTokens": 52473,
-        "cachedInputTokens": 17920,
-        "outputTokens": 433,
-        "reasoningOutputTokens": 154
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "656611718ebd73c4518c1f0973757590d2259514b982675385852c897da4a53f",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-20-BtDnmx6HRr_-v2",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "5640489e19dce3222f73f194a3929a8394c9d2819f61141839f6f98b13a8cc1a",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:18:44.864Z",
-      "durationMs": 12846.090417,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"A tiger chases a man—then they embrace and roll together in a surprisingly gentle moment.\",\"title\":\"When a Tiger Chooses Trust\",\"hook\":\"A tiger charges toward a man.\",\"action\":\"They chase, embrace, and roll together.\",\"payoff\":\"The wild encounter ends in close contact.\",\"factualClaims\":[\"A man and a tiger chase, embrace, roll together, and remain in close contact.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "925c2757fab9cc563febeabcee1044202bc62b69510b5430e09547a309b9f0b1",
-      "usage": {
-        "inputTokens": 49441,
-        "cachedInputTokens": 8960,
-        "outputTokens": 381,
-        "reasoningOutputTokens": 138
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "79512db827c09fe183e12fe5e4697fcb17518c5aede4afed4c2cdc5dc3c4d469",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-21-C-0YpsCAODv-v2",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "7cecf4ccada1cef65f46e3c7e9b764b618676019883912ca63ed8f247f0e9b9a",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:18:57.712Z",
-      "durationMs": 12999.195792,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"She carries her chimpanzee friend—and they wave together.\",\"title\":\"A Chimpanzee Joins the Wave\",\"hook\":\"A chimpanzee climbs onto her shoulders.\",\"action\":\"She carries him while both wave at the camera.\",\"payoff\":\"The sweetest safari greeting.\",\"factualClaims\":[\"A smiling woman carries a chimpanzee on her shoulders.\",\"Both wave at the camera.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "2e84a5e45f27bee2acd965245c7723a81ba3dcf570d99e324de1abaec8429e4e",
-      "usage": {
-        "inputTokens": 52994,
-        "cachedInputTokens": 17920,
-        "outputTokens": 364,
-        "reasoningOutputTokens": 124
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "b9948d27aaf67eb6772e3c7817778c89eaa5f084fadfde28c7b012979f02112f",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-22-C9gLu79MklN-v2",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "0ee9abde8239c4b82606bc81d22d744495c83e537672570be24b4dd76271c1a0",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:19:10.712Z",
-      "durationMs": 13550.81425,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"A spider monkey gets fed, plays with its owner, and turns snack time into a sweet little bond.\",\"title\":\"Snack Time With a Spider Monkey\",\"hook\":\"This tiny guest knows exactly where the fun is\",\"action\":\"The owner feeds and plays with the diapered spider monkey\",\"payoff\":\"One continuous moment of trust, play, and connection\",\"factualClaims\":[\"An owner feeds and plays with a diapered spider monkey in one continuous interaction.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "c9fe1f8bf818fba769370e2eb3d83873c42b1a9a91d98bbec2a43f909e1f11b5",
-      "usage": {
-        "inputTokens": 52886,
-        "cachedInputTokens": 31232,
-        "outputTokens": 437,
-        "reasoningOutputTokens": 192
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "e6f5703ad360cbacce0715f0033605c146b99894f330e5dab5b1ea1c131d62b1",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-23-CsYa4skNBjP-v2",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "0ff971d9d00df1b115fe0b86d5656ee0b8d093be64adb1a1be63a3e2f075a094",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:19:24.266Z",
-      "durationMs": 14089.903791,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"He bottle-feeds a lion while holding its paw—and the lion keeps drinking.\",\"title\":\"Bottle-Feeding a Lion\",\"hook\":\"A man gets remarkably close to a lion.\",\"action\":\"He holds the lion’s paw and bottle-feeds it.\",\"payoff\":\"The lion keeps drinking beside him.\",\"factualClaims\":[\"A man bottle-feeds a large lion.\",\"He holds the lion’s paw while the lion drinks.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "710888d1351ff1bf2db44dd987eaaae0eee0a53effe16ff13cb2edc2b5ab2e03",
-      "usage": {
-        "inputTokens": 52852,
-        "cachedInputTokens": 8960,
-        "outputTokens": 391,
-        "reasoningOutputTokens": 146
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "9063e687df2d2fe70f2849410afcbe0740f055b4672501d52fe8f2071dc164ec",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-24-Cw_QTMmA69_-v2",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "314cc04ce5483f21289c0846994f8af24fbb5107560bdea10449b83faeea0dbc",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:19:38.356Z",
-      "durationMs": 13433.783042,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"She bottle-feeds a giant liger—then it leans into her touch.\",\"title\":\"A Giant Liger’s Gentle Reaction\",\"hook\":\"A woman bottle-feeds a giant liger.\",\"action\":\"She strokes its head during the close encounter.\",\"payoff\":\"The liger calmly leans into her touch.\",\"factualClaims\":[\"A woman bottle-feeds a giant liger.\",\"She strokes the liger’s head.\",\"The interaction is close and continuous.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "024b4359cc2c11ef7f1c77ac361fac98b8db833991da4f9e2afcf34d7eb4090b",
-      "usage": {
-        "inputTokens": 52891,
-        "cachedInputTokens": 0,
-        "outputTokens": 331,
-        "reasoningOutputTokens": 88
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "7538fa4a2ab4183dd1e11035de63ab273f88d1d0931030d1130ac22295be2347",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-25-Cxb0DmpJ7oM-v2",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "f0e6851eecfba9a1c8fb31bfddd504bec8401c36a855a87b83ca2b4747ef407d",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:19:51.793Z",
-      "durationMs": 29873.762167,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"A tiny face meets a gentle embrace — he holds a towel-wrapped baby spider monkey close, and it calmly stays by him.\",\"title\":\"A Tiny Face, A Gentle Embrace\",\"hook\":\"A tiny face meets a gentle embrace.\",\"action\":\"He holds a towel-wrapped baby spider monkey close.\",\"payoff\":\"The little monkey calmly stays by him.\",\"factualClaims\":[\"A man holds a towel-wrapped baby spider monkey close to his face.\",\"The monkey remains close to the man.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "934c6fe88d72a6c1daa238a66f80afc61e5005e0590fa38734b928d6122b6235",
-      "usage": {
-        "inputTokens": 52852,
-        "cachedInputTokens": 17920,
-        "outputTokens": 368,
-        "reasoningOutputTokens": 116
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "357551eee820244c1c429b42491adab1e914c275992fcf22c48c9f5668bab020",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-26-DIUYX9QStl3-v2",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "7e2d347ad6ad5a04b716bc2271596f8aaafe1d15c45ba574f3f64adfc06de22e",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:20:21.667Z",
-      "durationMs": 14569.613584,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"He swims with a chimpanzee—and the playful embrace says it all.\",\"title\":\"A Playful Swim Together\",\"hook\":\"He swims with a chimpanzee\",\"action\":\"Holding it close in the water\",\"payoff\":\"They remain playfully engaged\",\"factualClaims\":[\"A man swims while hugging a chimpanzee.\",\"Both remain in close playful contact.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "947736fd00fa984439f564693b992b3d57285d929dbd70d99a830568c5c72b77",
-      "usage": {
-        "inputTokens": 52938,
-        "cachedInputTokens": 31232,
-        "outputTokens": 386,
-        "reasoningOutputTokens": 155
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "d4a76acd5144e6fbb0b12369ec8d1687001dcda8a9b41cb855fe0d3ac191c47a",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-27-DKM66d2tamf-v2",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "835feca9456fd084b2408a8749c05a27d7b601abd7624eb0ee5e385888c35352",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:20:36.239Z",
-      "durationMs": 17188.136458,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"Top: He rubs a tiger cub’s belly\\nBottom: Then it licks his hand\",\"title\":\"Tiger Cub’s Sweet Reaction\",\"hook\":\"He rubs a tiger cub’s belly\",\"action\":\"The cub rests calmly on his lap\",\"payoff\":\"Then it licks his hand\",\"factualClaims\":[\"A young tiger rests on a man's lap while he rubs its belly and it licks his hand.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "830a2b9f291cf7ed07818dadb4d43271e7d4d51d5906681896b71f4ff9063e48",
-      "usage": {
-        "inputTokens": 52862,
-        "cachedInputTokens": 31232,
-        "outputTokens": 322,
-        "reasoningOutputTokens": 77
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "cc5b03c38e6be6ad848870820298485739580bfb3049b266a54ba331ac2cb600",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-28-DW5s3qoDbHC-v2",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "0e30f3f5859dd0ec03ed49449820c4eb661c9d8a6a707dc5671a9f2d3e0b2508",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:20:53.430Z",
-      "durationMs": 12553.609083,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"A passenger flees a traffic stop on foot, but the officer catches and restrains him.\",\"title\":\"He Ran From a Traffic Stop\",\"hook\":\"A passenger suddenly bolts from the car.\",\"action\":\"The officer chases him across the yard.\",\"payoff\":\"He is caught and restrained.\",\"factualClaims\":[\"A passenger fled a traffic stop on foot.\",\"An officer caught and restrained him.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "8566750502ffdb8fbf1fba04939526b00e2e7b0e5f75b89940f381c235d88af6",
-      "usage": {
-        "inputTokens": 52942,
-        "cachedInputTokens": 31232,
-        "outputTokens": 394,
-        "reasoningOutputTokens": 152
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "aee625cc6d89fc640d7c8f9fac1b1ccd9f1ce1a38feb48bb74957ae30f699a48",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-29-DWjH5fWjBnt-v2",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "5fa486a28a01a673302f9e9aeecceee8ccc1569c3c6fcd8d748b0ce2ed7d81b8",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:21:05.986Z",
-      "durationMs": 13044.825625,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"A police pursuit takes a sharp turn when officers deploy a grappler strap toward the pickup’s rear wheel. The strap catches, bringing the chase under control.\",\"title\":\"Police Grappler Strap Catches Fleeing Pickup\",\"hook\":\"A police pursuit takes a sharp turn.\",\"action\":\"Officers deploy a grappler strap toward the pickup’s rear wheel.\",\"payoff\":\"The strap catches, bringing the chase under control.\",\"factualClaims\":[\"Police pursue a pickup.\",\"Officers deploy a grappler strap toward its rear wheel.\",\"The strap catches the pickup’s rear wheel.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "e1087e1f8ac04f3a49c249083a312c1320d7a2e800996e9dfc4526af5c7d95cb",
-      "usage": {
-        "inputTokens": 52969,
-        "cachedInputTokens": 31232,
-        "outputTokens": 412,
-        "reasoningOutputTokens": 134
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
-    {
-      "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
-      "invocationKey": "f2bbb1d72de907cd51f766c6fb55ba503061c917505b4391c3aae5c11249e479",
-      "benchmarkVersion": "project-kings-caption-real-30-v2",
-      "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-      "caseId": "caption-30-DXHx529DVb0-v2",
-      "routeId": "codex:gpt-5.6-luna",
-      "model": "gpt-5.6-luna",
-      "reasoningEffort": "low",
-      "promptSha256": "9cc6b97e0680bf22ba005ae4e944612085d57f70af44841db0a811a97e962049",
-      "outputSchemaSha256": "51e7c6dc16007b41bcb135ce75c005811bc730e52e121979270c73255d5950ee",
-      "startedAt": "2026-07-10T20:21:19.032Z",
-      "durationMs": 12709.359084,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"caption\":\"A trooper confronts a wrong-way driver—then the damaged patrol vehicle shows how the stop ended.\",\"title\":\"Trooper Stops Wrong-Way Driver\",\"hook\":\"A trooper confronts a wrong-way driver.\",\"action\":\"The traffic stop turns into a collision.\",\"payoff\":\"The damaged patrol vehicle reveals the outcome.\",\"factualClaims\":[\"Dashcam shows a trooper confronting a wrong-way driver.\",\"The footage shows a damaged patrol vehicle.\"],\"bannedWordsFound\":[]}",
-      "outputSha256": "1857991775aa27f8ce6781f3d86c06e647ea9275736b7fd3aeda85cff3b799ec",
-      "usage": {
-        "inputTokens": 52923,
-        "cachedInputTokens": 17920,
-        "outputTokens": 400,
-        "reasoningOutputTokens": 148
-      },
-      "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
-    },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
       "invocationKey": "e939c2adf97ceaa80ba4d677d4a574d8ae8eadab86595168d6e521941ba8ca24",
@@ -2395,8 +1611,7 @@
         "reasoningOutputTokens": 715
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2421,8 +1636,7 @@
         "reasoningOutputTokens": 684
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2447,8 +1661,7 @@
         "reasoningOutputTokens": 804
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2473,8 +1686,7 @@
         "reasoningOutputTokens": 789
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2499,8 +1711,7 @@
         "reasoningOutputTokens": 625
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2525,8 +1736,7 @@
         "reasoningOutputTokens": 603
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2551,8 +1761,7 @@
         "reasoningOutputTokens": 561
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2577,8 +1786,7 @@
         "reasoningOutputTokens": 607
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2603,8 +1811,7 @@
         "reasoningOutputTokens": 637
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2629,8 +1836,7 @@
         "reasoningOutputTokens": 902
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2655,8 +1861,7 @@
         "reasoningOutputTokens": 570
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2681,8 +1886,7 @@
         "reasoningOutputTokens": 967
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2707,8 +1911,7 @@
         "reasoningOutputTokens": 1047
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2733,8 +1936,7 @@
         "reasoningOutputTokens": 666
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2759,8 +1961,7 @@
         "reasoningOutputTokens": 1452
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2785,8 +1986,7 @@
         "reasoningOutputTokens": 1217
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2811,8 +2011,7 @@
         "reasoningOutputTokens": 1551
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2837,8 +2036,7 @@
         "reasoningOutputTokens": 1071
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2863,8 +2061,7 @@
         "reasoningOutputTokens": 934
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2889,8 +2086,7 @@
         "reasoningOutputTokens": 1047
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2915,8 +2111,7 @@
         "reasoningOutputTokens": 1211
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2941,8 +2136,7 @@
         "reasoningOutputTokens": 835
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2967,8 +2161,7 @@
         "reasoningOutputTokens": 696
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2993,8 +2186,7 @@
         "reasoningOutputTokens": 646
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -3019,8 +2211,7 @@
         "reasoningOutputTokens": 534
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -3045,8 +2236,7 @@
         "reasoningOutputTokens": 908
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -3071,8 +2261,7 @@
         "reasoningOutputTokens": 577
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -3097,8 +2286,7 @@
         "reasoningOutputTokens": 487
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -3123,8 +2311,7 @@
         "reasoningOutputTokens": 943
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -3149,9 +2336,8 @@
         "reasoningOutputTokens": 791
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/caption-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     }
   ],
-  "rawEvidenceSha256": "981aeeb4ea0c19506f8fd15e657aa41c35e5cea3e08cc99eaf9924f14bc050ee"
+  "rawEvidenceSha256": "7de660a0b0aaf6f4f98199ac4d3733db902565a0e9f3d93d7292c43bbc6bc544"
 }

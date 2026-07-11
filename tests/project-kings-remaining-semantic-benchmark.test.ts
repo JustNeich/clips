@@ -48,22 +48,24 @@ test("remaining semantic benchmark freezes 30 real typed packets for every role"
     );
     // The corrected search expectations ride on the role-boundary overlay,
     // and only the source_search dataset version reflects the revision.
-    assert.equal(built.sourceSearchBoundary.revisionId, "project-kings-source-search-role-boundary-v2");
+    assert.equal(built.sourceSearchBoundary.revisionId, "project-kings-source-search-role-boundary-v3");
     assert.match(built.sourceSearchBoundary.overlaySha256, /^[a-f0-9]{64}$/);
-    assert.equal(built.datasets.source_search.datasetVersion, "real-30-v4-search-boundary");
+    assert.equal(built.datasets.source_search.datasetVersion, "real-30-v5-search-boundary");
     assert.equal(built.datasets.caption.datasetVersion, "real-30-v2");
     assert.equal(built.datasets.montage_planner.datasetVersion, "real-30-v2");
     assert.equal(built.datasets.source_fit.datasetVersion, "real-30-v2");
     // Labels of the source_search DATASET are derived from channel-concept
-    // relevance via the overlay, not index parity: three previously-FOUND
-    // concept-violating distractors flip to NO_MATCH.
+    // relevance via the overlay, not index parity: two previously-FOUND
+    // concept-violating distractors flip to NO_MATCH (overlay v3 restored
+    // DWwSVVOjMqO to FOUND: one story event in two scenes is concept-relevant;
+    // its compilation format is a downstream Source Fit rejection).
     assert.equal(
       built.datasets.source_search.cases.filter((entry) => entry.expectedQualityLabel === "FOUND").length,
-      12
+      13
     );
     assert.equal(
       built.datasets.source_search.cases.filter((entry) => entry.expectedQualityLabel === "NO_MATCH").length,
-      18
+      17
     );
 
     const searchLabelById = new Map(
@@ -72,13 +74,14 @@ test("remaining semantic benchmark freezes 30 real typed packets for every role"
     // Concept-violating same-profile candidates are NO_MATCH even though present.
     for (const noMatchId of [
       "source-search-09-DW0w8RMjY3Y",
-      "source-search-13-DWwSVVOjMqO",
       "source-search-29-n9kD935iROw"
     ]) {
       assert.equal(searchLabelById.get(noMatchId), "NO_MATCH", `${noMatchId} must be NO_MATCH`);
     }
-    // Concept-relevant candidates with only downstream-fit defects stay FOUND.
+    // Concept-relevant candidates with only downstream-fit defects stay FOUND
+    // (13: one story event in two scenes; 19/23: burned captions; 27: CTA overlay).
     for (const foundId of [
+      "source-search-13-DWwSVVOjMqO",
       "source-search-19-1diIRo4sHtk",
       "source-search-23-EYkw1ELHXq0",
       "source-search-27-XPKBwhDPxk0"
@@ -147,7 +150,7 @@ test("source-search boundary overlay fails closed when it is not bound to the ba
   try {
     const overlayPath = path.join(
       REPO_ROOT,
-      "docs/project-kings-production-pipeline-v1/source-search-role-boundary-v2.overlay.json"
+      "docs/project-kings-production-pipeline-v1/source-search-role-boundary-v3.overlay.json"
     );
     const overlay = JSON.parse(await fs.readFile(overlayPath, "utf8")) as Record<string, unknown>;
     const tamperedPath = path.join(fixtureRoot, "tampered-overlay.json");

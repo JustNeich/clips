@@ -20,21 +20,29 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const EVIDENCE_ROOT = path.join(REPO_ROOT, "docs/project-kings-production-pipeline-v1/evidence");
 const OUTPUT_PATH = path.join(EVIDENCE_ROOT, "project-kings-model-routes-v3.json");
 
+// Real-30 evidence for the five production roles benchmarked on real media
+// (2026-07-11, gpt-5.6-luna only). vision_qa intentionally stays on its
+// synthetic v7 evidence: its real launch gate is the 120-case blind corpus,
+// which by design requires campaign-scoped final_approved materials that only
+// exist after shadow runs.
 const INPUTS: Record<ProductionModelAgentRole, string> = {
-  source_search: "model-benchmark-source_search-2026-07-10-v2.json",
-  source_fit: "model-benchmark-source_fit-2026-07-10-v9.json",
-  source_policy: "model-benchmark-source_policy-REAL-30-CASES-REQUIRED.json",
-  caption: "model-benchmark-caption-2026-07-10-v4.json",
-  montage_planner: "model-benchmark-montage_planner-2026-07-10-v4.json",
+  source_search: "model-benchmark-source_search-2026-07-10-real-30-v5-search-boundary.json",
+  source_fit: "model-benchmark-source_fit-2026-07-10-real-30-v2.json",
+  source_policy: "model-benchmark-source_policy-2026-07-10-real-30-v9.json",
+  caption: "model-benchmark-caption-2026-07-10-real-30-v2.json",
+  montage_planner: "model-benchmark-montage_planner-2026-07-10-real-30-v2.json",
   vision_qa: "model-benchmark-vision_qa-2026-07-10-v7.json"
 };
 
+// These MUST mirror the policies the real-30 runs were selected under
+// (owner gate decisions 2026-07-10/11: source_policy decision boundary
+// floor 0.83; source_search floor 0.93; fail-closed single-route allowed).
 const POLICIES: Record<ProductionModelAgentRole, ModelSelectionPolicy> = {
-  source_search: { requiresVision: false, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 3, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 300_000 },
-  source_fit: { requiresVision: false, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 3, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 90_000 },
-  source_policy: { requiresVision: true, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 30, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 90_000 },
-  caption: { requiresVision: false, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 3, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 240_000 },
-  montage_planner: { requiresVision: false, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 3, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 240_000 },
+  source_search: { requiresVision: false, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 30, minimumQualityScore: 0.93, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 300_000, allowFailClosedSingleRoute: true },
+  source_fit: { requiresVision: true, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 30, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 90_000, allowFailClosedSingleRoute: true },
+  source_policy: { requiresVision: true, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 30, minimumQualityScore: 0.83, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 90_000, allowFailClosedSingleRoute: true },
+  caption: { requiresVision: true, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 30, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 240_000, allowFailClosedSingleRoute: true },
+  montage_planner: { requiresVision: true, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 30, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 240_000, allowFailClosedSingleRoute: true },
   vision_qa: { requiresVision: true, requiresJsonSchema: true, minimumReasoning: "low", minimumContextTokens: 0, minimumSampleSize: 3, minimumQualityScore: 1, minimumSchemaSuccessRate: 1, maximumP95LatencyMs: 45_000 }
 };
 
@@ -124,10 +132,17 @@ for (const role of PRODUCTION_MODEL_AGENT_ROLES) {
     benchmarkVersion: evidence.benchmarkVersion,
     evidenceSha256: evidence.evidenceSha256
   };
+  // Evidence written before the fallbackMode field existed derives the mode
+  // from the recorded selection itself: same routeId with different efforts is
+  // the labeled same-route degraded pair; distinct routeIds are distinct.
+  const fallbackMode = selected.fallbackMode
+    ?? (selected.fallback
+      ? (selected.fallback.routeId === selected.primary.routeId ? "same_route_reasoning" : "distinct_route")
+      : "fail_closed_none");
   selections[role] = {
     primary: selectedRoute(evidence, selected.primary),
     fallback: selected.fallback ? selectedRoute(evidence, selected.fallback) : null,
-    fallbackMode: selected.fallbackMode,
+    fallbackMode,
     policy: POLICIES[role]
   };
 }

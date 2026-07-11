@@ -2,16 +2,16 @@
   "schemaVersion": "project-kings-remaining-semantic-model-raw-evidence-v1",
   "benchmarkVersion": "project-kings-montage_planner-real-30-v2",
   "stageRole": "montage_planner",
-  "createdAt": "2026-07-11T12:24:21.428Z",
+  "createdAt": "2026-07-11T10:00:47.859Z",
   "annotationsSha256": "2bb898d405ee6c0b79d483d78d2fe0ad668b4a4db5814bd8d625fe85531097ec",
-  "benchmarkEvidenceSha256": "9f19b1dfd9cc90ecbf8d6af8e386d979e3a76f5155926c8770d2b5b324a4715b",
-  "outcome": "pass",
-  "error": null,
+  "benchmarkEvidenceSha256": "839d29d9b1a2a51b868c6d5a55b8010424982417111095a4c07a82473097a98b",
+  "outcome": "blocked",
+  "error": "ModelBenchmarkHarnessError: Primary route codex:gpt-5.6-luna has no distinct benchmark-qualified fallback.\n    at runStageSpecificModelBenchmark (/Users/neich/Documents/Macedonian Imperium/clips automations/lib/project-kings/model-benchmark.ts:726:11)\n    at async main (/Users/neich/Documents/Macedonian Imperium/clips automations/scripts/run-project-kings-remaining-semantic-benchmarks.mts:284:22)",
   "callCount": 120,
   "checkpoint": {
     "relativePath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl",
-    "resumedSuccessCount": 119,
-    "liveCallCount": 1
+    "resumedSuccessCount": 60,
+    "liveCallCount": 60
   },
   "candidates": [
     {
@@ -1615,8 +1615,7 @@
         "reasoningOutputTokens": 892
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -1629,18 +1628,13 @@
       "reasoningEffort": "high",
       "promptSha256": "08c285cd499ea08aed150790c279436da1da604f27dd3a5dacef26765377837a",
       "outputSchemaSha256": "fe89a5584e541af4e11c310aba1c45126e51d50f4c9d6aebd77d1afbcfd1b17c",
-      "startedAt": "2026-07-11T12:23:54.707Z",
-      "durationMs": 26713.759917,
-      "outcome": "returned",
-      "rawOutput": "{\"decision\":\"PASS\",\"targetDurationSec\":7.223,\"segments\":[{\"startSec\":0,\"endSec\":1.8,\"purpose\":\"hook\"},{\"startSec\":1.8,\"endSec\":5.1,\"purpose\":\"action\"},{\"startSec\":5.1,\"endSec\":7.223,\"purpose\":\"payoff\"}],\"crop\":{\"focusX\":0.5,\"focusY\":0.45,\"reason\":\"Keeps both faces, the chimpanzee's shoulders and waving arms safely visible throughout the vertical frame.\"},\"reason\":\"The continuous interaction clearly shows the woman carrying the chimpanzee, both waving, and smiling together.\"}",
-      "outputSha256": "96a78b131512889d3a73fc31c54c8ffd6f8f2884da8ac39ca3ca9f4e64c6d9ea",
-      "usage": {
-        "inputTokens": 54046,
-        "cachedInputTokens": 23296,
-        "outputTokens": 1058,
-        "reasoningOutputTokens": 774
-      },
-      "error": null,
+      "startedAt": "2026-07-11T09:09:21.729Z",
+      "durationMs": 618653.110583,
+      "outcome": "invoke_error",
+      "rawOutput": null,
+      "outputSha256": null,
+      "usage": null,
+      "error": "Error: Codex generation timed out.\n    at <anonymous> (/Users/neich/Documents/Macedonian Imperium/clips automations/lib/codex-runner.ts:277:27)\n    at finish (/Users/neich/Documents/Macedonian Imperium/clips automations/lib/codex-runner.ts:261:7)\n    at Timeout.<anonymous> (/Users/neich/Documents/Macedonian Imperium/clips automations/lib/codex-runner.ts:277:7)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)",
       "resumedFromCheckpoint": false
     },
     {
@@ -1666,8 +1660,7 @@
         "reasoningOutputTokens": 343
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -1692,8 +1685,7 @@
         "reasoningOutputTokens": 822
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -1718,8 +1710,7 @@
         "reasoningOutputTokens": 1183
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -1744,8 +1735,7 @@
         "reasoningOutputTokens": 486
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -1770,8 +1760,7 @@
         "reasoningOutputTokens": 595
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -1796,8 +1785,7 @@
         "reasoningOutputTokens": 858
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -1822,8 +1810,7 @@
         "reasoningOutputTokens": 840
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -1848,8 +1835,7 @@
         "reasoningOutputTokens": 285
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -1874,8 +1860,7 @@
         "reasoningOutputTokens": 585
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -1900,8 +1885,7 @@
         "reasoningOutputTokens": 1509
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -1926,8 +1910,7 @@
         "reasoningOutputTokens": 473
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -1952,8 +1935,7 @@
         "reasoningOutputTokens": 948
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -1978,8 +1960,7 @@
         "reasoningOutputTokens": 1090
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2004,8 +1985,7 @@
         "reasoningOutputTokens": 389
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2030,8 +2010,7 @@
         "reasoningOutputTokens": 1630
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2056,8 +2035,7 @@
         "reasoningOutputTokens": 651
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2082,8 +2060,7 @@
         "reasoningOutputTokens": 1482
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2108,8 +2085,7 @@
         "reasoningOutputTokens": 1899
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2134,8 +2110,7 @@
         "reasoningOutputTokens": 516
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2160,8 +2135,7 @@
         "reasoningOutputTokens": 428
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2186,8 +2160,7 @@
         "reasoningOutputTokens": 280
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2212,8 +2185,7 @@
         "reasoningOutputTokens": 619
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2238,8 +2210,7 @@
         "reasoningOutputTokens": 302
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2264,8 +2235,7 @@
         "reasoningOutputTokens": 1290
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2290,8 +2260,7 @@
         "reasoningOutputTokens": 444
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2316,8 +2285,7 @@
         "reasoningOutputTokens": 1365
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2342,8 +2310,7 @@
         "reasoningOutputTokens": 309
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2368,8 +2335,7 @@
         "reasoningOutputTokens": 637
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2394,8 +2360,7 @@
         "reasoningOutputTokens": 1879
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2420,8 +2385,7 @@
         "reasoningOutputTokens": 812
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2446,8 +2410,7 @@
         "reasoningOutputTokens": 622
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2472,8 +2435,7 @@
         "reasoningOutputTokens": 516
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2498,8 +2460,7 @@
         "reasoningOutputTokens": 1262
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2524,8 +2485,7 @@
         "reasoningOutputTokens": 1095
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2550,8 +2510,7 @@
         "reasoningOutputTokens": 3641
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2576,8 +2535,7 @@
         "reasoningOutputTokens": 2207
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2602,8 +2560,7 @@
         "reasoningOutputTokens": 1694
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2628,8 +2585,7 @@
         "reasoningOutputTokens": 893
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2654,8 +2610,7 @@
         "reasoningOutputTokens": 1562
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2680,8 +2635,7 @@
         "reasoningOutputTokens": 1987
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2706,8 +2660,7 @@
         "reasoningOutputTokens": 1326
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2732,8 +2685,7 @@
         "reasoningOutputTokens": 1156
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2758,8 +2710,7 @@
         "reasoningOutputTokens": 2070
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2784,8 +2735,7 @@
         "reasoningOutputTokens": 628
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2810,8 +2760,7 @@
         "reasoningOutputTokens": 1669
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2836,8 +2785,7 @@
         "reasoningOutputTokens": 2122
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2862,8 +2810,7 @@
         "reasoningOutputTokens": 2434
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2888,8 +2835,7 @@
         "reasoningOutputTokens": 1613
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2914,8 +2860,7 @@
         "reasoningOutputTokens": 516
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2940,8 +2885,7 @@
         "reasoningOutputTokens": 946
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2966,8 +2910,7 @@
         "reasoningOutputTokens": 633
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -2992,8 +2935,7 @@
         "reasoningOutputTokens": 1204
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -3018,8 +2960,7 @@
         "reasoningOutputTokens": 1018
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -3044,8 +2985,7 @@
         "reasoningOutputTokens": 839
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -3070,8 +3010,7 @@
         "reasoningOutputTokens": 1304
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -3096,8 +3035,7 @@
         "reasoningOutputTokens": 2174
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -3122,8 +3060,7 @@
         "reasoningOutputTokens": 1912
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     },
     {
       "schemaVersion": "project-kings-remaining-semantic-benchmark-checkpoint-v1",
@@ -3148,9 +3085,8 @@
         "reasoningOutputTokens": 1000
       },
       "error": null,
-      "resumedFromCheckpoint": true,
-      "checkpointPath": ".data/project-kings/model-benchmark-checkpoints/montage_planner-real-30-v2.jsonl"
+      "resumedFromCheckpoint": false
     }
   ],
-  "rawEvidenceSha256": "9e0816c23c281e8654970e01a88aaecee238efe7b5eab3f3a9685355594fbc12"
+  "rawEvidenceSha256": "4279b60a44f224cd79347e7ba3b8c430b49b4e4f1086c3bbde486e18f645ade0"
 }

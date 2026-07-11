@@ -42,9 +42,9 @@ const DATASET_VERSION = "real-30-v2" as const;
 // v4: overlay v2 restores the dropped factual attribute in the DW0w8RMjY3Y
 // summary (static frame, no visible physical action) after the v3 run showed
 // the neutralized wording read as an ordinary eventful stop. Labels unchanged.
-const SOURCE_SEARCH_DATASET_VERSION = "real-30-v4-search-boundary" as const;
+const SOURCE_SEARCH_DATASET_VERSION = "real-30-v5-search-boundary" as const;
 const SOURCE_SEARCH_BOUNDARY_OVERLAY_RELATIVE_PATH =
-  "docs/project-kings-production-pipeline-v1/source-search-role-boundary-v2.overlay.json";
+  "docs/project-kings-production-pipeline-v1/source-search-role-boundary-v3.overlay.json";
 const SOURCE_SEARCH_BOUNDARY_OVERLAY_SCHEMA_VERSION =
   "project-kings-source-search-role-boundary-overlay-v1" as const;
 const SOURCE_POLICY_DATASET_RELATIVE_PATH =

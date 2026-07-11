@@ -1,0 +1,461 @@
+{
+  "schemaVersion": 3,
+  "manifestId": "project-kings-model-routes-v3",
+  "createdAt": "2026-07-11T12:27:56.196Z",
+  "evidence": {
+    "source_search": {
+      "role": "source_search",
+      "benchmarkVersion": "project-kings-source_search-real-30-v5-search-boundary",
+      "evidenceSha256": "13b0bb0a58498d0ea599742dec995b80f037120832623dc1567c8d2de6bcf9f7"
+    },
+    "source_fit": {
+      "role": "source_fit",
+      "benchmarkVersion": "project-kings-source_fit-real-30-v2",
+      "evidenceSha256": "efb10869d8e37ec8c374b29c3d3d243d64d08dae1d940682301c250a788e8613"
+    },
+    "source_policy": {
+      "role": "source_policy",
+      "benchmarkVersion": "project-kings-source-policy-real-30-2026-07-10-v9",
+      "evidenceSha256": "f81ed101067a6cf4c09fed8567d6528f293b660b50a076b8981dce7072f0edce"
+    },
+    "caption": {
+      "role": "caption",
+      "benchmarkVersion": "project-kings-caption-real-30-v2",
+      "evidenceSha256": "b10a9e04d413490ee39099c0a8befc202ed69dbd97ed91954c4d1282c3b97c46"
+    },
+    "montage_planner": {
+      "role": "montage_planner",
+      "benchmarkVersion": "project-kings-montage_planner-real-30-v2",
+      "evidenceSha256": "9f19b1dfd9cc90ecbf8d6af8e386d979e3a76f5155926c8770d2b5b324a4715b"
+    },
+    "vision_qa": {
+      "role": "vision_qa",
+      "benchmarkVersion": "project-kings-stage-models-2026-07-10-v7",
+      "evidenceSha256": "8b212c97e57ad38b80f7b2379743b7f799f33f326727658a6c9c6cc53d5f7c17"
+    }
+  },
+  "selections": {
+    "source_search": {
+      "primary": {
+        "route": {
+          "routeId": "codex:gpt-5.6-luna",
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "capabilities": {
+            "vision": true,
+            "jsonSchema": true,
+            "reasoningEfforts": [
+              "low",
+              "medium",
+              "high",
+              "x-high"
+            ],
+            "timeoutMs": 480000,
+            "fallbackRouteIds": [
+              "codex:gpt-5.4",
+              "codex:gpt-5.4-mini"
+            ]
+          }
+        },
+        "benchmark": {
+          "benchmarkVersion": "project-kings-source_search-real-30-v5-search-boundary",
+          "routeId": "codex:gpt-5.6-luna",
+          "reasoningEffort": "low",
+          "sampleSize": 30,
+          "qualityScore": 0.933333333333,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 15307.604625,
+          "meanCost": 0.561091833333,
+          "costUnit": "codex_credits",
+          "criticalFailureCount": 0
+        }
+      },
+      "fallback": {
+        "route": {
+          "routeId": "codex:gpt-5.6-luna",
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "capabilities": {
+            "vision": true,
+            "jsonSchema": true,
+            "reasoningEfforts": [
+              "low",
+              "medium",
+              "high",
+              "x-high"
+            ],
+            "timeoutMs": 480000,
+            "fallbackRouteIds": [
+              "codex:gpt-5.4",
+              "codex:gpt-5.4-mini"
+            ]
+          }
+        },
+        "benchmark": {
+          "benchmarkVersion": "project-kings-source_search-real-30-v5-search-boundary",
+          "routeId": "codex:gpt-5.6-luna",
+          "reasoningEffort": "medium",
+          "sampleSize": 30,
+          "qualityScore": 0.933333333333,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 17116.016042,
+          "meanCost": 0.5470965,
+          "costUnit": "codex_credits",
+          "criticalFailureCount": 0
+        }
+      },
+      "fallbackMode": "same_route_reasoning",
+      "policy": {
+        "requiresVision": false,
+        "requiresJsonSchema": true,
+        "minimumReasoning": "low",
+        "minimumContextTokens": 0,
+        "minimumSampleSize": 30,
+        "minimumQualityScore": 0.93,
+        "minimumSchemaSuccessRate": 1,
+        "maximumP95LatencyMs": 300000,
+        "allowFailClosedSingleRoute": true
+      }
+    },
+    "source_fit": {
+      "primary": {
+        "route": {
+          "routeId": "codex:gpt-5.6-luna",
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "capabilities": {
+            "vision": true,
+            "jsonSchema": true,
+            "reasoningEfforts": [
+              "low",
+              "medium",
+              "high",
+              "x-high"
+            ],
+            "timeoutMs": 480000,
+            "fallbackRouteIds": [
+              "codex:gpt-5.4",
+              "codex:gpt-5.4-mini"
+            ]
+          }
+        },
+        "benchmark": {
+          "benchmarkVersion": "project-kings-source_fit-real-30-v2",
+          "routeId": "codex:gpt-5.6-luna",
+          "reasoningEffort": "medium",
+          "sampleSize": 30,
+          "qualityScore": 1,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 29807.242292,
+          "meanCost": 0.8457625,
+          "costUnit": "codex_credits"
+        }
+      },
+      "fallback": {
+        "route": {
+          "routeId": "codex:gpt-5.6-luna",
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "capabilities": {
+            "vision": true,
+            "jsonSchema": true,
+            "reasoningEfforts": [
+              "low",
+              "medium",
+              "high",
+              "x-high"
+            ],
+            "timeoutMs": 480000,
+            "fallbackRouteIds": [
+              "codex:gpt-5.4",
+              "codex:gpt-5.4-mini"
+            ]
+          }
+        },
+        "benchmark": {
+          "benchmarkVersion": "project-kings-source_fit-real-30-v2",
+          "routeId": "codex:gpt-5.6-luna",
+          "reasoningEffort": "low",
+          "sampleSize": 30,
+          "qualityScore": 1,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 32391.491584,
+          "meanCost": 0.833203333333,
+          "costUnit": "codex_credits"
+        }
+      },
+      "fallbackMode": "same_route_reasoning",
+      "policy": {
+        "requiresVision": true,
+        "requiresJsonSchema": true,
+        "minimumReasoning": "low",
+        "minimumContextTokens": 0,
+        "minimumSampleSize": 30,
+        "minimumQualityScore": 1,
+        "minimumSchemaSuccessRate": 1,
+        "maximumP95LatencyMs": 90000,
+        "allowFailClosedSingleRoute": true
+      }
+    },
+    "source_policy": {
+      "primary": {
+        "route": {
+          "routeId": "codex:gpt-5.6-luna",
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "capabilities": {
+            "vision": true,
+            "jsonSchema": true,
+            "reasoningEfforts": [
+              "low",
+              "medium",
+              "high",
+              "x-high"
+            ],
+            "timeoutMs": 480000,
+            "fallbackRouteIds": [
+              "codex:gpt-5.4",
+              "codex:gpt-5.4-mini"
+            ]
+          }
+        },
+        "benchmark": {
+          "benchmarkVersion": "project-kings-source-policy-real-30-2026-07-10-v9",
+          "routeId": "codex:gpt-5.6-luna",
+          "reasoningEffort": "medium",
+          "sampleSize": 30,
+          "qualityScore": 0.833333333333,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 24525.098709,
+          "meanCost": 1.018353166667,
+          "costUnit": "codex_credits",
+          "criticalFailureCount": 0
+        }
+      },
+      "fallback": null,
+      "fallbackMode": "fail_closed_none",
+      "policy": {
+        "requiresVision": true,
+        "requiresJsonSchema": true,
+        "minimumReasoning": "low",
+        "minimumContextTokens": 0,
+        "minimumSampleSize": 30,
+        "minimumQualityScore": 0.83,
+        "minimumSchemaSuccessRate": 1,
+        "maximumP95LatencyMs": 90000,
+        "allowFailClosedSingleRoute": true
+      }
+    },
+    "caption": {
+      "primary": {
+        "route": {
+          "routeId": "codex:gpt-5.6-luna",
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "capabilities": {
+            "vision": true,
+            "jsonSchema": true,
+            "reasoningEfforts": [
+              "low",
+              "medium",
+              "high",
+              "x-high"
+            ],
+            "timeoutMs": 480000,
+            "fallbackRouteIds": [
+              "codex:gpt-5.4",
+              "codex:gpt-5.4-mini"
+            ]
+          }
+        },
+        "benchmark": {
+          "benchmarkVersion": "project-kings-caption-real-30-v2",
+          "routeId": "codex:gpt-5.6-luna",
+          "reasoningEffort": "medium",
+          "sampleSize": 30,
+          "qualityScore": 1,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 21556.150958,
+          "meanCost": 0.876950666667,
+          "costUnit": "codex_credits",
+          "criticalFailureCount": 0
+        }
+      },
+      "fallback": null,
+      "fallbackMode": "fail_closed_none",
+      "policy": {
+        "requiresVision": true,
+        "requiresJsonSchema": true,
+        "minimumReasoning": "low",
+        "minimumContextTokens": 0,
+        "minimumSampleSize": 30,
+        "minimumQualityScore": 1,
+        "minimumSchemaSuccessRate": 1,
+        "maximumP95LatencyMs": 240000,
+        "allowFailClosedSingleRoute": true
+      }
+    },
+    "montage_planner": {
+      "primary": {
+        "route": {
+          "routeId": "codex:gpt-5.6-luna",
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "capabilities": {
+            "vision": true,
+            "jsonSchema": true,
+            "reasoningEfforts": [
+              "low",
+              "medium",
+              "high",
+              "x-high"
+            ],
+            "timeoutMs": 480000,
+            "fallbackRouteIds": [
+              "codex:gpt-5.4",
+              "codex:gpt-5.4-mini"
+            ]
+          }
+        },
+        "benchmark": {
+          "benchmarkVersion": "project-kings-montage_planner-real-30-v2",
+          "routeId": "codex:gpt-5.6-luna",
+          "reasoningEffort": "high",
+          "sampleSize": 30,
+          "qualityScore": 1,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 47446.450791,
+          "meanCost": 0.8965565,
+          "costUnit": "codex_credits",
+          "criticalFailureCount": 0
+        }
+      },
+      "fallback": {
+        "route": {
+          "routeId": "codex:gpt-5.6-luna",
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "capabilities": {
+            "vision": true,
+            "jsonSchema": true,
+            "reasoningEfforts": [
+              "low",
+              "medium",
+              "high",
+              "x-high"
+            ],
+            "timeoutMs": 480000,
+            "fallbackRouteIds": [
+              "codex:gpt-5.4",
+              "codex:gpt-5.4-mini"
+            ]
+          }
+        },
+        "benchmark": {
+          "benchmarkVersion": "project-kings-montage_planner-real-30-v2",
+          "routeId": "codex:gpt-5.6-luna",
+          "reasoningEffort": "x-high",
+          "sampleSize": 30,
+          "qualityScore": 1,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 84416.420292,
+          "meanCost": 1.012112666667,
+          "costUnit": "codex_credits",
+          "criticalFailureCount": 0
+        }
+      },
+      "fallbackMode": "same_route_reasoning",
+      "policy": {
+        "requiresVision": true,
+        "requiresJsonSchema": true,
+        "minimumReasoning": "low",
+        "minimumContextTokens": 0,
+        "minimumSampleSize": 30,
+        "minimumQualityScore": 1,
+        "minimumSchemaSuccessRate": 1,
+        "maximumP95LatencyMs": 240000,
+        "allowFailClosedSingleRoute": true
+      }
+    },
+    "vision_qa": {
+      "primary": {
+        "route": {
+          "routeId": "codex:gpt-5.4-mini",
+          "provider": "codex",
+          "model": "gpt-5.4-mini",
+          "capabilities": {
+            "vision": true,
+            "jsonSchema": true,
+            "reasoningEfforts": [
+              "low",
+              "medium",
+              "high",
+              "x-high"
+            ],
+            "timeoutMs": 480000,
+            "fallbackRouteIds": [
+              "codex:gpt-5.4",
+              "codex:gpt-5.6-luna"
+            ]
+          }
+        },
+        "benchmark": {
+          "benchmarkVersion": "project-kings-stage-models-2026-07-10-v7",
+          "routeId": "codex:gpt-5.4-mini",
+          "reasoningEffort": "low",
+          "sampleSize": 3,
+          "qualityScore": 1,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 16505.061541,
+          "meanCost": 0.5126315,
+          "costUnit": "codex_credits"
+        }
+      },
+      "fallback": {
+        "route": {
+          "routeId": "codex:gpt-5.4",
+          "provider": "codex",
+          "model": "gpt-5.4",
+          "capabilities": {
+            "vision": true,
+            "jsonSchema": true,
+            "reasoningEfforts": [
+              "low",
+              "medium",
+              "high",
+              "x-high"
+            ],
+            "timeoutMs": 480000,
+            "fallbackRouteIds": [
+              "codex:gpt-5.4-mini",
+              "codex:gpt-5.6-luna"
+            ]
+          }
+        },
+        "benchmark": {
+          "benchmarkVersion": "project-kings-stage-models-2026-07-10-v7",
+          "routeId": "codex:gpt-5.4",
+          "reasoningEffort": "low",
+          "sampleSize": 3,
+          "qualityScore": 1,
+          "schemaSuccessRate": 1,
+          "p95LatencyMs": 36983.285625,
+          "meanCost": 2.655804166667,
+          "costUnit": "codex_credits"
+        }
+      },
+      "fallbackMode": "distinct_route",
+      "policy": {
+        "requiresVision": true,
+        "requiresJsonSchema": true,
+        "minimumReasoning": "low",
+        "minimumContextTokens": 0,
+        "minimumSampleSize": 3,
+        "minimumQualityScore": 1,
+        "minimumSchemaSuccessRate": 1,
+        "maximumP95LatencyMs": 45000
+      }
+    }
+  },
+  "manifestSha256": "06952791db5bcfce1860e24d14028818a3f493d18ac1cb749c4042abcdd457b2"
+}
