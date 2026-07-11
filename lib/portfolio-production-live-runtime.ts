@@ -55,7 +55,7 @@ import {
   type ProductionVisionVerdict
 } from "./production-quality-gate";
 import { getSourceDecompositionForChat } from "./source-decomposition-store";
-import { enqueueAndScheduleSourceJob, getSourceJobOrThrow } from "./source-job-runtime";
+import { enqueueAndRunSourceJob } from "./source-job-runtime";
 import { getCachedSourceMedia } from "./source-media-cache";
 import { buildDefaultStage3RenderSnapshot } from "./stage3-default-snapshot";
 import { resolveSnapshotManagedTemplateStateForEnqueue } from "./managed-template-runtime";
@@ -111,7 +111,6 @@ import { reconcileYouTubePublicVerification } from "./youtube-public-verificatio
 
 const execFileAsync = promisify(execFile);
 const POLL_INTERVAL_MS = 500;
-const SOURCE_TIMEOUT_MS = 6 * 60_000;
 const PREVIEW_TIMEOUT_MS = 5 * 60_000;
 const FINAL_RENDER_TIMEOUT_MS = 12 * 60_000;
 const PUBLICATION_TIMEOUT_MS = 6 * 60_000;
@@ -308,20 +307,6 @@ async function extractQaFrames(input: {
 
 function sleepDefault(delayMs: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
-}
-
-async function waitForSourceJob(
-  jobId: string,
-  sleep: (delayMs: number) => Promise<void>
-) {
-  const deadline = Date.now() + SOURCE_TIMEOUT_MS;
-  while (Date.now() <= deadline) {
-    const job = getSourceJobOrThrow(jobId);
-    if (job.status === "completed") return job;
-    if (job.status === "failed") throw new Error(job.errorMessage || "Source ingestion failed.");
-    await sleep(POLL_INTERVAL_MS);
-  }
-  throw new Error("Source ingestion timed out.");
 }
 
 async function waitForPublication(
@@ -762,7 +747,7 @@ async function handleSourceIngest(
     title: String(candidate.evidence.title ?? candidate.categoryKey),
     eventText: "Project Kings portfolio pipeline reserved this owner-approved source."
   });
-  const job = enqueueAndScheduleSourceJob({
+  const completed = await enqueueAndRunSourceJob({
     workspaceId: item.workspaceId,
     creatorUserId: options.userId,
     request: {
@@ -774,7 +759,9 @@ async function handleSourceIngest(
       channel: { id: channel.id, name: channel.name, username: channel.username }
     }
   });
-  const completed = await waitForSourceJob(job.jobId, options.sleep ?? sleepDefault);
+  if (completed.status !== "completed") {
+    throw new Error(completed.errorMessage || "Source ingestion failed.");
+  }
   const cached = await getCachedSourceMedia(candidate.sourceUrl);
   if (!completed.resultData?.stage1Ready || !cached) {
     throw new Error("Source job completed without a readable cached source.");

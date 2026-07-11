@@ -400,6 +400,65 @@ export function hasQueuedSourceJobs(): boolean {
   return row?.present === 1;
 }
 
+export function claimQueuedSourceJob(jobId: string): SourceJobRecord | null {
+  const claimed = runInTransaction((db) => {
+    const row = db
+      .prepare("SELECT * FROM source_jobs WHERE job_id = ? AND status = 'queued' LIMIT 1")
+      .get(jobId) as SourceJobRow | undefined;
+    if (!row) {
+      return null;
+    }
+
+    const current = mapSourceJob(row);
+    const progress = updateProgress(current, {
+      status: "running",
+      activeStageId: "prepare",
+      detail: "Подготавливаем источник и чат.",
+      attempt: null,
+      maxAttempts: null,
+      nextRetryAt: null,
+      retryEligible: false,
+      providerErrorSummary: null,
+      error: null
+    });
+    const startedAt = current.startedAt ?? progress.startedAt ?? nowIso();
+    const result = db.prepare(
+      `UPDATE source_jobs
+          SET status = 'running',
+              progress_json = ?,
+              error_message = NULL,
+              started_at = ?,
+              updated_at = ?
+        WHERE job_id = ? AND status = 'queued'`
+    ).run(JSON.stringify(progress), startedAt, progress.updatedAt, current.jobId);
+    if (Number(result.changes) !== 1) {
+      return null;
+    }
+
+    return mapSourceJob(readSourceJobRow(current.jobId) as SourceJobRow);
+  });
+  if (claimed) {
+    tryAppendFlowAuditEvent({
+      workspaceId: claimed.workspaceId,
+      userId: claimed.creatorUserId,
+      action: "source_job.running",
+      entityType: "source_job",
+      entityId: claimed.jobId,
+      channelId: claimed.channelId,
+      chatId: claimed.chatId,
+      correlationId: claimed.jobId,
+      stage: "source",
+      status: "running",
+      payload: {
+        activeStageId: claimed.progress.activeStageId,
+        detail: claimed.progress.detail
+      },
+      createdAt: claimed.startedAt ?? claimed.updatedAt
+    });
+  }
+  return claimed;
+}
+
 export function claimNextQueuedSourceJob(): SourceJobRecord | null {
   const claimed = runInTransaction((db) => {
     const row =

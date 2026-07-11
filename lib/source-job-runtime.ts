@@ -6,6 +6,7 @@ import { buildStage2RunChannelSnapshot } from "./stage2-run-channel-snapshot";
 import { buildStage2RunRequestSnapshot } from "./stage2-run-request";
 import { isUploadedSourceUrl } from "./uploaded-source";
 import {
+  claimQueuedSourceJob,
   claimNextQueuedSourceJob,
   createSourceJob,
   finalizeSourceJobFailure,
@@ -14,6 +15,7 @@ import {
   getSourceJob,
   hasQueuedSourceJobs,
   interruptRunningSourceJobs,
+  listSourceJobsForChat,
   markSourceJobStageRunning,
   markSourceJobRetryScheduled,
   recoverInterruptedSourceJobs,
@@ -30,6 +32,7 @@ import { clampHostedConcurrencyLimit, isHostedRenderRuntime } from "./hosted-res
 type SourceRuntimeState = {
   initialized: boolean;
   activeJobs: Set<string>;
+  activeJobPromises: Map<string, Promise<void>>;
   schedulerPromise: Promise<void> | null;
 };
 
@@ -46,8 +49,12 @@ function getRuntimeState(): SourceRuntimeState {
     scope.__clipsSourceRuntimeState__ = {
       initialized: false,
       activeJobs: new Set<string>(),
+      activeJobPromises: new Map<string, Promise<void>>(),
       schedulerPromise: null
     };
+  }
+  if (!scope.__clipsSourceRuntimeState__.activeJobPromises) {
+    scope.__clipsSourceRuntimeState__.activeJobPromises = new Map<string, Promise<void>>();
   }
   return scope.__clipsSourceRuntimeState__;
 }
@@ -317,17 +324,24 @@ async function executeJob(job: SourceJobRecord): Promise<void> {
   }
 }
 
-function startClaimedJob(job: SourceJobRecord): void {
+function startClaimedJob(job: SourceJobRecord): Promise<void> | null {
   const state = getRuntimeState();
+  const existing = state.activeJobPromises.get(job.jobId);
+  if (existing) {
+    return existing;
+  }
   if (state.activeJobs.has(job.jobId)) {
-    return;
+    return null;
   }
 
   state.activeJobs.add(job.jobId);
-  void executeJob(job).finally(() => {
+  const task = executeJob(job).finally(() => {
     state.activeJobs.delete(job.jobId);
+    state.activeJobPromises.delete(job.jobId);
     scheduleSourceJobProcessing();
   });
+  state.activeJobPromises.set(job.jobId, task);
+  return task;
 }
 
 function runSchedulerPass(): void {
@@ -375,6 +389,85 @@ export function enqueueAndScheduleSourceJob(input: {
   });
   scheduleSourceJobProcessing();
   return job;
+}
+
+function isSameSourceJobRequest(
+  job: SourceJobRecord,
+  input: Parameters<typeof enqueueAndScheduleSourceJob>[0]
+): boolean {
+  return job.workspaceId === input.workspaceId &&
+    job.creatorUserId === input.creatorUserId &&
+    job.channelId === input.request.channel.id &&
+    job.chatId === input.request.chat.id &&
+    job.sourceUrl === input.request.sourceUrl &&
+    job.request.trigger === input.request.trigger &&
+    job.request.autoRunStage2 === input.request.autoRunStage2 &&
+    job.request.agentDecomposition === input.request.agentDecomposition;
+}
+
+export async function runSourceJobInline(jobId: string): Promise<SourceJobRecord> {
+  ensureSourceRuntime();
+  while (true) {
+    const job = getSourceJob(jobId);
+    if (!job) {
+      throw new Error("Source job not found.");
+    }
+    if (job.status === "completed" || job.status === "failed") {
+      return job;
+    }
+
+    const state = getRuntimeState();
+    const activeTask = state.activeJobPromises.get(jobId);
+    if (activeTask) {
+      await activeTask;
+      continue;
+    }
+    if (job.status === "running") {
+      throw new Error(
+        "Source job is already running outside this runtime; refusing duplicate inline execution."
+      );
+    }
+
+    if (state.activeJobs.size >= getSourceConcurrencyLimit()) {
+      const tasks = [...state.activeJobPromises.values()];
+      if (tasks.length === 0) {
+        throw new Error("Source runtime has no awaitable capacity owner for an active job.");
+      }
+      await Promise.race(tasks.map((task) => task.catch(() => undefined)));
+      continue;
+    }
+
+    const claimed = claimQueuedSourceJob(jobId);
+    if (!claimed) {
+      continue;
+    }
+    const task = startClaimedJob(claimed);
+    if (!task) {
+      throw new Error("Source job was claimed without an awaitable runtime owner.");
+    }
+    await task;
+  }
+}
+
+export async function enqueueAndRunSourceJob(input: {
+  workspaceId: string;
+  creatorUserId: string;
+  request: SourceJobRequest;
+}): Promise<SourceJobRecord> {
+  ensureSourceRuntime();
+  const reusable = listSourceJobsForChat(
+    input.request.chat.id,
+    input.workspaceId,
+    20
+  ).find((job) => job.status !== "failed" && isSameSourceJobRequest(job, input));
+  const job = reusable ?? createSourceJob(input);
+  logSourceRuntime(reusable ? "job_resume_inline" : "job_enqueue_inline", {
+    jobId: job.jobId,
+    chatId: job.chatId,
+    trigger: job.request.trigger,
+    status: job.status
+  });
+  return runSourceJobInline(job.jobId);
 }
 
 export function getSourceJobOrThrow(jobId: string): SourceJobRecord {
