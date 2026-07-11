@@ -1,0 +1,114 @@
+[
+  {
+    "candidateId": "light-ask-xq131G5ZcU4",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.youtube.com/watch?v=xq131G5ZcU4",
+    "contentSha256": "b42c4c26d6b4c7cfa19d8975f73194bd2ecc517937d63e76aa5464c7f6148abe",
+    "profileHash": "0ff186ebde26b16613705f61790b15afa5068c0a54741a2c7c068412738821c0",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-674c567c3b4c56e50d4398231d34eb91",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "798e3bde296452192819462c28ad3434b0a985682d19fd89a3c56aad179fccad",
+    "artifactSetSha256": "a9e2e09886ca2fa32d0bc609f598300ba5a88ef6514d146dcb72d2f3b6b1fb77",
+    "rawOutputSha256": "d32a473ee060c607d5c417e57b81cd2f38b644f86716d882b1d35639f819e560",
+    "outputSha256": "184e186362028db0a5826f01e3b6118048a065ed56151c374f4ac84733dcb208",
+    "finishedAt": "2026-07-11T17:00:35.927Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-ask-xq131G5ZcU4",
+      "storyEventId": "event-ai-dark-armored-sith-confrontation",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "Visible AI-styled fictional confrontation with a dark armored lightsaber character and purple figure; vertical 10-second media decodes completely, with no captions or watermark. Neither source hash nor story event appears in the authoritative duplicate lists.",
+      "factualClaims": [
+        {
+          "claim": "The media is a verified public Short described as a Darth Vader reimagining.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The video visibly shows one dark armored lightsaber character confronting a purple adult figure.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source is vertical 1080x1920, 10094 ms long, and decodes completely without error.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-ask-ZaS7YodS3DQ",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.youtube.com/watch?v=ZaS7YodS3DQ",
+    "contentSha256": "31be7c8c2018c73e20c4ceb5a499976f7bc41cad1b02ce811a0ce9b149d0adda",
+    "profileHash": "0ff186ebde26b16613705f61790b15afa5068c0a54741a2c7c068412738821c0",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-1989bc1cebfc904d554210ac78b8d868",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "18ef7034cb2097cc33c8360998b2cbdb7794aee76fea1ec8e4a5b30dece7a9d8",
+    "artifactSetSha256": "7858c2926ba56eac6417d5c0c53d56a53f72b245aee919aabaedc102d3bbf654",
+    "rawOutputSha256": "8616d585be96125e5cab13f43783ca3428c158e5b6031f5c436d7161376700fa",
+    "outputSha256": "9b067ba92ce7eaf2c2c1707624a95f6090681cfd9336df68728391fb4703c435",
+    "finishedAt": "2026-07-11T17:00:51.144Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-ask-ZaS7YodS3DQ",
+      "storyEventId": "event-ai-batman-gotham-lightning-rooftop",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "A coherent vertical AI-fiction scene visibly presents a recognizable Batman character over Gotham in a lightning storm. It fits the channel’s recognizable-fiction plus visible-AI-remix concept; the end card does not invalidate the usable main scene. Neither the source hash nor story event appears in the authoritative known duplicate lists.",
+      "factualClaims": [
+        {
+          "claim": "The source is a single coherent vertical AI-fiction scene featuring an adult masked Batman character above Gotham during a lightning storm.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2"
+          ]
+        },
+        {
+          "claim": "The media is decodable, 1080x1920, and approximately 11.9 seconds long.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source hash is not present in packet.task.knownSourceSha256.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The claimed story event is not present in packet.task.knownStoryEventIds.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "concept-contract"
+          ]
+        }
+      ]
+    }
+  }
+]

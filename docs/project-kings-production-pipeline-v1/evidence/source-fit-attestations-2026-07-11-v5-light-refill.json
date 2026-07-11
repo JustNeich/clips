@@ -1,0 +1,223 @@
+[
+  {
+    "candidateId": "light-ask-6QIdqyFoxFE",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.youtube.com/watch?v=6QIdqyFoxFE",
+    "contentSha256": "c0bcb0b58f55fb8c8630f143c5469159aab08c7b2c883ac801bf4707b4d9df58",
+    "profileHash": "0ff186ebde26b16613705f61790b15afa5068c0a54741a2c7c068412738821c0",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-d4b3c10025a06d08c786a001f6fc5102",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "f22283b57f946f840cf3be33a214dde32620026d4248976a8795ac3a4aaa4d7b",
+    "artifactSetSha256": "8d362cfd06b331e2e6696ec6ca483fa99fb550bfd3840b625bf8d4cf69f08da3",
+    "rawOutputSha256": "5df676629ecf2ce6c9128c165a428f73038cd6058b0abf56705b40d507c8e39d",
+    "outputSha256": "5264a0f388f5e38fdc206f9d974aa71b7859fd4b050595dc1846683a7ea7d98e",
+    "finishedAt": "2026-07-11T15:57:36.944Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "light-ask-6QIdqyFoxFE",
+      "storyEventId": "event-ai-fiction-parody-part-nine",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": false,
+      "reason": "The source fits the recognizable-fiction AI-parody concept and is technically decodable, but the visible “Part 9” label and multi-scene compilation format violate the channel’s source boundary.",
+      "factualClaims": [
+        {
+          "claim": "The source contains a visible AI-fiction parody.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source uses recognizable Harry Potter fictional scenes.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source is a multi-scene compilation labeled “Part 9.”",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-ask-J6tw2l128YE",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.youtube.com/watch?v=J6tw2l128YE",
+    "contentSha256": "0add34915f9235de87c6d9d3426fb03b2d0461b3e80dd0b488080af337531750",
+    "profileHash": "0ff186ebde26b16613705f61790b15afa5068c0a54741a2c7c068412738821c0",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-0866fbb81bafa93c40cdd4cbf85ecdcc",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "15a946d2b7b6de44fa211fbb6fce162aa71765be0ee6c648a920b468742a0b88",
+    "artifactSetSha256": "202bffff23ddee9eec70f1738402a6b89c0f675009df5d1187196dc4a504a33f",
+    "rawOutputSha256": "c42bae85ee7960599fd597da8b58fc3150cb237fe019e411d9fb7fb5327a4aac",
+    "outputSha256": "18ec232e47e629a787e9bbe22c673bfe9a2e8af75f53b97c216e408dd2568e76",
+    "finishedAt": "2026-07-11T15:57:20.921Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-ask-J6tw2l128YE",
+      "storyEventId": "event-ai-harry-potter-afterparty",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source visibly transforms recognizable Harry Potter characters into an AI-generated afterparty/music scenario, matching the channel boundary and claimed event. It is vertical, decodes completely, and has no visible captions or watermark; the multi-scene structure remains a coherent skit rather than unrelated footage.",
+      "factualClaims": [
+        {
+          "claim": "The source is a recognizable Harry Potter scene or character remix with a visible AI-generated alteration.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The visual premise is an AI Harry Potter afterparty/music scenario.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2"
+          ]
+        },
+        {
+          "claim": "The media is a 24.514-second vertical 720x1280 video with complete decoding and no decode error.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-ask-tOk5MQFB0cU",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.youtube.com/watch?v=tOk5MQFB0cU",
+    "contentSha256": "f614501dbd0b8a83fcd606e385b07c12215efadb2254d4403dfc4dd44662fe1c",
+    "profileHash": "0ff186ebde26b16613705f61790b15afa5068c0a54741a2c7c068412738821c0",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-9b0dca54b78324680b8ca3b4dd49ad84",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "053f54ec88efdd392c4d476f32e531c8a451ed63d779a269d44c6913412fda15",
+    "artifactSetSha256": "371ac87e02c18413872dfb4e8668b78d4ed0d203c7a932443380c9541b4ffa57",
+    "rawOutputSha256": "523b280f948745f5d606ad36f1054a63835ba35b267782d89becebc282168ecb",
+    "outputSha256": "318c2791b38fd8c71e0d5773b8d9eab025f2834406fe8bfc882c6024e8777eb4",
+    "finishedAt": "2026-07-11T15:57:17.283Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "light-ask-tOk5MQFB0cU",
+      "storyEventId": "event-ai-fiction-parody-part-five",
+      "conceptMatch": false,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source shows recognizable Star Wars fiction with visible AI-style alterations, but the metadata and key frames indicate a multi-scene Part 5 compilation, which violates the channel format exclusion for multi-scene compilations.",
+      "factualClaims": [
+        {
+          "claim": "The source is a Part 5 video compilation.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source contains recognizable fictional scenes with visible AI-style alterations.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The media decoded completely and is a vertical 1080x1920 video.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-ask-V-xIvJs0Jbo",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.youtube.com/watch?v=V-xIvJs0Jbo",
+    "contentSha256": "e060a47731e4bb1b08067218929b75120929b968750cd8693485cbe938822e74",
+    "profileHash": "0ff186ebde26b16613705f61790b15afa5068c0a54741a2c7c068412738821c0",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-623bbd7415f80ff66a07903f986e8df2",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "b8ee0d91a74b74ee73bd0ca0e25d50c36b35fbc179c7609e91f8de2ea74664ac",
+    "artifactSetSha256": "336caecebebc3e4214310eb5e01241ecd505dbd78efcc59d670447839939c4ce",
+    "rawOutputSha256": "5bd648df687f9142ba0d562edd7d8ab5e098867b2ca7a92e4f4e2a1f61c41379",
+    "outputSha256": "cbd0935d94fd3b6bc3e49cbc97cf15b8d0ed9850deaf97750afd2935b3ba5e99",
+    "finishedAt": "2026-07-11T15:57:42.474Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "light-ask-V-xIvJs0Jbo",
+      "storyEventId": "event-ai-trump-inside-harry-potter-two",
+      "conceptMatch": true,
+      "factualFit": false,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source matches recognizable fiction with a reported visible generated character, and the media decodes successfully. However, the named artifacts do not verify the specific claimed event that Trump appears inside Harry Potter 2; the supplied key frames show only recognizable Harry Potter characters and no Trump or other identifiable AI alteration.",
+      "factualClaims": [
+        {
+          "claim": "The source contains recognizable Harry Potter fiction.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source contains a visible generated character inside recognizable fiction.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The specific event is Trump inside Harry Potter 2.",
+          "verified": false,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  }
+]

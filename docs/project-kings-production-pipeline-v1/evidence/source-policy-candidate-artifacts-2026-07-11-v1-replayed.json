@@ -1,0 +1,1022 @@
+[
+  {
+    "candidateId": "cop-donor-DW7IFS5jU0_",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "cop-donor-DW7IFS5jU0_",
+      "profileKey": "copscopes-x2e",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "copscopes",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DW7IFS5jU0_/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "5242dd6884600f5d119216f8c033b8122880e1947b798bab12035b9b57ab628c",
+      "evidenceSha256": "b8a4e032efe73abb2080858a11f5bd7c1cce3017224ffc5c23f6f03073e93cc2"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "cop-donor-DW7IFS5jU0_",
+      "contentSha256": "5952ab0f93a23d7f69504ca27f1ef3049eebcb098e68eab6eb4d6b8ae8e70918",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "d4eb6041bd8a26533f5969630ae00f93eb74cd834b6dbc178f4e6c5712ad8365",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "1b18c535e9012f5250e0c7126353b8fe106cd0e3b7ab617aea1af57e18aad029"
+    }
+  },
+  {
+    "candidateId": "cop-donor-DWjH5fWjBnt",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "cop-donor-DWjH5fWjBnt",
+      "profileKey": "copscopes-x2e",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "copscopes",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DWjH5fWjBnt/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "1f558dd4cf0c57a80a734ac137d4c367f8833535dfceb99c249365bf37752fa6",
+      "evidenceSha256": "88be8fb677578e7c036578a66b7cb9723fdb3d7ef3b0835c9808ce5262dcbc96"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "cop-donor-DWjH5fWjBnt",
+      "contentSha256": "94e12f40757e74cc9926231726b9df86f93eff0c9046792e033b82b190d4a5c3",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "493dd2374c7a445389060518944c5f326eca2bcb30913a0296a54c098a1a7681",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "69475b35209c7346f606fe68a2d85e00ddd8bd8317bc1ee4f049e7eb69d5e4b8"
+    }
+  },
+  {
+    "candidateId": "cop-donor-DWnxlyIDcoK",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "cop-donor-DWnxlyIDcoK",
+      "profileKey": "copscopes-x2e",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "copscopes",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DWnxlyIDcoK/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "6fc73ca3f9a8e64bfa696e91c2d34a3b39f614e3f0b2575ca7acdee8f0309103",
+      "evidenceSha256": "00bbe7302fb1a9f0cb8b58ab25d6685d70e050ed9ff9bbfc05f84df2799c95e7"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "cop-donor-DWnxlyIDcoK",
+      "contentSha256": "49dd483449878265613f19b57bcdf0da2af201d765adccaf813e1397c5c14fd1",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "94f6581dac37e946ef829512d9bbf85fd3dd2e3deaa0aa6d32feb3ce6068bbe7",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "92d6bc8d7ea00c163539799a92fcfa42417a2b0ea9a3950b1536833d89a5a4ab"
+    }
+  },
+  {
+    "candidateId": "cop-donor-DXBhsJPjSgW",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "cop-donor-DXBhsJPjSgW",
+      "profileKey": "copscopes-x2e",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "copscopes",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DXBhsJPjSgW/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "afb66a5dffa0eb9b07f6039d22d1db6bca8fa4c14df9dbc7f95af86cfaeca4a1",
+      "evidenceSha256": "c36ca7c21033e21dc2e55701a0b359860dc83227198edb0a5c682ee01bb58f51"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "cop-donor-DXBhsJPjSgW",
+      "contentSha256": "00104eabefd531eee16dff7a3c5a230e22d39758815e70b8685c30cd59248151",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "ff713c8d421f0eaef49251a863077b1931231aedbade15dd57be3b45efb9d618",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "2dd3d49f734315a5449ebe618ec88415e0971503cc8868619fd47f4948d484cf"
+    }
+  },
+  {
+    "candidateId": "cop-donor-DXNBoz7jYmd",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "cop-donor-DXNBoz7jYmd",
+      "profileKey": "copscopes-x2e",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "copscopes",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DXNBoz7jYmd/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "81d1db2b19cb7ce7daff26e1ae476f7e0790ff30946d0e2711157da006cac6bb",
+      "evidenceSha256": "d09ee63d7ceb9cea04eced41250905639f45296b27ec65effad70e3c473b5b96"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "cop-donor-DXNBoz7jYmd",
+      "contentSha256": "b295ef42328b54ed3eee861df2ae163c3415b93c758fc67accd90debd43adcbf",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "a16f479d9a3fbda82f53e8b91dd913a620aaeff87d329df0acc05b5b6a5bf3a1",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "present",
+        "minorInSensitiveIncident": "present",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "7b8008734f1a52886dfd5d01f96d7326cd6d30b5ec9377e34e7f71e76bdcba49"
+    }
+  },
+  {
+    "candidateId": "cop-donor-DY14gTEtg3H",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "cop-donor-DY14gTEtg3H",
+      "profileKey": "copscopes-x2e",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "copscopes",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DY14gTEtg3H/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "5245fd92bf6b829b5a31900682b65cec676bbc6a25d9ec38682a2c317f0f4051",
+      "evidenceSha256": "c42ad7c70ae3af0a52bf716a4c3afd2582729aeacd6d3be674918ca4c8db32ca"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "cop-donor-DY14gTEtg3H",
+      "contentSha256": "4c79d7e22ccebd153d745a9f38cacd61b686b9e3da6b75e61f1efda982a9c485",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "8748487f6f273a15a2858194c27cec995b9cc37441d4d28feddf48f31fc3390d",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "d9508c2a5d08dafbf6f7962d2b2a785f73de5675eabe5eca9818aa026fdb0903"
+    }
+  },
+  {
+    "candidateId": "cop-positive-DW5oCZGjPCs",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "cop-positive-DW5oCZGjPCs",
+      "profileKey": "copscopes-x2e",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "copscopes",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DW5oCZGjPCs/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "69fc239e7937a0c2d8d096349abe200a674e8ca38916c95b87ae2c94a7f62b27",
+      "evidenceSha256": "9f0bd70e587487732aed6484687d0776d133a54a7a0f1b28ca48936040aa46ac"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "cop-positive-DW5oCZGjPCs",
+      "contentSha256": "b810cc26ee91b7ee454c30590dd169f8f019e960c98bf2c283a83be13b313101",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "e3aa98384e2003b285d02b4d07858195191e924433c84a03353adedacd5acd64",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "present",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "f4a8f9be731307d770d68f051e94958f63519b3f72ac97aabb9244d35e576a3b"
+    }
+  },
+  {
+    "candidateId": "cop-positive-DWTlKz_jO0m",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "cop-positive-DWTlKz_jO0m",
+      "profileKey": "copscopes-x2e",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "copscopes",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DWTlKz_jO0m/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "93c84c45f2adf3fbc0879c1b7615d9451bd28d9ba4c789f6227ec8498d6c389b",
+      "evidenceSha256": "abb35ec58e91176eb555305b3c1554753ca3b5621996167d56d77488a1e23358"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "cop-positive-DWTlKz_jO0m",
+      "contentSha256": "2fc53a09d4a05c5941c6e58e7665965a9a0aa3cc4baa6c3d430621b2bcc61231",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "5c4d68e42ac23eb384a39e9a19bb42c1ff6bfd4095c58c30883061e7144369bc",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "3c43555381db254972b68055f41e54de5a3943ac12d9b8bd8a7071caad916cc3"
+    }
+  },
+  {
+    "candidateId": "cop-positive-DWwSVVOjMqO",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "cop-positive-DWwSVVOjMqO",
+      "profileKey": "copscopes-x2e",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "copscopes",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DWwSVVOjMqO/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "95604286f5b62658567f68e4ab7a5f04bc6c5ea5e10f48bad0e275bb2b57958d",
+      "evidenceSha256": "363d39244fedb563e828316e23d0b3c34b6c712a3153e29d978907929f48703b"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "cop-positive-DWwSVVOjMqO",
+      "contentSha256": "0e8f65beb75324d243eb59832b80227286d501db4b4815e682bb14874d03b95e",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "3ba64b691ba5afffb81a8d072f725366b0910b3d1d8e118b746fac8dddd9bdc8",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "b0cecbdba38645f67045f25aa6223bbd603f202e225a9aae4c7f535e7d8b0ad7"
+    }
+  },
+  {
+    "candidateId": "cop-positive-DXOzkCdjMue",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "cop-positive-DXOzkCdjMue",
+      "profileKey": "copscopes-x2e",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "copscopes",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DXOzkCdjMue/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "d43820c17b3f3eb173966f37503862aa4653fb4bcc6dff595a59225e81721563",
+      "evidenceSha256": "43d70babe831f9dda78603f1e818911d6ebff756a287731660766812ea8dc7f0"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "cop-positive-DXOzkCdjMue",
+      "contentSha256": "a3bb5e65330abe53850dfefdb4dba04bb2d53b56610d0e1fa8bfe1112ac35da7",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "f6e812123815786ae27f392b0916a991fe6c3d8561fffb091e2b6fc75995906a",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "present",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "ce89b361b1081e941fd9516bd713158590640d2756f7db80cbf345c4da3ff833"
+    }
+  },
+  {
+    "candidateId": "dark-positive-BtDnmx6HRr_",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "dark-positive-BtDnmx6HRr_",
+      "profileKey": "dark-joy-boy",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "kodyantle",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/BtDnmx6HRr_/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "f4aa9f4015ecf9c71736a8b8df13fec1e3d0e74affa16a030715bc3187994f11",
+      "evidenceSha256": "40625913c8b6d4c304d7bd4561767143ccf3c4e3947c96c9ae3ad35db680a7bf"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "dark-positive-BtDnmx6HRr_",
+      "contentSha256": "45ea01bf3172459c55b6d5e19b2115d5f3b42ce95ab24dc4aa3bb8d66fa12bfb",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "048da1ade53e76d017ee1710fd87b76cdc04013fafe249b1181e7b8015024589",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "7a1fdfb96a08d6e136ba40931cda665f685fb07c3514bcc5dc9d71e09b62f7f7"
+    }
+  },
+  {
+    "candidateId": "dark-positive-C9gLu79MklN",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "dark-positive-C9gLu79MklN",
+      "profileKey": "dark-joy-boy",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "spidermonkeywinston",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/C9gLu79MklN/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "e80c3ae268e26572ae0703cdbc3caf353d10a23e95be03b6596367dc8aa3f830",
+      "evidenceSha256": "fac392124ad28853551be70da16e8bbf7e760f6369decac0dbaf3af8763596b4"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "dark-positive-C9gLu79MklN",
+      "contentSha256": "82107e983588a0a45ba3ad69454fa7fa7674e7c83debe5570eaf741857fae102",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "0749a43e21be5eecc148967cf3fb47aa62534a69597cfe8b0ee9ac5c23a7aec7",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "6690065750e65d8563d809bc199602af7651a18b087b111ae4aa759167e3c12f"
+    }
+  },
+  {
+    "candidateId": "dark-positive-CsYa4skNBjP",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "dark-positive-CsYa4skNBjP",
+      "profileKey": "dark-joy-boy",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "kodyantle",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/CsYa4skNBjP/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "82c8b2255c4586dff4b5f11cd5a276406b44134c0db1c336565dce4daffca1f5",
+      "evidenceSha256": "aadde7e1f373b7325cac406ad6e24978b921e8efa0128463213da08255c6369e"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "dark-positive-CsYa4skNBjP",
+      "contentSha256": "89af6f204684fc9304b0a08481c3ae1df7ae9aa11e1a4c656020dc3dc495eef5",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "8f93174ef55f62fb590ea047dc1d804357a541704d50e508df03667bb671fe55",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "6380f25d5319a3f056149d1444f4dbc7caf0f5b1a7bbc5361ea0a04c6a9ef479"
+    }
+  },
+  {
+    "candidateId": "dark-positive-Cw_QTMmA69_",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "dark-positive-Cw_QTMmA69_",
+      "profileKey": "dark-joy-boy",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "myrtlebeachsafari",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/Cw_QTMmA69_/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "ebde097b2daf0d842481bffa0bc671571bcb8c7116ca324c438f1c05812c1b75",
+      "evidenceSha256": "ae7197d53926e88baba618dd338f0034152bf98eac4b7e19a18241a9dc829cdf"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "dark-positive-Cw_QTMmA69_",
+      "contentSha256": "b9afa27653b60ad2364551beb83b0a76dbc9af5a5d3eefd27a58a2d19e96939b",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "5a5f3fe541de038b14ad1a7e9b84e48db97975b665c6e4b24c63fe35e09e2260",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "79a8abb42c4e6f0d54c76a896552e1e8e8b0ff9708fedaa11f856d75ad1a0b05"
+    }
+  },
+  {
+    "candidateId": "dark-positive-Cxb0DmpJ7oM",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "dark-positive-Cxb0DmpJ7oM",
+      "profileKey": "dark-joy-boy",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "spidermonkeywinston",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/Cxb0DmpJ7oM/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "c7343228769aa25e06c85b91c9376ef9209a763590272cbd0eaf1135c6480e97",
+      "evidenceSha256": "bf6932252ce1dff370e0dc19c921934d05ae55db03766cbcdea44624f23450c1"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "dark-positive-Cxb0DmpJ7oM",
+      "contentSha256": "0438717607aad46859cd008d49276a8e0e93d0a1d2fe21e7073f4c5ad734f0b7",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "54f8310d8e066a899713972aeb16d5d8624887f951be38838703a24e576f8430",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "69078057407172fb264b978439b232c44f5df8be8fe6f98f22d65c71b1fb9ce1"
+    }
+  },
+  {
+    "candidateId": "dark-positive-DIUYX9QStl3",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "dark-positive-DIUYX9QStl3",
+      "profileKey": "dark-joy-boy",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "kodyantle",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DIUYX9QStl3/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "d421a91aa1f01fcbc757e50b7b3dbdd7c6d93a2a26cf22173fe63cdd8a49e1a4",
+      "evidenceSha256": "9aa39f0fd0c831a9c4d23fe8e27a720cc14c774c34c2559bd393ee0bc5d524ad"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "dark-positive-DIUYX9QStl3",
+      "contentSha256": "373c5ac04ca129f3bee910245be74cdcb56f6c291af09994a8376f6e7d4ede41",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "8c9b49029a65d679659f9d96bfd62b9546ed2d6e0524193b9491c02fddcba064",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "156f67bbe4f95cae7b40df85246d2f6d4d083d1ad2b85587f48e192ac1e57789"
+    }
+  },
+  {
+    "candidateId": "light-ask-03YR9XjETHo",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-ask-03YR9XjETHo",
+      "profileKey": "light-kingdom",
+      "provider": "youtube_ask",
+      "route": "youtube_ask_v3",
+      "donorUsername": null,
+      "canonicalSourceUrl": "https://www.youtube.com/watch?v=03YR9XjETHo",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "b032d65ad72aaed1c5b8b64d41ecad3e072d377c29fdc005f424692cd4666248",
+      "evidenceSha256": "ca2b626459a0d31d75545c1f4b40769733c524ca2a187876cb108c0a8a20fc17"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-ask-03YR9XjETHo",
+      "contentSha256": "ca7b02c8f0913347a16de68e5d4e173bf215c7c47f30bb44bf80ebb9e0595818",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "893dc749e4e7c5c86f07344b2355f79ef1fbdafcd962e9987ff0078cdb764f52",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "unknown",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "d2a7b0ba6913fd766e77247cd4351cd4ac1defeb7f85c71fbe857f902eb108be"
+    }
+  },
+  {
+    "candidateId": "light-ask-6QIdqyFoxFE",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-ask-6QIdqyFoxFE",
+      "profileKey": "light-kingdom",
+      "provider": "youtube_ask",
+      "route": "youtube_ask_v3",
+      "donorUsername": null,
+      "canonicalSourceUrl": "https://www.youtube.com/watch?v=6QIdqyFoxFE",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "dcd2993c803e2cf07b74c3c2392e16d0107657a6d5c0dfd3b7e39a76d16f0a9e",
+      "evidenceSha256": "0662fad827eb2b693448ebf9080e0b5d5c94bf8785f67a7b3c2fb63654746314"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-ask-6QIdqyFoxFE",
+      "contentSha256": "c0bcb0b58f55fb8c8630f143c5469159aab08c7b2c883ac801bf4707b4d9df58",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "2b4e910a9bbde4a85b8179eec52598dec59e148e94fa624e27d2ee0b20edc226",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "303e8c61b38ff5762836edadf65a600c4e6c981d18ea071956bf9545dfb5eb63"
+    }
+  },
+  {
+    "candidateId": "light-ask-BwIaEb5vGDo",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-ask-BwIaEb5vGDo",
+      "profileKey": "light-kingdom",
+      "provider": "youtube_ask",
+      "route": "youtube_ask_v3",
+      "donorUsername": null,
+      "canonicalSourceUrl": "https://www.youtube.com/watch?v=BwIaEb5vGDo",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "57691f1f0a1254bbcd7830aed768b28a0a78a42ce9ba9cd243cd3ba293541ac4",
+      "evidenceSha256": "3e2b0e5e607361686d4e1d24477518180705a05841757a28655ed43878196877"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-ask-BwIaEb5vGDo",
+      "contentSha256": "0c500e91711a6ec9cbf3bb8ad1f498f04f9de23b460d0cc0c9f10ebdc32de47f",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "7be8695307c2473b69c08098c72cb76dab7b4c9d4fcca926453412206c3a408d",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "e731ff55ee503168b584000fd7636885711d95542a697aa0deb8868d2d928943"
+    }
+  },
+  {
+    "candidateId": "light-ask-J6tw2l128YE",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-ask-J6tw2l128YE",
+      "profileKey": "light-kingdom",
+      "provider": "youtube_ask",
+      "route": "youtube_ask_v3",
+      "donorUsername": null,
+      "canonicalSourceUrl": "https://www.youtube.com/watch?v=J6tw2l128YE",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "63ca4d13ed590fb2aa2f99249b20f75918ce9eb992a4db717e599073d4ae65b5",
+      "evidenceSha256": "06f910b50a556d4d7ac9359cf6948bf8bc4930f2f0431a5f95ed4155d2e91b99"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-ask-J6tw2l128YE",
+      "contentSha256": "0add34915f9235de87c6d9d3426fb03b2d0461b3e80dd0b488080af337531750",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "3dfcd6452a7df911477919fcc68363c8d2f4707f692a7641d6a77c2176a79ae4",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "present"
+      },
+      "assessmentSha256": "3c9d98089f0c81ff3f3e7a8d27d1963500ed6c5664fdd3c9a85aba17ec467d0e"
+    }
+  },
+  {
+    "candidateId": "light-ask-tOk5MQFB0cU",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-ask-tOk5MQFB0cU",
+      "profileKey": "light-kingdom",
+      "provider": "youtube_ask",
+      "route": "youtube_ask_v3",
+      "donorUsername": null,
+      "canonicalSourceUrl": "https://www.youtube.com/watch?v=tOk5MQFB0cU",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "ecdd28877d03c4f26d1fb14589684ecee1e8552cef686584481428080385987c",
+      "evidenceSha256": "2a073dbcddaee6cd1ddfcd39d35f4d200712970f3c1c768ae7a7ef616271006e"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-ask-tOk5MQFB0cU",
+      "contentSha256": "f614501dbd0b8a83fcd606e385b07c12215efadb2254d4403dfc4dd44662fe1c",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "b54e61808275303350914cf3ee507f5cab8f154e443ddc69be05d3c47680e107",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "present"
+      },
+      "assessmentSha256": "c507e46d04b51596815756dd0feaeda529003c1cdfed34cc2cf6701d245e52a5"
+    }
+  },
+  {
+    "candidateId": "light-ask-V-xIvJs0Jbo",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-ask-V-xIvJs0Jbo",
+      "profileKey": "light-kingdom",
+      "provider": "youtube_ask",
+      "route": "youtube_ask_v3",
+      "donorUsername": null,
+      "canonicalSourceUrl": "https://www.youtube.com/watch?v=V-xIvJs0Jbo",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "2e51df30f0a681d0a1212293503eb2a62219be06a6b2678972e612399b7bd0ce",
+      "evidenceSha256": "f293359203f631f5e932d42634f70e6cdfc195fa0231e3dc8dcd25256e96532a"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-ask-V-xIvJs0Jbo",
+      "contentSha256": "e060a47731e4bb1b08067218929b75120929b968750cd8693485cbe938822e74",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "98f9f5575636bd96ca62e1d243aac472681a4d03ef19f12389a9a6c9c5c7dab2",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "present"
+      },
+      "assessmentSha256": "ac9d4978a97a87e5ad9724463bf32a0f03da1f83fa1a4fa7f796a5a1e4e4143f"
+    }
+  },
+  {
+    "candidateId": "light-ask-xq131G5ZcU4",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-ask-xq131G5ZcU4",
+      "profileKey": "light-kingdom",
+      "provider": "youtube_ask",
+      "route": "youtube_ask_v3",
+      "donorUsername": null,
+      "canonicalSourceUrl": "https://www.youtube.com/watch?v=xq131G5ZcU4",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "005b864dba61a641185514b7c9f2d435a298fa48456f62dd3dcd69bee2bc88d4",
+      "evidenceSha256": "264f101d2f023040aaecb992828aa97fb67272550f822d8fe9e5064812abe1b8"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-ask-xq131G5ZcU4",
+      "contentSha256": "b42c4c26d6b4c7cfa19d8975f73194bd2ecc517937d63e76aa5464c7f6148abe",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "b5d81fa048876cbd5254397117ba38da8be8982603c4c1d8647f968b9a2b905b",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "46766339c62829b72c63d75641bda9315a276b5cb6b8d5eeff020065f37c7660"
+    }
+  },
+  {
+    "candidateId": "light-ask-ZaS7YodS3DQ",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-ask-ZaS7YodS3DQ",
+      "profileKey": "light-kingdom",
+      "provider": "youtube_ask",
+      "route": "youtube_ask_v3",
+      "donorUsername": null,
+      "canonicalSourceUrl": "https://www.youtube.com/watch?v=ZaS7YodS3DQ",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "b959dde7e3698a0720ae549d3209bd0f0535da6213f0981e23f29b4ed0faf64f",
+      "evidenceSha256": "876816a3da1f8a41374201d559da1dd218633928b80e4d17706821997888b200"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-ask-ZaS7YodS3DQ",
+      "contentSha256": "31be7c8c2018c73e20c4ceb5a499976f7bc41cad1b02ce811a0ce9b149d0adda",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "27e5f410dfa33886fb8946e857b6ea4e640c430c442186ec76ed4c2771f16cef",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "595d1842a8185b74d1eefd081e8bf23fe8e6e78d45114397051e1fd54695ffb5"
+    }
+  },
+  {
+    "candidateId": "light-donor-DaADZ3AxOqO",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-donor-DaADZ3AxOqO",
+      "profileKey": "light-kingdom",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "learnaifaster",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DaADZ3AxOqO/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "a06d87b27a45268c65e19fcf0188689ede1a8ca383e4507ee29dfdef002167a9",
+      "evidenceSha256": "5a3fc0459f965c6d5668f60b7026aee809e7846a3bbb552eb025a551b3c1fa5f"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-donor-DaADZ3AxOqO",
+      "contentSha256": "8710bed83a717619010a631d6e2e44ad4df5306a5dc7cbfbd5bf698948e12f60",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "5d026f61e0164ca9e9f3ffa1b7cd57ebbe6760e927fc5765640180c6f690e9d6",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "present"
+      },
+      "assessmentSha256": "48ae370262eea49da169ef13ebf5af7f80b620fbc1fc9c135d701c69cdc980ba"
+    }
+  },
+  {
+    "candidateId": "light-donor-DaDxHb1poeD",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-donor-DaDxHb1poeD",
+      "profileKey": "light-kingdom",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "learnaifaster",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DaDxHb1poeD/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "c1a66df5de93edebb73ce627f37b32d2305ff80621e48afcb8aff266f8a168b5",
+      "evidenceSha256": "8b8a98f74f10f460bc5ecf2ec683cec247966a36481be7eeb8c436650c4367a9"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-donor-DaDxHb1poeD",
+      "contentSha256": "799d2a8254ab473a8466b9f1419a8ea4b0304a53ea7634ff789ed793f37d2961",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "556560bebea31e788ef003964f12a609621b740f8b335170cc4132cd8954fd25",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "b1d755aa190adbf2d77d5f925aa270181b739ceb44522574f896d42ae48dca27"
+    }
+  },
+  {
+    "candidateId": "light-donor-DaIs8Kmpt5z",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-donor-DaIs8Kmpt5z",
+      "profileKey": "light-kingdom",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "learnaifaster",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DaIs8Kmpt5z/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "6c4dc9f69f954e95ea24b78d6e37233f2111f72f4f1979c259644bbf9fc6fb05",
+      "evidenceSha256": "7d825dea41d6a4b90f0ac59ab488eb2f1ef1227050a8d896e866308b755209ec"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-donor-DaIs8Kmpt5z",
+      "contentSha256": "ca844959209e22fce22dee777322c801e9c32e06f7449de13705f868a7ab4c30",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "09ce6ec07d48004eb98c45eb7b35034d98f1b2911fd045f63725c8df819849fd",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "e284daf364b686df74e1a229b28aab962c19067cbed73aec6ad76acadcd2cfca"
+    }
+  },
+  {
+    "candidateId": "light-donor-DaVKaXkpIbC",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-donor-DaVKaXkpIbC",
+      "profileKey": "light-kingdom",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "learnaifaster",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DaVKaXkpIbC/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "b70786257bcb483fc5f0673842c9608a14e4e2863f6cd01c34971dd57cf7fb92",
+      "evidenceSha256": "2fae9df2e8c4d5b5bf4efcda36656ad02395fd396446912dd824bdde503b49ad"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-donor-DaVKaXkpIbC",
+      "contentSha256": "be961e21c70ac0b05f58bfef0fe5a9994aee0855e5d3c61026f304df9f521e1f",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "b6364bb97047c0dda25f0574c2e2142d838de61aaa3a9fa9713772f8e9336bed",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "554a938ab9c3c40a8af3514185cd80b76863637b677f80dce69f52848e15a70b"
+    }
+  },
+  {
+    "candidateId": "light-donor-DYctdBjpD5y",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-donor-DYctdBjpD5y",
+      "profileKey": "light-kingdom",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "learnaifaster",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DYctdBjpD5y/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "7b2d1f8a9cdbb8d39ebc0f24dd47345eb03882c19f312dd5ed3171d9873e0676",
+      "evidenceSha256": "e5bcfe1b239673b73201863ca39eb065ac44ab0f56c911e65082996cf1d6184e"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-donor-DYctdBjpD5y",
+      "contentSha256": "3367e5a7518d08f1e71b12d5e727ac2bbad4cf2b744ed6b3e3b636d7505a4b23",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "11e9c3311e1d29147aecee357974857b2cc02fe476e98ad80ec0c758d4a8a2f8",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "present"
+      },
+      "assessmentSha256": "8df758ae77d6ba24650866c34800a8eece1451aaa831fcbe24a2cf655ae6df3b"
+    }
+  },
+  {
+    "candidateId": "light-donor-DYejZ-RxFEJ",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-donor-DYejZ-RxFEJ",
+      "profileKey": "light-kingdom",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "learnaifaster",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DYejZ-RxFEJ/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "ecb65be566e777172364ceef79ae4d93c708ad0f6304bf864baae2932935f23f",
+      "evidenceSha256": "73e6fcee4d2c7e01822e0a33c2c39eacd5713c3af90b44f669f7a2c74b46a5da"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-donor-DYejZ-RxFEJ",
+      "contentSha256": "a1d0409c6da3b6dd30d04df3d69e1b6728aa5e0691cf60a141e6bf7f12c1c885",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "0f9a0186107901a89df298589b19c6a1ae2f08299044b369856c297097db5644",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "present"
+      },
+      "assessmentSha256": "3b3e760a67ee0dfa593f3faa604a9d1e6d1698de1d2a7c14221a7cfe12a8f084"
+    }
+  },
+  {
+    "candidateId": "light-donor-DYl89L5Ry_n",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-donor-DYl89L5Ry_n",
+      "profileKey": "light-kingdom",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "learnaifaster",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DYl89L5Ry_n/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "811efc6398b2b2547d4a9fa1ab6454ca16e63a241d892f1c92e0a7d23e9f73f4",
+      "evidenceSha256": "1b7c41a4027cbab96a31b57f01f7017f476be451457a9768073a6e1145d182b0"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-donor-DYl89L5Ry_n",
+      "contentSha256": "1e907ec8dbf8362521611b622ff0e003d75360d1b1f9244ba84c30ca6ea46590",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "e78c6f1f75a0bf20230a4c6e68aded1f0ddd4ba3f8a45153bb040c95ed5e3b16",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "633f7df1de2ebc32b681db075ab5440622cc4011d2dfacf3b75801cfef457322"
+    }
+  },
+  {
+    "candidateId": "light-donor-DZ4143Ip9wT",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-donor-DZ4143Ip9wT",
+      "profileKey": "light-kingdom",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "learnaifaster",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DZ4143Ip9wT/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "366e94f60636099be48ce774f0b7e4a53dd084214baa632d77cd66d0e11d65ee",
+      "evidenceSha256": "59e9afd77161e5c74596310201fe53e8d09221d536ad8c45a3a4e20fa520ea2f"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-donor-DZ4143Ip9wT",
+      "contentSha256": "0ed580eee23dc253efe3214cc4bb3f5f1bfe0a3d5e910d86a8be75e9a0468525",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "a94c1085acfae09ee91c995184262c85dbc7032807102a3213e21eed456c1053",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "03971a1944874dead5d47ca7f8d511d1aae6f810b1c1859891171a5f00f2bb18"
+    }
+  },
+  {
+    "candidateId": "light-donor-DZsb9A6Jf0q",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-donor-DZsb9A6Jf0q",
+      "profileKey": "light-kingdom",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "learnaifaster",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DZsb9A6Jf0q/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "ddba6d212b38948e2d7535531f99ade0f2ab2b3d1faa61add22b40263ac9867a",
+      "evidenceSha256": "3626f2218e6d5f465be61747a6b0a1ae979e89ed93655c34ab18f385c2fe8cac"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-donor-DZsb9A6Jf0q",
+      "contentSha256": "b66ec9fcd2b2b4a9ea88e91f4f53b05b0c02996dfe61beb42e578be5b73b88b3",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "1f9dcbfbdd4ef6bb7341384120719bf3f8958224cad182e8b02787692c43b164",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "present"
+      },
+      "assessmentSha256": "937f5ab14f1171bf007852b19af2e13db6a7c8355013b646dcf5a3de3546f3eb"
+    }
+  },
+  {
+    "candidateId": "light-donor-DZULhPeI62U",
+    "discoveryState": "frozen_catalog",
+    "designation": {
+      "evidenceVersion": "project-kings-source-designation-evidence-v2",
+      "candidateId": "light-donor-DZULhPeI62U",
+      "profileKey": "light-kingdom",
+      "provider": "instagram",
+      "route": "instagram_donor_pool",
+      "donorUsername": "learnaifaster",
+      "canonicalSourceUrl": "https://www.instagram.com/reel/DZULhPeI62U/",
+      "rightsEvidenceStatus": "covered_by_approved_source_policy",
+      "upstreamDiscoveryEvidenceSha256": "d064227d9b83ac31a017bcd17de4df96326f99724bab7944379773ff1558e21a",
+      "evidenceSha256": "cfa1c1573bba4f3f5381f7ecb12ee11c89a35045a12f4c9dc63e7878767a1e9a"
+    },
+    "sensitiveAssessment": {
+      "assessmentVersion": "project-kings-sensitive-content-assessment-v1",
+      "candidateId": "light-donor-DZULhPeI62U",
+      "contentSha256": "f4c3251b5acc1dd853f2c09cf972f86b959433c8a06341ecefc907dfd1acfb33",
+      "assessorKind": "independent_policy_agent",
+      "upstreamEvidenceSha256": "681cd6e8269376902dd0f0b8a090a948cd644f4db8552b7226d6db42709c84bc",
+      "signals": {
+        "graphicViolence": "absent",
+        "unsupportedAllegation": "absent",
+        "minorInSensitiveIncident": "absent",
+        "realisticPoliticalOrPublicFigureDeepfake": "absent"
+      },
+      "assessmentSha256": "0ef51d341bc479388faae973bf7cb36c10046e1b7e349a099aec31b9ea9e1342"
+    }
+  }
+]

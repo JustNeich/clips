@@ -1,0 +1,222 @@
+[
+  {
+    "candidateId": "light-donor-DaIs8Kmpt5z",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.instagram.com/reel/DaIs8Kmpt5z/",
+    "contentSha256": "ca844959209e22fce22dee777322c801e9c32e06f7449de13705f868a7ab4c30",
+    "profileHash": "0ff186ebde26b16613705f61790b15afa5068c0a54741a2c7c068412738821c0",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-50c78b2834dce121139d7e59f2a2bf7c",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "bd1deeeb6e1256d2f659661389928887395218bd5a1b91ff61862d4d9c090640",
+    "artifactSetSha256": "2df8bfa8bc754a63c163ded01e4b14755ba03ad5c5cbdb778c3e5e8ae8411ee7",
+    "rawOutputSha256": "006e0cf5668acc14af67fe4aadc8ea56b99ffdef05e002a6d68cc4d5c4a0d9fe",
+    "outputSha256": "e8e508df893eefceb9ffa4c9777de9d27afe5d7a6af78f126f9aa0445d9a5c98",
+    "finishedAt": "2026-07-11T16:04:55.559Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "light-donor-DaIs8Kmpt5z",
+      "storyEventId": "event-ai-banana-vigilante-action-movie",
+      "conceptMatch": false,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source visibly presents a coherent AI-generated banana vigilante crime/action story, but it is not a recognizable mainstream film or television scene, so it misses the channel's recognizable-fiction boundary.",
+      "factualClaims": [
+        {
+          "claim": "The candidate is an Instagram Reel discovered through an Instagram donor pool.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The source describes and visually shows a coherent banana-character action/crime story with an AI-generated character.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The media decodes completely and is a vertical 1080x1920 H.264/AAC video.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-donor-DaVKaXkpIbC",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.instagram.com/reel/DaVKaXkpIbC/",
+    "contentSha256": "be961e21c70ac0b05f58bfef0fe5a9994aee0855e5d3c61026f304df9f521e1f",
+    "profileHash": "0ff186ebde26b16613705f61790b15afa5068c0a54741a2c7c068412738821c0",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-731a96d580999f727e79148ca10b1d39",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "7ae91fe92ee70fc227f775bbdbdaa017aa0f97416b094fdaed5ad0e4b46a829d",
+    "artifactSetSha256": "e25b00884e714e3eda3823e9d7cdbdddfef42388ee9c49530cf60f491cd5a6fe",
+    "rawOutputSha256": "9f752f15d9540e1cbbf70313755885f870b7293e7909d3e7ee532dcbb528b456",
+    "outputSha256": "f17f172e5f7318221954e6073b143c25f17832e4faa8582ba62e2009885a9c09",
+    "finishedAt": "2026-07-11T16:04:57.877Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-donor-DaVKaXkpIbC",
+      "storyEventId": "event-ai-batman-catwoman-skyscraper-proposal",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source presents a coherent vertical Batman/Catwoman fictional scene with a visible AI-remake premise and understandable visual payoff. Media decoding is complete, and neither the source hash nor story event appears in the authoritative duplicate ledgers.",
+      "factualClaims": [
+        {
+          "claim": "The source depicts Batman and Catwoman in a skyscraper or rooftop proposal sequence.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source is presented as an AI recreation of the fictional scene.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The media is a complete 1080x1920 H.264 video with a 13.121-second duration and no decode error.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-donor-DZ4143Ip9wT",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.instagram.com/reel/DZ4143Ip9wT/",
+    "contentSha256": "0ed580eee23dc253efe3214cc4bb3f5f1bfe0a3d5e910d86a8be75e9a0468525",
+    "profileHash": "0ff186ebde26b16613705f61790b15afa5068c0a54741a2c7c068412738821c0",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-333de824875e73fad39f476e6c4e4deb",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "017507ef9c798524fe101fae3f119ddf3a3ca64519f15a1a3482a88934433bf1",
+    "artifactSetSha256": "fe489a4610a2859817acfc5b9f021a41240df6ec611b00924c611a61958ce41b",
+    "rawOutputSha256": "da6aac53bffc999f9edf9bab9531977d3515a880e92fdf43076338a5094de28d",
+    "outputSha256": "bad8dd70100d1c24c59524e177ea826f068d9cd9e2ac727d7082f6d8c83783ce",
+    "finishedAt": "2026-07-11T16:05:11.485Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "light-donor-DZ4143Ip9wT",
+      "storyEventId": "event-ai-pokemon-dark-cinematic-battle",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": false,
+      "reason": "Содержание соответствует AI-переосмыслению узнаваемой fiction-сцены, но исходник содержит заметный донорский брендинг и встроенный заголовок, поэтому не проходит как готовый usable source.",
+      "factualClaims": [
+        {
+          "claim": "Видео вертикальное, длительностью около 49 секунд, декодируется полностью без ошибок.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "В ролике показаны узнаваемые персонажи Pokémon в единой мрачной кинематографичной боевой сцене.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "На исходнике присутствуют заметный брендинг LEARN AI FASTER и встроенный текстовый заголовок.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "light-donor-DZsb9A6Jf0q",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.instagram.com/reel/DZsb9A6Jf0q/",
+    "contentSha256": "b66ec9fcd2b2b4a9ea88e91f4f53b05b0c02996dfe61beb42e578be5b73b88b3",
+    "profileHash": "0ff186ebde26b16613705f61790b15afa5068c0a54741a2c7c068412738821c0",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-32adcfcc319b74429c184ad8f5cb7b59",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "1f15d0dc652fa8aa18b2a10fccdbe27835867ead93b54ac86e641a67641f6f2d",
+    "artifactSetSha256": "386262e5719a436069655dca538b338b8ffbd0097762572b6d87f7fb2ee296cd",
+    "rawOutputSha256": "aba0d87e3f0d46703823fd501f1b034360f0e1fd05dc829d653c3df59a22f99e",
+    "outputSha256": "5147e184c433d06d6e43fdc1f3245dd1e0186d65aa0c6394e8ab52bf068200af",
+    "finishedAt": "2026-07-11T16:05:16.853Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-donor-DZsb9A6Jf0q",
+      "storyEventId": "event-ai-ronald-mcdonald-colonel-sanders-battle",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "A coherent vertical AI-generated action fight between recognizable fictional mascots, with a visible visual twist and crop-safe donor header. The source is decoded successfully and neither its hash nor story event appears in the authoritative duplicate ledgers.",
+      "factualClaims": [
+        {
+          "claim": "The source depicts an AI action-movie battle between Ronald McDonald and Colonel Sanders.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The media is one coherent fictional fight rather than a multi-scene compilation.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source is a decoded 44.481-second 1080x1920 MP4.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  }
+]

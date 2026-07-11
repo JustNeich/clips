@@ -75,6 +75,7 @@ function cachedInstagram(input: {
 
 function askYoutube(input: {
   videoId: string;
+  directory?: "ask-v3" | "ask-v4";
   storyEventId: string | null;
   disposition: ProjectKingsCandidateDisposition;
   findings: readonly string[];
@@ -88,7 +89,7 @@ function askYoutube(input: {
     storyEventId: input.storyEventId,
     localMedia: {
       kind: "direct",
-      relativePath: `.data/project-kings/source-candidates/light/ask-v3/${input.videoId}.mp4`
+      relativePath: `.data/project-kings/source-candidates/light/${input.directory ?? "ask-v3"}/${input.videoId}.mp4`
     } as const,
     disposition: input.disposition,
     // The owner explicitly authorised YouTube Ask as a source-acquisition route
@@ -285,6 +286,94 @@ export const PROJECT_KINGS_PILOT_CANDIDATE_OBSERVATIONS = Object.freeze([
     ]
   }),
   downloadedInstagram({
+    candidateId: "cop-donor-DW7IFS5jU0_",
+    profileKey: "copscopes-x2e",
+    reelId: "DW7IFS5jU0_",
+    localPath: ".data/project-kings/source-candidates/cop/instagram/DW7IFS5jU0_.mp4",
+    storyEventId: "event-police-pursuit-ends-in-van-rollover",
+    findings: [
+      "The Reel was acquired from the owner-approved @copscopes Instagram donor pool and is not present in the current live inventory.",
+      "The exact media shows one continuous multi-vehicle police pursuit ending in a visible van rollover; location and elapsed-time claims are intentionally excluded from the candidate binding."
+    ]
+  }),
+  downloadedInstagram({
+    candidateId: "cop-donor-DW8cQmwjZEW",
+    profileKey: "copscopes-x2e",
+    reelId: "DW8cQmwjZEW",
+    localPath: ".data/project-kings/source-candidates/cop/instagram/DW8cQmwjZEW.mp4",
+    storyEventId: "event-fairfax-fatal-traffic-stop-shooting",
+    findings: [
+      "The Reel was acquired from the owner-approved @copscopes Instagram donor pool and is not present in the current live inventory.",
+      "The preserved donor review describes a continuous dashcam traffic-stop confrontation; graphic-violence and unsupported-allegation policy checks are expected to fail closed unless the exact evidence is safe."
+    ]
+  }),
+  downloadedInstagram({
+    candidateId: "cop-donor-DXM8g16DXqP",
+    profileKey: "copscopes-x2e",
+    reelId: "DXM8g16DXqP",
+    localPath: ".data/project-kings/source-candidates/cop/instagram/DXM8g16DXqP.mp4",
+    storyEventId: "event-roadside-police-encounter-becomes-ground-struggle",
+    findings: [
+      "The Reel was acquired from the owner-approved @copscopes Instagram donor pool and is not present in the current live inventory.",
+      "The exact media shows one roadside police encounter that becomes a visible ground struggle; location and unverified assault details are intentionally excluded from the candidate binding."
+    ]
+  }),
+  downloadedInstagram({
+    candidateId: "cop-donor-DY14gTEtg3H",
+    profileKey: "copscopes-x2e",
+    reelId: "DY14gTEtg3H",
+    localPath: ".data/project-kings/source-candidates/cop/instagram/DY14gTEtg3H.mp4",
+    storyEventId: "event-freeway-pursuit-ends-in-breakdancing-surrender",
+    findings: [
+      "The Reel was acquired from the owner-approved @copscopes Instagram donor pool and is not present in the current live inventory.",
+      "The exact media visibly shows a low-speed police pursuit ending when the suspect exits, breakdances and is taken into custody without visible violence; location and motive claims are intentionally excluded from the candidate binding."
+    ]
+  }),
+  downloadedInstagram({
+    candidateId: "light-donor-DaVKaXkpIbC",
+    profileKey: "light-kingdom",
+    reelId: "DaVKaXkpIbC",
+    localPath: ".data/project-kings/source-candidates/light/instagram/DaVKaXkpIbC.mp4",
+    storyEventId: "event-ai-batman-catwoman-skyscraper-proposal",
+    findings: [
+      "Public @learnaifaster donor discovery describes Batman and Catwoman recreating a skyscraper proposal through one visible AI-fiction scene.",
+      "The exact media shows a coherent Batman/Catwoman rooftop sequence; the outer donor header remains subject to the approved crop and Source Fit gate."
+    ]
+  }),
+  downloadedInstagram({
+    candidateId: "light-donor-DZ4143Ip9wT",
+    profileKey: "light-kingdom",
+    reelId: "DZ4143Ip9wT",
+    localPath: ".data/project-kings/source-candidates/light/instagram/DZ4143Ip9wT.mp4",
+    storyEventId: "event-ai-pokemon-dark-cinematic-battle",
+    findings: [
+      "Public @learnaifaster donor discovery describes Pokemon reimagined as a dark cinematic AI universe.",
+      "The exact media visibly uses recognizable Pokemon characters in one coherent battle sequence; montage structure and the outer donor header remain downstream gates."
+    ]
+  }),
+  downloadedInstagram({
+    candidateId: "light-donor-DZsb9A6Jf0q",
+    profileKey: "light-kingdom",
+    reelId: "DZsb9A6Jf0q",
+    localPath: ".data/project-kings/source-candidates/light/instagram/DZsb9A6Jf0q.mp4",
+    storyEventId: "event-ai-ronald-mcdonald-colonel-sanders-battle",
+    findings: [
+      "Public @learnaifaster donor discovery describes Ronald McDonald and Colonel Sanders in an AI action-movie battle.",
+      "The exact media visibly follows one coherent fictional fight between the two recognizable mascots; the outer donor header remains subject to the approved crop and Source Fit gate."
+    ]
+  }),
+  downloadedInstagram({
+    candidateId: "light-donor-DaIs8Kmpt5z",
+    profileKey: "light-kingdom",
+    reelId: "DaIs8Kmpt5z",
+    localPath: ".data/project-kings/source-candidates/light/instagram/DaIs8Kmpt5z.mp4",
+    storyEventId: "event-ai-banana-vigilante-action-movie",
+    findings: [
+      "Public @learnaifaster donor discovery describes a Banana Vigilante action movie created with AI.",
+      "The exact media visibly follows one coherent fictional banana-character crime story; recognizable-fiction fit and the outer donor header remain downstream gates."
+    ]
+  }),
+  downloadedInstagram({
     candidateId: "light-donor-DZO838rIfHO",
     profileKey: "light-kingdom",
     reelId: "DZO838rIfHO",
@@ -380,6 +469,36 @@ export const PROJECT_KINGS_PILOT_CANDIDATE_OBSERVATIONS = Object.freeze([
     findings: [
       "Clean short Mandalorian/Grogu AI scene with no visible donor UI or CTA in the local visual pass.",
       "Provider policy and profile-v2 Source Fit are still required."
+    ]
+  }),
+  askYoutube({
+    videoId: "03YR9XjETHo",
+    directory: "ask-v4",
+    storyEventId: "event-ai-tmnt-noir-rooftop-rescue",
+    disposition: "pending_semantic_review",
+    findings: [
+      "Ask YouTube returned a verified public Short showing recognizable Teenage Mutant Ninja Turtles characters in a dark AI fan-film scene.",
+      "The exact local media is a clean, coherent noir rooftop sequence without a visible Part label, donor wrapper or burned-in narration; Source Fit and policy remain mandatory."
+    ]
+  }),
+  askYoutube({
+    videoId: "ZaS7YodS3DQ",
+    directory: "ask-v4",
+    storyEventId: "event-ai-batman-gotham-lightning-rooftop",
+    disposition: "pending_semantic_review",
+    findings: [
+      "Ask YouTube returned a verified public Short showing an adult masked Batman character above Gotham during a lightning storm.",
+      "The exact local media is a single coherent AI-fiction scene; Source Fit must decide whether the short end-card and limited motion leave the source usable."
+    ]
+  }),
+  askYoutube({
+    videoId: "xq131G5ZcU4",
+    directory: "ask-v4",
+    storyEventId: "event-ai-dark-armored-sith-confrontation",
+    disposition: "pending_semantic_review",
+    findings: [
+      "Ask YouTube returned a verified public Short as a Darth Vader reimagining.",
+      "The exact local media visibly shows one dark armored lightsaber character confronting a purple adult figure without captions or a watermark; recognizability and factual fit remain mandatory."
     ]
   }),
   askYoutube({

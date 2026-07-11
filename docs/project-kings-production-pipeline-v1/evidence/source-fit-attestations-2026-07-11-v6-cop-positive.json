@@ -1,0 +1,103 @@
+[
+  {
+    "candidateId": "cop-positive-DWwSVVOjMqO",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DWwSVVOjMqO/",
+    "contentSha256": "0e8f65beb75324d243eb59832b80227286d501db4b4815e682bb14874d03b95e",
+    "profileHash": "82db4221f31a38d688eaaf1bf10191d594bbf77c5bd9b2c3a38a63f68158f362",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-bf23db34ae908d75ec9ef492e407d048",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "74c83d0b468a579d481a3e46dea434b33c6eb0424a64fa396fec9715182af859",
+    "artifactSetSha256": "72ec86ade0885f51415aff9edb4e26792e993e6c09fb309802244e8ca67d2d04",
+    "rawOutputSha256": "4c89497c4078df502670e8a716d73c5e903d4192230a7c83698ef143411862f3",
+    "outputSha256": "24aa9829c44d45efac1775bd219dea1848ea45348c9dc61c75485dae29010308",
+    "finishedAt": "2026-07-11T15:58:18.507Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "cop-positive-DWwSVVOjMqO",
+      "storyEventId": "event-farmington-street-race-burning-car-rescue",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source shows a visible law-enforcement vehicle incident: a street-race crash with rollover, fire, and a passenger rescue. It fits the channel concept, is technically decodable, and neither its source hash nor story event appears in the authoritative duplicate ledgers.",
+      "factualClaims": [
+        {
+          "claim": "A pursuit or street-race incident ends in a rollover and burning vehicle.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2"
+          ]
+        },
+        {
+          "claim": "A passenger rescue follows the crash.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The footage includes visible law-enforcement context.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-positive-DXOzkCdjMue",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DXOzkCdjMue/",
+    "contentSha256": "a3bb5e65330abe53850dfefdb4dba04bb2d53b56610d0e1fa8bfe1112ac35da7",
+    "profileHash": "82db4221f31a38d688eaaf1bf10191d594bbf77c5bd9b2c3a38a63f68158f362",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-5f65175be33d20ca407ce87a9dc1a209",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "da58036195f83923a940063471dda7317e69e93cf8b871a81f5047dc91147a36",
+    "artifactSetSha256": "0f23a698921fef6c090e739622cfeaa2f960285c6117c42863daa0bf1abf01d8",
+    "rawOutputSha256": "b6577a46598153562e19b2504a1781601f8589cd19d7921dfe7bae2c6a0203b6",
+    "outputSha256": "ec40bffe2c2bdc54fd9233120a9459f310ef2bca333836d586e01f8de5d61642",
+    "finishedAt": "2026-07-11T15:58:19.063Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "cop-positive-DXOzkCdjMue",
+      "storyEventId": "event-domestic-violence-suspect-jumps-moving-car",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "Vertical, decodable dashcam footage visibly shows a police pursuit and a suspect clinging to or jumping onto a moving car. The source hash and story event are absent from the authoritative duplicate lists.",
+      "factualClaims": [
+        {
+          "claim": "Dashcam footage shows a suspect clinging to or jumping onto a moving vehicle while fleeing police.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source is a usable 20.467-second vertical H.264/AAC video with complete decoding.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  }
+]

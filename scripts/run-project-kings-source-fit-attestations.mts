@@ -27,7 +27,6 @@ import type {
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const EVIDENCE_ROOT = path.join(REPO_ROOT, "docs/project-kings-production-pipeline-v1/evidence");
-const INVENTORY_PATH = path.join(EVIDENCE_ROOT, "live-publication-inventory-2026-07-10.json");
 
 function argument(name: string): string | null {
   const index = process.argv.indexOf(name);
@@ -37,6 +36,11 @@ function argument(name: string): string | null {
 function resolveFromRoot(value: string): string {
   return path.isAbsolute(value) ? value : path.join(REPO_ROOT, value);
 }
+
+const INVENTORY_PATH = resolveFromRoot(
+  argument("--inventory") ??
+    "docs/project-kings-production-pipeline-v1/evidence/live-publication-inventory-2026-07-10.json"
+);
 
 const OUTPUT_PATH = resolveFromRoot(
   argument("--output") ?? "docs/project-kings-production-pipeline-v1/evidence/source-fit-attestations-2026-07-10-v3.json"
@@ -222,7 +226,7 @@ const attestations = await mapConcurrent(candidates, 3, async ({ channel, candid
     const packet: SourceFitPacket = {
       schemaVersion: "production-agent-packet-v1",
       role: "source_fit",
-      runId: "project-kings-source-buffer-2026-07-10",
+      runId: `project-kings-source-buffer-${liveInventory.capturedAt.slice(0, 10)}`,
       itemId: candidate.candidateId,
       channelId: profile.youtube.channelId,
       profileVersion: String(profile.profileVersion),

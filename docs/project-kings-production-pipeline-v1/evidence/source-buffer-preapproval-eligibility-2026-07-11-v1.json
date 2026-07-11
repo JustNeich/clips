@@ -1,0 +1,86 @@
+{
+  "schemaVersion": "project-kings-source-buffer-preapproval-eligibility-v1",
+  "capturedAt": "2026-07-11T17:07:34Z",
+  "status": "eligible_pending_production_policy_approval",
+  "productionReady": false,
+  "reason": "All listed candidates pass the current v4 Source Fit binding and have all four source-policy signals absent. Production qualification-v2 evidence still requires the real one-time owner approval artifact returned by the deployed control plane; this file does not synthesize that approval.",
+  "liveInventory": {
+    "path": "docs/project-kings-production-pipeline-v1/evidence/live-publication-inventory-2026-07-11-v1.json",
+    "fileSha256": "810b32385895e3cc9d7a26086d9ccba26d734500567fc37450a69826c96b948b",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b"
+  },
+  "routeManifest": {
+    "manifestId": "project-kings-model-routes-v4",
+    "manifestSha256": "13e867148fdda8c138421218fcc1ebf23cfc06b649c1321ed319e20238f456e5"
+  },
+  "sourcePolicy": {
+    "policyVersion": "project-kings-source-rights-sensitive-policy-v2",
+    "policySha256": "b6664c4364c4a3b172a1f1d653e3d100604e98f5ef1b33857324691fa894eb39",
+    "sourceDesignationsSha256": "a6452b6d6bd2e4721560df7238b47a3096c08ba978a4e1c614912612d547e4b4",
+    "requiredSignals": {
+      "graphicViolence": "absent",
+      "unsupportedAllegation": "absent",
+      "minorInSensitiveIncident": "absent",
+      "realisticPoliticalOrPublicFigureDeepfake": "absent"
+    }
+  },
+  "evidence": {
+    "sourceFitAttestations": {
+      "path": "docs/project-kings-production-pipeline-v1/evidence/source-fit-attestations-2026-07-11-v10-merged.json",
+      "fileSha256": "5ec893c9df528088e085956a64876d04a77748376ac609fe6b910925a332a6de"
+    },
+    "sourcePolicyCandidateArtifacts": {
+      "path": "docs/project-kings-production-pipeline-v1/evidence/source-policy-candidate-artifacts-2026-07-11-v1-replayed.json",
+      "fileSha256": "2cbd5038bd8219ebf55a3824b941df484cf21bcadf346ae68e81ccca4dd2b294"
+    },
+    "sourcePolicyReplayBindings": {
+      "path": "docs/project-kings-production-pipeline-v1/evidence/source-policy-replay-bindings-2026-07-11-v1.json",
+      "fileSha256": "e44e4219de16fa184237f631d92b6e4a8a33b38d7d33356d7bde91502e03b1d0"
+    }
+  },
+  "channels": [
+    {
+      "profileKey": "dark-joy-boy",
+      "profileHash": "43ebe0669e68f794fa64d755b491bcf3c9a7c5aa4d2eb0a15c183d872cb086d7",
+      "eligibleCount": 6,
+      "requiredCount": 6,
+      "candidateIds": [
+        "dark-positive-BtDnmx6HRr_",
+        "dark-positive-C9gLu79MklN",
+        "dark-positive-CsYa4skNBjP",
+        "dark-positive-Cw_QTMmA69_",
+        "dark-positive-Cxb0DmpJ7oM",
+        "dark-positive-DIUYX9QStl3"
+      ]
+    },
+    {
+      "profileKey": "light-kingdom",
+      "profileHash": "0ff186ebde26b16613705f61790b15afa5068c0a54741a2c7c068412738821c0",
+      "eligibleCount": 7,
+      "requiredCount": 6,
+      "candidateIds": [
+        "light-ask-BwIaEb5vGDo",
+        "light-ask-ZaS7YodS3DQ",
+        "light-ask-xq131G5ZcU4",
+        "light-donor-DaDxHb1poeD",
+        "light-donor-DaVKaXkpIbC",
+        "light-donor-DYl89L5Ry_n",
+        "light-donor-DZULhPeI62U"
+      ]
+    },
+    {
+      "profileKey": "copscopes-x2e",
+      "profileHash": "82db4221f31a38d688eaaf1bf10191d594bbf77c5bd9b2c3a38a63f68158f362",
+      "eligibleCount": 6,
+      "requiredCount": 6,
+      "candidateIds": [
+        "cop-donor-DW7IFS5jU0_",
+        "cop-donor-DWjH5fWjBnt",
+        "cop-donor-DWnxlyIDcoK",
+        "cop-donor-DY14gTEtg3H",
+        "cop-positive-DWTlKz_jO0m",
+        "cop-positive-DWwSVVOjMqO"
+      ]
+    }
+  ]
+}

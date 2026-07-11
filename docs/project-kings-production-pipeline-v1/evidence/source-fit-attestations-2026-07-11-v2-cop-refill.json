@@ -1,0 +1,162 @@
+[
+  {
+    "candidateId": "cop-donor-DW7IFS5jU0_",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DW7IFS5jU0_/",
+    "contentSha256": "5952ab0f93a23d7f69504ca27f1ef3049eebcb098e68eab6eb4d6b8ae8e70918",
+    "profileHash": "82db4221f31a38d688eaaf1bf10191d594bbf77c5bd9b2c3a38a63f68158f362",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-5684f08a026fb4e3ccf172740c76a35d",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "0cda02b972b569d35ac0f8fa0ed6ffb51bb54a638caae1113dc496b742467216",
+    "artifactSetSha256": "7b760c3e613ae116cc2a8f537d73e45d7b92212d8327f91a3aecd3288755ad32",
+    "rawOutputSha256": "66aea2325925928eb2db9c13e1ada69053c196663d388a63d1152fdffa0e7dfd",
+    "outputSha256": "a8d66ddd93b173a56f6b9786df7ffa77e3754fd8586b48337fd23f6d28b3edc9",
+    "finishedAt": "2026-07-11T15:48:52.230Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "cop-donor-DW7IFS5jU0_",
+      "storyEventId": "event-ohio-interstate-pursuit-van-rollover",
+      "conceptMatch": true,
+      "factualFit": false,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The footage visibly shows a police pursuit ending in a van rollover and fits the channel concept, but the supplied artifacts do not verify the claimed Ohio interstate location or event identity.",
+      "factualClaims": [
+        {
+          "claim": "The footage shows a police pursuit ending in a visible van rollover.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The incident occurred on an Ohio interstate.",
+          "verified": false,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-donor-DW8cQmwjZEW",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DW8cQmwjZEW/",
+    "contentSha256": "add28bb80cdc8ae726a65dcd61a5425134b12820353dec1fd6c3a4d378ae6c91",
+    "profileHash": "82db4221f31a38d688eaaf1bf10191d594bbf77c5bd9b2c3a38a63f68158f362",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-613e9824e6f99613c6fee80766ef0e64",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "c5673fc750f91e87dac443064f15dca48604e0b08f51dd8ccb24b903e0129253",
+    "artifactSetSha256": "94932e4a6def96a32ce0ab31a6fc879c181bbdcf78a629a5e12f4e677cfdae3c",
+    "rawOutputSha256": "a1978a5dcd611a34f99ea48c897d4d52b8cdebbf1fb1decb8f559c4b97a2011c",
+    "outputSha256": "937356096c884a8e5388a7e926b86c574f7d4cc4e0aae8a95cd702f67d5d3f71",
+    "finishedAt": "2026-07-11T15:48:58.653Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "cop-donor-DW8cQmwjZEW",
+      "storyEventId": "event-fairfax-fatal-traffic-stop-shooting",
+      "conceptMatch": true,
+      "factualFit": false,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": false,
+      "reason": "The footage fits the police traffic-stop bodycam/dashcam concept, but the supplied evidence does not independently verify the claimed armed shooting, fatal outcome, or Fairfax location. The source metadata also flags graphic-violence and unsupported-allegation checks as fail-closed concerns.",
+      "factualClaims": [
+        {
+          "claim": "The source contains continuous police dashcam footage of a traffic-stop confrontation.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "An armed man opens fire during the traffic stop.",
+          "verified": false,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The traffic stop resulted in a fatality.",
+          "verified": false,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The incident occurred in Fairfax.",
+          "verified": false,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-donor-DXM8g16DXqP",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DXM8g16DXqP/",
+    "contentSha256": "50323e1e73f9628a1eca0d27a0f0a4596f5ea277ea94183f841da80d3ebbd6d6",
+    "profileHash": "82db4221f31a38d688eaaf1bf10191d594bbf77c5bd9b2c3a38a63f68158f362",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-73b645e0fd69e2f37eb6e72308547b23",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "acecf2f938b0bb91501feb68789354b5f01c32541844ca9a9d91a20e2349c3f8",
+    "artifactSetSha256": "85d8fffe58172488a67ab32202b4a3efb537a351621916f988afdce7aca1ca68",
+    "rawOutputSha256": "fb707ca646b1189778e28eb31afaeb1915642bd5be7c1f27a2d9a973239b5f90",
+    "outputSha256": "6be4e1f49af78c705d2c9122727e542e8419ec71a035ca039c19337420a6faaf",
+    "finishedAt": "2026-07-11T15:48:57.019Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "cop-donor-DXM8g16DXqP",
+      "storyEventId": "event-tampa-i4-roadside-officer-assault",
+      "conceptMatch": true,
+      "factualFit": false,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The footage fits the police roadside-incident concept and is technically usable, but the specific claims that the person punched an officer in the face and that this occurred during an I-4 traffic stop are not independently established by the supplied evidence.",
+      "factualClaims": [
+        {
+          "claim": "The Reel contains a single roadside encounter involving apparent law-enforcement activity and a visible struggle.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The person punched the officer in the face during an I-4 traffic stop.",
+          "verified": false,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  }
+]

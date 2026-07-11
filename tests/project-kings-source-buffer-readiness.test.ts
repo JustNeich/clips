@@ -305,7 +305,7 @@ test("historical v13 readiness evidence is not production-ready without policy v
   );
 });
 
-test("live inventory, profile rejects and duplicate events produce the exact fail-closed 11/15/13 supply", async () => {
+test("live inventory, profile rejects and duplicate events produce the exact fail-closed 11/22/17 supply", async () => {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const inventory = parseProjectKingsLivePublicationInventory(JSON.parse(
     await fs.readFile(
@@ -328,8 +328,8 @@ test("live inventory, profile rejects and duplicate events produce the exact fai
     })),
     [
       { profileKey: "dark-joy-boy", unused: 11, qualified: 0, deficit: 6 },
-      { profileKey: "light-kingdom", unused: 15, qualified: 0, deficit: 6 },
-      { profileKey: "copscopes-x2e", unused: 13, qualified: 0, deficit: 6 }
+      { profileKey: "light-kingdom", unused: 22, qualified: 0, deficit: 6 },
+      { profileKey: "copscopes-x2e", unused: 17, qualified: 0, deficit: 6 }
     ]
   );
   assert.equal(evidence.summary.qualifiedBufferDeficit, 18);

@@ -1,0 +1,57 @@
+[
+  {
+    "candidateId": "light-ask-03YR9XjETHo",
+    "profileKey": "light-kingdom",
+    "sourceUrl": "https://www.youtube.com/watch?v=03YR9XjETHo",
+    "contentSha256": "ca7b02c8f0913347a16de68e5d4e173bf215c7c47f30bb44bf80ebb9e0595818",
+    "profileHash": "0ff186ebde26b16613705f61790b15afa5068c0a54741a2c7c068412738821c0",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-c410b10aa0bbc3b9b84b52c6b57b4acb",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "b05018874c8d066114707f21eeea97ca0de0745c9072e0dcdc023ec8567632a3",
+    "artifactSetSha256": "2f5b65d2423bec7600cbfa0b2ee1e8f889a7b3a5cbfb56c9fd903401bbf447ed",
+    "rawOutputSha256": "d27cba693ecc0039d8f2f74607e908d6db0aac1f2b5e3a9214aeef14cfab689b",
+    "outputSha256": "18915763678b4efb4b7ce5fd27ce37c5a2b8282304f6d591a5aff3946b27c8bd",
+    "finishedAt": "2026-07-11T16:21:09.083Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "light-ask-03YR9XjETHo",
+      "storyEventId": "event-ai-tmnt-noir-rooftop-rescue",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "Recognizable Teenage Mutant Ninja Turtles characters appear in a coherent, visibly AI-generated noir sequence with a clear visual fiction premise. The source is decoded completely, portrait-oriented, and free of visible donor wrappers or burned-in narration. Neither duplicate ledger contains the source hash or story event.",
+      "factualClaims": [
+        {
+          "claim": "The candidate depicts recognizable Teenage Mutant Ninja Turtles characters.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The candidate is a dark AI fan-film/noir sequence involving a rooftop rescue setup.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source media is 15.014 seconds, 720x1280, and decoded completely without error.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  }
+]

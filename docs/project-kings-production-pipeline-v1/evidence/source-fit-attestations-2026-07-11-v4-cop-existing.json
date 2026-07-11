@@ -1,0 +1,160 @@
+[
+  {
+    "candidateId": "cop-donor-DWnxlyIDcoK",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DWnxlyIDcoK/",
+    "contentSha256": "49dd483449878265613f19b57bcdf0da2af201d765adccaf813e1397c5c14fd1",
+    "profileHash": "82db4221f31a38d688eaaf1bf10191d594bbf77c5bd9b2c3a38a63f68158f362",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-cc732cc52f1f28e77201ae8b24f15739",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "2937724075df34e163a264ed7349fc5d4dd6557dd2a0dea26f29f76ec4a7165c",
+    "artifactSetSha256": "284fd64f28b6a42b78a612cc12365847ce88db53ca9884fd88254d52a20c0ae6",
+    "rawOutputSha256": "5f27680c2ad3bbcb0b0a76ea7b156cc52d060f3185a31b739e1a283050a019cb",
+    "outputSha256": "7cac96128b1158bb8dfce88320e796b594f20cf9c417b9ea3dd1de13c7331071",
+    "finishedAt": "2026-07-11T15:55:58.114Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "cop-donor-DWnxlyIDcoK",
+      "storyEventId": "event-off-duty-officer-traffic-disagreement-assault",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The Reel visibly presents a police-related traffic disagreement involving an off-duty officer, with a clear physical escalation and readable branded vertical footage. Its source hash and story event are absent from the authoritative duplicate lists; media decoding is complete.",
+      "factualClaims": [
+        {
+          "claim": "The footage shows an off-duty officer inside a vehicle during the incident.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2"
+          ]
+        },
+        {
+          "claim": "The incident visibly escalates to the officer punching someone.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-2"
+          ]
+        },
+        {
+          "claim": "A second man is shown confronting or speaking with the officer near vehicles.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-donor-DXHx529DVb0",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DXHx529DVb0/",
+    "contentSha256": "b687a8fcf77ebfb7d44e88239a652acebd22f92f9f2a49d82e9385eb989b5dbf",
+    "profileHash": "82db4221f31a38d688eaaf1bf10191d594bbf77c5bd9b2c3a38a63f68158f362",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-40c2cfb3a213e9afb856832203764417",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "d6add78269ef053a101c9738da74f85aa19316c17cfa2fe1a93abbc1f5986044",
+    "artifactSetSha256": "805c82224b38cf19cbbf3b12a5be6dc9c5d431d3bf0d9846b8b4f356ac5a8a64",
+    "rawOutputSha256": "5f84e7e8f030d8cc436bb4d0c5e2a219f42ab83062cdda6bca14b89a9f34d21c",
+    "outputSha256": "6d0e5c0869b9bc1ea1670fc691f5ad43deb32f0003e02d8878691edbb2314029",
+    "finishedAt": "2026-07-11T15:56:10.009Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "cop-donor-DXHx529DVb0",
+      "storyEventId": "event-south-carolina-trooper-stops-wrong-way-driver",
+      "conceptMatch": true,
+      "factualFit": false,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The footage fits the police dashcam incident concept and passes both duplicate ledgers, but the visible claim that the trooper received a Medal of Valor is not independently supported by the supplied metadata or frames.",
+      "factualClaims": [
+        {
+          "claim": "A trooper uses dashcam footage to stop a fleeing wrong-way driver.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The trooper received a Medal of Valor.",
+          "verified": false,
+          "evidenceArtifactIds": [
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-donor-DXNBoz7jYmd",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DXNBoz7jYmd/",
+    "contentSha256": "b295ef42328b54ed3eee861df2ae163c3415b93c758fc67accd90debd43adcbf",
+    "profileHash": "82db4221f31a38d688eaaf1bf10191d594bbf77c5bd9b2c3a38a63f68158f362",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-0e5136ef1d4a364ddc5c015b85ad07ab",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "05b8860d51248ca41ba924c18294d845d400711aa60396d447666cd99bbd4107",
+    "artifactSetSha256": "3955e3ef918fced5ebea7f138b42cc91d3bc86b544b8d664b60c860b6a0e3a78",
+    "rawOutputSha256": "c898a1b351e6217fda843b7ee7761c0af707bdda5f12be4b004ca16d6bdcb060",
+    "outputSha256": "8ddaf953cf585dcbbda0d6f73e4f74e4335e35284195594fe92692d4aeac94a0",
+    "finishedAt": "2026-07-11T15:55:57.959Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "cop-donor-DXNBoz7jYmd",
+      "storyEventId": "event-whitehall-stolen-vehicle-pursuit",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "Visible police dashcam footage shows a vehicle pursuit involving a Hyundai, police participation, and a concrete crash/stop outcome. The source is decoded completely, vertically formatted, and neither its hash nor story event appears in the authoritative duplicate lists.",
+      "factualClaims": [
+        {
+          "claim": "The footage shows a police vehicle pursuit.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2"
+          ]
+        },
+        {
+          "claim": "The pursued vehicle is a Hyundai.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The incident involves a stolen vehicle in the Columbus/Whitehall area.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        },
+        {
+          "claim": "The footage shows a concrete crash or stop outcome.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  }
+]

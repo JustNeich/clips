@@ -1,0 +1,146 @@
+[
+  {
+    "candidateId": "cop-donor-DW7IFS5jU0_",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DW7IFS5jU0_/",
+    "contentSha256": "5952ab0f93a23d7f69504ca27f1ef3049eebcb098e68eab6eb4d6b8ae8e70918",
+    "profileHash": "82db4221f31a38d688eaaf1bf10191d594bbf77c5bd9b2c3a38a63f68158f362",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-89f78adb2350878e19093ffbbc37daf0",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "bd0a613fbc925a7e6d4dbd69e98fe815034b14276fee5cea1e13fc37768e1970",
+    "artifactSetSha256": "f590ade3bd5941362d5cac1aa61b4dfd1a6be169aa00d9d0ab233ee880031144",
+    "rawOutputSha256": "4018fba155bf77a8310ec9a06960574bdbd3f1d953f83370b0a22db22787fd0d",
+    "outputSha256": "d504724d198318788b433e35b47db5924bcdfd6e159f7dd2c04e1f8d104dd6ba",
+    "finishedAt": "2026-07-11T15:54:42.113Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "cop-donor-DW7IFS5jU0_",
+      "storyEventId": "event-police-pursuit-ends-in-van-rollover",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "Continuous visible police pursuit with a clear van rollover outcome; fits the channel concept and is absent from both duplicate ledgers.",
+      "factualClaims": [
+        {
+          "claim": "The footage shows a multi-vehicle police pursuit ending in a visible van rollover.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-donor-DXM8g16DXqP",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DXM8g16DXqP/",
+    "contentSha256": "50323e1e73f9628a1eca0d27a0f0a4596f5ea277ea94183f841da80d3ebbd6d6",
+    "profileHash": "82db4221f31a38d688eaaf1bf10191d594bbf77c5bd9b2c3a38a63f68158f362",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-cf2f7be1dacd7b34cf019caa72b9f21a",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "5039ab16ed71177848f69b56aa727e85a7d95637afbefb57a44370ac27690746",
+    "artifactSetSha256": "33ab2ec4c834a5db558711ed30644feae0d328f12b46d5151ea33e8d2ff08b01",
+    "rawOutputSha256": "78eeb6649644e910f1499ae40fcc1c57633c45d5a93800b04ec2698699394a1d",
+    "outputSha256": "99757e7ec5df462bac0023c78c2782eeb4fa3983be5e15ba3534dc8eb13ccabf",
+    "finishedAt": "2026-07-11T15:54:31.745Z",
+    "output": {
+      "decision": "FAIL",
+      "candidateId": "cop-donor-DXM8g16DXqP",
+      "storyEventId": "event-roadside-police-encounter-becomes-ground-struggle",
+      "conceptMatch": true,
+      "factualFit": false,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "The source visibly shows a police roadside encounter escalating into a ground struggle and fits the channel concept. However, the supplied evidence does not verify the specific claims that the person punched the officer in the face or that the incident occurred during an I-4 traffic stop.",
+      "factualClaims": [
+        {
+          "claim": "A person punched a police officer in the face.",
+          "verified": false,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The incident occurred during an I-4 traffic stop.",
+          "verified": false,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "A roadside police encounter became a visible ground struggle.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "candidateId": "cop-donor-DY14gTEtg3H",
+    "profileKey": "copscopes-x2e",
+    "sourceUrl": "https://www.instagram.com/reel/DY14gTEtg3H/",
+    "contentSha256": "4c79d7e22ccebd153d745a9f38cacd61b686b9e3da6b75e61f1efda982a9c485",
+    "profileHash": "82db4221f31a38d688eaaf1bf10191d594bbf77c5bd9b2c3a38a63f68158f362",
+    "liveInventorySha256": "a163cbc1b4a13d09d94dfa50cc95707f64a8e7e018544d116f5ded4632e5583b",
+    "agentAttemptId": "source-fit-f36f0d811e0c1cc16e6be25a29101b5c",
+    "model": "gpt-5.6-luna",
+    "reasoningLevel": "medium",
+    "promptSha256": "dc6b87f4406b5afc27b70b01ec8c9e3c35a33204ee6d14b17a5159d389c59b5b",
+    "artifactSetSha256": "bb3a02cbbbb5a04b58d2c85fd665a24d7832b2b99012e22cebbd9b6db0f455f7",
+    "rawOutputSha256": "dd234d9c3e98febdbcdad62f5996be6defb8cbb8a7bbd2a5b6f3044ef7cc668d",
+    "outputSha256": "e01b1af6124fbabaaa620730cee962febcd74350f777d9b9f5c689fa94f55400",
+    "finishedAt": "2026-07-11T15:54:33.582Z",
+    "output": {
+      "decision": "PASS",
+      "candidateId": "cop-donor-DY14gTEtg3H",
+      "storyEventId": "event-freeway-pursuit-ends-in-breakdancing-surrender",
+      "conceptMatch": true,
+      "factualFit": true,
+      "duplicateVideo": false,
+      "duplicateEvent": false,
+      "sourceUsable": true,
+      "reason": "Visible police pursuit with a clear, unusual surrender outcome; 28-second vertical MP4 decodes completely and is suitable for the channel format.",
+      "factualClaims": [
+        {
+          "claim": "The footage shows a low-speed police pursuit ending with the suspect exiting, breakdancing, and being taken into custody without visible violence.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata",
+            "key-frame-1",
+            "key-frame-2",
+            "key-frame-3"
+          ]
+        },
+        {
+          "claim": "The source is a 28-second, 1080x1920 Instagram Reel with complete decoding and no reported decode errors.",
+          "verified": true,
+          "evidenceArtifactIds": [
+            "source-metadata"
+          ]
+        }
+      ]
+    }
+  }
+]

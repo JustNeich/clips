@@ -1,0 +1,101 @@
+[
+  {
+    "benchmarkCaseId": "dark-instagram-BtDnmx6HRr_",
+    "candidateId": "dark-positive-BtDnmx6HRr_",
+    "profileKey": "dark-joy-boy",
+    "canonicalSourceUrl": "https://www.instagram.com/reel/BtDnmx6HRr_/",
+    "contentSha256": "45ea01bf3172459c55b6d5e19b2115d5f3b42ce95ab24dc4aa3bb8d66fa12bfb",
+    "provider": "instagram",
+    "route": "instagram_donor_pool",
+    "donorUsername": "kodyantle",
+    "upstreamDiscoveryEvidenceSha256": "f4aa9f4015ecf9c71736a8b8df13fec1e3d0e74affa16a030715bc3187994f11"
+  },
+  {
+    "benchmarkCaseId": "dark-instagram-C9gLu79MklN",
+    "candidateId": "dark-positive-C9gLu79MklN",
+    "profileKey": "dark-joy-boy",
+    "canonicalSourceUrl": "https://www.instagram.com/reel/C9gLu79MklN/",
+    "contentSha256": "82107e983588a0a45ba3ad69454fa7fa7674e7c83debe5570eaf741857fae102",
+    "provider": "instagram",
+    "route": "instagram_donor_pool",
+    "donorUsername": "spidermonkeywinston",
+    "upstreamDiscoveryEvidenceSha256": "e80c3ae268e26572ae0703cdbc3caf353d10a23e95be03b6596367dc8aa3f830"
+  },
+  {
+    "benchmarkCaseId": "dark-instagram-CsYa4skNBjP",
+    "candidateId": "dark-positive-CsYa4skNBjP",
+    "profileKey": "dark-joy-boy",
+    "canonicalSourceUrl": "https://www.instagram.com/reel/CsYa4skNBjP/",
+    "contentSha256": "89af6f204684fc9304b0a08481c3ae1df7ae9aa11e1a4c656020dc3dc495eef5",
+    "provider": "instagram",
+    "route": "instagram_donor_pool",
+    "donorUsername": "kodyantle",
+    "upstreamDiscoveryEvidenceSha256": "82c8b2255c4586dff4b5f11cd5a276406b44134c0db1c336565dce4daffca1f5"
+  },
+  {
+    "benchmarkCaseId": "dark-instagram-Cw_QTMmA69_",
+    "candidateId": "dark-positive-Cw_QTMmA69_",
+    "profileKey": "dark-joy-boy",
+    "canonicalSourceUrl": "https://www.instagram.com/reel/Cw_QTMmA69_/",
+    "contentSha256": "b9afa27653b60ad2364551beb83b0a76dbc9af5a5d3eefd27a58a2d19e96939b",
+    "provider": "instagram",
+    "route": "instagram_donor_pool",
+    "donorUsername": "myrtlebeachsafari",
+    "upstreamDiscoveryEvidenceSha256": "ebde097b2daf0d842481bffa0bc671571bcb8c7116ca324c438f1c05812c1b75"
+  },
+  {
+    "benchmarkCaseId": "dark-instagram-Cxb0DmpJ7oM",
+    "candidateId": "dark-positive-Cxb0DmpJ7oM",
+    "profileKey": "dark-joy-boy",
+    "canonicalSourceUrl": "https://www.instagram.com/reel/Cxb0DmpJ7oM/",
+    "contentSha256": "0438717607aad46859cd008d49276a8e0e93d0a1d2fe21e7073f4c5ad734f0b7",
+    "provider": "instagram",
+    "route": "instagram_donor_pool",
+    "donorUsername": "spidermonkeywinston",
+    "upstreamDiscoveryEvidenceSha256": "c7343228769aa25e06c85b91c9376ef9209a763590272cbd0eaf1135c6480e97"
+  },
+  {
+    "benchmarkCaseId": "dark-instagram-DIUYX9QStl3",
+    "candidateId": "dark-positive-DIUYX9QStl3",
+    "profileKey": "dark-joy-boy",
+    "canonicalSourceUrl": "https://www.instagram.com/reel/DIUYX9QStl3/",
+    "contentSha256": "373c5ac04ca129f3bee910245be74cdcb56f6c291af09994a8376f6e7d4ede41",
+    "provider": "instagram",
+    "route": "instagram_donor_pool",
+    "donorUsername": "kodyantle",
+    "upstreamDiscoveryEvidenceSha256": "d421a91aa1f01fcbc757e50b7b3dbdd7c6d93a2a26cf22173fe63cdd8a49e1a4"
+  },
+  {
+    "benchmarkCaseId": "light-youtube-BwIaEb5vGDo",
+    "candidateId": "light-ask-BwIaEb5vGDo",
+    "profileKey": "light-kingdom",
+    "canonicalSourceUrl": "https://www.youtube.com/watch?v=BwIaEb5vGDo",
+    "contentSha256": "0c500e91711a6ec9cbf3bb8ad1f498f04f9de23b460d0cc0c9f10ebdc32de47f",
+    "provider": "youtube_ask",
+    "route": "youtube_ask_v3",
+    "donorUsername": null,
+    "upstreamDiscoveryEvidenceSha256": "57691f1f0a1254bbcd7830aed768b28a0a78a42ce9ba9cd243cd3ba293541ac4"
+  },
+  {
+    "benchmarkCaseId": "cop-instagram-DWjH5fWjBnt",
+    "candidateId": "cop-donor-DWjH5fWjBnt",
+    "profileKey": "copscopes-x2e",
+    "canonicalSourceUrl": "https://www.instagram.com/reel/DWjH5fWjBnt/",
+    "contentSha256": "94e12f40757e74cc9926231726b9df86f93eff0c9046792e033b82b190d4a5c3",
+    "provider": "instagram",
+    "route": "instagram_donor_pool",
+    "donorUsername": "copscopes",
+    "upstreamDiscoveryEvidenceSha256": "1f558dd4cf0c57a80a734ac137d4c367f8833535dfceb99c249365bf37752fa6"
+  },
+  {
+    "benchmarkCaseId": "cop-instagram-DXBhsJPjSgW",
+    "candidateId": "cop-donor-DXBhsJPjSgW",
+    "profileKey": "copscopes-x2e",
+    "canonicalSourceUrl": "https://www.instagram.com/reel/DXBhsJPjSgW/",
+    "contentSha256": "00104eabefd531eee16dff7a3c5a230e22d39758815e70b8685c30cd59248151",
+    "provider": "instagram",
+    "route": "instagram_donor_pool",
+    "donorUsername": "copscopes",
+    "upstreamDiscoveryEvidenceSha256": "afb66a5dffa0eb9b07f6039d22d1db6bca8fa4c14df9dbc7f95af86cfaeca4a1"
+  }
+]
