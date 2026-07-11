@@ -46,8 +46,8 @@ const RATE_CARD_SOURCE =
 const BENCHMARK_VERSION = "project-kings-stage-models-2026-07-10-v9";
 const BENCHMARK_EVIDENCE_VERSION = "v9";
 const SOURCE_POLICY_BENCHMARK_VERSION =
-  "project-kings-source-policy-real-30-2026-07-10-v7";
-const SOURCE_POLICY_BENCHMARK_EVIDENCE_VERSION = "real-30-v7";
+  "project-kings-source-policy-real-30-2026-07-10-v8";
+const SOURCE_POLICY_BENCHMARK_EVIDENCE_VERSION = "real-30-v8";
 // Second direct review of the frozen labels (mismatch clustering, no model
 // adoption) — applied to the effective expected labels for v5.
 const SOURCE_POLICY_ANNOTATION_OVERRIDES_PATH =
@@ -60,7 +60,8 @@ const SOURCE_POLICY_ANNOTATION_OVERRIDES_PATH =
 const SOURCE_POLICY_REPLAY_RAW_PATHS = [
   "docs/project-kings-production-pipeline-v1/evidence/model-benchmark-source_policy-2026-07-10-real-30-v4-raw.json",
   "docs/project-kings-production-pipeline-v1/evidence/model-benchmark-source_policy-2026-07-10-real-30-v5-invalid-evaluator-v2-raw.json",
-  "docs/project-kings-production-pipeline-v1/evidence/model-benchmark-source_policy-2026-07-10-real-30-v6-raw.json"
+  "docs/project-kings-production-pipeline-v1/evidence/model-benchmark-source_policy-2026-07-10-real-30-v6-raw.json",
+  "docs/project-kings-production-pipeline-v1/evidence/model-benchmark-source_policy-2026-07-10-real-30-v7-raw.json"
 ] as const;
 // Owner decision 2026-07-10 (see docs/project-kings-production-pipeline-v1/
 // source-policy-gate-decision-2026-07-10.md): the source_policy gate is scored
@@ -749,7 +750,9 @@ async function main(): Promise<void> {
             { routeId: "codex:gpt-5.6-luna", reasoningEffort: "low" as const },
             { routeId: "codex:gpt-5.6-luna", reasoningEffort: "medium" as const },
             { routeId: "codex:gpt-5.6-luna", reasoningEffort: "high" as const },
-            { routeId: "codex:gpt-5.6-luna", reasoningEffort: "x-high" as const }
+            { routeId: "codex:gpt-5.6-luna", reasoningEffort: "x-high" as const },
+            { routeId: "codex:gpt-5.4", reasoningEffort: "high" as const },
+            { routeId: "codex:gpt-5.4", reasoningEffort: "x-high" as const }
           ]
         : role === "revision"
         ? [
