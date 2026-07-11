@@ -5,6 +5,7 @@ import type {
   ProductionQualityDefect,
   ProductionVisionVerdict
 } from "../production-quality-gate";
+import { isUploadedSourceUrl } from "../uploaded-source";
 import {
   PROJECT_KINGS_SOURCE_POLICY_SHA256,
   PROJECT_KINGS_SOURCE_POLICY_VERSION
@@ -702,7 +703,12 @@ function validateProductionAgentPacketInternal(
     case "source_fit": {
       exactKeys(task, ["candidateId", "sourceUrl", "sourceSha256", "claimedStoryEventId", "knownSourceSha256", "knownStoryEventIds"], "packet.task");
       const sourceUrl = text(task.sourceUrl, "packet.task.sourceUrl", { max: 2_000 });
-      if (!sourceUrl.startsWith("https://")) throw new ProductionAgentContractError("packet.task.sourceUrl", "must use HTTPS");
+      if (!sourceUrl.startsWith("https://") && !isUploadedSourceUrl(sourceUrl)) {
+        throw new ProductionAgentContractError(
+          "packet.task.sourceUrl",
+          "must use HTTPS or the canonical upload protocol"
+        );
+      }
       return {
         ...base,
         role,

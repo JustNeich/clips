@@ -325,6 +325,40 @@ test("revision packets accept deterministic quality defects without optional fra
   assert.equal(validateProductionAgentPacket("revision", packet).task.defects[0]?.code, "unsafe_crop");
 });
 
+test("source fit accepts canonical uploaded sources and rejects unsafe URL schemes", () => {
+  const uploadedPacket: SourceFitPacket = {
+    ...sourceFitPacket(),
+    task: {
+      ...sourceFitPacket().task,
+      sourceUrl: "upload://source-upload-123/exact-source.mp4"
+    }
+  };
+
+  assert.equal(
+    validateProductionAgentPacket("source_fit", uploadedPacket).task.sourceUrl,
+    uploadedPacket.task.sourceUrl
+  );
+
+  for (const sourceUrl of [
+    "http://example.com/source.mp4",
+    "file:///private/source.mp4",
+    "data:video/mp4;base64,AAAA"
+  ]) {
+    assert.throws(
+      () => validateProductionAgentPacket("source_fit", {
+        ...uploadedPacket,
+        task: { ...uploadedPacket.task, sourceUrl }
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof ProductionAgentContractError);
+        assert.equal(error.path, "packet.task.sourceUrl");
+        assert.match(error.message, /HTTPS or the canonical upload protocol/);
+        return true;
+      }
+    );
+  }
+});
+
 test("primary benchmarked route is used when its strict output passes", async () => {
   const calls: string[] = [];
   const result = await runProductionSemanticAgent({
