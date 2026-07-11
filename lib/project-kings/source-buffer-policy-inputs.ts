@@ -200,9 +200,9 @@ function parseSensitiveAssessment(
   return expected;
 }
 
-export function parseProjectKingsSourcePolicyCandidateArtifacts(
+function parseCandidateArtifacts(
   raw: unknown,
-  approval: ProjectKingsSourcePolicyApproval
+  approval: ProjectKingsSourcePolicyApproval | null
 ): readonly ProjectKingsSourcePolicyCandidateArtifacts[] {
   if (!Array.isArray(raw)) throw new Error("policy artifacts must be a JSON array.");
   const seenCandidateIds = new Set<string>();
@@ -237,7 +237,7 @@ export function parseProjectKingsSourcePolicyCandidateArtifacts(
       sourceDesignation: designation,
       sensitiveAssessment
     }, {
-      evaluatedAt: approval.approvedAt,
+      evaluatedAt: approval?.approvedAt ?? "1970-01-01T00:00:00.000Z",
       policyApproval: approval
     });
     const invalidIssues = verdict.issues.filter((issue) =>
@@ -254,6 +254,19 @@ export function parseProjectKingsSourcePolicyCandidateArtifacts(
     }
     return Object.freeze({ candidateId, discoveryState, designation, sensitiveAssessment });
   }));
+}
+
+export function parseProjectKingsSourcePolicyCandidateArtifactsStructure(
+  raw: unknown
+): readonly ProjectKingsSourcePolicyCandidateArtifacts[] {
+  return parseCandidateArtifacts(raw, null);
+}
+
+export function parseProjectKingsSourcePolicyCandidateArtifacts(
+  raw: unknown,
+  approval: ProjectKingsSourcePolicyApproval
+): readonly ProjectKingsSourcePolicyCandidateArtifacts[] {
+  return parseCandidateArtifacts(raw, approval);
 }
 
 export function assertProjectKingsSourcePolicyArtifactsBoundToReadiness(
