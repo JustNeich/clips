@@ -33,6 +33,7 @@ type SourceRuntimeState = {
   initialized: boolean;
   activeJobs: Set<string>;
   activeJobPromises: Map<string, Promise<void>>;
+  inlinePriorityWaiters: Map<string, number>;
   schedulerPromise: Promise<void> | null;
 };
 
@@ -50,11 +51,15 @@ function getRuntimeState(): SourceRuntimeState {
       initialized: false,
       activeJobs: new Set<string>(),
       activeJobPromises: new Map<string, Promise<void>>(),
+      inlinePriorityWaiters: new Map<string, number>(),
       schedulerPromise: null
     };
   }
   if (!scope.__clipsSourceRuntimeState__.activeJobPromises) {
     scope.__clipsSourceRuntimeState__.activeJobPromises = new Map<string, Promise<void>>();
+  }
+  if (!scope.__clipsSourceRuntimeState__.inlinePriorityWaiters) {
+    scope.__clipsSourceRuntimeState__.inlinePriorityWaiters = new Map<string, number>();
   }
   return scope.__clipsSourceRuntimeState__;
 }
@@ -348,7 +353,12 @@ function runSchedulerPass(): void {
   const state = getRuntimeState();
   const limit = getSourceConcurrencyLimit();
   while (state.activeJobs.size < limit) {
-    const claimed = claimNextQueuedSourceJob();
+    let claimed: SourceJobRecord | null = null;
+    for (const jobId of state.inlinePriorityWaiters.keys()) {
+      claimed = claimQueuedSourceJob(jobId);
+      if (claimed) break;
+    }
+    claimed ??= claimNextQueuedSourceJob();
     if (!claimed) {
       break;
     }
@@ -407,45 +417,57 @@ function isSameSourceJobRequest(
 
 export async function runSourceJobInline(jobId: string): Promise<SourceJobRecord> {
   ensureSourceRuntime();
-  while (true) {
-    const job = getSourceJob(jobId);
-    if (!job) {
-      throw new Error("Source job not found.");
-    }
-    if (job.status === "completed" || job.status === "failed") {
-      return job;
-    }
-
-    const state = getRuntimeState();
-    const activeTask = state.activeJobPromises.get(jobId);
-    if (activeTask) {
-      await activeTask;
-      continue;
-    }
-    if (job.status === "running") {
-      throw new Error(
-        "Source job is already running outside this runtime; refusing duplicate inline execution."
-      );
-    }
-
-    if (state.activeJobs.size >= getSourceConcurrencyLimit()) {
-      const tasks = [...state.activeJobPromises.values()];
-      if (tasks.length === 0) {
-        throw new Error("Source runtime has no awaitable capacity owner for an active job.");
+  const priorities = getRuntimeState().inlinePriorityWaiters;
+  priorities.set(jobId, (priorities.get(jobId) ?? 0) + 1);
+  try {
+    while (true) {
+      const job = getSourceJob(jobId);
+      if (!job) {
+        throw new Error("Source job not found.");
       }
-      await Promise.race(tasks.map((task) => task.catch(() => undefined)));
-      continue;
-    }
+      if (job.status === "completed" || job.status === "failed") {
+        return job;
+      }
 
-    const claimed = claimQueuedSourceJob(jobId);
-    if (!claimed) {
-      continue;
+      const state = getRuntimeState();
+      const activeTask = state.activeJobPromises.get(jobId);
+      if (activeTask) {
+        await activeTask;
+        continue;
+      }
+      if (job.status === "running") {
+        throw new Error(
+          "Source job is already running outside this runtime; refusing duplicate inline execution."
+        );
+      }
+
+      if (state.activeJobs.size >= getSourceConcurrencyLimit()) {
+        const tasks = [...state.activeJobPromises.values()];
+        if (tasks.length === 0) {
+          throw new Error("Source runtime has no awaitable capacity owner for an active job.");
+        }
+        await Promise.race(tasks.map((task) => task.catch(() => undefined)));
+        continue;
+      }
+
+      const claimed = claimQueuedSourceJob(jobId);
+      if (!claimed) {
+        continue;
+      }
+      const task = startClaimedJob(claimed);
+      if (!task) {
+        throw new Error("Source job was claimed without an awaitable runtime owner.");
+      }
+      await task;
     }
-    const task = startClaimedJob(claimed);
-    if (!task) {
-      throw new Error("Source job was claimed without an awaitable runtime owner.");
+  } finally {
+    const latestPriorities = getRuntimeState().inlinePriorityWaiters;
+    const remaining = (latestPriorities.get(jobId) ?? 1) - 1;
+    if (remaining > 0) {
+      latestPriorities.set(jobId, remaining);
+    } else {
+      latestPriorities.delete(jobId);
     }
-    await task;
   }
 }
 

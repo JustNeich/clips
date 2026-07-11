@@ -31,6 +31,11 @@ import {
   getSourceJob,
   listSourceJobsForChat
 } from "../lib/source-job-store";
+import {
+  enqueueAndScheduleSourceJob,
+  runSourceJobInline,
+  setSourceJobProcessorForTests
+} from "../lib/source-job-runtime";
 import { getCachedSourceMedia, storeUploadedSourceMedia } from "../lib/source-media-cache";
 import { bootstrapOwner } from "../lib/team-store";
 
@@ -53,6 +58,18 @@ async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
 
 function sha256(value: Uint8Array | string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 2_000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("Timed out waiting for source-job test state.");
 }
 
 test("portfolio source ingest resumes one exact queued upload job inline without duplicate work", { concurrency: false }, async () => {
@@ -306,5 +323,121 @@ test("exact source-job claim cannot steal another queued job or reclaim running/
     assert.equal(getSourceJob(jobA.jobId)?.status, "completed");
     assert.equal(claimQueuedSourceJob(jobA.jobId), null);
     assert.equal(getSourceJob(jobB.jobId)?.status, "queued");
+  });
+});
+
+test("inline source waiters outrank an older ordinary FIFO backlog without duplicate processors", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const previousConcurrency = process.env.SOURCE_MAX_CONCURRENT_JOBS;
+    process.env.SOURCE_MAX_CONCURRENT_JOBS = "1";
+    const owner = await bootstrapOwner({
+      workspaceName: "Inline priority",
+      email: "priority-owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const channel = await createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Inline priority channel",
+      username: "inline_priority_channel"
+    });
+    const makeChat = (label: string) => createOrGetChatBySource({
+      rawUrl: `upload://inline-priority/${label}.mp4`,
+      channelIdRaw: channel.id,
+      title: label,
+      eventText: label
+    });
+    const [blockerChat, backlogChat, exactAChat, exactBChat] = await Promise.all([
+      makeChat("blocker"),
+      makeChat("older-backlog"),
+      makeChat("exact-a"),
+      makeChat("exact-b")
+    ]);
+    const requestFor = (chat: typeof blockerChat) => ({
+      sourceUrl: chat.url,
+      autoRunStage2: false,
+      agentDecomposition: true,
+      trigger: "fetch" as const,
+      chat: { id: chat.id, channelId: channel.id },
+      channel: { id: channel.id, name: channel.name, username: channel.username }
+    });
+
+    let releaseBlocker!: () => void;
+    let markBlockerStarted!: () => void;
+    const blockerGate = new Promise<void>((resolve) => {
+      releaseBlocker = resolve;
+    });
+    const blockerStarted = new Promise<void>((resolve) => {
+      markBlockerStarted = resolve;
+    });
+    const starts: string[] = [];
+    setSourceJobProcessorForTests(async (job) => {
+      starts.push(job.jobId);
+      if (job.chatId === blockerChat.id) {
+        markBlockerStarted();
+        await blockerGate;
+      }
+      return {
+        chatId: job.chatId,
+        channelId: job.channelId,
+        sourceUrl: job.sourceUrl,
+        stage1Ready: true,
+        title: job.request.channel.name,
+        commentsAvailable: false,
+        commentsError: null,
+        commentsPayload: null,
+        autoStage2RunId: null
+      };
+    });
+
+    try {
+      const blocker = enqueueAndScheduleSourceJob({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        request: requestFor(blockerChat)
+      });
+      await blockerStarted;
+
+      const backlog = createSourceJob({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        request: requestFor(backlogChat)
+      });
+      const exactA = createSourceJob({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        request: requestFor(exactAChat)
+      });
+      const exactB = createSourceJob({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        request: requestFor(exactBChat)
+      });
+
+      const exactAResult = runSourceJobInline(exactA.jobId);
+      const exactBResult = runSourceJobInline(exactB.jobId);
+      releaseBlocker();
+      assert.equal((await exactAResult).status, "completed");
+      assert.equal((await exactBResult).status, "completed");
+      await waitFor(() => getSourceJob(backlog.jobId)?.status === "completed");
+
+      assert.deepEqual(starts, [blocker.jobId, exactA.jobId, exactB.jobId, backlog.jobId]);
+      assert.equal(new Set(starts).size, 4);
+      assert.equal(
+        (getDb().prepare("SELECT COUNT(*) AS count FROM source_jobs").get() as { count: number }).count,
+        4
+      );
+      assert.equal(
+        (globalThis as {
+          __clipsSourceRuntimeState__?: { inlinePriorityWaiters?: Map<string, number> };
+        }).__clipsSourceRuntimeState__?.inlinePriorityWaiters?.size,
+        0
+      );
+    } finally {
+      setSourceJobProcessorForTests(null);
+      if (previousConcurrency === undefined) delete process.env.SOURCE_MAX_CONCURRENT_JOBS;
+      else process.env.SOURCE_MAX_CONCURRENT_JOBS = previousConcurrency;
+    }
   });
 });
