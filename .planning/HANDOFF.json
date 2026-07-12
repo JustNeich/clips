@@ -1,0 +1,78 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-07-12T13:53:57+0300",
+  "phase": null,
+  "phase_name": "Project Kings MVP live handoff",
+  "phase_dir": null,
+  "plan": 2,
+  "task": 2,
+  "total_tasks": 5,
+  "status": "paused",
+  "completed_tasks": [
+    {
+      "id": 1,
+      "name": "Stabilise bounded source refill and recovery paths",
+      "status": "done",
+      "commit": "6d93bda"
+    },
+    {
+      "id": 2,
+      "name": "Verify code and align Zoro runtime",
+      "status": "done",
+      "commit": "6d93bda"
+    },
+    {
+      "id": 3,
+      "name": "Refill Light and Cop source buffers and run fresh shadow 1x3",
+      "status": "in_progress",
+      "progress": "Dark is at 12 qualified sources; Light is at 2 and Cop at 1. A hash-bound reserve-catalog implementation is committed, but its private catalog has not been populated or executed."
+    }
+  ],
+  "remaining_tasks": [
+    {
+      "id": 4,
+      "name": "Deploy exact current commit and complete controlled live 1x3 then 2x3",
+      "status": "not_started"
+    },
+    {
+      "id": 5,
+      "name": "Make next-ready, arm daemon/refiller, and observe natural scheduled wake",
+      "status": "not_started"
+    }
+  ],
+  "blockers": [
+    {
+      "description": "Production source buffer is not ready: Light has 2 and Cop has 1 qualified source, below the minimum of 6.",
+      "type": "technical",
+      "workaround": "Build a private mode-0600 reserve catalog from the stored Ask/Instagram research, run bounded execute through all gates, and verify server counts before any shadow."
+    },
+    {
+      "description": "Render is still live on 008216e. The latest tested commit 6d93bda is pushed and installed on Zoro but has not been deployed to Render.",
+      "type": "external",
+      "workaround": "Use the already authenticated Render dashboard to manually deploy exact commit 6d93bda; verify Live before starting a shadow run."
+    }
+  ],
+  "human_actions_pending": [],
+  "decisions": [
+    {
+      "decision": "The public MVP remains three new public_verified Shorts on each of Dark JoyBoy, THE LIGHT KINGDOM, and COP SCOPES.",
+      "rationale": "This is the owner's explicit public outcome; no source, build, deployment, or shadow milestone closes the task.",
+      "phase": "MVP"
+    },
+    {
+      "decision": "Use a bounded, hash-bound reserve catalog only as the bootstrap source path for the current Light/Cop deficit.",
+      "rationale": "It preserves the existing decode, OCR/ASR, duplicate, policy, Source Fit, and idempotent upload gates without building a general browser automation layer before the first working cycle.",
+      "phase": "MVP"
+    },
+    {
+      "decision": "Do not ask the owner for approvals during this handoff execution.",
+      "rationale": "The continuous execution authorization already covers exact profile promotion, bounded live 3x3, source replenishment, daemon/refiller arm, and the first natural wake.",
+      "phase": "MVP"
+    }
+  ],
+  "uncommitted_files": [
+    "experiments/ (user-owned research evidence; preserve and never stage/delete as cleanup)"
+  ],
+  "next_action": "Read .planning/.continue-here.md, then turn the stored Light Ask and Cop research into a mode-0600 hash-bound reserve catalog on Zoro; run the bounded execute refiller and independently verify all three source-buffer counts before touching profiles or publications.",
+  "context_notes": "No public video or upload identity was created. The earlier shadow run 55186e0f0f9c48a7968cae94fe1e8d37 is durable failure evidence only: it ended blocked, never published, and exposed the buffer deficit that this handoff addresses."
+}
