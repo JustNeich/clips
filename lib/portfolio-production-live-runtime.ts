@@ -306,6 +306,60 @@ async function extractQaFrames(input: {
   return frames;
 }
 
+/**
+ * Build source-fit visual evidence from the exact cached MP4 when Stage 1 did
+ * not produce decomposition frames. The immutable source hash is checked
+ * before ffmpeg is allowed to create any evidence artifacts.
+ */
+export async function extractBoundSourceKeyFrames(input: {
+  item: ProductionItemRecord;
+  videoPath: string;
+  sourceProbe?: Awaited<ReturnType<typeof probeFinalProductionMp4>>;
+  count?: number;
+}): Promise<ProductionAgentArtifact[]> {
+  if (!input.item.sourceSha256) {
+    throw new Error("Source frame fallback requires the immutable source hash.");
+  }
+  const snapshotDir = path.join(artifactRoot(input.item), "source-evidence-fallback");
+  const snapshotPath = path.join(snapshotDir, "hash-bound-source.mp4");
+  await fs.mkdir(snapshotDir, { recursive: true });
+  await fs.copyFile(input.videoPath, snapshotPath);
+  let frames: ProductionAgentArtifact[] = [];
+  try {
+    const beforeSha256 = await sha256File(snapshotPath);
+    if (beforeSha256 !== input.item.sourceSha256) {
+      throw new Error("Source frame fallback refused cached media with a different SHA-256.");
+    }
+    const sourceProbe = input.sourceProbe ?? await probeFinalProductionMp4(snapshotPath);
+    if (sourceProbe.artifactSha256 !== input.item.sourceSha256) {
+      throw new Error("Source frame fallback refused a stale or differently bound media probe.");
+    }
+    if (!sourceProbe.fullyDecodable || !sourceProbe.durationSec || sourceProbe.durationSec <= 0) {
+      throw new Error(
+        sourceProbe.decodeError ?? "Source frame fallback requires a fully decodable MP4 with a positive duration."
+      );
+    }
+    frames = await extractQaFrames({
+      item: input.item,
+      videoPath: snapshotPath,
+      durationSec: sourceProbe.durationSec,
+      prefix: "source-evidence-fallback",
+      count: input.count ?? 9
+    });
+    if (await sha256File(snapshotPath) !== input.item.sourceSha256) {
+      await Promise.all(frames.map((frame) => fs.rm(frame.path, { force: true })));
+      throw new Error("Source frame fallback snapshot changed during evidence extraction.");
+    }
+    return frames.map((frame, index) => ({
+      ...frame,
+      id: `source-frame-fallback-${index + 1}`,
+      kind: "key_frame" as const
+    }));
+  } finally {
+    await fs.rm(snapshotPath, { force: true });
+  }
+}
+
 function sleepDefault(delayMs: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
@@ -807,7 +861,13 @@ async function handleSourceIngest(
   });
 }
 
-async function sourceArtifacts(item: ProductionItemRecord): Promise<{
+async function sourceArtifacts(
+  item: ProductionItemRecord,
+  fallbackSource?: {
+    videoPath: string;
+    sourceProbe: Awaited<ReturnType<typeof probeFinalProductionMp4>>;
+  }
+): Promise<{
   artifacts: ProductionAgentArtifact[];
   durationSec: number;
 }> {
@@ -839,7 +899,7 @@ async function sourceArtifacts(item: ProductionItemRecord): Promise<{
     const step = (frames.length - 1) / 11;
     return Array.from({ length: 12 }, (_value, position) => Math.round(position * step)).includes(index);
   });
-  const frameArtifacts = await Promise.all(
+  let frameArtifacts: ProductionAgentArtifact[] = await Promise.all(
     selectedFrames.map(async (frame) => {
       const filePath = path.join(decomposition.framesDir, frame.fileName);
       return {
@@ -851,6 +911,21 @@ async function sourceArtifacts(item: ProductionItemRecord): Promise<{
       };
     })
   );
+  if (frameArtifacts.length === 0) {
+    const cached = fallbackSource ?? await (async () => {
+      const media = await getCachedSourceMedia(decomposition.sourceUrl);
+      if (!media) throw new Error("Source frame fallback lost the exact cached media artifact.");
+      return {
+        videoPath: media.sourcePath,
+        sourceProbe: await probeFinalProductionMp4(media.sourcePath)
+      };
+    })();
+    frameArtifacts = await extractBoundSourceKeyFrames({
+      item,
+      videoPath: cached.videoPath,
+      sourceProbe: cached.sourceProbe
+    });
+  }
   return {
     artifacts: [concept, metadata, ...frameArtifacts],
     durationSec: decomposition.artifact.meta.durationSec ?? 30
@@ -870,7 +945,6 @@ async function handleSourceFit(
     limit: 1000
   }).find((entry) => entry.id === item.sourceCandidateId);
   if (!candidate) throw new Error("Source candidate not found.");
-  const source = await sourceArtifacts(item);
   const cached = await getCachedSourceMedia(candidate.sourceUrl);
   if (!cached) throw new Error("Source Fit lost the exact cached media artifact.");
   const sourceProbe = await probeFinalProductionMp4(cached.sourcePath);
@@ -930,6 +1004,10 @@ async function handleSourceFit(
     });
     return;
   }
+  const source = await sourceArtifacts(item, {
+    videoPath: cached.sourcePath,
+    sourceProbe
+  });
   const known = listChannelSourceCandidates({
     workspaceId: item.workspaceId,
     channelId: item.channelId,

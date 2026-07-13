@@ -30,6 +30,7 @@ import {
   getProductionItem,
   getProductionRunChannelCandidateAttemptCount,
   getProductionRun,
+  isOwnerRecoverableReplacementBudgetError,
   isChannelSourceCandidateQualified,
   listChannelSourceCandidates,
   listProductionEvents,
@@ -99,7 +100,11 @@ async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-async function seedPortfolio(input: { channelCount?: number; targetPerChannel?: number } = {}): Promise<{
+async function seedPortfolio(input: {
+  channelCount?: number;
+  targetPerChannel?: number;
+  mode?: "simulation" | "shadow" | "live";
+} = {}): Promise<{
   workspaceId: string;
   userId: string;
   channels: Array<{ id: string }>;
@@ -148,7 +153,7 @@ async function seedPortfolio(input: { channelCount?: number; targetPerChannel?: 
     workspaceId: owner.workspace.id,
     portfolioProfileHash: HASH.portfolio,
     logicalDate: "2026-07-10",
-    mode: "simulation",
+    mode: input.mode ?? "simulation",
     targetPerChannel: input.targetPerChannel ?? 3,
     manifestHash: HASH.manifest,
     manifest: { profileIds: profiles.map((profile) => profile.id) },
@@ -169,6 +174,25 @@ async function seedPortfolio(input: { channelCount?: number; targetPerChannel?: 
     runChannels: listProductionRunChannels(created.run.id)
   };
 }
+
+test("owner replacement-budget recovery recognizes only the frozen missing-frame rollout incidents", () => {
+  assert.equal(isOwnerRecoverableReplacementBudgetError(
+    "Replacement budget exhausted: Unsafe source-level defect cannot pass through revision."
+  ), true);
+  assert.equal(isOwnerRecoverableReplacementBudgetError(
+    "Replacement budget exhausted: The source metadata confirms a valid 24.38-second vertical video, but provides no frames, subtitles, or other evidence verifying a visible AI transformation or the claimed Tom-and-Jerry dinner-bell remake."
+  ), true);
+  assert.equal(isOwnerRecoverableReplacementBudgetError(
+    "Replacement budget exhausted: The claimed event fits the police-incident channel concept, but the source artifact provides no extracted frames or subtitles to verify the factual story or establish usable visible evidence."
+  ), true);
+  assert.equal(isOwnerRecoverableReplacementBudgetError(
+    "Replacement budget exhausted: Semantic reviewer disliked the source."
+  ), false);
+  assert.equal(isOwnerRecoverableReplacementBudgetError(
+    "The source artifact provides no extracted frames or subtitles to verify the story."
+  ), false);
+  assert.equal(isOwnerRecoverableReplacementBudgetError(null), false);
+});
 
 function assertStoreError(code: ProductionStoreError["code"]): (error: unknown) => boolean {
   return (error: unknown) => error instanceof ProductionStoreError && error.code === code;
@@ -2100,7 +2124,7 @@ test("guarded blocked-shadow cancellation rejects live, external, leased, and no
 
 test("exact caption dead letter reopens the same qualified source and brief intent", { concurrency: false }, async () => {
   await withIsolatedAppData(async () => {
-    const seeded = await seedPortfolio({ targetPerChannel: 1 });
+    const seeded = await seedPortfolio({ targetPerChannel: 1, mode: "shadow" });
     getDb().prepare("UPDATE production_runs SET status = 'running' WHERE id = ?").run(seeded.run.id);
     getDb().prepare("UPDATE production_run_channels SET status = 'running' WHERE id = ?")
       .run(seeded.runChannels[0].id);
@@ -2183,7 +2207,7 @@ test("exact caption dead letter reopens the same qualified source and brief inte
 
 test("exact preview policy incident reuses the same completed preview without reopening publication", { concurrency: false }, async () => {
   await withIsolatedAppData(async () => {
-    const seeded = await seedPortfolio({ targetPerChannel: 1 });
+    const seeded = await seedPortfolio({ targetPerChannel: 1, mode: "shadow" });
     getDb().prepare("UPDATE production_runs SET status = 'running' WHERE id = ?").run(seeded.run.id);
     getDb().prepare("UPDATE production_run_channels SET status = 'running' WHERE id = ?")
       .run(seeded.runChannels[0].id);
@@ -2461,7 +2485,7 @@ test("exact preview policy incident reuses the same completed preview without re
 
 test("exact final-QA ledger incident reuses the completed render and resets the bogus attempt", { concurrency: false }, async () => {
   await withIsolatedAppData(async () => {
-    const seeded = await seedPortfolio({ targetPerChannel: 1 });
+    const seeded = await seedPortfolio({ targetPerChannel: 1, mode: "shadow" });
     getDb().prepare("UPDATE production_runs SET status = 'running', mode = 'shadow' WHERE id = ?")
       .run(seeded.run.id);
     getDb().prepare("UPDATE production_run_channels SET status = 'running' WHERE id = ?")
@@ -2674,10 +2698,18 @@ test("exact final-QA ledger incident reuses the completed render and resets the 
 
 test("owner quarantine-budget override creates one audited generation without upload identity", { concurrency: false }, async () => {
   await withIsolatedAppData(async () => {
-    const seeded = await seedPortfolio({ targetPerChannel: 1 });
+    const blockedReason =
+      "The source metadata confirms a valid 24.38-second vertical video, but provides no frames, subtitles, or other evidence verifying a visible AI transformation or the claimed Tom-and-Jerry dinner-bell remake.";
+    const seeded = await seedPortfolio({ channelCount: 2, targetPerChannel: 1, mode: "shadow" });
+    const primaryRunChannel = seeded.runChannels.find(
+      (entry) => entry.channelId === seeded.channels[0].id
+    )!;
+    const secondaryRunChannel = seeded.runChannels.find(
+      (entry) => entry.channelId === seeded.channels[1].id
+    )!;
     getDb().prepare("UPDATE production_runs SET status = 'running' WHERE id = ?").run(seeded.run.id);
     getDb().prepare("UPDATE production_run_channels SET status = 'running' WHERE id = ?")
-      .run(seeded.runChannels[0].id);
+      .run(primaryRunChannel.id);
     const candidate = createCandidate({
       workspaceId: seeded.workspaceId,
       channelId: seeded.channels[0].id,
@@ -2690,7 +2722,7 @@ test("owner quarantine-budget override creates one audited generation without up
     });
     let item = createProductionItem({
       runId: seeded.run.id,
-      runChannelId: seeded.runChannels[0].id,
+      runChannelId: primaryRunChannel.id,
       itemSlot: 1,
       attemptBudget: 1
     });
@@ -2706,42 +2738,9 @@ test("owner quarantine-budget override creates one audited generation without up
       eventType: "fixture.source_ingested",
       patch: { sourceSha256: candidate.contentSha256, chatId: chat.id }
     });
-    recordCombinedPass(item, "source");
-    const previewJob = enqueueStage3JobWithOutcome({
-      workspaceId: seeded.workspaceId,
-      userId: seeded.userId,
-      kind: "preview",
-      executionTarget: "local",
-      payloadJson: JSON.stringify({ fixture: "quarantine-budget-override" }),
-      dedupeKey: "quarantine-budget-override-job"
-    }).job;
-    item = transitionProductionItem({
-      itemId: item.id,
-      expectedVersion: item.version,
-      toState: "source_qualified",
-      eventType: "fixture.source_qualified"
-    });
-    item = transitionProductionItem({
-      itemId: item.id,
-      expectedVersion: item.version,
-      toState: "brief_ready",
-      eventType: "fixture.brief_ready"
-    });
-    item = transitionProductionItem({
-      itemId: item.id,
-      expectedVersion: item.version,
-      toState: "preview_ready",
-      eventType: "fixture.preview_ready",
-      patch: {
-        previewSha256: HASH.preview,
-        templateSha256: HASH.template,
-        settingsSha256: HASH.settings,
-        stage3JobId: previewJob.id
-      }
-    });
     quarantineChannelSourceCandidate({
       candidateId: candidate.id,
-      reason: "Unsafe source-level defect cannot pass through revision."
+      reason: blockedReason
     });
     item = transitionProductionItem({
       itemId: item.id,
@@ -2749,15 +2748,17 @@ test("owner quarantine-budget override creates one audited generation without up
       toState: "policy_blocked",
       eventType: "production.replacement_budget_exhausted",
       eventPayload: {
-        reason: "Unsafe source-level defect cannot pass through revision.",
+        reason: blockedReason,
         generation: item.generation,
         attemptBudget: item.attemptBudget
       },
       patch: {
-        lastError: "Replacement budget exhausted: Unsafe source-level defect cannot pass through revision."
+        lastError: `Replacement budget exhausted: ${blockedReason}`
       }
     });
-    const runChannel = listProductionRunChannels(seeded.run.id)[0]!;
+    const runChannel = listProductionRunChannels(seeded.run.id).find(
+      (entry) => entry.id === primaryRunChannel.id
+    )!;
     const stamp = "2026-07-12T00:00:00.000Z";
     getDb().prepare(`INSERT INTO production_channel_ownership
       (workspace_id, channel_id, daemon_id, config_sha256, profile_id, profile_version, profile_hash,
@@ -2804,6 +2805,57 @@ test("owner quarantine-budget override creates one audited generation without up
       SET status = 'active', release_requested_at = NULL, updated_at = ?
       WHERE workspace_id = ? AND channel_id = ?`)
       .run("2026-07-12T00:00:01.000Z", seeded.workspaceId, item.channelId);
+
+    for (const [column, value] of [
+      ["mode", "simulation"],
+      ["mode", "live"],
+      ["target_per_channel", 3]
+    ] as const) {
+      getDb().prepare(`UPDATE production_runs SET ${column} = ? WHERE id = ?`).run(value, seeded.run.id);
+      assert.throws(
+        () => createOwnerReplacementAfterQuarantineBudgetBlock({
+          itemId: item.id,
+          expectedItemVersion: item.version,
+          reason: `must reject running ${column}=${value}`
+        }),
+        assertStoreError("invalid_transition")
+      );
+      getDb().prepare(`UPDATE production_runs SET ${column} = ? WHERE id = ?`)
+        .run(column === "mode" ? "shadow" : 1, seeded.run.id);
+    }
+
+    const externalItem = createProductionItem({
+      runId: seeded.run.id,
+      runChannelId: secondaryRunChannel.id,
+      itemSlot: 1,
+      attemptBudget: 1
+    });
+    getDb().prepare("UPDATE production_items SET publication_id = ? WHERE id = ?")
+      .run("publication-from-another-channel", externalItem.id);
+    assert.throws(
+      () => createOwnerReplacementAfterQuarantineBudgetBlock({
+        itemId: item.id,
+        expectedItemVersion: item.version,
+        reason: "must reject a run-wide external identity"
+      }),
+      assertStoreError("external_effect_conflict")
+    );
+    getDb().prepare("UPDATE production_items SET publication_id = NULL WHERE id = ?")
+      .run(externalItem.id);
+
+    getDb().prepare("UPDATE production_items SET preview_sha256 = ? WHERE id = ?")
+      .run(HASH.preview, item.id);
+    assert.throws(
+      () => createOwnerReplacementAfterQuarantineBudgetBlock({
+        itemId: item.id,
+        expectedItemVersion: item.version,
+        reason: "must reject a forged preview-stage missing-frame incident"
+      }),
+      assertStoreError("invalid_transition")
+    );
+    getDb().prepare("UPDATE production_items SET preview_sha256 = NULL WHERE id = ?")
+      .run(item.id);
+
     const recovered = createOwnerReplacementAfterQuarantineBudgetBlock({
       itemId: item.id,
       expectedItemVersion: item.version,
@@ -2815,6 +2867,60 @@ test("owner quarantine-budget override creates one audited generation without up
     assert.equal(recovered.replacementItem.state, "reserved");
     assert.equal(recovered.replacementItem.publicationId, null);
     assert.equal(recovered.channel.status, "running");
-    assert.equal(listProductionItems({ runId: seeded.run.id, includeHistorical: true }).length, 2);
+    assert.equal(
+      listProductionItems({ runId: seeded.run.id, includeHistorical: true })
+        .filter((entry) => entry.channelId === seeded.channels[0].id).length,
+      2
+    );
+
+    const replacementCandidate = createCandidate({
+      workspaceId: seeded.workspaceId,
+      channelId: seeded.channels[0].id,
+      suffix: "quarantine-budget-second-override"
+    });
+    const replacementChat = await createOrGetChatBySource({
+      rawUrl: replacementCandidate.sourceUrl,
+      channelIdRaw: seeded.channels[0].id,
+      title: "Second override must fail"
+    });
+    let secondBlocked = reserveChannelSourceCandidate({
+      candidateId: replacementCandidate.id,
+      itemId: recovered.replacementItem.id,
+      expectedItemVersion: recovered.replacementItem.version
+    }).item;
+    secondBlocked = transitionProductionItem({
+      itemId: secondBlocked.id,
+      expectedVersion: secondBlocked.version,
+      toState: "source_ingested",
+      eventType: "fixture.second_source_ingested",
+      patch: {
+        sourceSha256: replacementCandidate.contentSha256,
+        chatId: replacementChat.id
+      }
+    });
+    quarantineChannelSourceCandidate({
+      candidateId: replacementCandidate.id,
+      reason: blockedReason
+    });
+    secondBlocked = transitionProductionItem({
+      itemId: secondBlocked.id,
+      expectedVersion: secondBlocked.version,
+      toState: "policy_blocked",
+      eventType: "production.replacement_budget_exhausted",
+      eventPayload: {
+        reason: blockedReason,
+        generation: secondBlocked.generation,
+        attemptBudget: secondBlocked.attemptBudget
+      },
+      patch: { lastError: `Replacement budget exhausted: ${blockedReason}` }
+    });
+    assert.throws(
+      () => createOwnerReplacementAfterQuarantineBudgetBlock({
+        itemId: secondBlocked.id,
+        expectedItemVersion: secondBlocked.version,
+        reason: "same logical slot must remain one-time"
+      }),
+      assertStoreError("invalid_transition")
+    );
   });
 });

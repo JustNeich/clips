@@ -2917,18 +2917,31 @@ const PROJECT_KINGS_RECOVERABLE_FINAL_LEDGER_POLICY_ERROR =
   "invalid_ledger: Revision attempt mismatch: item=1, ledger=0.";
 const PROJECT_KINGS_OWNER_REPLACEMENT_BUDGET_ERROR =
   "Replacement budget exhausted: Unsafe source-level defect cannot pass through revision.";
+const PROJECT_KINGS_REPLACEMENT_BUDGET_PREFIX = "Replacement budget exhausted: ";
+const PROJECT_KINGS_MISSING_VISUAL_EVIDENCE_BUDGET_ERRORS = [
+  "Replacement budget exhausted: The source metadata confirms a valid 24.38-second vertical video, but provides no frames, subtitles, or other evidence verifying a visible AI transformation or the claimed Tom-and-Jerry dinner-bell remake.",
+  "Replacement budget exhausted: The claimed event fits the police-incident channel concept, but the source artifact provides no extracted frames or subtitles to verify the factual story or establish usable visible evidence."
+] as const;
+
+export function isOwnerRecoverableReplacementBudgetError(value: string | null): boolean {
+  if (value === PROJECT_KINGS_OWNER_REPLACEMENT_BUDGET_ERROR) return true;
+  return PROJECT_KINGS_MISSING_VISUAL_EVIDENCE_BUDGET_ERRORS.some((incident) => value === incident);
+}
+
+function isOwnerMissingVisualEvidenceBudgetError(value: string): boolean {
+  return PROJECT_KINGS_MISSING_VISUAL_EVIDENCE_BUDGET_ERRORS.some((incident) => value === incident);
+}
 
 function reopenExactBlockedShadowIncidentRunTx(
   db: DatabaseSync,
   run: ProductionRunRecord,
   input: { itemId: string; reason: string; stamp: string }
 ): ProductionRunRecord {
-  if (run.status === "running") return run;
   if (
-    run.status !== "blocked" ||
     run.mode !== "shadow" ||
     run.targetPerChannel !== 1 ||
-    run.lastError !== "One or more channels are blocked."
+    !["running", "blocked"].includes(run.status) ||
+    (run.status === "blocked" && run.lastError !== "One or more channels are blocked.")
   ) {
     fail("invalid_transition", "Owner incident recovery cannot reopen this production run.", {
       runId: run.id,
@@ -2947,6 +2960,7 @@ function reopenExactBlockedShadowIncidentRunTx(
       productionItemId: String(external.id)
     });
   }
+  if (run.status === "running") return run;
   const result = db.prepare(`UPDATE production_runs SET
     status = 'running', version = version + 1, last_error = NULL,
     completed_at = NULL, updated_at = ?
@@ -3674,9 +3688,18 @@ export function createOwnerReplacementAfterQuarantineBudgetBlock(input: {
         actual: item.version
       });
     }
-    if (item.state !== "policy_blocked" || item.lastError !== PROJECT_KINGS_OWNER_REPLACEMENT_BUDGET_ERROR ||
+    const blockedError = item.lastError;
+    const missingVisualEvidenceIncident = blockedError
+      ? isOwnerMissingVisualEvidenceBudgetError(blockedError)
+      : false;
+    if (item.state !== "policy_blocked" || !blockedError ||
+        !isOwnerRecoverableReplacementBudgetError(blockedError) ||
         !item.sourceCandidateId || !item.sourceSha256 || item.finalArtifactSha256 ||
         item.publicationId || item.youtubeVideoId || item.uploadSessionUrl ||
+        (missingVisualEvidenceIncident && (
+          item.previewSha256 || item.templateSha256 || item.settingsSha256 ||
+          item.stage2RunId || item.stage3JobId
+        )) ||
         item.generation < item.attemptBudget) {
       fail("invalid_transition", "Item is not the exact quarantined-source replacement-budget block.", {
         itemId: item.id,
@@ -3687,6 +3710,7 @@ export function createOwnerReplacementAfterQuarantineBudgetBlock(input: {
     assertPortfolioOwnerRecoveryOpenTx(db, item, "override_replacement_budget");
     const stamp = input.now ?? nowIso();
     const reason = requiredText(input.reason, "reason", 2000);
+    const blockedReason = blockedError.slice(PROJECT_KINGS_REPLACEMENT_BUDGET_PREFIX.length);
     const run = reopenExactBlockedShadowIncidentRunTx(db, requireRun(db, item.runId), {
       itemId: item.id,
       reason,
@@ -3706,7 +3730,8 @@ export function createOwnerReplacementAfterQuarantineBudgetBlock(input: {
     const candidate = candidateRow ? mapCandidate(candidateRow) : null;
     if (!candidate || candidate.status !== "quarantined" || candidate.qualificationStatus !== "quarantined" ||
         candidate.reservedItemId || candidate.workspaceId !== item.workspaceId ||
-        candidate.channelId !== item.channelId || candidate.contentSha256 !== item.sourceSha256) {
+        candidate.channelId !== item.channelId || candidate.contentSha256 !== item.sourceSha256 ||
+        candidate.lastError !== blockedReason) {
       fail("source_conflict", "Replacement-budget override requires the exact quarantined candidate.", {
         itemId: item.id,
         sourceCandidateId: item.sourceCandidateId
@@ -3717,7 +3742,8 @@ export function createOwnerReplacementAfterQuarantineBudgetBlock(input: {
       ORDER BY created_at DESC, id DESC LIMIT 1`).get(item.id) as Row | undefined;
     const blockEvent = blockEventRow ? mapEvent(blockEventRow) : null;
     if (!blockEvent || blockEvent.toState !== "policy_blocked" ||
-        blockEvent.payload.reason !== "Unsafe source-level defect cannot pass through revision." ||
+        (missingVisualEvidenceIncident && blockEvent.fromState !== "source_ingested") ||
+        blockEvent.payload.reason !== blockedReason ||
         Number(blockEvent.payload.generation) !== item.generation ||
         Number(blockEvent.payload.attemptBudget) !== item.attemptBudget) {
       fail("invalid_transition", "Replacement-budget event is not bound to the quarantined item.", {
@@ -3750,7 +3776,7 @@ export function createOwnerReplacementAfterQuarantineBudgetBlock(input: {
     const itemResult = db.prepare(`UPDATE production_items SET
       state = 'quarantined', version = version + 1, last_error = ?, updated_at = ?
       WHERE id = ? AND version = ? AND state = 'policy_blocked'`)
-      .run(PROJECT_KINGS_OWNER_REPLACEMENT_BUDGET_ERROR, stamp, item.id, item.version);
+      .run(blockedError, stamp, item.id, item.version);
     if (Number(itemResult.changes) !== 1) {
       fail("stale_version", "Policy-blocked item changed before owner replacement.", { itemId: item.id });
     }

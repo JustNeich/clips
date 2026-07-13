@@ -109,6 +109,7 @@ import {
   getProductionItem,
   getProductionProfile,
   getProductionRun,
+  isOwnerRecoverableReplacementBudgetError,
   isProductionProfileExplicitlyApproved,
   listAgentAttempts,
   listProductionEvents,
@@ -1187,10 +1188,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
           preservedSource: true,
           preservedPreview: true
         };
-      } else if (
-        item.lastError ===
-        "Replacement budget exhausted: Unsafe source-level defect cannot pass through revision."
-      ) {
+      } else if (isOwnerRecoverableReplacementBudgetError(item.lastError)) {
         const recovered = createOwnerReplacementAfterQuarantineBudgetBlock({
           itemId: item.id,
           expectedItemVersion: item.version,

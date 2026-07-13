@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 
 import {
   buildPortfolioProductionAgentPacketBase,
   buildPortfolioProductionVisionBinding,
   createPortfolioLiveDispatcher,
   decidePortfolioLiveRecoveryBudget,
+  extractBoundSourceKeyFrames,
   resolvePortfolioProductionAgentChannelId,
   resolvePortfolioPublicVerificationPollingBudget,
   type PortfolioLiveEventHandler,
@@ -19,9 +26,11 @@ import type {
   ProductionOutboxRecord
 } from "../lib/portfolio-production-store";
 import { validateProductionAgentPacket } from "../lib/project-kings/production-agent-contracts";
+import { probeFinalProductionMp4 } from "../lib/production-quality-gate";
 
 const WORKSPACE_ID = "workspace-live-runtime-test";
 const ITEM_ID = "item-live-runtime-test";
+const execFileAsync = promisify(execFile);
 
 function itemFixture(state: ProductionItemState = "reserved"): ProductionItemRecord {
   return {
@@ -183,6 +192,61 @@ test("public verification polling cannot cross its immutable 24-hour deadline", 
     ),
     /missing its immutable 24-hour deadline/
   );
+});
+
+test("missing decomposition frames are extracted only from the exact hash-bound source MP4", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "clips-source-frame-fallback-"));
+  const previousAppDataDir = process.env.APP_DATA_DIR;
+  process.env.APP_DATA_DIR = root;
+  try {
+    const videoPath = path.join(root, "source.mp4");
+    await execFileAsync("ffmpeg", [
+      "-y", "-f", "lavfi", "-i", "color=c=blue:s=360x640:d=2",
+      "-c:v", "libx264", "-pix_fmt", "yuv420p", videoPath
+    ]);
+    const sourceSha256 = createHash("sha256").update(await readFile(videoPath)).digest("hex");
+    const item = { ...itemFixture("source_ingested"), sourceSha256 };
+    const frames = await extractBoundSourceKeyFrames({ item, videoPath });
+    assert.equal(frames.length, 9);
+    assert.ok(frames.every((frame) =>
+      frame.kind === "key_frame" && frame.mediaType === "image" && frame.sha256.length === 64
+    ));
+    await assert.rejects(
+      () => extractBoundSourceKeyFrames({
+        item: { ...item, sourceSha256: "f".repeat(64) },
+        videoPath
+      }),
+      /different SHA-256/
+    );
+
+    const staleProbe = await probeFinalProductionMp4(videoPath);
+    const replacementPath = path.join(root, "replacement.mp4");
+    await execFileAsync("ffmpeg", [
+      "-y", "-f", "lavfi", "-i", "color=c=red:s=360x640:d=2",
+      "-c:v", "libx264", "-pix_fmt", "yuv420p", replacementPath
+    ]);
+    await copyFile(replacementPath, videoPath);
+    await assert.rejects(
+      () => extractBoundSourceKeyFrames({ item, videoPath, sourceProbe: staleProbe, count: 1 }),
+      /different SHA-256/
+    );
+
+    const corruptPath = path.join(root, "corrupt.mp4");
+    await writeFile(corruptPath, "not an mp4");
+    const corruptSha256 = createHash("sha256").update(await readFile(corruptPath)).digest("hex");
+    await assert.rejects(
+      () => extractBoundSourceKeyFrames({
+        item: { ...item, sourceSha256: corruptSha256 },
+        videoPath: corruptPath,
+        count: 1
+      }),
+      /Invalid data|ffprobe|moov atom|fully decodable/i
+    );
+  } finally {
+    if (previousAppDataDir === undefined) delete process.env.APP_DATA_DIR;
+    else process.env.APP_DATA_DIR = previousAppDataDir;
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("injected live dispatcher preserves the complete source-to-public order", async () => {
