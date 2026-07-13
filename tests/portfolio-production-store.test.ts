@@ -218,6 +218,55 @@ function reserveAndIngest(input: {
   });
 }
 
+async function seedBlockedShadowCancellationFixture(input: {
+  mode?: "shadow" | "live";
+  terminalItem?: boolean;
+  externalIdentity?: boolean;
+  processingOutbox?: boolean;
+} = {}) {
+  const seeded = await seedPortfolio({ targetPerChannel: 1 });
+  let item = createProductionItem({
+    runId: seeded.run.id,
+    runChannelId: seeded.runChannels[0].id,
+    itemSlot: 1
+  });
+  const outbox = appendProductionOutbox({
+    workspaceId: seeded.workspaceId,
+    runId: seeded.run.id,
+    channelId: seeded.channels[0].id,
+    productionItemId: item.id,
+    eventKind: "source_ingest.requested",
+    payload: { fixture: "blocked-shadow-cancellation" },
+    maxAttempts: 3,
+    availableAt: "2026-07-10T00:00:00.000Z"
+  });
+  if (input.terminalItem !== false) {
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "policy_blocked",
+      eventType: "fixture.policy_blocked",
+      patch: { lastError: "terminal shadow fixture" }
+    });
+  }
+  if (input.externalIdentity) {
+    getDb().prepare("UPDATE production_items SET publication_id = ? WHERE id = ?")
+      .run("fixture-publication-id", item.id);
+  }
+  if (input.processingOutbox) {
+    getDb().prepare(`UPDATE production_outbox SET status = 'processing', attempts = 1,
+      lease_owner = 'fixture-worker', lease_token = 'fixture-lease-token',
+      lease_expires_at = '2026-07-10T01:00:00.000Z' WHERE id = ?`).run(outbox.id);
+  }
+  getDb().prepare(`UPDATE production_runs SET mode = ?, status = 'blocked',
+    last_error = 'One or more channels are blocked.', completed_at = '2026-07-10T00:30:00.000Z'
+    WHERE id = ?`).run(input.mode ?? "shadow", seeded.run.id);
+  getDb().prepare(`UPDATE production_run_channels SET status = 'blocked',
+    blocker_code = 'item_policy_blocked', blocker_message = 'terminal shadow fixture',
+    completed_at = '2026-07-10T00:30:00.000Z' WHERE id = ?`).run(seeded.runChannels[0].id);
+  return { seeded, itemId: item.id, outboxId: outbox.id, run: getProductionRun(seeded.run.id)! };
+}
+
 function recordCombinedPass(item: ProductionItemRecord, gateType: "source" | "preview" | "final", attemptNo = 1) {
   const artifactSha256 = gateType === "source"
     ? item.sourceSha256!
@@ -2015,6 +2064,38 @@ test("run cancellation requests safe work to stop but never masks an upload-star
     );
     assert.equal(listProductionItems({ runId: seeded.run.id }).length, 3);
   });
+});
+
+test("guarded blocked-shadow cancellation rejects live, external, leased, and nonterminal work atomically", { concurrency: false }, async () => {
+  const cases: Array<{
+    name: string;
+    input: Parameters<typeof seedBlockedShadowCancellationFixture>[0];
+    code: ProductionStoreError["code"];
+  }> = [
+    { name: "live run", input: { mode: "live" }, code: "invalid_transition" },
+    { name: "external publication identity", input: { externalIdentity: true }, code: "external_effect_conflict" },
+    { name: "processing outbox lease", input: { processingOutbox: true }, code: "lease_conflict" },
+    { name: "nonterminal item", input: { terminalItem: false }, code: "invalid_transition" }
+  ];
+  for (const scenario of cases) {
+    await withIsolatedAppData(async () => {
+      const fixture = await seedBlockedShadowCancellationFixture(scenario.input);
+      const snapshot = () => ({
+        run: getProductionRun(fixture.run.id),
+        item: getProductionItem(fixture.itemId),
+        outbox: listProductionOutbox({ runId: fixture.run.id }),
+        events: listProductionEvents({ runId: fixture.run.id })
+      });
+      const before = snapshot();
+      assert.throws(() => cancelProductionRun({
+        runId: fixture.run.id,
+        expectedVersion: fixture.run.version,
+        reason: `must reject ${scenario.name}`,
+        now: "2026-07-10T00:45:00.000Z"
+      }), assertStoreError(scenario.code), scenario.name);
+      assert.deepEqual(snapshot(), before, `${scenario.name} must roll back every durable mutation`);
+    });
+  }
 });
 
 test("exact caption dead letter reopens the same qualified source and brief intent", { concurrency: false }, async () => {

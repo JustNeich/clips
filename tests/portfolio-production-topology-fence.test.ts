@@ -17,6 +17,7 @@ import {
 import {
   ackProductionOutbox,
   appendProductionOutbox,
+  cancelProductionRun,
   claimProductionOutbox,
   createOrGetProductionRun,
   createProductionItem,
@@ -25,6 +26,7 @@ import {
   listProductionRunChannels,
   ProductionStoreError,
   renewProductionOutboxLease,
+  transitionProductionItem,
   type ProductionItemRecord,
   type ProductionProfileRecord
 } from "../lib/portfolio-production-store";
@@ -529,5 +531,97 @@ test("CopScopes legacy publication is blocked during v1 ownership and safe rollb
     assert.equal(released.channelOwnershipsReleased, true);
     assert.equal(getPortfolioChannelOwnership({ workspaceId: owner.workspace.id, channelId })?.status, "released");
     assert.ok(createLegacy().id, "legacy is re-enabled only after safe release");
+  });
+});
+
+test("guarded terminal-shadow cancellation drains ownership without dispatching stale pending work", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Topology terminal shadow drain",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const { channelId, profile } = await seedProfile({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      suffix: "terminal-shadow"
+    });
+    const configSha256 = sha("terminal-shadow-ownership-config");
+    const daemon = claimPortfolioDaemonLease({
+      workspaceId: owner.workspace.id,
+      owner: "zoro",
+      leaseMs: 90_000,
+      configSha256,
+      config: { profileIds: [profile.id], mode: "shadow" },
+      now: "2040-01-01T00:00:00.000Z"
+    });
+    claimPortfolioChannelOwnerships({
+      workspaceId: owner.workspace.id,
+      daemonLeaseToken: daemon!.leaseToken!,
+      configSha256,
+      profiles: [{
+        id: profile.id,
+        channelId,
+        version: profile.version,
+        profileHash: profile.profileHash
+      }],
+      now: "2040-01-01T00:00:01.000Z"
+    });
+    const run = seedRun({ workspaceId: owner.workspace.id, profiles: [profile], target: 1 });
+    getDb().prepare("UPDATE production_runs SET mode = 'shadow' WHERE id = ?").run(run.id);
+    const runChannel = listProductionRunChannels(run.id)[0]!;
+    let item = createProductionItem({ runId: run.id, runChannelId: runChannel.id, itemSlot: 1 });
+    const pending = append(item, "source_ingest.requested");
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "policy_blocked",
+      eventType: "fixture.terminal_shadow_blocked",
+      patch: { lastError: "terminal shadow fixture" }
+    });
+    getDb().prepare(`UPDATE production_runs SET status = 'blocked',
+      last_error = 'One or more channels are blocked.', completed_at = '2040-01-01T00:00:02.000Z'
+      WHERE id = ?`).run(run.id);
+    getDb().prepare(`UPDATE production_run_channels SET status = 'blocked',
+      blocker_code = 'item_policy_blocked', blocker_message = 'terminal shadow fixture',
+      completed_at = '2040-01-01T00:00:02.000Z' WHERE id = ?`).run(runChannel.id);
+
+    const firstRelease = releaseProjectKingsPortfolioDaemon({
+      workspaceId: owner.workspace.id,
+      leaseToken: daemon!.leaseToken!,
+      now: "2040-01-01T00:00:03.000Z"
+    });
+    assert.equal(firstRelease.released, false);
+    assert.equal(firstRelease.status, "stopping");
+    assert.equal(getPortfolioChannelOwnership({ workspaceId: owner.workspace.id, channelId })?.status, "releasing");
+
+    const canceled = cancelProductionRun({
+      runId: run.id,
+      expectedVersion: run.version,
+      reason: "owner drains stale terminal shadow",
+      now: "2040-01-01T00:00:04.000Z"
+    });
+    assert.equal(canceled.run.status, "canceled");
+    assert.deepEqual(canceled.deadLetteredOutboxIds, [pending.id]);
+    assert.equal(listProductionOutbox({ runId: run.id })[0]?.status, "dead");
+    assert.equal(claimProductionOutbox({
+      owner: "must-not-dispatch",
+      leaseMs: 30_000,
+      limit: 10,
+      workspaceId: owner.workspace.id,
+      runIds: [run.id],
+      now: "2040-01-01T00:00:05.000Z"
+    }).length, 0);
+
+    const secondRelease = releaseProjectKingsPortfolioDaemon({
+      workspaceId: owner.workspace.id,
+      leaseToken: daemon!.leaseToken!,
+      now: "2040-01-01T00:00:06.000Z"
+    });
+    assert.equal(secondRelease.released, true);
+    assert.equal(secondRelease.status, "stopped");
+    assert.equal(secondRelease.channelOwnershipsReleased, true);
+    assert.equal(getPortfolioChannelOwnership({ workspaceId: owner.workspace.id, channelId })?.status, "released");
   });
 });

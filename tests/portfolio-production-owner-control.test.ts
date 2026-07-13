@@ -445,6 +445,77 @@ test("portfolio owner get, validate, reconcile and cancel expose typed durable s
   });
 });
 
+test("owner cancel safely closes a blocked terminal shadow run without dispatching its pending intent", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const { owner, run } = await seedSyntheticRun();
+    const runChannel = listProductionRunChannels(run.id)[0]!;
+    let item = createProductionItem({ runId: run.id, runChannelId: runChannel.id, itemSlot: 1 });
+    const pending = appendProductionOutbox({
+      workspaceId: owner.workspace.id,
+      runId: run.id,
+      channelId: runChannel.channelId,
+      productionItemId: item.id,
+      eventKind: "source_ingest.requested",
+      payload: { fixture: "owner-terminal-shadow-cancel" },
+      maxAttempts: 3,
+      availableAt: "2040-01-01T00:00:00.000Z"
+    });
+    item = transitionProductionItem({
+      itemId: item.id,
+      expectedVersion: item.version,
+      toState: "policy_blocked",
+      eventType: "fixture.owner_terminal_shadow_blocked",
+      patch: { lastError: "terminal owner-control fixture" }
+    });
+    getDb().prepare(`UPDATE production_runs SET status = 'blocked',
+      last_error = 'One or more channels are blocked.', completed_at = '2040-01-01T00:10:00.000Z'
+      WHERE id = ?`).run(run.id);
+    getDb().prepare(`UPDATE production_run_channels SET status = 'blocked',
+      blocker_code = 'item_policy_blocked', blocker_message = 'terminal owner-control fixture',
+      completed_at = '2040-01-01T00:10:00.000Z' WHERE id = ?`).run(runChannel.id);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "portfolio-terminal-shadow-cancel",
+      scopes: ["flow:read", "control:write"]
+    });
+
+    const cancelResponse = await postOwnerControl(machine.secret, "clips_owner_cancel_portfolio_run", {
+      runId: run.id,
+      expectedVersion: run.version,
+      reason: "owner closes stale terminal shadow"
+    });
+    assert.equal(cancelResponse.status, 202, await cancelResponse.clone().text());
+    const canceled = (await cancelResponse.json()) as {
+      run: { status: string };
+      canceledItemIds: string[];
+      deadLetteredOutboxIds: string[];
+    };
+    assert.equal(canceled.run.status, "canceled");
+    assert.deepEqual(canceled.canceledItemIds, []);
+    assert.deepEqual(canceled.deadLetteredOutboxIds, [pending.id]);
+    assert.equal(getProductionItem(item.id)?.state, "policy_blocked");
+    assert.equal(getProductionItem(item.id)?.publicationId, null);
+    assert.equal(listProductionOutbox({ runId: run.id })[0]?.status, "dead");
+    assert.equal(listProductionOutbox({ runId: run.id })[0]?.deadLetterCode, "owner_canceled_terminal_shadow");
+
+    const getResponse = await postOwnerControl(machine.secret, "clips_owner_get_portfolio_run", { runId: run.id });
+    assert.equal(getResponse.status, 200);
+    const detail = (await getResponse.json()) as {
+      run: { status: string };
+      metrics: { outbox: { pending: number; processing: number; dead: number } };
+    };
+    assert.equal(detail.run.status, "canceled");
+    assert.equal(detail.metrics.outbox.pending, 0);
+    assert.equal(detail.metrics.outbox.processing, 0);
+    assert.equal(detail.metrics.outbox.dead, 1);
+    assert.equal(listProductionEvents({ runId: run.id }).filter((event) =>
+      event.eventType === "production.outbox.owner_canceled_terminal_shadow" ||
+      event.eventType === "production.run.owner_canceled_terminal_shadow"
+    ).length, 2);
+  });
+});
+
 test("portfolio start and retry reject incomplete owner input before side effects", { concurrency: false }, async () => {
   await withIsolatedAppData(async () => {
     const { owner } = await seedSyntheticRun();

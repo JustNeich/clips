@@ -215,7 +215,7 @@ test("server daemon tick creates one logical-day run, resumes it and keeps a sin
   });
 });
 
-test("unfinished prior logical day blocks a new run until it is completed", { concurrency: false }, async () => {
+test("unfinished prior logical day blocks a new run until it is explicitly canceled", { concurrency: false }, async () => {
   await withIsolatedAppData(async (workspaceId, userId) => {
     const profileIds = ["profile-dark", "profile-light", "profile-cop"] as const;
     const priorRun = fakeRun({
@@ -306,7 +306,7 @@ test("unfinished prior logical day blocks a new run until it is completed", { co
       assert.match(stillBlocked.blockers.join(" "), new RegExp(`prior_logical_day_unfinished:.*:${terminalStatus}`));
     }
 
-    runs[0] = { ...runs[0]!, status: "completed", completedAt: now.toISOString() };
+    runs[0] = { ...runs[0]!, status: "canceled", completedAt: now.toISOString() };
     now = new Date(now.getTime() + 10_000);
     const recovered = await tickProjectKingsPortfolioDaemon({
       workspaceId,

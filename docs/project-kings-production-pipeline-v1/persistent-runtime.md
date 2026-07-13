@@ -47,6 +47,18 @@ dispatch и переводит владение pilot-каналами в `relea
 публикации не удаляются. После durable drain повторный release переводит
 владение в `released` и освобождает lease.
 
+Если уже terminal `blocked` shadow-run оставил только pending outbox и поэтому
+не даёт завершить `releasing`, owner может закрыть его обычной командой
+`clips_owner_cancel_portfolio_run`. Это отдельное fail-closed исключение, а не
+общий переход `blocked -> canceled`: оно разрешено только для shadow с целью
+`1` на канал, когда все поколения items уже terminal и без lease, нет ни одной
+publication/upload/YouTube identity или связанной publication, и нет processing
+outbox. Pending intents не удаляются и не считаются выполненными: транзакция
+переводит их в `dead` с кодом `owner_canceled_terminal_shadow`, сохраняет
+attempts/provenance и добавляет audit events. Любой live-run, внешний эффект,
+не-terminal item или активный outbox lease оставляет cancel заблокированным.
+После такого явного закрытия повторный release может завершить durable drain.
+
 ## Fail-closed правила
 
 - Live mode работает только при server-side

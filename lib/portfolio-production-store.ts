@@ -118,6 +118,14 @@ const ITEM_COMPLETED_STATES = new Set<ProductionItemState>([
   "canceled",
   "failed"
 ]);
+const OWNER_CANCELABLE_BLOCKED_SHADOW_ITEM_STATES = new Set<ProductionItemState>([
+  "replaced",
+  "quarantined",
+  "policy_blocked",
+  "canceled",
+  "failed"
+]);
+const OWNER_CANCELED_TERMINAL_SHADOW_OUTBOX_CODE = "owner_canceled_terminal_shadow";
 const RUN_TERMINAL_STATES = new Set<ProductionRunStatus>(["completed", "blocked", "canceled", "failed"]);
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
 const LOGICAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -4804,6 +4812,187 @@ export function listProductionEvents(input: {
     ORDER BY created_at ASC, id ASC`).all(...params) as Row[]).map(mapEvent);
 }
 
+function cancelBlockedTerminalShadowRunTx(input: {
+  db: DatabaseSync;
+  run: ProductionRunRecord;
+  reason: string;
+  stamp: string;
+}): { run: ProductionRunRecord; deadLetteredOutboxIds: string[] } {
+  const { db, run, reason, stamp } = input;
+  if (run.mode !== "shadow" || run.targetPerChannel !== 1) {
+    fail("invalid_transition", "Only a one-item terminal shadow run can use guarded blocked-run cancellation.", {
+      runId: run.id,
+      mode: run.mode,
+      targetPerChannel: run.targetPerChannel
+    });
+  }
+  const runLease = db.prepare(`SELECT lease_owner, lease_token, lease_expires_at
+    FROM production_runs WHERE id = ?`).get(run.id) as {
+      lease_owner?: string | null;
+      lease_token?: string | null;
+      lease_expires_at?: string | null;
+    } | undefined;
+  if (runLease?.lease_owner || runLease?.lease_token || runLease?.lease_expires_at) {
+    fail("lease_conflict", "A blocked shadow run with an active run lease cannot be canceled.", {
+      runId: run.id,
+      leaseOwner: runLease.lease_owner ?? null,
+      leaseExpiresAt: runLease.lease_expires_at ?? null
+    });
+  }
+
+  const channels = (db.prepare(`SELECT * FROM production_run_channels
+    WHERE run_id = ? ORDER BY channel_id`).all(run.id) as Row[]).map(mapRunChannel);
+  const nonTerminalChannel = channels.find((channel) =>
+    !["blocked", "canceled", "failed"].includes(channel.status) || channel.publicVerifiedCount !== 0
+  );
+  if (!channels.length || nonTerminalChannel) {
+    fail("invalid_transition", "Every run channel must already be terminal and have zero public effects.", {
+      runId: run.id,
+      runChannelId: nonTerminalChannel?.id ?? null,
+      status: nonTerminalChannel?.status ?? null,
+      publicVerifiedCount: nonTerminalChannel?.publicVerifiedCount ?? null
+    });
+  }
+
+  const items = (db.prepare(`SELECT * FROM production_items
+    WHERE run_id = ? ORDER BY channel_id, item_slot, generation`).all(run.id) as Row[]).map(mapItem);
+  if (!items.length) {
+    fail("invalid_transition", "A blocked shadow run without durable items cannot use guarded cancellation.", {
+      runId: run.id
+    });
+  }
+  const nonTerminal = items.find((item) => !OWNER_CANCELABLE_BLOCKED_SHADOW_ITEM_STATES.has(item.state));
+  if (nonTerminal) {
+    fail("invalid_transition", "Every item must already be terminal before blocked shadow cancellation.", {
+      runId: run.id,
+      productionItemId: nonTerminal.id,
+      state: nonTerminal.state
+    });
+  }
+  const leasedItem = db.prepare(`SELECT id, lease_owner, lease_token, lease_expires_at
+    FROM production_items
+    WHERE run_id = ? AND (
+      lease_owner IS NOT NULL OR lease_token IS NOT NULL OR lease_expires_at IS NOT NULL
+    ) LIMIT 1`).get(run.id) as {
+      id?: string;
+      lease_owner?: string | null;
+      lease_token?: string | null;
+      lease_expires_at?: string | null;
+    } | undefined;
+  if (leasedItem?.id) {
+    fail("lease_conflict", "Every terminal shadow item must be lease-free before blocked-run cancellation.", {
+      runId: run.id,
+      productionItemId: leasedItem.id,
+      leaseOwner: leasedItem.lease_owner ?? null,
+      leaseExpiresAt: leasedItem.lease_expires_at ?? null
+    });
+  }
+
+  const external = db.prepare(`SELECT pi.id AS production_item_id
+    FROM production_items pi
+    WHERE pi.run_id = ? AND (
+      pi.publication_id IS NOT NULL OR
+      pi.youtube_video_id IS NOT NULL OR
+      pi.upload_session_url IS NOT NULL OR
+      EXISTS (
+        SELECT 1 FROM public_verifications pv
+        WHERE pv.production_item_id = pi.id
+      ) OR
+      EXISTS (
+        SELECT 1
+        FROM render_exports re
+        JOIN channel_publications cp ON cp.render_export_id = re.id
+        WHERE re.stage3_job_id = pi.stage3_job_id
+      )
+    )
+    LIMIT 1`).get(run.id) as { production_item_id?: string } | undefined;
+  if (external?.production_item_id) {
+    fail("external_effect_conflict", "A blocked shadow run with a publication/upload identity cannot be canceled.", {
+      runId: run.id,
+      productionItemId: external.production_item_id
+    });
+  }
+
+  const processing = db.prepare(`SELECT id FROM production_outbox
+    WHERE run_id = ? AND (
+      status = 'processing' OR (
+        status = 'pending' AND (
+          lease_owner IS NOT NULL OR lease_token IS NOT NULL OR lease_expires_at IS NOT NULL
+        )
+      )
+    ) LIMIT 1`).get(run.id) as { id?: string } | undefined;
+  if (processing?.id) {
+    fail("lease_conflict", "A blocked shadow run with active or inconsistent outbox lease data cannot be canceled.", {
+      runId: run.id,
+      outboxId: processing.id
+    });
+  }
+
+  const pending = (db.prepare(`SELECT * FROM production_outbox
+    WHERE run_id = ? AND status = 'pending' ORDER BY created_at, id`).all(run.id) as Row[]).map(mapOutbox);
+  const deadLetteredOutboxIds: string[] = [];
+  for (const outbox of pending) {
+    const result = db.prepare(`UPDATE production_outbox SET
+      status = 'dead', lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
+      last_error = ?, dead_letter_code = ?, projected_at = ?, delivered_at = NULL, updated_at = ?
+      WHERE id = ? AND status = 'pending'`)
+      .run(reason, OWNER_CANCELED_TERMINAL_SHADOW_OUTBOX_CODE, stamp, stamp, outbox.id);
+    if (Number(result.changes) !== 1) {
+      fail("stale_version", "Pending shadow outbox changed before guarded cancellation.", {
+        runId: run.id,
+        outboxId: outbox.id
+      });
+    }
+    const item = requireItem(db, outbox.productionItemId);
+    appendEventTx(db, {
+      workspaceId: outbox.workspaceId,
+      runId: outbox.runId,
+      channelId: outbox.channelId,
+      productionItemId: outbox.productionItemId,
+      eventType: "production.outbox.owner_canceled_terminal_shadow",
+      fromState: item.state,
+      toState: item.state,
+      payload: {
+        reason,
+        outboxId: outbox.id,
+        eventKind: outbox.eventKind,
+        attempts: outbox.attempts,
+        maxAttempts: outbox.maxAttempts,
+        previousError: outbox.lastError,
+        deadLetterCode: OWNER_CANCELED_TERMINAL_SHADOW_OUTBOX_CODE
+      },
+      createdAt: stamp
+    });
+    deadLetteredOutboxIds.push(outbox.id);
+  }
+
+  const runResult = db.prepare(`UPDATE production_runs SET
+    status = 'canceled', version = version + 1,
+    lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
+    last_error = ?, updated_at = ?, completed_at = ?
+    WHERE id = ? AND version = ? AND status = 'blocked' AND mode = 'shadow' AND target_per_channel = 1`)
+    .run(reason, stamp, stamp, run.id, run.version);
+  if (Number(runResult.changes) !== 1) {
+    fail("stale_version", "Blocked shadow run changed before guarded cancellation commit.", { runId: run.id });
+  }
+  appendEventTx(db, {
+    workspaceId: run.workspaceId,
+    runId: run.id,
+    eventType: "production.run.owner_canceled_terminal_shadow",
+    fromState: "blocked",
+    toState: "canceled",
+    payload: {
+      reason,
+      deadLetteredOutboxIds,
+      preservedItemIds: items.map((item) => item.id),
+      previousCompletedAt: run.completedAt,
+      nextAction: "Release portfolio channel ownership, then start a fresh run only through normal owner/daemon gates."
+    },
+    createdAt: stamp
+  });
+  return { run: requireRun(db, run.id), deadLetteredOutboxIds };
+}
+
 export function cancelProductionRun(input: {
   runId: string;
   expectedVersion: number;
@@ -4814,6 +5003,7 @@ export function cancelProductionRun(input: {
   run: ProductionRunRecord;
   canceledItemIds: string[];
   conflicts: Array<{ itemId: string; reason: string }>;
+  deadLetteredOutboxIds: string[];
 } {
   return runInTransaction((db) => {
     const run = requireRun(db, requiredText(input.runId, "runId", 64));
@@ -4821,17 +5011,26 @@ export function cancelProductionRun(input: {
       fail("stale_version", "Production run version is stale.", { expected: input.expectedVersion, actual: run.version });
     }
     if (run.status === "canceled" || run.status === "cancel_requested") {
-      return { run, canceledItemIds: [], conflicts: [] };
+      return { run, canceledItemIds: [], conflicts: [], deadLetteredOutboxIds: [] };
+    }
+    const reason = requiredText(input.reason, "reason", 1000);
+    const stamp = input.now ?? nowIso();
+    if (run.status === "blocked") {
+      const canceled = cancelBlockedTerminalShadowRunTx({ db, run, reason, stamp });
+      return {
+        run: canceled.run,
+        canceledItemIds: [],
+        conflicts: [],
+        deadLetteredOutboxIds: canceled.deadLetteredOutboxIds
+      };
     }
     if (!PRODUCTION_RUN_TRANSITIONS[run.status].includes("cancel_requested")) {
       fail("invalid_transition", `Production run in ${run.status} cannot accept cancellation.`);
     }
-    const reason = requiredText(input.reason, "reason", 1000);
     const items = (db.prepare("SELECT * FROM production_items WHERE run_id = ? ORDER BY channel_id, item_slot, generation")
       .all(run.id) as Row[]).map(mapItem);
     const canceledItemIds: string[] = [];
     const conflicts: Array<{ itemId: string; reason: string }> = [];
-    const stamp = input.now ?? nowIso();
     for (const item of items) {
       if (ITEM_COMPLETED_STATES.has(item.state) || item.state === "cancel_requested") continue;
       const publication = item.publicationId
@@ -4882,6 +5081,6 @@ export function cancelProductionRun(input: {
       workspaceId: run.workspaceId, runId: run.id, eventType: "production.run.cancel_requested",
       fromState: run.status, toState: "cancel_requested", payload: { reason, conflicts }, createdAt: stamp
     });
-    return { run: requireRun(db, run.id), canceledItemIds, conflicts };
+    return { run: requireRun(db, run.id), canceledItemIds, conflicts, deadLetteredOutboxIds: [] };
   });
 }

@@ -965,6 +965,82 @@ test("a current policy-blocked item closes its channel and run instead of deadlo
   });
 });
 
+test("owner cancellation closes a terminal non-public shadow run and durably dead-letters its pending work", async () => {
+  await withIsolatedAppData(async () => {
+    const seeded = await seedPortfolio();
+    const started = await startPortfolioProductionRun({
+      workspaceId: seeded.workspaceId,
+      profileIds: seeded.profiles.map((profile) => profile.id),
+      logicalDate: "2026-07-10",
+      mode: "shadow",
+      targetPerChannel: 1,
+      publishPolicyId: PROJECT_KINGS_PUBLISH_POLICY_ID
+    }, dependencies());
+    for (const item of started.items) {
+      transitionProductionItem({
+        itemId: item.id,
+        expectedVersion: item.version,
+        toState: "policy_blocked",
+        eventType: "test.policy_blocked_before_owner_cancel",
+        patch: { lastError: "terminal shadow quality block" }
+      });
+    }
+    const settled = reconcilePortfolioProductionRun({
+      runId: started.run.id,
+      leaseOwner: "terminal-shadow-owner-cancel"
+    });
+    assert.equal(settled.run.status, "blocked");
+    const pendingBefore = listProductionOutbox({ runId: started.run.id, status: "pending" });
+    assert.equal(pendingBefore.length, 3);
+    const attemptsBefore = new Map(pendingBefore.map((outbox) => [outbox.id, outbox.attempts]));
+    const candidatesBefore = getDb().prepare(`SELECT id, status, reserved_item_id
+      FROM channel_source_candidates ORDER BY id`).all();
+
+    const canceled = cancelProductionRun({
+      runId: settled.run.id,
+      expectedVersion: settled.run.version,
+      reason: "owner closes stale terminal shadow",
+      now: "2026-07-10T23:00:00.000Z"
+    });
+    assert.equal(canceled.run.status, "canceled");
+    assert.equal(canceled.run.completedAt, "2026-07-10T23:00:00.000Z");
+    assert.deepEqual(canceled.canceledItemIds, []);
+    assert.deepEqual(canceled.conflicts, []);
+    assert.deepEqual([...canceled.deadLetteredOutboxIds].sort(), pendingBefore.map((outbox) => outbox.id).sort());
+    assert.ok(listProductionItems({ runId: started.run.id, includeHistorical: true })
+      .every((item) => item.state === "policy_blocked"));
+    assert.ok(listProductionItems({ runId: started.run.id, includeHistorical: true })
+      .every((item) => !item.publicationId && !item.youtubeVideoId && !item.uploadSessionUrl));
+    const outboxAfter = listProductionOutbox({ runId: started.run.id });
+    for (const retiredId of canceled.deadLetteredOutboxIds) {
+      const outbox = outboxAfter.find((entry) => entry.id === retiredId)!;
+      assert.equal(outbox.status, "dead");
+      assert.equal(outbox.deadLetterCode, "owner_canceled_terminal_shadow");
+      assert.equal(outbox.projectedAt, "2026-07-10T23:00:00.000Z");
+      assert.equal(outbox.attempts, attemptsBefore.get(retiredId));
+    }
+    assert.deepEqual(getDb().prepare(`SELECT id, status, reserved_item_id
+      FROM channel_source_candidates ORDER BY id`).all(), candidatesBefore);
+    const ownerEvents = listProductionEvents({ runId: started.run.id }).filter((event) =>
+      event.eventType === "production.outbox.owner_canceled_terminal_shadow" ||
+      event.eventType === "production.run.owner_canceled_terminal_shadow"
+    );
+    assert.equal(ownerEvents.length, 4);
+
+    const repeated = cancelProductionRun({
+      runId: canceled.run.id,
+      expectedVersion: canceled.run.version,
+      reason: "idempotent owner replay"
+    });
+    assert.equal(repeated.run.status, "canceled");
+    assert.deepEqual(repeated.deadLetteredOutboxIds, []);
+    assert.equal(listProductionEvents({ runId: started.run.id }).filter((event) =>
+      event.eventType === "production.outbox.owner_canceled_terminal_shadow" ||
+      event.eventType === "production.run.owner_canceled_terminal_shadow"
+    ).length, ownerEvents.length);
+  });
+});
+
 test("simulation runs all nine items through public_verified with zero polling tokens", async () => {
   await withIsolatedAppData(async () => {
     const seeded = await seedPortfolio();
