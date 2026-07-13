@@ -285,25 +285,58 @@ async function extractQaFrames(input: {
   durationSec: number;
   prefix: string;
   count?: number;
+  sampleInsideDuration?: boolean;
 }): Promise<ProductionAgentArtifact[]> {
   const count = input.count ?? 9;
   const dir = path.join(artifactRoot(input.item), input.prefix);
   await fs.mkdir(dir, { recursive: true });
   const frames: ProductionAgentArtifact[] = [];
-  for (let index = 0; index < count; index += 1) {
-    const timestamp =
-      count === 1
-        ? Math.max(0, input.durationSec / 2)
-        : Math.max(0, (input.durationSec * index) / (count - 1) - (index === count - 1 ? 0.05 : 0));
-    const filePath = path.join(dir, `frame-${String(index + 1).padStart(2, "0")}.jpg`);
-    await execFileAsync(
-      "ffmpeg",
-      ["-y", "-ss", timestamp.toFixed(3), "-i", input.videoPath, "-frames:v", "1", "-q:v", "2", filePath],
-      { timeout: 30_000, maxBuffer: 4 * 1024 * 1024 }
-    );
-    frames.push(await imageArtifact(`${input.prefix}-frame-${index + 1}`, filePath));
+  const framePaths = Array.from({ length: count }, (_, index) =>
+    path.join(dir, `frame-${String(index + 1).padStart(2, "0")}.jpg`)
+  );
+  try {
+    for (let index = 0; index < count; index += 1) {
+      const timestamp = input.sampleInsideDuration
+        ? Math.max(0, (input.durationSec * (index + 0.5)) / count)
+        : count === 1
+          ? Math.max(0, input.durationSec / 2)
+          : Math.max(0, (input.durationSec * index) / (count - 1) - (index === count - 1 ? 0.05 : 0));
+      const filePath = framePaths[index];
+      await fs.rm(filePath, { force: true });
+      await execFileAsync(
+        "ffmpeg",
+        ["-y", "-ss", timestamp.toFixed(3), "-i", input.videoPath, "-frames:v", "1", "-q:v", "2", filePath],
+        { timeout: 30_000, maxBuffer: 4 * 1024 * 1024 }
+      );
+      const output = await fs.stat(filePath).catch(() => null);
+      if (!output?.isFile() || output.size === 0) {
+        throw new Error(
+          `Frame extraction produced no image at ${timestamp.toFixed(3)}s (${index + 1}/${count}).`
+        );
+      }
+      frames.push(await imageArtifact(`${input.prefix}-frame-${index + 1}`, filePath));
+    }
+    return frames;
+  } catch (error) {
+    await Promise.all(framePaths.map((filePath) => fs.rm(filePath, { force: true })));
+    throw error;
   }
-  return frames;
+}
+
+async function probeVideoStreamDurationSec(videoPath: string): Promise<number | null> {
+  const { stdout } = await execFileAsync(
+    "ffprobe",
+    [
+      "-v", "error",
+      "-select_streams", "v:0",
+      "-show_entries", "stream=duration",
+      "-of", "default=noprint_wrappers=1:nokey=1",
+      videoPath
+    ],
+    { timeout: 30_000, maxBuffer: 1024 * 1024 }
+  );
+  const durationSec = Number.parseFloat(stdout.trim());
+  return Number.isFinite(durationSec) && durationSec > 0 ? durationSec : null;
 }
 
 /**
@@ -339,12 +372,15 @@ export async function extractBoundSourceKeyFrames(input: {
         sourceProbe.decodeError ?? "Source frame fallback requires a fully decodable MP4 with a positive duration."
       );
     }
+    const videoDurationSec =
+      await probeVideoStreamDurationSec(snapshotPath) ?? sourceProbe.durationSec;
     frames = await extractQaFrames({
       item: input.item,
       videoPath: snapshotPath,
-      durationSec: sourceProbe.durationSec,
+      durationSec: videoDurationSec,
       prefix: "source-evidence-fallback",
-      count: input.count ?? 9
+      count: input.count ?? 9,
+      sampleInsideDuration: true
     });
     if (await sha256File(snapshotPath) !== input.item.sourceSha256) {
       await Promise.all(frames.map((frame) => fs.rm(frame.path, { force: true })));

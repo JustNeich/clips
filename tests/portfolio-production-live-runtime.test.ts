@@ -211,6 +211,33 @@ test("missing decomposition frames are extracted only from the exact hash-bound 
     assert.ok(frames.every((frame) =>
       frame.kind === "key_frame" && frame.mediaType === "image" && frame.sha256.length === 64
     ));
+
+    const audioTailPath = path.join(root, "source-with-audio-tail.mp4");
+    await execFileAsync("ffmpeg", [
+      "-y",
+      "-f", "lavfi", "-i", "color=c=green:s=360x640:d=1",
+      "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+      "-map", "0:v:0", "-map", "1:a:0",
+      "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
+      audioTailPath
+    ]);
+    const audioTailSha256 = createHash("sha256")
+      .update(await readFile(audioTailPath))
+      .digest("hex");
+    const audioTailProbe = await probeFinalProductionMp4(audioTailPath);
+    assert.ok((audioTailProbe.durationSec ?? 0) > 1.9);
+    const audioTailFrames = await extractBoundSourceKeyFrames({
+      item: {
+        ...item,
+        id: "item-live-runtime-audio-tail-test",
+        sourceSha256: audioTailSha256
+      },
+      videoPath: audioTailPath,
+      sourceProbe: audioTailProbe
+    });
+    assert.equal(audioTailFrames.length, 9);
+    assert.ok(audioTailFrames.every((frame) => frame.sha256.length === 64));
+
     await assert.rejects(
       () => extractBoundSourceKeyFrames({
         item: { ...item, sourceSha256: "f".repeat(64) },
