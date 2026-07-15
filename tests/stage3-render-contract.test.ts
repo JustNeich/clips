@@ -593,6 +593,38 @@ test("server render plan preserves whole-window selection for local worker rende
   assert.equal(session.output.totalOutputDurationSec, 6);
 });
 
+test("explicit final duration preserves a fractional strict target instead of expanding to full source", () => {
+  const renderPlan = normalizeServerRenderPlan(
+    {
+      targetDurationSec: 9.25,
+      durationMode: "explicit_final",
+      normalizeToTargetEnabled: true,
+      policy: "fixed_segments",
+      editorSelectionMode: "window",
+      segments: [{ startSec: 2, endSec: 11.25, speed: 1, label: "Strict window" }]
+    },
+    42,
+    STAGE3_TEMPLATE_ID,
+    undefined
+  );
+  assert.equal(renderPlan.targetDurationSec, 9.25);
+  assert.equal(renderPlan.durationMode, "explicit_final");
+
+  const session = buildStage3EditorSession({
+    rawSegments: renderPlan.segments,
+    selectionMode: renderPlan.editorSelectionMode,
+    legacyRenderPolicy: renderPlan.policy,
+    legacyNormalizeToTargetEnabled: renderPlan.normalizeToTargetEnabled,
+    durationMode: renderPlan.durationMode,
+    clipStartSec: 2,
+    clipDurationSec: renderPlan.targetDurationSec,
+    targetDurationSec: renderPlan.targetDurationSec,
+    sourceDurationSec: 42
+  });
+  assert.equal(session.output.targetDurationSec, 9.25);
+  assert.equal(session.output.totalOutputDurationSec, 9.25);
+});
+
 test("preview segment extraction keeps the fast seek path for editor responsiveness", () => {
   assert.equal(resolveStage3SegmentExtractionMode("preview"), "fast");
   const args = buildStage3ExtractSegmentFfmpegArgs({

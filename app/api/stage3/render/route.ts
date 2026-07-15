@@ -23,6 +23,17 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const auth = await requireAuth(request);
+    if (body?.strictAgentRender === true) {
+      return Response.json(
+        {
+          status: "blocked",
+          error: "strict_agent_render_owner_route_required",
+          code: "strict_agent_render_owner_route_required",
+          ownerTool: "clips_owner_render_video"
+        },
+        { status: 400 }
+      );
+    }
     const channelId = body?.channelId?.trim() ?? "";
     if (!channelId) {
       return Response.json({ error: "Передайте channelId в теле запроса." }, { status: 400 });

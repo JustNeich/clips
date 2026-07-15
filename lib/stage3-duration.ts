@@ -4,7 +4,7 @@ export const MAX_STAGE3_CLIP_DURATION_SEC = 59;
 export const MIN_STAGE3_SOURCE_FULL_DURATION_SEC = 0.5;
 export const MAX_STAGE3_SOURCE_FULL_DURATION_SEC = 180;
 
-export type Stage3DurationMode = "channel_default" | "source_full";
+export type Stage3DurationMode = "channel_default" | "source_full" | "explicit_final";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -15,6 +15,9 @@ function roundToThousandth(value: number): number {
 }
 
 export function normalizeStage3DurationMode(value: unknown): Stage3DurationMode {
+  if (value === "explicit_final") {
+    return "explicit_final";
+  }
   return value === "source_full" ? "source_full" : "channel_default";
 }
 
@@ -67,6 +70,9 @@ export function resolveStage3OutputDurationSec(params: {
       params.sourceDurationSec ?? params.targetDurationSec,
       fallback
     );
+  }
+  if (mode === "explicit_final") {
+    return normalizeStage3SourceFullDurationSec(params.targetDurationSec, fallback);
   }
   return normalizeStage3ClipDurationSec(params.targetDurationSec, fallback);
 }

@@ -42,17 +42,15 @@ export async function POST(request: Request): Promise<Response> {
         workspaceId: auth.workspaceId,
         userId: auth.userId
       });
-      const failedQueuedJobs =
-        readiness.compatibleOnlineWorkers === 0
-          ? failQueuedLocalStage3JobsForWorkerUpdateRequired({
-              workspaceId: auth.workspaceId,
-              userId: auth.userId,
-              supportedKinds: body?.supportedKinds,
-              workerId: auth.worker.id,
-              workerAppVersion,
-              expectedRuntimeVersion
-            })
-          : 0;
+      const failedQueuedJobs = failQueuedLocalStage3JobsForWorkerUpdateRequired({
+        workspaceId: auth.workspaceId,
+        userId: auth.userId,
+        supportedKinds: body?.supportedKinds,
+        workerId: auth.worker.id,
+        includeUnpinned: readiness.compatibleOnlineWorkers === 0,
+        workerAppVersion,
+        expectedRuntimeVersion
+      });
       const expected = expectedRuntimeVersion || "latest";
       return Response.json(
         {

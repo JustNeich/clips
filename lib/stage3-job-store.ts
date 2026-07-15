@@ -10,6 +10,10 @@ import { getDb, newId, nowIso, runInTransaction } from "./db/client";
 import { tryAppendFlowAuditEvent } from "./audit-log-store";
 import { STAGE3_WORKER_ONLINE_WINDOW_MS } from "./stage3-worker-availability";
 import {
+  getExpectedStage3WorkerRuntimeVersionSync,
+  isStage3WorkerRuntimeVersionCompatible
+} from "./stage3-worker-runtime-manifest";
+import {
   resolveStage3HostJobTimeoutMs as resolveStage3HostPolicyTimeoutMs,
   resolveStage3WorkerJobTimeoutMs
 } from "./stage3-worker-job-timeout";
@@ -115,6 +119,7 @@ type FailQueuedLocalJobsForWorkerUpdateInput = {
   userId: string;
   supportedKinds?: Stage3JobKind[] | null;
   workerId?: string | null;
+  includeUnpinned?: boolean;
   workerAppVersion?: string | null;
   expectedRuntimeVersion?: string | null;
 };
@@ -325,21 +330,26 @@ function parseStage3JobPayload(payloadJson: string): {
   chatId: string | null;
   channelId: string | null;
   sourceUrl: string | null;
+  strictAgentRender: boolean;
 } {
   try {
     const parsed = JSON.parse(payloadJson) as Record<string, unknown>;
     return {
       chatId: typeof parsed.chatId === "string" && parsed.chatId.trim() ? parsed.chatId.trim() : null,
       channelId: typeof parsed.channelId === "string" && parsed.channelId.trim() ? parsed.channelId.trim() : null,
-      sourceUrl: typeof parsed.sourceUrl === "string" && parsed.sourceUrl.trim() ? parsed.sourceUrl.trim() : null
+      sourceUrl: typeof parsed.sourceUrl === "string" && parsed.sourceUrl.trim() ? parsed.sourceUrl.trim() : null,
+      strictAgentRender: parsed.strictAgentRender === true
     };
   } catch {
-    return { chatId: null, channelId: null, sourceUrl: null };
+    return { chatId: null, channelId: null, sourceUrl: null, strictAgentRender: false };
   }
 }
 
 function buildQueuedMediaSupersessionKey(row: Pick<JobRow, "workspace_id" | "user_id" | "payload_json">): string | null {
   const payload = parseStage3JobPayload(row.payload_json);
+  if (payload.strictAgentRender) {
+    return null;
+  }
   const renderSource = payload.chatId ? `chat:${payload.chatId}` : payload.sourceUrl ? `source:${payload.sourceUrl}` : null;
   if (!renderSource) {
     return null;
@@ -771,6 +781,7 @@ function failQueuedLocalJobsWithoutOnlineWorkerInternal(db: ReturnType<typeof ge
   const minQueuedGraceMs = Math.min(...Object.values(LOCAL_STAGE3_QUEUED_WORKER_UNAVAILABLE_GRACE_MS_BY_KIND));
   const queuedCutoff = new Date(nowMs - minQueuedGraceMs).toISOString();
   const workerOnlineCutoff = new Date(nowMs - STAGE3_WORKER_ONLINE_WINDOW_MS).toISOString();
+  const expectedRuntimeVersion = getExpectedStage3WorkerRuntimeVersionSync();
   const rows = db
     .prepare(
       `SELECT q.*
@@ -778,26 +789,9 @@ function failQueuedLocalJobsWithoutOnlineWorkerInternal(db: ReturnType<typeof ge
         WHERE q.execution_target = 'local'
           AND q.status = 'queued'
           AND q.updated_at <= ?
-          AND NOT EXISTS (
-            SELECT 1
-              FROM stage3_jobs running
-             WHERE running.execution_target = 'local'
-               AND running.status = 'running'
-               AND running.workspace_id = q.workspace_id
-               AND running.user_id = q.user_id
-          )
-          AND NOT EXISTS (
-            SELECT 1
-              FROM stage3_workers worker
-             WHERE worker.workspace_id = q.workspace_id
-               AND worker.user_id = q.user_id
-               AND worker.revoked_at IS NULL
-               AND worker.last_seen_at IS NOT NULL
-               AND worker.last_seen_at > ?
-          )
         ORDER BY q.updated_at ASC, q.created_at ASC`
     )
-    .all(queuedCutoff, workerOnlineCutoff) as JobRow[];
+    .all(queuedCutoff) as JobRow[];
 
   if (!rows.length) {
     return 0;
@@ -818,12 +812,49 @@ function failQueuedLocalJobsWithoutOnlineWorkerInternal(db: ReturnType<typeof ge
         AND execution_target = 'local'
         AND status = 'queued'`
   );
+  const readEligibleWorkers = db.prepare(
+    `SELECT DISTINCT worker.id, worker.app_version
+       FROM stage3_workers worker
+      WHERE worker.workspace_id = ?
+        AND worker.user_id = ?
+        AND worker.revoked_at IS NULL
+        AND (? IS NULL OR worker.id = ?)
+        AND (
+          (worker.last_seen_at IS NOT NULL AND worker.last_seen_at > ?)
+          OR EXISTS (
+            SELECT 1
+              FROM stage3_jobs running
+             WHERE running.execution_target = 'local'
+               AND running.status = 'running'
+               AND running.workspace_id = worker.workspace_id
+               AND running.user_id = worker.user_id
+               AND running.assigned_worker_id = worker.id
+          )
+        )`
+  );
   let failed = 0;
   for (const row of rows) {
     const kind = normalizeJobKind(String(row.kind));
     const queuedGraceMs = resolveStage3QueuedWorkerUnavailableGraceMs(kind);
     const queuedSinceMs = Date.parse(row.updated_at);
     if (!Number.isFinite(queuedSinceMs) || nowMs - queuedSinceMs < queuedGraceMs) {
+      continue;
+    }
+    const requiredWorkerId = row.required_worker_id ? String(row.required_worker_id) : null;
+    const eligibleWorkers = readEligibleWorkers.all(
+      row.workspace_id,
+      row.user_id,
+      requiredWorkerId,
+      requiredWorkerId,
+      workerOnlineCutoff
+    ) as Array<{ id: string; app_version: string | null }>;
+    const hasCompatibleWorker = eligibleWorkers.some((worker) =>
+      isStage3WorkerRuntimeVersionCompatible({
+        workerAppVersion: worker.app_version,
+        expectedRuntimeVersion
+      })
+    );
+    if (hasCompatibleWorker) {
       continue;
     }
     const waitedSec = Math.round(queuedGraceMs / 1000);
@@ -841,7 +872,9 @@ function failQueuedLocalJobsWithoutOnlineWorkerInternal(db: ReturnType<typeof ge
       kind,
       queuedSince: row.updated_at,
       queuedGraceMs,
-      workerOnlineWindowMs: STAGE3_WORKER_ONLINE_WINDOW_MS
+      workerOnlineWindowMs: STAGE3_WORKER_ONLINE_WINDOW_MS,
+      requiredWorkerId,
+      expectedRuntimeVersion
     });
     const updated = mapJobRow(readJobRow(String(row.id)));
     if (updated) {
@@ -1148,6 +1181,10 @@ export function failQueuedLocalStage3JobsForWorkerUpdateRequired(
     `Локальный executor устарел (worker: ${workerAppVersion}, требуется: ${expectedRuntimeVersion}). ` +
     "Обновите/перезапустите worker через bootstrap и повторите Stage 3 render.";
   const failedJobs = runInTransaction((db) => {
+    const requiredWorkerPredicate =
+      input.includeUnpinned === false
+        ? "required_worker_id = ?"
+        : "(required_worker_id IS NULL OR required_worker_id = ?)";
     const query = kinds
       ? `SELECT *
            FROM stage3_jobs
@@ -1155,7 +1192,7 @@ export function failQueuedLocalStage3JobsForWorkerUpdateRequired(
             AND workspace_id = ?
             AND user_id = ?
             AND status = 'queued'
-            AND (required_worker_id IS NULL OR required_worker_id = ?)
+            AND ${requiredWorkerPredicate}
             AND kind IN (${kinds.map(() => "?").join(", ")})
           ORDER BY created_at ASC`
       : `SELECT *
@@ -1164,7 +1201,7 @@ export function failQueuedLocalStage3JobsForWorkerUpdateRequired(
             AND workspace_id = ?
             AND user_id = ?
             AND status = 'queued'
-            AND (required_worker_id IS NULL OR required_worker_id = ?)
+            AND ${requiredWorkerPredicate}
           ORDER BY created_at ASC`;
     const params = kinds
       ? [input.workspaceId, userId, input.workerId?.trim() || "", ...kinds]

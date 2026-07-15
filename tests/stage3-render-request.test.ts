@@ -125,3 +125,30 @@ test("Stage 3 render and preview dedupe keys isolate worker pins", async () => {
   assert.notEqual(genericPreview, macPreview);
   assert.notEqual(macPreview, zoroPreview);
 });
+
+test("strict render dedupe identity includes strict mode and declared source duration", () => {
+  const base = {
+    sourceUrl: "https://www.instagram.com/reel/strict-dedupe/",
+    channelId: "c1",
+    requiredWorkerId: "mac",
+    snapshot: {
+      clipDurationSec: 9.25,
+      renderPlan: {
+        targetDurationSec: 9.25,
+        durationMode: "explicit_final",
+        segments: [{ startSec: 2, endSec: 11.25, speed: 1 }]
+      }
+    }
+  };
+  const generic = buildStage3RenderRequestDedupeKey(base, { workspaceId: "w1", userId: "u1" });
+  const strict42 = buildStage3RenderRequestDedupeKey(
+    { ...base, strictAgentRender: true, sourceDurationSec: 42 },
+    { workspaceId: "w1", userId: "u1" }
+  );
+  const strict43 = buildStage3RenderRequestDedupeKey(
+    { ...base, strictAgentRender: true, sourceDurationSec: 43 },
+    { workspaceId: "w1", userId: "u1" }
+  );
+  assert.notEqual(generic, strict42);
+  assert.notEqual(strict42, strict43);
+});

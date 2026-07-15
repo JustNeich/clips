@@ -144,6 +144,8 @@ channel identity; effective format, constraints, duration, and asset ids; the
 active template semantics/config/hash/assets; the exact worker host/status/build;
 channel-only publication counts; and at most the requested approved montage
 geometries. It does not include channel prompts, examples, or the Stage 2 corpus.
+The serialized response is bounded below 30,000 characters; oversized template
+descriptions, shadows, and montage geometry are compacted deterministically.
 The wider admin tools remain available for owner administration, but are not the
 video-task read surface.
 
@@ -156,13 +158,16 @@ offline, or runtime-incompatible required workers return a blocked response
 before enqueue. A compatible busy worker is still live and may accept a pinned
 job into its queue. The worker pin is persisted in the job and in render/preview
 dedupe identity; another worker cannot claim or reuse it. Generic non-strict
-owner renders retain their existing compatibility behavior.
+owner renders retain their existing compatibility behavior. The explicit final
+clip duration is authoritative for the render plan, including millisecond
+fractions. Direct interactive `/api/stage3/render` routes reject
+`strictAgentRender: true`; the owner MCP tool is the only strict entry point.
 Queued owner render and preview requests return HTTP 202; an already-completed
 deduplicated result returns HTTP 200.
 
 Managed templates report their active channel bindings. An in-place update is
-blocked when a template is bound to more than one active channel; create and bind
-a dedicated template first. Disabling one channel's `autoQueueEnabled` is
+blocked when a template is bound to more than one channel, including archived
+bindings; create and bind a dedicated template first. Disabling one channel's `autoQueueEnabled` is
 channel-specific and does not wake the global publication processor.
 
 ## Git and Render Deploy Access

@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { promises as fs, readFileSync } from "node:fs";
 import { getStage3WorkerRuntimeManifestPath } from "./stage3-worker-runtime-files";
 
 type Stage3WorkerPublicManifest = {
@@ -80,6 +80,15 @@ async function readManifestFromDisk(): Promise<Stage3WorkerPublicManifest | null
   }
 }
 
+function readManifestFromDiskSync(): Stage3WorkerPublicManifest | null {
+  try {
+    const raw = readFileSync(getStage3WorkerRuntimeManifestPath(), "utf-8");
+    return JSON.parse(raw) as Stage3WorkerPublicManifest;
+  } catch {
+    return null;
+  }
+}
+
 export async function readStage3WorkerPublicManifest(): Promise<Stage3WorkerPublicManifest | null> {
   if (manifestCache && Date.now() - manifestCache.loadedAtMs < MANIFEST_CACHE_TTL_MS) {
     return manifestCache.manifest;
@@ -94,6 +103,15 @@ export async function readStage3WorkerPublicManifest(): Promise<Stage3WorkerPubl
 
 export async function getExpectedStage3WorkerRuntimeVersion(): Promise<string | null> {
   const manifest = await readStage3WorkerPublicManifest();
+  return (
+    normalizeRuntimeVersion(manifest?.runtimeVersion) ??
+    normalizeRuntimeVersion(manifest?.version) ??
+    null
+  );
+}
+
+export function getExpectedStage3WorkerRuntimeVersionSync(): string | null {
+  const manifest = readManifestFromDiskSync();
   return (
     normalizeRuntimeVersion(manifest?.runtimeVersion) ??
     normalizeRuntimeVersion(manifest?.version) ??

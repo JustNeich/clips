@@ -2,8 +2,10 @@ import { createHash } from "node:crypto";
 
 export type Stage3RenderRequestDedupeInput = {
   requiredWorkerId?: string;
+  strictAgentRender?: boolean;
   requestId?: string;
   sourceUrl?: string;
+  sourceDurationSec?: number;
   channelId?: string;
   chatId?: string;
   publishAfterRender?: boolean;
@@ -63,6 +65,8 @@ function buildContentFingerprint(body: Stage3RenderRequestDedupeInput): string |
   }
   const payload = {
     requiredWorkerId: cleanString(body.requiredWorkerId),
+    strictAgentRender: body.strictAgentRender === true,
+    sourceDurationSec: cleanNumber(body.sourceDurationSec),
     sourceUrl,
     chatId,
     channelId: cleanString(body.channelId),

@@ -6,6 +6,8 @@ import test from "node:test";
 
 import { GET as getAdminFlows } from "../app/api/admin/flows/route";
 import { POST as ownerControlRoute } from "../app/api/admin/control/route";
+import { POST as postStage3Render } from "../app/api/stage3/render/route";
+import { POST as postStage3RenderJob } from "../app/api/stage3/render/jobs/route";
 import {
   appendChatEvent,
   createChannel,
@@ -1235,7 +1237,7 @@ test("owner control enforces machine scopes and destructive intent", async () =>
 
 test("compact video task context stays channel-specific and excludes prompt corpora", async () => {
   await withIsolatedAppData(async (appDataDir) => {
-    const { owner, channel } = await seedOwnerControl(appDataDir);
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
     const stamp = nowIso();
     const workerId = "macbook-context-worker";
     getDb().prepare(
@@ -1243,11 +1245,65 @@ test("compact video task context stays channel-specific and excludes prompt corp
         (id, workspace_id, user_id, label, platform, hostname, app_version, capabilities_json, last_seen_at, revoked_at, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?)`
     ).run(workerId, owner.workspace.id, owner.user.id, "MacBook", "darwin-arm64", "macbook", "test-build", stamp, stamp, stamp);
-    const machine = createMcpMachineCredential({ workspaceId: owner.workspace.id, ownerUserId: owner.user.id, machineId: "video-context-agent", scopes: ["flow:read"] });
+    const machine = createMcpMachineCredential({ workspaceId: owner.workspace.id, ownerUserId: owner.user.id, machineId: "video-context-agent", scopes: ["flow:read", "entity:write"] });
+    const createTemplate = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_create_template",
+      input: {
+        name: "Oversized compact fixture",
+        description: "D".repeat(100_000),
+        shadowLayers: Array.from({ length: 1_000 }, (_, index) => ({
+          id: `shadow-${index}-${"x".repeat(200)}`,
+          offsetX: index,
+          offsetY: index,
+          blur: 4,
+          spread: 1,
+          opacity: 0.5,
+          color: "#000000",
+          inset: false
+        }))
+      }
+    });
+    assert.equal(createTemplate.status, 200);
+    const createdTemplate = (await createTemplate.json()) as { template: { id: string } };
+    const bindTemplate = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_update_channel",
+      input: { channelId: channel.id, templateId: createdTemplate.template.id }
+    });
+    assert.equal(bindTemplate.status, 200);
+    const hugeArtifactPath = path.join(appDataDir, "huge-approved.mp4");
+    await writeFile(hugeArtifactPath, "video");
+    const hugeJob = enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "render",
+      payloadJson: JSON.stringify({ chatId: chat.id, channelId: channel.id })
+    });
+    createRenderExport({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      chatId: chat.id,
+      stage3JobId: hugeJob.id,
+      artifactFileName: "huge-approved.mp4",
+      artifactFilePath: hugeArtifactPath,
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 5,
+      renderTitle: "Huge approved geometry",
+      sourceUrl: chat.url,
+      snapshotJson: JSON.stringify({
+        renderPlan: {
+          templateId: createdTemplate.template.id,
+          segments: Array.from({ length: 4_000 }, (_, index) => ({ startSec: index, endSec: index + 0.5, speed: 1, label: "S".repeat(500) })),
+          watermarkBlurs: Array.from({ length: 4_000 }, () => ({ x: 0, y: 0, width: 1, height: 1, note: "W".repeat(500) }))
+        },
+        zoroKingApproval: { status: "approved", judgeVerdict: "approved", innerVideoOnly: true, donorWrapperVisible: false, approvedAt: stamp }
+      }),
+      createdByUserId: owner.user.id
+    });
     const response = await postOwnerControl(machine.secret, { tool: "clips_owner_get_video_task_context", input: { channelId: channel.id, requiredWorkerId: workerId, approvedMontageLimit: 3 } });
     assert.equal(response.status, 200);
     const text = await response.text();
     assert.ok(text.length < 40_000, `compact context was ${text.length} chars`);
+    assert.ok(text.length < 30_000, `compact context missed target at ${text.length} chars`);
     const context = JSON.parse(text) as { channel: Record<string, unknown>; production: { formatPipeline: string }; requiredWorker: { id: string; hostname: string }; publications: { total: number }; approvedMontageGeometries: unknown[] };
     assert.deepEqual(Object.keys(context.channel).sort(), ["id", "name", "username"]);
     assert.match(context.production.formatPipeline, /^(classic_top_bottom|story_lead_main_caption)$/);
@@ -1269,7 +1325,8 @@ test("shared managed templates are immutable in place while dedicated templates 
     const createShared = await postOwnerControl(machine.secret, { tool: "clips_owner_create_template", input: { name: "Shared" } });
     const shared = (await createShared.json()) as { template: { id: string } };
     await createChannel({ workspaceId: owner.workspace.id, creatorUserId: owner.user.id, name: "Shared A", username: "shared-a", templateId: shared.template.id });
-    await createChannel({ workspaceId: owner.workspace.id, creatorUserId: owner.user.id, name: "Shared B", username: "shared-b", templateId: shared.template.id });
+    const archivedBinding = await createChannel({ workspaceId: owner.workspace.id, creatorUserId: owner.user.id, name: "Shared Archived", username: "shared-archived", templateId: shared.template.id });
+    getDb().prepare("UPDATE channels SET archived_at = ?, updated_at = ? WHERE id = ?").run(nowIso(), nowIso(), archivedBinding.id);
     const blocked = await postOwnerControl(machine.secret, { tool: "clips_owner_update_template", input: { templateId: shared.template.id, name: "Must clone" } });
     assert.equal(blocked.status, 409);
     assert.equal(((await blocked.json()) as { code: string }).code, "shared_template_mutation_requires_clone");
@@ -1300,16 +1357,106 @@ test("strict agent render is pinned, local-only, and preserves explicit final du
     assert.equal(Number((getDb().prepare("SELECT COUNT(*) AS count FROM stage3_jobs").get() as { count: number }).count), before);
     const publishBlocked = await postOwnerControl(machine.secret, { tool: "clips_owner_render_video", input: { channelId: channel.id, chatId: chat.id, strictAgentRender: true, requiredWorkerId: workerId, sourceDurationSec: 42, publishAfterRender: true, snapshot: { clipDurationSec: 9.25, renderPlan: { segments: [{ startSec: 2, endSec: 11.25, speed: 1 }] } } } });
     assert.equal(publishBlocked.status, 400);
+    const generic = await postOwnerControl(machine.secret, { tool: "clips_owner_render_video", input: { channelId: channel.id, chatId: chat.id, requiredWorkerId: workerId, sourceDurationSec: 42, publishAfterRender: false, snapshot: { clipDurationSec: 9.25, renderPlan: { segments: [{ startSec: 2, endSec: 11.25, speed: 1 }] } } } });
+    assert.equal(generic.status, 202);
+    const genericBody = (await generic.json()) as { job: { id: string } };
     const accepted = await postOwnerControl(machine.secret, { tool: "clips_owner_render_video", input: { channelId: channel.id, chatId: chat.id, strictAgentRender: true, requiredWorkerId: workerId, sourceDurationSec: 42, publishAfterRender: false, snapshot: { clipDurationSec: 9.25, renderPlan: { segments: [{ startSec: 2, endSec: 11.25, speed: 1 }] } } } });
     assert.equal(accepted.status, 202, JSON.stringify(await accepted.clone().json().catch(() => null)));
     const body = (await accepted.json()) as { job: { id: string } };
+    assert.notEqual(body.job.id, genericBody.job.id);
     const job = getStage3Job(body.job.id);
     assert.equal(job?.requiredWorkerId, workerId);
-    const payload = JSON.parse(job?.payloadJson ?? "{}") as { publishAfterRender?: boolean; snapshot?: { clipDurationSec?: number } };
+    const payload = JSON.parse(job?.payloadJson ?? "{}") as {
+      publishAfterRender?: boolean;
+      snapshot?: {
+        clipDurationSec?: number;
+        renderPlan?: {
+          targetDurationSec?: number;
+          durationMode?: string;
+          normalizeToTargetEnabled?: boolean;
+          policy?: string;
+        };
+      };
+    };
     assert.equal(payload.publishAfterRender, false);
     assert.equal(payload.snapshot?.clipDurationSec, 9.25);
+    assert.equal(payload.snapshot?.renderPlan?.targetDurationSec, 9.25);
+    assert.equal(payload.snapshot?.renderPlan?.durationMode, "explicit_final");
+    assert.equal(payload.snapshot?.renderPlan?.normalizeToTargetEnabled, true);
+    assert.equal(payload.snapshot?.renderPlan?.policy, "fixed_segments");
   });
 });
+
+for (const [routeName, postRender] of [
+  ["render", postStage3Render],
+  ["render/jobs", postStage3RenderJob]
+] as const) {
+  test(`${routeName} rejects owner-only strict renders without changing generic renders`, async () => {
+    await withIsolatedAppData(async (appDataDir) => {
+      const previousAllowHost = process.env.STAGE3_ALLOW_HOST_EXECUTION;
+      process.env.STAGE3_ALLOW_HOST_EXECUTION = "1";
+      try {
+        const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+        updateWorkspaceStage3ExecutionTarget(owner.workspace.id, "host");
+        const headers = {
+          cookie: `clips_session=${owner.sessionToken}`,
+          "Content-Type": "application/json"
+        };
+        const before = Number(
+          (getDb().prepare("SELECT COUNT(*) AS count FROM stage3_jobs").get() as { count: number }).count
+        );
+        for (const strictBody of [
+          { strictAgentRender: true, channelId: channel.id, sourceUrl: chat.url },
+          {
+            strictAgentRender: true,
+            publishAfterRender: true,
+            channelId: channel.id,
+            sourceUrl: chat.url,
+            requiredWorkerId: "worker-1",
+            sourceDurationSec: 42,
+            clipDurationSec: 9.25,
+            snapshot: { renderPlan: { segments: [{ startSec: 0, endSec: 9.25 }] } }
+          }
+        ]) {
+          const rejected = await postRender(
+            new Request(`http://localhost/api/stage3/${routeName}`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify(strictBody)
+            })
+          );
+          const body = (await rejected.json()) as { code?: string; ownerTool?: string };
+          assert.equal(rejected.status, 400);
+          assert.equal(body.code, "strict_agent_render_owner_route_required");
+          assert.equal(body.ownerTool, "clips_owner_render_video");
+        }
+        assert.equal(
+          Number((getDb().prepare("SELECT COUNT(*) AS count FROM stage3_jobs").get() as { count: number }).count),
+          before
+        );
+
+        const generic = await postRender(
+          new Request(`http://localhost/api/stage3/${routeName}`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ strictAgentRender: false, channelId: channel.id, sourceUrl: chat.url })
+          })
+        );
+        assert.equal(generic.status, 202);
+        assert.equal(
+          Number((getDb().prepare("SELECT COUNT(*) AS count FROM stage3_jobs").get() as { count: number }).count),
+          before + 1
+        );
+      } finally {
+        if (previousAllowHost === undefined) {
+          delete process.env.STAGE3_ALLOW_HOST_EXECUTION;
+        } else {
+          process.env.STAGE3_ALLOW_HOST_EXECUTION = previousAllowHost;
+        }
+      }
+    });
+  });
+}
 
 test("offline required worker is rejected before strict render enqueue", async () => {
   await withIsolatedAppData(async (appDataDir) => {

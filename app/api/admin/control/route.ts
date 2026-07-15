@@ -107,6 +107,8 @@ import { findLatestStage2Event } from "../../../../lib/chat-workflow";
 import { buildDefaultStage3RenderSnapshot } from "../../../../lib/stage3-default-snapshot";
 import { CHANNEL_STORY_TEMPLATE_ID } from "../../../../lib/stage3-template";
 import type { Stage3RenderPlan, Stage3StateSnapshot } from "../../../../app/components/types";
+import { normalizeStage3RenderPlanSegments } from "../../../../lib/stage3-render-plan";
+import { normalizeStage3SourceFullDurationSec } from "../../../../lib/stage3-duration";
 
 export const runtime = "nodejs";
 
@@ -238,6 +240,63 @@ function mergeStage3SnapshotPatch(
     captionHighlights: patch.captionHighlights ?? base.captionHighlights,
     templateSnapshot: textAffectingPatch ? patch.templateSnapshot : patch.templateSnapshot ?? base.templateSnapshot,
     textFit: textAffectingPatch ? patch.textFit : patch.textFit ?? base.textFit
+  };
+}
+
+function normalizeStrictAgentRenderSnapshot(
+  snapshot: Stage3SnapshotPatch,
+  sourceDurationSec: number
+): Stage3SnapshotPatch {
+  const clipDurationSec = Number(snapshot.clipDurationSec);
+  const normalizedDurationSec = normalizeStage3SourceFullDurationSec(clipDurationSec);
+  if (!Number.isFinite(clipDurationSec) || Math.abs(normalizedDurationSec - clipDurationSec) > 0.0001) {
+    throw new Response(
+      JSON.stringify({
+        status: "blocked",
+        error: "agent_render_clip_duration_invalid",
+        code: "agent_render_clip_duration_invalid",
+        message: "Strict final duration must be between 0.5 and 180 seconds with at most millisecond precision."
+      }),
+      { status: 400, headers: { "content-type": "application/json" } }
+    );
+  }
+  const rawSegments = snapshot.renderPlan?.segments;
+  const segments = normalizeStage3RenderPlanSegments(rawSegments);
+  const invalidSegments =
+    !Array.isArray(rawSegments) ||
+    segments.length !== rawSegments.length ||
+    segments.some(
+      (segment) =>
+        segment.startSec < 0 ||
+        segment.endSec === null ||
+        segment.endSec <= segment.startSec ||
+        segment.endSec > sourceDurationSec
+    );
+  if (invalidSegments) {
+    throw new Response(
+      JSON.stringify({
+        status: "blocked",
+        error: "agent_render_segments_invalid",
+        code: "agent_render_segments_invalid",
+        message: "Strict render segments must be valid, bounded intervals inside the declared source duration."
+      }),
+      { status: 400, headers: { "content-type": "application/json" } }
+    );
+  }
+  return {
+    ...snapshot,
+    sourceDurationSec,
+    clipDurationSec: normalizedDurationSec,
+    renderPlan: {
+      ...snapshot.renderPlan,
+      targetDurationSec: normalizedDurationSec,
+      durationMode: "explicit_final",
+      timingMode: "auto",
+      normalizeToTargetEnabled: true,
+      policy: "fixed_segments",
+      editorSelectionMode: segments.length > 1 ? "fragments" : "window",
+      segments
+    }
   };
 }
 
@@ -402,7 +461,7 @@ function getTemplateBindings(workspaceId: string, templateId: string) {
   const channels = getDb()
     .prepare(
       `SELECT id, name, username FROM channels
-        WHERE workspace_id = ? AND template_id = ? AND archived_at IS NULL
+        WHERE workspace_id = ? AND template_id = ?
         ORDER BY name ASC, id ASC`
     )
     .all(workspaceId, templateId) as Array<{ id: string; name: string; username: string }>;
@@ -426,6 +485,66 @@ function compactTemplateAsset(value: string | null | undefined) {
     bytes: Buffer.byteLength(value, "utf8"),
     sha256: createHash("sha256").update(value).digest("hex")
   };
+}
+
+const VIDEO_TASK_CONTEXT_TARGET_CHARS = 30_000;
+const VIDEO_TASK_FORBIDDEN_KEY = /(prompt|examples|internalPromptNotes)/i;
+
+function compactBoundedValue(value: unknown, maxChars: number): unknown {
+  const visit = (candidate: unknown, depth: number): unknown => {
+    if (candidate === null || typeof candidate === "boolean" || typeof candidate === "number") {
+      return candidate;
+    }
+    if (typeof candidate === "string") {
+      return candidate.length <= 256 ? candidate : `${candidate.slice(0, 253)}...`;
+    }
+    if (depth >= 5) {
+      return "[depth-truncated]";
+    }
+    if (Array.isArray(candidate)) {
+      return candidate.slice(0, 12).map((item) => visit(item, depth + 1));
+    }
+    if (!candidate || typeof candidate !== "object") {
+      return null;
+    }
+    const entries = Object.entries(candidate as Record<string, unknown>)
+      .filter(([key]) => !VIDEO_TASK_FORBIDDEN_KEY.test(key))
+      .sort(([left], [right]) => left.localeCompare(right))
+      .slice(0, 48);
+    return Object.fromEntries(entries.map(([key, item]) => [key, visit(item, depth + 1)]));
+  };
+  const compact = visit(value, 0);
+  if (JSON.stringify(compact).length <= maxChars) {
+    return compact;
+  }
+  const serialized = JSON.stringify(value);
+  return {
+    truncated: true,
+    sha256: createHash("sha256").update(serialized).digest("hex"),
+    topLevelKeys:
+      value && typeof value === "object" && !Array.isArray(value)
+        ? Object.keys(value as Record<string, unknown>)
+            .filter((key) => !VIDEO_TASK_FORBIDDEN_KEY.test(key))
+            .sort()
+            .slice(0, 32)
+        : []
+  };
+}
+
+function enforceVideoTaskContextSize<T extends {
+  template: unknown;
+  approvedMontageGeometries: unknown[];
+}>(context: T): T {
+  while (
+    context.approvedMontageGeometries.length > 0 &&
+    JSON.stringify(context).length >= VIDEO_TASK_CONTEXT_TARGET_CHARS
+  ) {
+    context.approvedMontageGeometries.pop();
+  }
+  if (JSON.stringify(context).length >= VIDEO_TASK_CONTEXT_TARGET_CHARS) {
+    context.template = compactBoundedValue(context.template, 8_000);
+  }
+  return context;
 }
 
 async function resolveChannel(workspaceId: string, input: Record<string, unknown>): Promise<Channel | null> {
@@ -639,36 +758,43 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       : null;
     const layoutKind = template?.templateConfig.layoutKind ?? null;
     const formatPipeline = layoutKind === "channel_story" ? "story_lead_main_caption" : "classic_top_bottom";
-    return {
-      channel: { id: channel.id, name: channel.name, username: channel.username },
+    const context = {
+      channel: {
+        id: channel.id,
+        name: channel.name.slice(0, 256),
+        username: channel.username.slice(0, 256)
+      },
       production: {
         formatPipeline,
         stage2WorkerProfileId: channel.stage2WorkerProfileId,
-        hardConstraints: channel.stage2HardConstraints,
+        hardConstraints: compactBoundedValue(channel.stage2HardConstraints, 3_000),
         sourceOverlay: { enabled: channel.stage2SourceOverlayConfig.enabled },
         durationSec: channel.defaultClipDurationSec,
         assets: {
-          avatarAssetId: channel.avatarAssetId,
-          backgroundAssetId: channel.defaultBackgroundAssetId,
-          musicAssetId: channel.defaultMusicAssetId
+          avatarAssetId: channel.avatarAssetId?.slice(0, 512) ?? null,
+          backgroundAssetId: channel.defaultBackgroundAssetId?.slice(0, 512) ?? null,
+          musicAssetId: channel.defaultMusicAssetId?.slice(0, 512) ?? null
         }
       },
       template: template
         ? {
             id: template.id,
-            name: template.name,
-            description: template.description,
+            name: template.name.length <= 256 ? template.name : `${template.name.slice(0, 253)}...`,
+            description:
+              template.description.length <= 512
+                ? template.description
+                : `${template.description.slice(0, 509)}...`,
             layoutFamily: template.layoutFamily,
             baseTemplateId: template.baseTemplateId,
             semantics: {
               layoutKind,
               formatPipeline,
-              highlights: template.content.highlights,
-              topHighlightPhrases: template.content.topHighlightPhrases,
+              highlights: compactBoundedValue(template.content.highlights, 2_000),
+              topHighlightPhrases: compactBoundedValue(template.content.topHighlightPhrases, 1_000),
               previewScale: template.content.previewScale
             },
-            config: template.templateConfig,
-            shadowLayers: template.shadowLayers,
+            config: compactBoundedValue(template.templateConfig, 12_000),
+            shadowLayers: compactBoundedValue(template.shadowLayers, 4_000),
             hash: templateHash,
             assets: {
               media: compactTemplateAsset(template.content.mediaAsset),
@@ -679,9 +805,9 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
         : { id: channel.templateId, managed: false, hash: null },
       requiredWorker: {
         id: worker.id,
-        hostname: worker.hostname,
+        hostname: worker.hostname?.slice(0, 256) ?? null,
         status: worker.status,
-        build: worker.appVersion,
+        build: worker.appVersion?.slice(0, 256) ?? null,
         platform: worker.platform
       },
       publications: getChannelPublicationCounts(channel.id),
@@ -689,7 +815,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
         renderExportId: item.renderExportId,
         templateId: item.templateId,
         createdAt: item.createdAt,
-        montage: item.montage,
+        montage: compactBoundedValue(item.montage, 4_500),
         approval: {
           status: item.approval.status,
           judgeVerdict: item.approval.judgeVerdict,
@@ -699,6 +825,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
         }
       }))
     };
+    return enforceVideoTaskContextSize(context);
   }
 
   if (tool === "clips_owner_create_channel") {
@@ -1321,6 +1448,10 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
         headers: { "content-type": "application/json" }
       });
     }
+    const authoritativeCallerSnapshot =
+      strictAgentRender && explicitSnapshot && sourceDurationSec
+        ? normalizeStrictAgentRenderSnapshot(explicitSnapshot, sourceDurationSec)
+        : explicitSnapshot;
     const chatId = resolveString(input.chatId);
     if (!chatId) {
       throw new Response(JSON.stringify({ error: "chatId is required." }), { status: 400 });
@@ -1367,8 +1498,8 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     // the chat's latest Stage 2 result. Built-in / no-stage2 chats fall back to
     // the prior sparse body (managedTemplateState only), unchanged.
     const callerSnapshot: Partial<Stage3StateSnapshot> | null =
-      input.snapshot && typeof input.snapshot === "object"
-        ? (input.snapshot as Partial<Stage3StateSnapshot>)
+      authoritativeCallerSnapshot
+        ? (authoritativeCallerSnapshot as Partial<Stage3StateSnapshot>)
         : null;
     const stage2Event = findLatestStage2Event(chat);
     const defaultSnapshot =
