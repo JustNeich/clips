@@ -190,12 +190,12 @@ export async function resolveManagedTemplateRuntime(
   options?: { workspaceId?: string | null }
 ): Promise<ResolvedManagedTemplateRuntime> {
   const candidate = typeof templateId === "string" ? templateId.trim() : "";
-  if (snapshotState?.managedId === candidate && snapshotState.updatedAt) {
-    return toResolvedRuntimeFromSnapshot(snapshotState);
-  }
   const builtInTemplateId = resolveBuiltInTemplateId(candidate);
   if (builtInTemplateId) {
     return toResolvedBuiltInRuntime(builtInTemplateId);
+  }
+  if (snapshotState?.managedId === candidate && snapshotState.updatedAt) {
+    return toResolvedRuntimeFromSnapshot(snapshotState);
   }
   return toResolvedRuntime(await resolveManagedTemplate(templateId, options));
 }
@@ -206,12 +206,12 @@ export function resolveManagedTemplateRuntimeSync(
   options?: { workspaceId?: string | null }
 ): ResolvedManagedTemplateRuntime {
   const candidate = typeof templateId === "string" ? templateId.trim() : "";
-  if (snapshotState?.managedId === candidate && snapshotState.updatedAt) {
-    return toResolvedRuntimeFromSnapshot(snapshotState);
-  }
   const builtInTemplateId = resolveBuiltInTemplateId(candidate);
   if (builtInTemplateId) {
     return toResolvedBuiltInRuntime(builtInTemplateId);
+  }
+  if (snapshotState?.managedId === candidate && snapshotState.updatedAt) {
+    return toResolvedRuntimeFromSnapshot(snapshotState);
   }
   return toResolvedRuntime(resolveManagedTemplateSync(templateId, options));
 }

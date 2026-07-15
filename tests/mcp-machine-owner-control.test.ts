@@ -322,7 +322,16 @@ test("clips_owner_render_preview enqueues a headless preview job (or degrades wh
       const body = (await preview.json()) as { job: { id: string; kind: string }; pollUrl: string };
       assert.equal(body.job.kind, "preview");
       assert.equal(body.pollUrl, `/api/stage3/preview/jobs/${body.job.id}`);
-      assert.equal(getStage3Job(body.job.id)?.kind, "preview");
+      const enqueued = getStage3Job(body.job.id);
+      assert.equal(enqueued?.kind, "preview");
+      const payload = JSON.parse(enqueued?.payloadJson ?? "{}") as {
+        snapshot?: {
+          managedTemplateState?: { managedId?: string };
+          renderPlan?: { templateId?: string };
+        };
+      };
+      assert.equal(payload.snapshot?.renderPlan?.templateId, channel.templateId);
+      assert.equal(payload.snapshot?.managedTemplateState?.managedId, channel.templateId);
     } else {
       // No local Stage 3 worker in the harness -> honest 503 degrade.
       assert.equal(preview.status, 503);
@@ -353,13 +362,17 @@ test("owner control blocks channel-story render_video until an editor/judge snap
     });
     assert.equal(createResponse.status, 200);
     const created = (await createResponse.json()) as { template: { id: string } };
+    const assignResponse = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_update_channel",
+      input: { channelId: channel.id, templateId: created.template.id }
+    });
+    assert.equal(assignResponse.status, 200);
 
     const blocked = await postOwnerControl(machine.secret, {
       tool: "clips_owner_render_video",
       input: {
         channelId: channel.id,
         chatId: chat.id,
-        templateId: created.template.id,
         snapshot: {
           renderPlan: {
             sourceCrop: {
@@ -636,10 +649,15 @@ test("owner control embeds managedTemplateState in the render snapshot for a man
     assert.equal(createResponse.status, 200);
     const created = (await createResponse.json()) as { template: { id: string } };
     assert.ok(created.template.id);
+    const assignResponse = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_update_channel",
+      input: { channelId: channel.id, templateId: created.template.id }
+    });
+    assert.equal(assignResponse.status, 200);
 
     const renderResponse = await postOwnerControl(machine.secret, {
       tool: "clips_owner_render_video",
-      input: { channelId: channel.id, chatId: chat.id, templateId: created.template.id }
+      input: { channelId: channel.id, chatId: chat.id }
     });
     assert.equal(renderResponse.status, 202);
     const rendered = (await renderResponse.json()) as { job: { id: string } };
@@ -657,6 +675,33 @@ test("owner control embeds managedTemplateState in the render snapshot for a man
     };
     assert.equal(payload.templateId, created.template.id);
     assert.equal(payload.snapshot?.managedTemplateState?.managedId, created.template.id);
+  });
+});
+
+test("owner control rejects a caller template that differs from the selected channel", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "render-template-mismatch-agent",
+      scopes: ["flow:read", "pipeline:run"]
+    });
+    const before = getDb().prepare("SELECT COUNT(*) AS count FROM stage3_jobs").get() as { count: number };
+
+    const response = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_render_video",
+      input: {
+        channelId: channel.id,
+        chatId: chat.id,
+        templateId: "caller-selected-wrong-template"
+      }
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).code, "template_id_mismatch");
+    const after = getDb().prepare("SELECT COUNT(*) AS count FROM stage3_jobs").get() as { count: number };
+    assert.equal(after.count, before.count);
   });
 });
 
@@ -812,6 +857,12 @@ test("owner control render_video merges a caller renderPlan patch onto the full 
         chatId: chat.id,
         sourceDurationSec: 54,
         snapshot: {
+          managedTemplateState: {
+            managedId: "stale-template",
+            updatedAt: "2025-01-01T00:00:00.000Z"
+          },
+          templateSnapshot: { snapshotHash: "stale-snapshot" },
+          textFit: { fitHash: "stale-fit" },
           renderPlan: {
             sourceCrop: {
               enabled: true,
@@ -836,6 +887,7 @@ test("owner control render_video merges a caller renderPlan patch onto the full 
         bottomText?: string;
         templateSnapshot?: { snapshotHash?: string };
         textFit?: { fitHash?: string };
+        managedTemplateState?: { managedId?: string };
         renderPlan?: {
           mirrorEnabled?: boolean;
           sourceCrop?: {
@@ -855,6 +907,9 @@ test("owner control render_video merges a caller renderPlan patch onto the full 
     );
     assert.ok(payload.snapshot?.templateSnapshot?.snapshotHash);
     assert.ok(payload.snapshot?.textFit?.fitHash);
+    assert.notEqual(payload.snapshot?.templateSnapshot?.snapshotHash, "stale-snapshot");
+    assert.notEqual(payload.snapshot?.textFit?.fitHash, "stale-fit");
+    assert.equal(payload.snapshot?.managedTemplateState?.managedId, channel.templateId);
     assert.equal(payload.snapshot?.renderPlan?.mirrorEnabled, false);
     assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.enabled, true);
     assert.equal(payload.snapshot?.renderPlan?.sourceCrop?.y, 0.18);
@@ -1127,7 +1182,7 @@ test("owner control refuses explicit agent_manual mode without a valid caption",
   });
 });
 
-test("owner control never delegates agent_manual without sourceUrl to the daily pool", async () => {
+test("owner control requires an explicit sourceUrl and never delegates to a daily pool", async () => {
   await withIsolatedAppData(async (appDataDir) => {
     const { owner, channel } = await seedOwnerControl(appDataDir);
     const machine = createMcpMachineCredential({
@@ -1163,7 +1218,7 @@ test("owner control never delegates agent_manual without sourceUrl to the daily 
         input
       });
       assert.equal(response.status, 400);
-      assert.equal((await response.json()).code, "agent_manual_source_url_required");
+      assert.equal((await response.json()).code, "source_url_required");
     }
 
     assert.deepEqual(

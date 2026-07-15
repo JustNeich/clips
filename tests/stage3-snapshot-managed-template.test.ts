@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { Stage3RenderPlan } from "../app/components/types";
-import { SCIENCE_CARD, SCIENCE_CARD_V7 } from "../lib/stage3-template";
+import { SCIENCE_CARD, SCIENCE_CARD_V7, STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
 import { resolveManagedTemplateRuntimeSync } from "../lib/managed-template-runtime";
 import { buildTemplateRenderSnapshot } from "../lib/stage3-template-core";
 import {
@@ -223,6 +223,19 @@ test("snapshot-backed managed template runtime wins without reading the local st
   assert.equal(runtime.templateConfig.channelStory, undefined);
 });
 
+test("caller state cannot override a built-in template", () => {
+  const runtime = resolveManagedTemplateRuntimeSync(STAGE3_TEMPLATE_ID, {
+    managedId: STAGE3_TEMPLATE_ID,
+    baseTemplateId: "science-card-v7",
+    templateConfig: SCIENCE_CARD_V7,
+    updatedAt: "2026-07-15T12:00:00.000Z"
+  });
+
+  assert.equal(runtime.managedTemplateId, STAGE3_TEMPLATE_ID);
+  assert.equal(runtime.baseTemplateId, STAGE3_TEMPLATE_ID);
+  assert.notEqual(runtime.updatedAt, "2026-07-15T12:00:00.000Z");
+});
+
 test("custom managed template state is not considered resolved until it has a revision", () => {
   assert.equal(
     hasResolvedStage3ManagedTemplateState(
@@ -236,9 +249,8 @@ test("custom managed template state is not considered resolved until it has a re
   );
 });
 
-test("missing requested managed template resolves away from the broken id", () => {
+test("missing managed template may resolve for legacy reads but cannot preserve the broken id", () => {
   const runtime = resolveManagedTemplateRuntimeSync("missing-template-id");
 
   assert.notEqual(runtime.managedTemplateId, "missing-template-id");
-  assert.equal(runtime.baseTemplateId, "science-card-v1");
 });

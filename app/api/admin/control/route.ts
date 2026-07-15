@@ -84,7 +84,6 @@ import {
   normalizeSupportedUrl,
   SUPPORTED_SOURCE_ERROR_MESSAGE
 } from "../../../../lib/ytdlp";
-import { runCopscopesDailyPool } from "../../../../lib/copscopes-daily-runner";
 import { getFlowObservabilityDetail, listFlowObservability } from "../../../../lib/flow-observability";
 import type { McpMachineCredentialScope } from "../../../../lib/mcp-machine-credential-store";
 import { resolveStage3Execution } from "../../../../lib/stage3-execution";
@@ -99,6 +98,7 @@ import { buildStage3JobEnvelope } from "../../../../lib/stage3-job-http";
 import { buildStage3RenderRequestDedupeKey } from "../../../../lib/stage3-render-request";
 import type { Stage3RenderRequestBody } from "../../../../lib/stage3-render-service";
 import { resolveSnapshotManagedTemplateStateForEnqueue } from "../../../../lib/managed-template-runtime";
+import { hasResolvedStage3ManagedTemplateState } from "../../../../lib/stage3-snapshot-managed-template";
 import { findLatestStage2Event } from "../../../../lib/chat-workflow";
 import { buildDefaultStage3RenderSnapshot } from "../../../../lib/stage3-default-snapshot";
 import { CHANNEL_STORY_TEMPLATE_ID } from "../../../../lib/stage3-template";
@@ -157,7 +157,6 @@ const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
   clips_owner_list_stage3_workers: "worker:admin",
   clips_owner_pair_stage3_worker: "worker:admin",
   clips_owner_run_video_pipeline: "pipeline:run",
-  clips_owner_run_copscopes_daily_pool: "pipeline:run",
   // AGENT-ONLY tools. Additive; the human manual flow does not use these.
   clips_owner_run_agent_pipeline: "pipeline:run",
   clips_flow_get_source_decomposition: "flow:read"
@@ -221,7 +220,8 @@ function mergeStage3SnapshotPatch(
     "bottomFontScale" in patchRenderPlan ||
     "authorName" in patchRenderPlan ||
     "authorHandle" in patchRenderPlan ||
-    "templateId" in patchRenderPlan;
+    ("templateId" in patchRenderPlan &&
+      patchRenderPlan.templateId !== base.renderPlan?.templateId);
   return {
     ...base,
     ...patch,
@@ -229,11 +229,95 @@ function mergeStage3SnapshotPatch(
       ...base.renderPlan,
       ...(patch.renderPlan ?? {})
     } as Stage3RenderPlan,
-    managedTemplateState: patch.managedTemplateState ?? base.managedTemplateState,
+    managedTemplateState: Object.prototype.hasOwnProperty.call(patch, "managedTemplateState")
+      ? patch.managedTemplateState ?? null
+      : base.managedTemplateState,
     captionHighlights: patch.captionHighlights ?? base.captionHighlights,
     templateSnapshot: textAffectingPatch ? patch.templateSnapshot : patch.templateSnapshot ?? base.templateSnapshot,
     textFit: textAffectingPatch ? patch.textFit : patch.textFit ?? base.textFit
   };
+}
+
+function stripCallerTemplateAuthority(
+  snapshot: Partial<Stage3StateSnapshot> | null | undefined
+): Stage3SnapshotPatch | null {
+  if (!snapshot) {
+    return null;
+  }
+  const sanitized: Stage3SnapshotPatch = {
+    ...snapshot,
+    ...(snapshot.renderPlan
+      ? {
+          renderPlan: { ...snapshot.renderPlan }
+        }
+      : {})
+  };
+  delete sanitized.managedTemplateState;
+  delete sanitized.templateSnapshot;
+  delete sanitized.textFit;
+  if (sanitized.renderPlan) {
+    delete sanitized.renderPlan.templateId;
+  }
+  return sanitized;
+}
+
+function requireChannelTemplateId(channel: Channel): string {
+  const templateId = resolveString(channel.templateId);
+  if (!templateId) {
+    throw new Response(
+      JSON.stringify({
+        error: "channel_template_missing",
+        code: "channel_template_missing",
+        status: "repair_required",
+        message: "The selected channel has no assigned template. The current step was not queued.",
+        nextAction: "Restore the exact template assignment from the Unit, then retry the same step."
+      }),
+      { status: 409, headers: { "content-type": "application/json" } }
+    );
+  }
+  return templateId;
+}
+
+function requireMatchingTemplateId(
+  requestedTemplateId: string | null | undefined,
+  channelTemplateId: string
+): void {
+  const requested = requestedTemplateId?.trim();
+  if (!requested || requested === channelTemplateId) {
+    return;
+  }
+  throw new Response(
+    JSON.stringify({
+      error: "template_id_mismatch",
+      code: "template_id_mismatch",
+      status: "repair_required",
+      message: "The requested template does not match the template assigned to the selected channel. The current step was not queued.",
+      nextAction: "Remove the caller template override and retry with the selected channel's assigned template.",
+      channelTemplateId,
+      requestedTemplateId: requested
+    }),
+    { status: 400, headers: { "content-type": "application/json" } }
+  );
+}
+
+function requireResolvedChannelTemplate(
+  templateId: string,
+  managedTemplateState: Stage3StateSnapshot["managedTemplateState"] | null | undefined
+): void {
+  if (hasResolvedStage3ManagedTemplateState(managedTemplateState, templateId)) {
+    return;
+  }
+  throw new Response(
+    JSON.stringify({
+      error: "managed_template_state_unresolved",
+      code: "managed_template_state_unresolved",
+      status: "repair_required",
+      message: "The template assigned to the selected channel could not be resolved exactly. The current step was not queued.",
+      nextAction: "Repair the exact assigned template in Clips, then retry the same step.",
+      templateId
+    }),
+    { status: 409, headers: { "content-type": "application/json" } }
+  );
 }
 
 function parseJobSnapshot(job: Stage3JobRecord): Stage3SnapshotPatch | null {
@@ -921,6 +1005,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
 
   if (tool === "clips_owner_render_preview") {
     const channel = await requireChannel(auth.workspace.id, input);
+    const channelTemplateId = requireChannelTemplateId(channel);
     const rawSourceUrl = resolveString(input.sourceUrl);
     const sourceUrl = rawSourceUrl ? normalizeSupportedUrl(rawSourceUrl) : "";
     if (!sourceUrl || !isSupportedUrl(sourceUrl)) {
@@ -934,12 +1019,27 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       input.snapshot && typeof input.snapshot === "object"
         ? (input.snapshot as Partial<Stage3StateSnapshot>)
         : undefined;
+    requireMatchingTemplateId(snapshot?.renderPlan?.templateId, channelTemplateId);
+    const managedTemplateState = await resolveSnapshotManagedTemplateStateForEnqueue(
+      channelTemplateId,
+      { workspaceId: auth.workspace.id }
+    );
+    requireResolvedChannelTemplate(channelTemplateId, managedTemplateState);
+    const authoritativeSnapshot = mergeStage3SnapshotPatch(
+      stripCallerTemplateAuthority(snapshot),
+      {
+        managedTemplateState,
+        renderPlan: { templateId: channelTemplateId }
+      }
+    );
     const normalizedBody = {
       channelId: channel.id,
       sourceUrl,
       workspaceId: auth.workspace.id,
       ...(chatId ? { chatId } : {}),
-      ...(snapshot ? { snapshot } : {})
+      ...(authoritativeSnapshot
+        ? { snapshot: authoritativeSnapshot as Partial<Stage3StateSnapshot> }
+        : {})
     } satisfies Stage3PreviewRequestBody;
     const executionTarget = resolveStage3Execution(auth.workspace.stage3ExecutionTarget).resolvedTarget;
     if (executionTarget === "local") {
@@ -1126,6 +1226,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
 
   if (tool === "clips_owner_render_video") {
     const channel = await requireChannel(auth.workspace.id, input);
+    const channelTemplateId = requireChannelTemplateId(channel);
     const chatId = resolveString(input.chatId);
     if (!chatId) {
       throw new Response(JSON.stringify({ error: "chatId is required." }), { status: 400 });
@@ -1141,18 +1242,14 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     if (!isSupportedUrl(sourceUrl)) {
       throw new Response(JSON.stringify({ error: SUPPORTED_SOURCE_ERROR_MESSAGE }), { status: 400 });
     }
-    const requestedTemplateId = resolveString(input.templateId);
-    // The render target is the explicitly-requested template id when the caller
-    // supplies one, otherwise the channel's own template (UI parity: the React
-    // app always renders the active channel's template). Resolving it here — and
-    // resolving managedTemplateState against the SAME id below — is load-bearing:
-    // the server snapshot embeds renderPlan.templateId = effectiveTemplateId, and
-    // the worker prefers snapshot.renderPlan.templateId. If we resolved managed
-    // state only from input.templateId (omitted on the natural MCP call), a
-    // managed-channel render would ship a managed renderPlan.templateId with NO
-    // embedded managedTemplateState and FK-fail at render stage "template_snapshot"
-    // — the exact bug the prior fix closed.
-    const effectiveTemplateId = requestedTemplateId ?? resolveString(channel.templateId);
+    const callerSnapshot: Partial<Stage3StateSnapshot> | null =
+      input.snapshot && typeof input.snapshot === "object"
+        ? (input.snapshot as Partial<Stage3StateSnapshot>)
+        : null;
+    requireMatchingTemplateId(resolveString(input.templateId), channelTemplateId);
+    requireMatchingTemplateId(callerSnapshot?.renderPlan?.templateId, channelTemplateId);
+    const callerMontagePatch = stripCallerTemplateAuthority(callerSnapshot);
+    const effectiveTemplateId = channelTemplateId;
     // Resolve managed (workspace-scoped, non-built-in) templates on the CLOUD at
     // enqueue time and embed the resolved state in the render snapshot, exactly
     // like the interactive app/page.tsx path. The Stage 3 worker keeps its local
@@ -1164,6 +1261,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
         workspaceId: auth.workspace.id
       }
     );
+    requireResolvedChannelTemplate(effectiveTemplateId, managedTemplateState);
     // The interactive React app assembles the FULL Stage 3 caption snapshot
     // (text/highlights/renderPlan/templateSnapshot/textFit) before enqueuing.
     // The MCP path has no React state, so without this it would render the
@@ -1171,10 +1269,6 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     // its own snapshot, rebuild the same no-override snapshot server-side from
     // the chat's latest Stage 2 result. Built-in / no-stage2 chats fall back to
     // the prior sparse body (managedTemplateState only), unchanged.
-    const callerSnapshot: Partial<Stage3StateSnapshot> | null =
-      input.snapshot && typeof input.snapshot === "object"
-        ? (input.snapshot as Partial<Stage3StateSnapshot>)
-        : null;
     const stage2Event = findLatestStage2Event(chat);
     const defaultSnapshot =
       stage2Event && stage2Event.payload
@@ -1188,19 +1282,23 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
         : null;
     const reuseApprovedMontage = input.reuseApprovedMontage !== false;
     const reusedMontage =
-      callerSnapshot === null && reuseApprovedMontage
+      callerMontagePatch === null && reuseApprovedMontage
         ? findLatestEditorMontageSnapshot({
             workspaceId: auth.workspace.id,
             chatId: chat.id
           })
         : null;
     const montagePatch = reusedMontage ? buildMontagePatchFromSnapshot(reusedMontage.snapshot) : null;
-    const resolvedSnapshot =
+    const resolvedSnapshot = mergeStage3SnapshotPatch(
       mergeStage3SnapshotPatch(
         mergeStage3SnapshotPatch(defaultSnapshot, montagePatch),
-        callerSnapshot
-      ) ??
-      (managedTemplateState ? { managedTemplateState } : null);
+        callerMontagePatch
+      ),
+      {
+        managedTemplateState,
+        renderPlan: { templateId: effectiveTemplateId }
+      }
+    );
     const visualGateRequired = requiresChannelStoryVisualGate({
       templateId: effectiveTemplateId,
       managedTemplateState
@@ -1328,29 +1426,27 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     };
   }
 
-  if (tool === "clips_owner_run_copscopes_daily_pool") {
-    return runOwnerDailyPool(auth, input);
-  }
-
   if (tool === "clips_owner_run_video_pipeline") {
     const sourceUrl = resolveString(input.sourceUrl);
     const requestedMode = resolveString(input.mode);
     const agentCaptionProvided = input.agentCaption !== undefined && input.agentCaption !== null;
     if (!sourceUrl) {
-      if (requestedMode === "agent_manual" || agentCaptionProvided) {
-        throw new Response(
-          JSON.stringify({
-            error: "agent_manual_source_url_required",
-            code: "agent_manual_source_url_required",
-            message:
-              "agent_manual requires a nonempty sourceUrl; daily-pool and publication fallback are forbidden."
-          }),
-          { status: 400, headers: { "content-type": "application/json" } }
-        );
-      }
-      return runOwnerDailyPool(auth, input);
+      throw new Response(
+        JSON.stringify({
+          error: "source_url_required",
+          code: "source_url_required",
+          message: "A nonempty sourceUrl is required. No daily-pool fallback was used."
+        }),
+        { status: 400, headers: { "content-type": "application/json" } }
+      );
     }
     const channel = await requireChannel(auth.workspace.id, input);
+    const channelTemplateId = requireChannelTemplateId(channel);
+    const managedTemplateState = await resolveSnapshotManagedTemplateStateForEnqueue(
+      channelTemplateId,
+      { workspaceId: auth.workspace.id }
+    );
+    requireResolvedChannelTemplate(channelTemplateId, managedTemplateState);
     const normalizedUrl = normalizeSupportedUrl(sourceUrl);
     if (!isSupportedUrl(normalizedUrl)) {
       throw new Response(JSON.stringify({ error: SUPPORTED_SOURCE_ERROR_MESSAGE }), { status: 400 });
@@ -1446,7 +1542,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       channel: summarizeChannel(channel),
       chat,
       run,
-      nextStep: "Wait for Stage 2 completion, select/confirm an option, then enqueue Stage 3 render with publishAfterRender=true."
+      nextStep: "Wait for Stage 2 completion, select/confirm an option, then enqueue Stage 3 render with publishAfterRender=false."
     };
   }
 
@@ -1554,79 +1650,6 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
   }
 
   throw new Response(JSON.stringify({ error: `Unknown owner control tool: ${tool}` }), { status: 400 });
-}
-
-async function runOwnerDailyPool(auth: OwnerControlAuth, input: Record<string, unknown>) {
-  const channel = await requireChannel(auth.workspace.id, input);
-  const runAsync = resolveBoolean(input.async) || resolveBoolean(input.background);
-  const dryRun = resolveBoolean(input.dryRun);
-  const categorySlug = resolveString(input.categorySlug);
-  const limit = resolveNumber(input.limit);
-  const attemptBudget = resolveNumber(input.attemptBudget);
-  if (runAsync && !dryRun) {
-    const runId = randomUUID().replace(/-/g, "");
-    auditControl({
-      auth,
-      action: "owner_control.daily_pool.accepted",
-      entityType: "copscopes_daily_run",
-      entityId: runId,
-      channelId: channel.id,
-      status: "queued",
-      payload: {
-        categorySlug: categorySlug ?? null,
-        limit: limit ?? null,
-        attemptBudget: attemptBudget ?? null
-      }
-    });
-    void runCopscopesDailyPool({
-      workspaceId: auth.workspace.id,
-      channelId: channel.id,
-      userId: auth.user.id,
-      runId,
-      categorySlug,
-      limit,
-      attemptBudget,
-      dryRun: false
-    }).catch((error) => {
-      appendFlowAuditEvent({
-        workspaceId: auth.workspace.id,
-        userId: auth.user.id,
-        action: "owner_control.daily_pool.failed",
-        entityType: "copscopes_daily_run",
-        entityId: runId,
-        channelId: channel.id,
-        stage: "mcp",
-        status: "failed",
-        severity: "error",
-        payload: { error: error instanceof Error ? error.message : String(error) }
-      });
-    });
-    return { accepted: true, async: true, runId, channel: summarizeChannel(channel) };
-  }
-  const result = await runCopscopesDailyPool({
-    workspaceId: auth.workspace.id,
-    channelId: channel.id,
-    userId: auth.user.id,
-    categorySlug,
-    limit,
-    attemptBudget,
-    dryRun
-  });
-  auditControl({
-    auth,
-    action: "owner_control.daily_pool.succeeded",
-    entityType: "copscopes_daily_run",
-    entityId: result.runId,
-    channelId: channel.id,
-    status: "succeeded",
-    payload: {
-      dryRun,
-      queuedCount: result.queuedCount,
-      reviewedCount: result.reviewedCount,
-      failedCount: result.failedCount
-    }
-  });
-  return { channel: summarizeChannel(channel), ...result };
 }
 
 export async function POST(request: Request): Promise<Response> {

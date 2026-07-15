@@ -97,7 +97,6 @@ export const clipsOwnerUpdateChannelPublishSettingsInputSchema = z.object({
 export const clipsOwnerRenderVideoInputSchema = z.object({
   ...channelRefSchema,
   chatId: z.string(),
-  templateId: z.string().optional(),
   sourceDurationSec: z.number().positive().optional(),
   publishAfterRender: z.boolean().optional(),
   snapshot: looseObjectSchema.optional()
@@ -106,7 +105,7 @@ export const clipsOwnerRenderVideoInputSchema = z.object({
 export const clipsOwnerRunVideoPipelineInputSchema = z
   .object({
     ...channelRefSchema,
-    sourceUrl: z.string().optional(),
+    sourceUrl: z.string().min(1),
     title: z.string().optional(),
     eventText: z.string().optional(),
     userInstruction: z.string().optional(),
@@ -120,25 +119,10 @@ export const clipsOwnerRunVideoPipelineInputSchema = z
         highlights: z.any().optional()
       })
       .optional(),
-    categorySlug: z.string().optional(),
-    limit: z.number().int().min(1).max(3).optional(),
-    attemptBudget: z.number().int().min(1).max(12).optional(),
     dryRun: z.boolean().optional(),
-    async: z.boolean().optional(),
-    background: z.boolean().optional()
+    async: z.boolean().optional()
   })
   .superRefine((value, context) => {
-    if (
-      (value.mode === "agent_manual" || value.agentCaption !== undefined) &&
-      !value.sourceUrl?.trim()
-    ) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["sourceUrl"],
-        message:
-          "A nonempty sourceUrl is required for agent_manual; daily-pool fallback is forbidden."
-      });
-    }
     if (value.mode === "agent_manual" && !value.agentCaption) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -323,7 +307,7 @@ server.registerTool(
   {
     title: "Render Clips video",
     description:
-      "Enqueue a Stage 3 render for a chat on a channel. Returns the render job, a poll url, and an authenticated download url. Pass sourceDurationSec (seconds) to render the FULL source (e.g. a 53.6s talking-head) instead of the channel default clip length; omit it to use the channel's default duration.",
+      "Enqueue Stage 3 for one chat on its exact channel. The channel's assigned template is authoritative and the caller cannot choose another one. Keep publishAfterRender=false until an explicit owner publication gate. If the tool returns repair_required, fix that one condition and retry the same step; it does not finish the production task. Pass sourceDurationSec only when the story needs the full explicit duration.",
     inputSchema: clipsOwnerRenderVideoInputSchema
   },
   async (input) => ownerControl("clips_owner_render_video", input)
@@ -421,9 +405,9 @@ server.registerTool(
 server.registerTool(
   "clips_owner_render_preview",
   {
-    title: "Render Clips Stage 3 preview frames",
+    title: "Prepare Clips Stage 3 source preview",
     description:
-      "Enqueue a headless Stage 3 PREVIEW job (full-phone frames, not a final MP4) for the editor/judge loop in a routine. Pass sourceUrl and the editor's snapshot (renderPlan.sourceCrop/videoFit/segments/...). Returns a job id and a poll url; poll /api/stage3/preview/jobs/<id> for the frames. No vision logic runs server-side.",
+      "Prepare only the inner source-media preview used for crop/timing checks. This is not a full vertical template preview and cannot approve the final format. The selected channel's assigned template is authoritative; a missing or mismatched template blocks the job.",
     inputSchema: z.object({
       ...channelRefSchema,
       sourceUrl: z.string(),
@@ -507,28 +491,11 @@ server.registerTool(
 );
 
 server.registerTool(
-  "clips_owner_run_copscopes_daily_pool",
-  {
-    title: "Run CopScopes daily pool",
-    description: "Run or dry-run the existing end-to-end CopScopes source-to-publication workflow.",
-    inputSchema: z.object({
-      ...channelRefSchema,
-      categorySlug: z.string().optional(),
-      limit: z.number().int().min(1).max(3).optional(),
-      attemptBudget: z.number().int().min(1).max(12).optional(),
-      dryRun: z.boolean().optional(),
-      async: z.boolean().optional(),
-      background: z.boolean().optional()
-    })
-  },
-  async (input) => ownerControl("clips_owner_run_copscopes_daily_pool", input)
-);
-
-server.registerTool(
   "clips_owner_run_video_pipeline",
   {
     title: "Run Clips video pipeline",
-    description: "Run the daily-pool pipeline, or create a chat and enqueue Stage 2 for one source URL.",
+    description:
+      "Start the single production path for one explicit source URL: create/open the exact channel chat and enqueue its normal Stage 2. Continue with the same chat in Stage 3. There is no daily-pool fallback and no publication unless it is explicitly approved later.",
     inputSchema: clipsOwnerRunVideoPipelineInputSchema
   },
   async (input) => ownerControl("clips_owner_run_video_pipeline", input)
@@ -539,7 +506,7 @@ server.registerTool(
   {
     title: "Run Clips agent pipeline (decomposition)",
     description:
-      "AGENT-ONLY. Create/get a chat for one source URL, download the source, and produce a reusable Stage-1 decomposition (comments + 1fps frames + subtitles + meta). Does NOT generate Stage 2 captions and does NOT alter the human manual flow. Poll the returned source job, then read clips_flow_get_source_decomposition.",
+      "ANALYSIS ONLY, NOT A PRODUCTION VIDEO PATH. Create/get a chat for one source URL, download it, and produce a reusable Stage-1 decomposition. It does not run Stage 2, Stage 3, render, or publication. Production videos must use clips_owner_run_video_pipeline.",
     inputSchema: z.object({
       ...channelRefSchema,
       sourceUrl: z.string(),

@@ -61,7 +61,8 @@ function findAssetById(
 function buildChannelRenderPlan(
   channel: Channel,
   assets: ChannelAsset[],
-  templateIdOverride?: string | null
+  templateIdOverride?: string | null,
+  managedTemplateState?: Stage3SnapshotManagedTemplateState | null
 ): Stage3RenderPlan {
   const resolvedTemplateId =
     (typeof templateIdOverride === "string" && templateIdOverride.trim()
@@ -98,7 +99,7 @@ function buildChannelRenderPlan(
     null,
     resolvedTemplateId,
     undefined,
-    null
+    managedTemplateState ?? null
   );
 }
 
@@ -163,7 +164,8 @@ export function buildDefaultStage3RenderSnapshot(
   const channelRenderPlan = buildChannelRenderPlan(
     input.channel,
     input.channelAssets ?? [],
-    input.templateId
+    input.templateId,
+    input.managedTemplateState
   );
   const useSourceFull = sourceDurationSec !== null;
   const effectiveTargetDurationSec = useSourceFull

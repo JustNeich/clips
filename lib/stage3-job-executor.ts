@@ -1,7 +1,5 @@
 import { promises as fs } from "node:fs";
-import {
-  Stage3JobKind
-} from "../app/components/types";
+import type { Stage3JobKind, Stage3StateSnapshot } from "../app/components/types";
 import { extractYtDlpErrorDescriptorFromUnknown } from "./ytdlp";
 import {
   prepareStage3Preview,
@@ -29,6 +27,7 @@ import {
   renderStage3VideoInChildProcess,
   shouldUseStage3HostRenderChildProcess
 } from "./stage3-host-render-child-client";
+import { hasResolvedStage3ManagedTemplateState } from "./stage3-snapshot-managed-template";
 
 export type Stage3ExecutedJobResult = {
   resultJson: string | null;
@@ -61,6 +60,46 @@ function buildStage3RenderResultJson(rendered: Awaited<ReturnType<typeof renderS
   });
 }
 
+export function assertStage3JobManagedTemplateState(
+  kind: Stage3JobKind,
+  payload: Stage3PreviewRequestBody | Stage3RenderRequestBody | Stage3AgentMediaStepPayload
+): void {
+  let templateId: string | null | undefined;
+  let managedTemplateState: Stage3StateSnapshot["managedTemplateState"] | null | undefined;
+
+  if (kind === "preview") {
+    const preview = payload as Stage3PreviewRequestBody;
+    templateId = preview.snapshot?.renderPlan?.templateId;
+    managedTemplateState = preview.snapshot?.managedTemplateState;
+  } else if (kind === "render") {
+    const render = payload as Stage3RenderRequestBody;
+    templateId = render.snapshot?.renderPlan?.templateId ?? render.templateId;
+    managedTemplateState = render.snapshot?.managedTemplateState;
+  } else if (kind === "agent-media-step") {
+    const agentStep = payload as Stage3AgentMediaStepPayload;
+    if (agentStep.operation !== "reality-preview") {
+      return;
+    }
+    templateId = agentStep.snapshot.renderPlan?.templateId;
+    managedTemplateState = agentStep.snapshot.managedTemplateState;
+  } else {
+    return;
+  }
+
+  if (!templateId?.trim()) {
+    if (kind === "render") {
+      throw new Error("channel_template_required: render payload has no channel template identity");
+    }
+    return;
+  }
+  if (hasResolvedStage3ManagedTemplateState(managedTemplateState, templateId)) {
+    return;
+  }
+  throw new Error(
+    `managed_template_state_required: template ${templateId.trim()} has no exact embedded state`
+  );
+}
+
 export function resolveStage3HeavyJobErrorCode(kind: Stage3JobKind): string {
   if (kind === "preview") {
     return "preview_failed";
@@ -84,6 +123,7 @@ export async function executeStage3HeavyJobPayload(
 ): Promise<Stage3ExecutedJobResult> {
   if (kind === "preview") {
     const payload = JSON.parse(payloadJson) as Stage3PreviewRequestBody;
+    assertStage3JobManagedTemplateState(kind, payload);
     const prepared = await prepareStage3Preview(payload, {
       signal: options?.signal ?? undefined,
       waitTimeoutMs: PREVIEW_WAIT_TIMEOUT_MS
@@ -103,6 +143,8 @@ export async function executeStage3HeavyJobPayload(
   }
 
   if (kind === "render") {
+    const payload = JSON.parse(payloadJson) as Stage3RenderRequestBody;
+    assertStage3JobManagedTemplateState(kind, payload);
     if (shouldUseStage3HostRenderChildProcess()) {
       const rendered = await renderStage3VideoInChildProcess(payloadJson, {
         signal: options?.signal ?? undefined,
@@ -117,7 +159,7 @@ export async function executeStage3HeavyJobPayload(
       };
     }
 
-    const rendered = await renderStage3Video(JSON.parse(payloadJson) as Stage3RenderRequestBody, {
+    const rendered = await renderStage3Video(payload, {
       signal: options?.signal ?? undefined,
       waitTimeoutMs: RENDER_WAIT_TIMEOUT_MS,
       onProgress: options?.onRenderProgress
@@ -183,6 +225,7 @@ export async function executeStage3HeavyJobPayload(
 
   if (kind === "agent-media-step") {
     const payload = JSON.parse(payloadJson) as Stage3AgentMediaStepPayload;
+    assertStage3JobManagedTemplateState(kind, payload);
     const result = await executeStage3AgentMediaStep(payload, {
       signal: options?.signal ?? undefined
     });
@@ -202,6 +245,18 @@ export function classifyStage3HeavyJobError(
 ): { code: string; message: string; recoverable: boolean } {
   const message = error instanceof Error ? error.message : String(error);
   const lowerMessage = message.toLowerCase();
+  if (
+    lowerMessage.startsWith("managed_template_state_required:") ||
+    lowerMessage.startsWith("channel_template_required:")
+  ) {
+    return {
+      code: lowerMessage.startsWith("channel_template_required:")
+        ? "channel_template_required"
+        : "managed_template_state_required",
+      message,
+      recoverable: false
+    };
+  }
   if (isStage3WorkerJobTimeoutError(error)) {
     return {
       code: `${kind.replaceAll("-", "_")}_timeout`,

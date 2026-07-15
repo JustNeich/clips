@@ -10,6 +10,7 @@ import {
   shouldUseStage3HostRenderChildProcess,
   STAGE3_HOST_RENDER_PROGRESS_PREFIX
 } from "../lib/stage3-host-render-child-client";
+import { STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
 
 function fakeChildScript(source: string): string {
   return `#!/usr/bin/env node
@@ -88,7 +89,10 @@ fs.writeFileSync(output, JSON.stringify({
 `,
     async () => {
       assert.equal(shouldUseStage3HostRenderChildProcess(), true);
-      const result = await executeStage3HeavyJobPayload("render", JSON.stringify({ sourceUrl: "unused" }));
+      const result = await executeStage3HeavyJobPayload(
+        "render",
+        JSON.stringify({ sourceUrl: "unused", templateId: STAGE3_TEMPLATE_ID })
+      );
       assert.equal(result.artifact?.fileName, "child.mp4");
       assert.equal(result.resultJson, JSON.stringify({ outputName: "child.mp4" }));
     }

@@ -13,6 +13,7 @@ test("clips_owner_render_video schema preserves caller snapshot media controls",
   const parsed = clipsOwnerRenderVideoInputSchema.parse({
     channelId: "channel-1",
     chatId: "chat-1",
+    templateId: "caller-must-not-choose-this",
     sourceDurationSec: 54,
     snapshot: {
       topText: "Caller top",
@@ -46,9 +47,15 @@ test("clips_owner_render_video schema preserves caller snapshot media controls",
   assert.equal(renderPlan.mirrorEnabled, false);
   assert.equal(sourceCrop.height, 0.82);
   assert.equal(sourceCrop.source, "editor-controlled-crop");
+  assert.equal("templateId" in parsed, false);
 });
 
 test("clips_owner_run_video_pipeline schema requires caption for explicit agent_manual mode", () => {
+  const missingExplicitSource = clipsOwnerRunVideoPipelineInputSchema.safeParse({
+    channelId: "channel-1"
+  });
+  assert.equal(missingExplicitSource.success, false);
+
   const missingSource = clipsOwnerRunVideoPipelineInputSchema.safeParse({
     channelId: "channel-1",
     mode: "agent_manual",

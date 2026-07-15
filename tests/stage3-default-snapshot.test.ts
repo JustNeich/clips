@@ -25,6 +25,7 @@ import {
   getTemplateById
 } from "../lib/stage3-template";
 import { CHANNEL_STORY_LOWER_SOURCE_STRIP_CROP_SOURCE } from "../lib/stage3-source-crop";
+import { assertStage3JobManagedTemplateState } from "../lib/stage3-job-executor";
 
 const TOP_TEXT = "ЭТО ВЕРХНИЙ ТЕКСТ";
 const BOTTOM_TEXT = "а это нижний текст подписи";
@@ -84,14 +85,14 @@ function makeChannel(templateId: string): Channel {
   } as unknown as Channel;
 }
 
-function makeManagedTemplateState(): Stage3SnapshotManagedTemplateState {
+function makeManagedTemplateState(managedId = MANAGED_TEMPLATE_ID): Stage3SnapshotManagedTemplateState {
   // A managed template whose base is a built-in variant but whose config is
   // tweaked. The worker must resolve it from the EMBEDDED snapshot state (it has
   // no workspace_templates row), not from its empty local DB.
   const baseTemplateId = STAGE3_TEMPLATE_ID;
   const templateConfig = cloneStage3TemplateConfig(getTemplateById(baseTemplateId));
   return {
-    managedId: MANAGED_TEMPLATE_ID,
+    managedId,
     baseTemplateId,
     templateConfig,
     updatedAt: new Date().toISOString()
@@ -257,11 +258,14 @@ test("top&&bottom group (science-card-red) ships highlight-free; other families 
   };
 
   for (const templateId of [SCIENCE_CARD_RED_TEMPLATE_ID, "science-card-red-1cbf5e07"]) {
+    const managedTemplateState = templateId === SCIENCE_CARD_RED_TEMPLATE_ID
+      ? null
+      : makeManagedTemplateState(templateId);
     const suppressed = buildDefaultStage3RenderSnapshot({
       stage2,
       channel: makeChannel(templateId),
       templateId,
-      managedTemplateState: null,
+      managedTemplateState,
       sourceDurationSec: null
     });
     assert.deepEqual(
@@ -446,7 +450,7 @@ test("managed channel template: embedded state lets the worker resolve WITHOUT a
   });
 });
 
-test("REGRESSION: a managed renderPlan.templateId WITHOUT embedded state would FK-fail on the worker", () => {
+test("REGRESSION: the worker rejects a managed renderPlan.templateId without embedded state", () => {
   // This is the bug the route fix prevents: build a snapshot for a managed
   // channel but strip the embedded managedTemplateState (simulating the old
   // route that resolved managed state only from input.templateId). The worker
@@ -464,14 +468,9 @@ test("REGRESSION: a managed renderPlan.templateId WITHOUT embedded state would F
     managedTemplateState: null
   };
 
-  assert.throws(
-    () =>
-      reproduceWorkerTemplateSnapshot({
-        snapshot: strippedSnapshot,
-        bodyTemplateId: MANAGED_TEMPLATE_ID,
-        workerSourceDurationSec: 53.6
-      }),
-    /FOREIGN KEY|constraint|template/i,
-    "worker must reject a managed id with no embedded state"
-  );
+  assert.throws(() =>
+    assertStage3JobManagedTemplateState("render", {
+      templateId: MANAGED_TEMPLATE_ID,
+      snapshot: strippedSnapshot
+    }), /managed_template_state_required/);
 });

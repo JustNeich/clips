@@ -112,7 +112,6 @@ Core tools exposed by `clips-owner`:
 - `clips_owner_cancel_publication`
 - `clips_owner_list_stage3_workers`
 - `clips_owner_pair_stage3_worker`
-- `clips_owner_run_copscopes_daily_pool`
 - `clips_owner_run_video_pipeline`
 - `clips_owner_render_video`
 - `clips_owner_render_preview`
@@ -172,4 +171,6 @@ deploying the exact last known-good commit with the same command. Do not use a
 working-tree directory as the deploy artifact and do not deploy an unpushed
 commit.
 
-For current end-to-end production videos, prefer `clips_owner_run_copscopes_daily_pool` or `clips_owner_run_video_pipeline` without `sourceUrl`; that uses the existing daily-pool runner. With `sourceUrl`, `clips_owner_run_video_pipeline` creates/opens the chat and queues Stage 2, then a selected Stage 2 option still has to be rendered through Stage 3.
+For production videos there is one owner path: call `clips_owner_run_video_pipeline` with one explicit `sourceUrl`, wait for Stage 2, then render the selected result through Stage 3 in the same channel/chat. The channel's assigned template is authoritative. A missing, unresolved, or mismatched template stops the job instead of falling back to a workspace or worker default.
+
+`clips_owner_render_preview` prepares only the inner source-media preview used for crop and timing checks. It is not a full vertical template preview. Approve the format from the complete Stage 3 UI composition or from a local MP4 rendered with `publishAfterRender=false`.
