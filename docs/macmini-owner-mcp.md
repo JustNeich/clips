@@ -117,6 +117,7 @@ Core tools exposed by `clips-owner`:
 - `clips_owner_render_video`
 - `clips_owner_render_preview`
 - `clips_owner_preflight_completed_source`
+- `clips_owner_download_stage3_artifact`
 - `clips_owner_list_render_exports`
 - `clips_owner_run_agent_pipeline`
 - `clips_flow_get_source_decomposition`
@@ -144,6 +145,15 @@ already-completed Stage 1 artifact:
    never falls back to downloading the URL.
 
 Calls that omit `completedSource` retain the existing URL acquisition behavior.
+
+`clips_owner_render_preview` creates a media-only MP4 for checking the selected
+source window, crop/fit, segments, and audio. It does not render the full
+template. Check the full template in the final render. After either preview or
+final render completes, call `clips_owner_download_stage3_artifact` with its
+`jobId`; the MCP process saves the artifact under the operating system's
+temporary `clips-owner-artifacts` directory and returns the local path, byte
+size, SHA-256 hash, and MIME type. The caller cannot choose an arbitrary output
+directory.
 
 Before every worker claim, the selected machine reports CPU/load, free memory,
 active render processes, and active worker jobs. Missing telemetry, high load,
