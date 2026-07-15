@@ -16,8 +16,12 @@ import {
   buildQuickRegenerateResult,
   runQuickRegenerateModel
 } from "./stage2-quick-regenerate";
-import { applyAgentManualCaption } from "./stage2-agent-manual";
-import { validateStage2Output, type Stage2ValidationWarning } from "./stage2-output-validation";
+import {
+  AGENT_MANUAL_CAPTION_SOURCE,
+  buildAgentManualStage2Output,
+  type AgentManualCaptionTrace
+} from "./stage2-agent-manual";
+import { validateStage2Output } from "./stage2-output-validation";
 import {
   resolveEffectiveStage2HardConstraints,
   resolveStage2TemplateTextSemantics,
@@ -219,6 +223,87 @@ export function auditStage2WorkerRollout(output: Stage2Response["output"]): Stag
       ok: false,
       message: "Stage 2 rollout failed: worker output is missing pipeline.execution metadata."
     };
+  }
+
+  const agentManualPipeline = pipeline as typeof pipeline & {
+    captionSource?: string;
+    agentManualTrace?: AgentManualCaptionTrace;
+  };
+  if (agentManualPipeline.captionSource === AGENT_MANUAL_CAPTION_SOURCE) {
+    const trace = agentManualPipeline.agentManualTrace;
+    if (!trace || trace.captionSource !== AGENT_MANUAL_CAPTION_SOURCE) {
+      return {
+        ok: false,
+        message: "Stage 2 rollout failed: agent_manual output is missing its explicit trace."
+      };
+    }
+    if (
+      trace.platformGeneration.skipped !== true ||
+      trace.platformGeneration.runNativeCaptionPipelineCalled !== false ||
+      trace.examples.loaded !== false ||
+      trace.examples.availableCount !== 0 ||
+      trace.examples.selectedCount !== 0 ||
+      pipeline.availableExamplesCount !== 0 ||
+      pipeline.selectedExamplesCount !== 0 ||
+      pipeline.nativeCaptionV3
+    ) {
+      return {
+        ok: false,
+        message:
+          "Stage 2 rollout failed: agent_manual trace reports platform generation or examples activity."
+      };
+    }
+    if (execution.stageChainVersion !== "agent-manual-v1") {
+      return {
+        ok: false,
+        message:
+          `Stage 2 rollout failed: agent_manual expected stageChainVersion=agent-manual-v1, received ${execution.stageChainVersion}.`
+      };
+    }
+    if (execution.pipelineVersion !== "agent_manual") {
+      return {
+        ok: false,
+        message:
+          `Stage 2 rollout failed: agent_manual expected pipelineVersion=agent_manual, received ${execution.pipelineVersion}.`
+      };
+    }
+    if (!Array.isArray(output.captionOptions) || output.captionOptions.length !== 1) {
+      return {
+        ok: false,
+        message:
+          `Stage 2 rollout failed: agent_manual expected exactly 1 final caption, received ${output.captionOptions?.length ?? 0}.`
+      };
+    }
+    const manualOption = output.captionOptions[0];
+    if (
+      !manualOption ||
+      manualOption.option !== output.finalPick.option ||
+      manualOption.constraintCheck?.passed !== true ||
+      trace.validation.passed !== true ||
+      trace.validation.issues.length !== 0
+    ) {
+      return {
+        ok: false,
+        message:
+          "Stage 2 rollout failed: agent_manual final option did not pass deterministic hard constraints."
+      };
+    }
+    const missingBilingualDisplayFields = getMissingBilingualDisplayFields(output);
+    if (missingBilingualDisplayFields.length > 0) {
+      return {
+        ok: false,
+        message:
+          `Stage 2 rollout failed: agent_manual expected bilingual handoff fields; missing ${missingBilingualDisplayFields.join(", ")}.`
+      };
+    }
+    if (!Array.isArray(output.titleOptions) || output.titleOptions.length !== 1) {
+      return {
+        ok: false,
+        message:
+          `Stage 2 rollout failed: agent_manual expected exactly 1 deterministic title mirror, received ${output.titleOptions?.length ?? 0}.`
+      };
+    }
+    return { ok: true };
   }
 
   if (execution.pipelineVersion === "native_caption_v3") {
@@ -969,14 +1054,166 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
   };
 }
 
-export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Response> {
+export type Stage2RunnerDependencies = {
+  downloadVideoAndMetadata?: typeof downloadVideoAndMetadata;
+};
+
+export async function processStage2Run(
+  run: Stage2RunRecord,
+  dependencies: Stage2RunnerDependencies = {}
+): Promise<Stage2Response> {
   if (run.mode === "regenerate") {
+    if (run.request.agentCaption) {
+      throw new Error(
+        "agent_manual caption cannot run in regenerate mode; platform fallback is forbidden."
+      );
+    }
     return processRegenerateStage2Run(run);
   }
+
+  const manualCaption = run.request.agentCaption;
+  const manualPreparation = manualCaption
+    ? (() => {
+        const channel = run.request.channel;
+        const effectiveHardConstraints = resolveChannelStage2HardConstraints(
+          channel,
+          run.workspaceId
+        );
+        const templateTextSemantics = resolveRunChannelTemplateSemantics(
+          channel,
+          run.workspaceId,
+          effectiveHardConstraints
+        );
+        const output = buildAgentManualStage2Output({
+          caption: manualCaption,
+          constraints: effectiveHardConstraints,
+          channel: {
+            id: channel.id,
+            formatPipeline:
+              templateTextSemantics.formatGroup === "channel_story"
+                ? "story_lead_main_caption"
+                : "classic_top_bottom"
+          }
+        });
+        const rolloutAudit = auditStage2WorkerRollout(output);
+        if (!rolloutAudit.ok) {
+          throw new Error(rolloutAudit.message);
+        }
+        const warnings = validateStage2Output(output, effectiveHardConstraints);
+        if (warnings.length > 0) {
+          throw new Error(
+            `agent_manual caption failed final validation; platform fallback is forbidden: ${warnings.map((warning) => warning.message).join(" ")}`
+          );
+        }
+        return {
+          channel,
+          effectiveHardConstraints,
+          output
+        };
+      })()
+    : null;
 
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage2-"));
 
   try {
+    if (manualPreparation) {
+      const { channel, effectiveHardConstraints, output: parsedOutput } = manualPreparation;
+      const startStageId = getStage2ProgressStartStageId(
+        run.mode,
+        channel.stage2WorkerProfileId,
+        channel.formatPipeline
+      );
+      markStage2RunStageRunning(run.runId, startStageId, {
+        detail: "agent_manual caption validated; preparing source media for handoff."
+      });
+      const downloaded = await (
+        dependencies.downloadVideoAndMetadata ?? downloadVideoAndMetadata
+      )(run.sourceUrl, tmpDir, undefined, {
+        localWorkerFallback: run.creatorUserId
+          ? {
+              workspaceId: run.workspaceId,
+              userId: run.creatorUserId
+            }
+          : null
+      });
+      const allComments = sortCommentsByPopularity(
+        normalizeComments(downloaded.infoJson.comments)
+      ).slice(0, 300);
+      markStage2RunStageCompleted(run.runId, startStageId, {
+        detail: "agent_manual source prepared; platform generation and examples were skipped."
+      });
+      markStage2RunStageRunning(run.runId, "assemble", {
+        detail: "Assembling the agent_manual Stage 2 handoff."
+      });
+      markStage2RunStageCompleted(run.runId, "assemble", {
+        detail: "Saved 1 validated agent_manual caption with no platform fallback."
+      });
+      const execution = parsedOutput.pipeline.execution;
+      return {
+        source: {
+          url: run.sourceUrl,
+          title: downloaded.title,
+          videoFileName: downloaded.videoFileName,
+          videoSizeBytes: downloaded.videoSizeBytes,
+          sourceCacheKey: downloaded.sourceCacheKey,
+          sourceCacheState: downloaded.sourceCacheState,
+          downloadProvider: downloaded.downloadProvider,
+          primaryProviderError: downloaded.primaryProviderError,
+          downloadFallbackUsed: downloaded.downloadFallbackUsed,
+          providerErrorSummary: downloaded.providerErrorSummary,
+          totalComments: allComments.length,
+          topComments: allComments.slice(0, 10),
+          allComments,
+          commentsUsedForPrompt: 0,
+          commentsOmittedFromPrompt: allComments.length,
+          frameDescriptions: [],
+          commentsExtractionFallbackUsed: downloaded.commentsExtractionFallbackUsed,
+          commentsAcquisitionStatus: downloaded.commentsAcquisition.status,
+          commentsAcquisitionProvider: downloaded.commentsAcquisition.provider,
+          commentsAcquisitionNote: downloaded.commentsAcquisition.note,
+          commentsAcquisitionError: downloaded.commentsAcquisition.error
+        },
+        output: parsedOutput,
+        seo: null,
+        warnings: [],
+        progress: getStage2Run(run.runId)?.snapshot ?? null,
+        userInstructionUsed: run.userInstruction,
+        debugMode: run.request.debugMode === "raw" ? "raw" : "summary",
+        debugRef: null,
+        stage2Spec: buildStage2Spec({
+          name: "Agent Manual Caption",
+          outputSections: [
+            "captionOptions(1 agent-authored final)",
+            "titleOptions(1 deterministic TOP mirror)",
+            "trace(captionSource=agent_manual)"
+          ],
+          hardConstraints: effectiveHardConstraints,
+          enforcedVia:
+            "Deterministic hard-constraint validation; no examples corpus and no caption model"
+        }),
+        stage2Worker: {
+          runId: run.runId,
+          buildId: execution?.workerBuild.buildId,
+          startedAt: execution?.workerBuild.startedAt,
+          pid: execution?.workerBuild.pid,
+          pipelineVersion: execution?.pipelineVersion,
+          stageChainVersion: execution?.stageChainVersion,
+          featureFlags: execution?.featureFlags
+        },
+        stage2Run: {
+          runId: run.runId,
+          mode: run.mode,
+          createdAt: run.createdAt,
+          startedAt: run.startedAt
+        },
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username
+        }
+      };
+    }
+
     await Promise.all([
       requireRuntimeTool("ffmpeg"),
       requireRuntimeTool("ffprobe"),
@@ -1003,7 +1240,9 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       }
     );
 
-    const downloaded = await downloadVideoAndMetadata(run.sourceUrl, tmpDir, undefined, {
+    const downloaded = await (
+      dependencies.downloadVideoAndMetadata ?? downloadVideoAndMetadata
+    )(run.sourceUrl, tmpDir, undefined, {
       localWorkerFallback: run.creatorUserId
         ? {
             workspaceId: run.workspaceId,
@@ -1089,32 +1328,15 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         });
       }
     });
+
     const parsedOutput = pipelineResult.output;
-    // agent_manual mode: replace the winning caption with the agent's final text.
-    // Generation is bypassed but the hard-constraint validator below still runs;
-    // a constraint failure leaves the platform winner in place (fail-safe).
-    const agentManualWarnings: Stage2ValidationWarning[] = [];
-    if (run.request.agentCaption) {
-      const agentResult = applyAgentManualCaption(
-        parsedOutput,
-        run.request.agentCaption,
-        effectiveHardConstraints
-      );
-      if (!agentResult.applied) {
-        agentManualWarnings.push({
-          field: "agentCaption",
-          message: `agent_manual caption rejected; fell back to platform winner: ${agentResult.issues.join(" ")}`
-        });
-      }
-    }
     const rolloutAudit = auditStage2WorkerRollout(parsedOutput);
     if (!rolloutAudit.ok) {
       throw new Error(rolloutAudit.message);
     }
     const warnings = [
       ...pipelineResult.warnings,
-      ...validateStage2Output(parsedOutput, effectiveHardConstraints),
-      ...agentManualWarnings
+      ...validateStage2Output(parsedOutput, effectiveHardConstraints)
     ];
     const diagnostics = pipelineResult.diagnostics;
     const rawDebugArtifact =

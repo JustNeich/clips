@@ -1,24 +1,19 @@
 import type { Stage2Output } from "../app/components/types";
 import { captionContainsBannedWord, type Stage2HardConstraints } from "./stage2-channel-config";
+import { resolveStage2VNextFlagSnapshot } from "./stage2-vnext/feature-flags";
+import { getStage2WorkerBuildInfo } from "./stage2-vnext/worker-build";
 import {
-  cloneTemplateCaptionHighlights,
-  createEmptyTemplateCaptionHighlights,
+  normalizeTemplateCaptionHighlights,
   type TemplateCaptionHighlights
 } from "./template-highlights";
 
-function isValidTemplateCaptionHighlights(value: unknown): value is TemplateCaptionHighlights {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    Array.isArray((value as { top?: unknown }).top) &&
-    Array.isArray((value as { bottom?: unknown }).bottom)
-  );
-}
+export const AGENT_MANUAL_CAPTION_SOURCE = "agent_manual" as const;
+export const AGENT_MANUAL_CAPTION_ERROR_CODE = "agent_manual_caption_invalid" as const;
 
 /**
- * Agent-supplied final caption text for the `agent_manual` Stage 2 mode. When a
- * request carries this, the platform skips caption GENERATION and uses this exact
- * text as the winner — but the deterministic hard-constraint validator still runs.
+ * Agent-supplied final caption text for the `agent_manual` Stage 2 mode.
+ * This is an alternative to platform caption generation, not an override of a
+ * platform-generated winner.
  */
 export type AgentManualCaption = {
   top: string;
@@ -27,6 +22,48 @@ export type AgentManualCaption = {
   bottomRu?: string;
   highlights?: Stage2Output["captionOptions"][number]["highlights"];
 };
+
+export type AgentManualCaptionTrace = {
+  captionSource: typeof AGENT_MANUAL_CAPTION_SOURCE;
+  validation: {
+    passed: true;
+    issues: [];
+    topLength: number;
+    bottomLength: number;
+  };
+  platformGeneration: {
+    skipped: true;
+    runNativeCaptionPipelineCalled: false;
+  };
+  examples: {
+    loaded: false;
+    availableCount: 0;
+    selectedCount: 0;
+  };
+  completedAt: string;
+};
+
+type AgentManualPipeline = NonNullable<Stage2Output["pipeline"]> & {
+  captionSource: typeof AGENT_MANUAL_CAPTION_SOURCE;
+  agentManualTrace: AgentManualCaptionTrace;
+};
+
+export type AgentManualStage2Output = Stage2Output & {
+  pipeline: AgentManualPipeline;
+};
+
+export class AgentManualCaptionValidationError extends Error {
+  readonly code = AGENT_MANUAL_CAPTION_ERROR_CODE;
+  readonly issues: string[];
+
+  constructor(issues: string[]) {
+    super(
+      `agent_manual caption failed hard constraints; platform fallback is forbidden: ${issues.join(" ")}`
+    );
+    this.name = "AgentManualCaptionValidationError";
+    this.issues = [...issues];
+  }
+}
 
 export function parseAgentManualCaption(value: unknown): AgentManualCaption | null {
   if (!value || typeof value !== "object") {
@@ -80,54 +117,151 @@ export function agentManualCaptionIssues(
   return issues;
 }
 
-/**
- * Overwrite the WINNING display caption with agent-provided final text. The winner
- * is a pointer; the text lives in the captionOption resolved by `finalPick.option`.
- * We overwrite that option's text/bilingual/highlights and mark its constraintCheck
- * (and the winner's) as passed. The generator is bypassed, NOT the validator — the
- * caller still runs `validateStage2Output` afterwards. Returns `applied=false` (no
- * mutation) when the agent text fails hard constraints, so the caller falls back to
- * the LLM-generated winner.
- */
-export function applyAgentManualCaption(
-  output: Stage2Output,
-  caption: AgentManualCaption,
-  constraints: Stage2HardConstraints
-): { applied: boolean; issues: string[] } {
-  const issues = agentManualCaptionIssues(caption, constraints);
-  if (issues.length > 0) {
-    return { applied: false, issues };
-  }
-  const targetOption =
-    output.captionOptions.find((option) => option.option === output.finalPick.option) ??
-    output.captionOptions[0];
-  if (!targetOption) {
-    return { applied: false, issues: ["No caption option available to override."] };
-  }
-  targetOption.top = caption.top;
-  targetOption.bottom = caption.bottom;
-  // Keep the bilingual fields present and consistent with the NEW English text.
-  // The rollout audit hard-fails when a visible option is missing topRu/bottomRu,
-  // and a leftover RU from the old winner would describe different text — so mirror
-  // the English when the agent omits a translation.
-  targetOption.topRu = caption.topRu !== undefined ? caption.topRu : caption.top;
-  targetOption.bottomRu = caption.bottomRu !== undefined ? caption.bottomRu : caption.bottom;
-  // Highlights are character-position spans into the text. The old winner's spans
-  // point into the OLD text, so always replace them: use the agent's (validated)
-  // highlights, or clear to empty. Never carry stale spans onto the new text.
-  targetOption.highlights = isValidTemplateCaptionHighlights(caption.highlights)
-    ? cloneTemplateCaptionHighlights(caption.highlights)
-    : createEmptyTemplateCaptionHighlights();
-  const passedCheck = {
+function buildConstraintCheck(caption: AgentManualCaption) {
+  return {
     passed: true,
     repaired: false,
     topLength: caption.top.length,
     bottomLength: caption.bottom.length,
     issues: [] as string[]
   };
-  targetOption.constraintCheck = passedCheck;
-  if (output.winner) {
-    output.winner.constraintCheck = { ...passedCheck };
+}
+
+function buildManualHighlights(caption: AgentManualCaption): TemplateCaptionHighlights {
+  return normalizeTemplateCaptionHighlights(caption.highlights, {
+    top: caption.top,
+    bottom: caption.bottom
+  });
+}
+
+/**
+ * Build the complete minimal Stage 2 handoff for an agent-authored caption.
+ * It intentionally contains one visible option: no synthetic alternatives,
+ * no platform winner, no examples corpus and no caption-model trace.
+ */
+export function buildAgentManualStage2Output(input: {
+  caption: AgentManualCaption;
+  constraints: Stage2HardConstraints;
+  channel: {
+    id: string;
+    formatPipeline?: "classic_top_bottom" | "story_lead_main_caption" | null;
+  };
+  completedAt?: string;
+}): AgentManualStage2Output {
+  const issues = agentManualCaptionIssues(input.caption, input.constraints);
+  if (issues.length > 0) {
+    throw new AgentManualCaptionValidationError(issues);
   }
-  return { applied: true, issues: [] };
+
+  const completedAt = input.completedAt ?? new Date().toISOString();
+  const candidateId = "agent_manual_1";
+  const formatPipeline =
+    input.channel.formatPipeline === "story_lead_main_caption"
+      ? "story_lead_main_caption"
+      : "classic_top_bottom";
+  const topRu = input.caption.topRu ?? input.caption.top;
+  const bottomRu = input.caption.bottomRu ?? input.caption.bottom;
+  const highlights = buildManualHighlights(input.caption);
+  const constraintCheck = buildConstraintCheck(input.caption);
+  const captionOption = {
+    option: 1,
+    candidateId,
+    top: input.caption.top,
+    bottom: input.caption.bottom,
+    topRu,
+    bottomRu,
+    highlights,
+    displayTier: "finalist" as const,
+    displayReason: "Final text supplied by the production agent.",
+    constraintCheck
+  };
+  const trace: AgentManualCaptionTrace = {
+    captionSource: AGENT_MANUAL_CAPTION_SOURCE,
+    validation: {
+      passed: true,
+      issues: [],
+      topLength: input.caption.top.length,
+      bottomLength: input.caption.bottom.length
+    },
+    platformGeneration: {
+      skipped: true,
+      runNativeCaptionPipelineCalled: false
+    },
+    examples: {
+      loaded: false,
+      availableCount: 0,
+      selectedCount: 0
+    },
+    completedAt
+  };
+
+  const output = {
+    formatPipeline,
+    inputAnalysis: {
+      visualAnchors: [],
+      commentVibe: "",
+      keyPhraseToAdapt: ""
+    },
+    captionOptions: [captionOption],
+    ...(formatPipeline === "story_lead_main_caption"
+      ? {
+          storyOptions: [
+            {
+              option: 1,
+              candidateId,
+              lead: input.caption.top,
+              mainCaption: input.caption.bottom,
+              leadRu: topRu,
+              mainCaptionRu: bottomRu,
+              highlights,
+              constraintCheck
+            }
+          ]
+        }
+      : {
+          classicOptions: [
+            {
+              option: 1,
+              candidateId,
+              top: input.caption.top,
+              bottom: input.caption.bottom,
+              topRu,
+              bottomRu,
+              highlights,
+              constraintCheck
+            }
+          ]
+        }),
+    titleOptions: [
+      {
+        option: 1,
+        title: input.caption.top,
+        titleRu: topRu
+      }
+    ],
+    finalPick: {
+      option: 1,
+      reason: "Agent-authored final caption passed deterministic hard constraints."
+    },
+    pipeline: {
+      channelId: input.channel.id,
+      mode: "packet_only",
+      captionSource: AGENT_MANUAL_CAPTION_SOURCE,
+      selectorOutput: null,
+      availableExamplesCount: 0,
+      selectedExamplesCount: 0,
+      execution: {
+        featureFlags: resolveStage2VNextFlagSnapshot(),
+        pipelineVersion: "agent_manual",
+        stageChainVersion: "agent-manual-v1",
+        workerBuild: getStage2WorkerBuildInfo(),
+        resolvedAt: completedAt,
+        legacyFallbackReason: null,
+        promptPolicyVersion: "agent_manual@2026-07-14"
+      },
+      agentManualTrace: trace
+    }
+  } satisfies Omit<Stage2Output, "pipeline"> & { pipeline: AgentManualPipeline };
+
+  return output;
 }

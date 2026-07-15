@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { clipsOwnerRenderVideoInputSchema } from "../scripts/clips-owner-mcp";
+import {
+  clipsOwnerRenderVideoInputSchema,
+  clipsOwnerRunVideoPipelineInputSchema,
+  clipsOwnerUpdateChannelInputSchema,
+  clipsOwnerUpdateChannelPublishSettingsInputSchema,
+  clipsOwnerUploadChannelAssetInputSchema
+} from "../scripts/clips-owner-mcp";
 
 test("clips_owner_render_video schema preserves caller snapshot media controls", () => {
   const parsed = clipsOwnerRenderVideoInputSchema.parse({
@@ -40,4 +46,56 @@ test("clips_owner_render_video schema preserves caller snapshot media controls",
   assert.equal(renderPlan.mirrorEnabled, false);
   assert.equal(sourceCrop.height, 0.82);
   assert.equal(sourceCrop.source, "editor-controlled-crop");
+});
+
+test("clips_owner_run_video_pipeline schema requires caption for explicit agent_manual mode", () => {
+  const missingSource = clipsOwnerRunVideoPipelineInputSchema.safeParse({
+    channelId: "channel-1",
+    mode: "agent_manual",
+    agentCaption: { top: "VALID MANUAL TOP", bottom: "Valid manual bottom copy." }
+  });
+  assert.equal(missingSource.success, false);
+
+  const missing = clipsOwnerRunVideoPipelineInputSchema.safeParse({
+    channelId: "channel-1",
+    sourceUrl: "https://www.instagram.com/reel/agent-manual-1/",
+    mode: "agent_manual"
+  });
+  assert.equal(missing.success, false);
+
+  const valid = clipsOwnerRunVideoPipelineInputSchema.safeParse({
+    channelId: "channel-1",
+    sourceUrl: "https://www.instagram.com/reel/agent-manual-1/",
+    mode: "agent_manual",
+    agentCaption: { top: "VALID MANUAL TOP", bottom: "Valid manual bottom copy." }
+  });
+  assert.equal(valid.success, true);
+});
+
+test("owner channel schemas expose setup, asset, and publish-setting operations", () => {
+  const channel = clipsOwnerUpdateChannelInputSchema.parse({
+    channelId: "channel-1",
+    stage2HardConstraints: { topMinChars: 18 },
+    stage2PromptConfig: { useWorkspaceDefault: false },
+    defaultBackgroundAssetId: null
+  });
+  assert.deepEqual(channel.stage2HardConstraints, { topMinChars: 18 });
+  assert.equal(channel.defaultBackgroundAssetId, null);
+
+  const asset = clipsOwnerUploadChannelAssetInputSchema.parse({
+    channelId: "channel-1",
+    kind: "background",
+    mimeType: "image/png",
+    dataBase64: "aW1hZ2U=",
+    setAsDefault: true
+  });
+  assert.equal(asset.kind, "background");
+
+  const settings = clipsOwnerUpdateChannelPublishSettingsInputSchema.parse({
+    channelId: "channel-1",
+    autoQueueEnabled: false,
+    dailySlotCount: 3
+  });
+  assert.equal(settings.autoQueueEnabled, false);
+  assert.equal(settings.dailySlotCount, 3);
 });

@@ -45,6 +45,32 @@ export type WorkerCapabilities = {
   browser: { available: boolean; path: string | null; source: string | null };
 };
 
+export type Stage3WorkerAdmissionTelemetry = {
+  capturedAt: string;
+  cpuCount: number | null;
+  loadAverage1m: number | null;
+  normalizedLoad1m: number | null;
+  totalMemoryBytes: number | null;
+  freeMemoryBytes: number | null;
+  freeMemoryRatio: number | null;
+  activeRenderProcesses: number | null;
+  activeWorkerJobs: number;
+  telemetryError: string | null;
+};
+
+export type Stage3WorkerAdmissionReport = {
+  decision: "admit" | "defer" | "busy";
+  admitted: boolean;
+  reasons: string[];
+  thresholds: {
+    maxNormalizedLoad1m: number;
+    minFreeMemoryBytes: number;
+    maxActiveRenderProcesses: number;
+    maxActiveWorkerJobs: number;
+  };
+  telemetry: Stage3WorkerAdmissionTelemetry;
+};
+
 export type Stage3WorkerLoopOptions = {
   restartAfterRuntimeSync?: boolean;
   installSignalHandlers?: boolean;
@@ -98,6 +124,9 @@ type Stage3WorkerRuntimeSyncOptions = {
 type Stage3WorkerRuntimeAuthMode = "session" | "pairing" | "auto";
 
 const execFileAsync = promisify(execFile);
+const GIB = 1024 * 1024 * 1024;
+const DEFAULT_ADMISSION_MAX_NORMALIZED_LOAD = 0.8;
+const DEFAULT_ADMISSION_MIN_FREE_MEMORY_BYTES = 3 * GIB;
 const BUNDLED_WORKER_RUNTIME_VERSION = normalizeRuntimeVersion(
   typeof __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__ === "string"
     ? __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__
@@ -134,6 +163,164 @@ const DEFAULT_PUBLIC_FILES = [
   "stage3-template-badges/science-card-v1-check.png",
   "stage3-template-badges/twitter-verified-badge.png"
 ];
+
+function resolveFiniteEnvNumber(name: string, fallback: number): number {
+  const parsed = Number(process.env[name]);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function countActiveRenderProcesses(processList: string): number {
+  const matchingPids = new Set<string>();
+  for (const rawLine of processList.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const pid =
+      line.match(/^(\d+)/)?.[1] ??
+      line.match(/^"[^"]*","(\d+)"/)?.[1] ??
+      "";
+    if (!pid || pid === String(process.pid)) continue;
+    if (
+      /\b(remotion|ffmpeg|ffprobe)\b/i.test(line) ||
+      /\b(chrome|chromium)(?:\.exe)?\b.*(?:--headless|--remote-debugging-port)/i.test(line)
+    ) {
+      matchingPids.add(pid);
+    }
+  }
+  return matchingPids.size;
+}
+
+async function readActiveRenderProcessCount(): Promise<number> {
+  const command = process.platform === "win32" ? "tasklist" : "ps";
+  const args = process.platform === "win32" ? ["/FO", "CSV", "/NH"] : ["-axo", "pid=,command="];
+  const { stdout } = await execFileAsync(command, args, {
+    encoding: "utf8",
+    maxBuffer: 4 * 1024 * 1024
+  });
+  return countActiveRenderProcesses(stdout);
+}
+
+export function evaluateStage3WorkerAdmission(
+  telemetry: Stage3WorkerAdmissionTelemetry
+): Stage3WorkerAdmissionReport {
+  const thresholds = {
+    maxNormalizedLoad1m: resolveFiniteEnvNumber(
+      "STAGE3_WORKER_MAX_NORMALIZED_LOAD",
+      DEFAULT_ADMISSION_MAX_NORMALIZED_LOAD
+    ),
+    minFreeMemoryBytes:
+      resolveFiniteEnvNumber(
+        "STAGE3_WORKER_MIN_FREE_MEMORY_GB",
+        DEFAULT_ADMISSION_MIN_FREE_MEMORY_BYTES / GIB
+      ) * GIB,
+    maxActiveRenderProcesses: 0,
+    maxActiveWorkerJobs: 0
+  };
+  const reasons: string[] = [];
+  if (
+    telemetry.telemetryError ||
+    telemetry.cpuCount === null ||
+    telemetry.loadAverage1m === null ||
+    telemetry.normalizedLoad1m === null ||
+    telemetry.totalMemoryBytes === null ||
+    telemetry.freeMemoryBytes === null ||
+    telemetry.freeMemoryRatio === null ||
+    telemetry.activeRenderProcesses === null
+  ) {
+    reasons.push(`telemetry_unavailable${telemetry.telemetryError ? `:${telemetry.telemetryError}` : ""}`);
+  }
+  if (
+    telemetry.normalizedLoad1m !== null &&
+    telemetry.normalizedLoad1m > thresholds.maxNormalizedLoad1m
+  ) {
+    reasons.push("system_load_above_limit");
+  }
+  if (
+    telemetry.freeMemoryBytes !== null &&
+    telemetry.freeMemoryBytes < thresholds.minFreeMemoryBytes
+  ) {
+    reasons.push("free_memory_below_limit");
+  }
+  if (
+    telemetry.activeRenderProcesses !== null &&
+    telemetry.activeRenderProcesses > thresholds.maxActiveRenderProcesses
+  ) {
+    reasons.push("active_render_process_detected");
+  }
+  if (telemetry.activeWorkerJobs > thresholds.maxActiveWorkerJobs) {
+    reasons.push("worker_job_active");
+  }
+  return {
+    decision: reasons.length === 0 ? "admit" : "defer",
+    admitted: reasons.length === 0,
+    reasons,
+    thresholds,
+    telemetry
+  };
+}
+
+export async function collectStage3WorkerAdmissionReport(input: {
+  activeWorkerJobs?: number;
+  processCountReader?: () => Promise<number>;
+  systemSnapshot?: {
+    cpuCount: number;
+    loadAverage1m: number;
+    totalMemoryBytes: number;
+    freeMemoryBytes: number;
+  };
+} = {}): Promise<Stage3WorkerAdmissionReport> {
+  const capturedAt = new Date().toISOString();
+  try {
+    const snapshot = input.systemSnapshot ?? {
+      cpuCount: os.cpus().length,
+      loadAverage1m: os.loadavg()[0] ?? Number.NaN,
+      totalMemoryBytes: os.totalmem(),
+      freeMemoryBytes: os.freemem()
+    };
+    const activeRenderProcesses = await (
+      input.processCountReader ?? readActiveRenderProcessCount
+    )();
+    if (
+      !Number.isFinite(snapshot.cpuCount) ||
+      snapshot.cpuCount <= 0 ||
+      !Number.isFinite(snapshot.loadAverage1m) ||
+      snapshot.loadAverage1m < 0 ||
+      !Number.isFinite(snapshot.totalMemoryBytes) ||
+      snapshot.totalMemoryBytes <= 0 ||
+      !Number.isFinite(snapshot.freeMemoryBytes) ||
+      snapshot.freeMemoryBytes < 0 ||
+      !Number.isInteger(activeRenderProcesses) ||
+      activeRenderProcesses < 0
+    ) {
+      throw new Error("invalid_system_metrics");
+    }
+    const telemetry: Stage3WorkerAdmissionTelemetry = {
+      capturedAt,
+      cpuCount: snapshot.cpuCount,
+      loadAverage1m: snapshot.loadAverage1m,
+      normalizedLoad1m: snapshot.loadAverage1m / snapshot.cpuCount,
+      totalMemoryBytes: snapshot.totalMemoryBytes,
+      freeMemoryBytes: snapshot.freeMemoryBytes,
+      freeMemoryRatio: snapshot.freeMemoryBytes / snapshot.totalMemoryBytes,
+      activeRenderProcesses,
+      activeWorkerJobs: Math.max(0, Math.floor(input.activeWorkerJobs ?? 0)),
+      telemetryError: null
+    };
+    return evaluateStage3WorkerAdmission(telemetry);
+  } catch (error) {
+    return evaluateStage3WorkerAdmission({
+      capturedAt,
+      cpuCount: null,
+      loadAverage1m: null,
+      normalizedLoad1m: null,
+      totalMemoryBytes: null,
+      freeMemoryBytes: null,
+      freeMemoryRatio: null,
+      activeRenderProcesses: null,
+      activeWorkerJobs: Math.max(0, Math.floor(input.activeWorkerJobs ?? 0)),
+      telemetryError: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
 
 function workerHomeDir(): string {
   if (process.platform === "darwin") {
@@ -815,7 +1002,14 @@ async function logoutCommand(): Promise<void> {
   console.log("Stage 3 worker config removed.");
 }
 
-async function postWorkerHeartbeat(config: WorkerConfig, capabilities: WorkerCapabilities): Promise<void> {
+type ReportedWorkerCapabilities = WorkerCapabilities & {
+  admission?: Stage3WorkerAdmissionReport;
+};
+
+async function postWorkerHeartbeat(
+  config: WorkerConfig,
+  capabilities: ReportedWorkerCapabilities
+): Promise<void> {
   await fetch(`${config.serverOrigin}/api/stage3/worker/heartbeat`, {
     method: "POST",
     headers: {
@@ -1154,10 +1348,42 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
   await postWorkerHeartbeat(config, capabilities);
   console.log(`Stage 3 worker started for ${config.serverOrigin} (${config.label})`);
 
+  let lastAdmissionLogKey = "";
+  let lastAdmissionLogAt = 0;
+
   while (!stop && !shouldStop()) {
     try {
       if (shouldStop()) {
         break;
+      }
+      const admission = await collectStage3WorkerAdmissionReport({ activeWorkerJobs: 0 });
+      const reportedCapabilities: ReportedWorkerCapabilities = {
+        ...capabilities,
+        admission
+      };
+      const admissionLogKey = `${admission.decision}:${admission.reasons.join(",")}`;
+      if (
+        admissionLogKey !== lastAdmissionLogKey ||
+        Date.now() - lastAdmissionLogAt >= 30_000
+      ) {
+        const telemetry = admission.telemetry;
+        console.log(
+          [
+            `Stage 3 admission ${admission.decision}`,
+            `load=${telemetry.normalizedLoad1m?.toFixed(2) ?? "unknown"}`,
+            `freeGb=${telemetry.freeMemoryBytes === null ? "unknown" : (telemetry.freeMemoryBytes / GIB).toFixed(2)}`,
+            `activeRenderProcesses=${telemetry.activeRenderProcesses ?? "unknown"}`,
+            `activeWorkerJobs=${telemetry.activeWorkerJobs}`,
+            admission.reasons.length > 0 ? `reasons=${admission.reasons.join(",")}` : null
+          ].filter(Boolean).join(" ")
+        );
+        lastAdmissionLogKey = admissionLogKey;
+        lastAdmissionLogAt = Date.now();
+      }
+      if (!admission.admitted) {
+        await postWorkerHeartbeat(config, reportedCapabilities);
+        await new Promise((resolve) => setTimeout(resolve, 4000));
+        continue;
       }
       const claimResponse = await fetch(`${config.serverOrigin}/api/stage3/worker/jobs/claim`, {
         method: "POST",
@@ -1168,12 +1394,12 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
         body: JSON.stringify({
           supportedKinds: ["preview", "render", "editing-proxy", "source-download", "agent-media-step"],
           appVersion,
-          capabilities
+          capabilities: reportedCapabilities
         })
       });
 
       if (claimResponse.status === 204) {
-        await postWorkerHeartbeat(config, capabilities);
+        await postWorkerHeartbeat(config, reportedCapabilities);
         await new Promise((resolve) => setTimeout(resolve, 2000));
         continue;
       }
@@ -1189,6 +1415,16 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
       const payloadJson = claimBody.payloadJson;
       console.log(`Claimed job ${job.id} (${job.kind})`);
       const jobController = new AbortController();
+      const busyAdmission: Stage3WorkerAdmissionReport = {
+        ...admission,
+        decision: "busy",
+        admitted: false,
+        reasons: ["worker_job_active"],
+        telemetry: {
+          ...admission.telemetry,
+          activeWorkerJobs: 1
+        }
+      };
 
       const leaseTimer = setInterval(() => {
         void (async () => {
@@ -1200,7 +1436,10 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
             },
             body: JSON.stringify({
               appVersion,
-              capabilities
+              capabilities: {
+                ...capabilities,
+                admission: busyAdmission
+              }
             })
           }).catch(() => null);
           if (response && (response.status === 404 || response.status === 409)) {

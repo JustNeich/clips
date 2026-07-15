@@ -106,27 +106,53 @@ const MEMORY_CONSTRAINED_REMOTION_CONCURRENCY = 1;
 // crashing mid-render with "Target closed". Once a clip crosses this duration we bound
 // concurrency and enable the memory-safe render options; short clips keep the fast path.
 const LONG_RENDER_MEMORY_SAFE_THRESHOLD_SEC = 18;
-const DEFAULT_LONG_RENDER_REMOTION_CONCURRENCY = 2;
 const MIN_LONG_RENDER_REMOTION_CONCURRENCY = 1;
 const MAX_LONG_RENDER_REMOTION_CONCURRENCY = 4;
+const LONG_RENDER_MEMORY_RESERVE_BYTES = 3 * 1024 * 1024 * 1024;
+const LONG_RENDER_MEMORY_PER_RENDERER_BYTES = 2 * 1024 * 1024 * 1024;
 
-// Frame-level Remotion concurrency for long local renders. Higher = faster but more
-// Chrome memory pressure (OOM risk); 2 is the safe default that protected the Mini
-// worker from "Target closed" crashes. STAGE3_LONG_RENDER_CONCURRENCY (integer,
-// clamped to [1..4]) tunes it on the worker plist without a rebuild; unset/invalid
-// keeps the default 2 (unchanged behavior). This module runs in the worker runtime.
-function resolveLongRenderRemotionConcurrency(): number {
-  const raw = process.env.STAGE3_LONG_RENDER_CONCURRENCY?.trim();
-  if (!raw) {
-    return DEFAULT_LONG_RENDER_REMOTION_CONCURRENCY;
+export type Stage3RenderResourceTelemetry = {
+  cpuCount: number;
+  loadAverage1m: number;
+  freeMemoryBytes: number;
+};
+
+function captureStage3RenderResourceTelemetry(): Stage3RenderResourceTelemetry {
+  return {
+    cpuCount: os.cpus().length,
+    loadAverage1m: os.loadavg()[0] ?? Number.NaN,
+    freeMemoryBytes: os.freemem()
+  };
+}
+
+// Long-render frame concurrency is selected from current CPU/load/memory each
+// time a render starts. Invalid telemetry fails safely to one renderer.
+export function resolveDynamicLongRenderRemotionConcurrency(
+  telemetry: Stage3RenderResourceTelemetry
+): number {
+  if (
+    !Number.isFinite(telemetry.cpuCount) ||
+    telemetry.cpuCount <= 0 ||
+    !Number.isFinite(telemetry.loadAverage1m) ||
+    telemetry.loadAverage1m < 0 ||
+    !Number.isFinite(telemetry.freeMemoryBytes) ||
+    telemetry.freeMemoryBytes < 0
+  ) {
+    return MEMORY_CONSTRAINED_REMOTION_CONCURRENCY;
   }
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed)) {
-    return DEFAULT_LONG_RENDER_REMOTION_CONCURRENCY;
-  }
+  const normalizedLoad = telemetry.loadAverage1m / telemetry.cpuCount;
+  const cpuHeadroom = Math.max(0, 1 - normalizedLoad);
+  const cpuBudget = Math.max(1, Math.floor((telemetry.cpuCount * cpuHeadroom) / 2));
+  const memoryBudget = Math.max(
+    1,
+    Math.floor(
+      Math.max(0, telemetry.freeMemoryBytes - LONG_RENDER_MEMORY_RESERVE_BYTES) /
+        LONG_RENDER_MEMORY_PER_RENDERER_BYTES
+    )
+  );
   return Math.max(
     MIN_LONG_RENDER_REMOTION_CONCURRENCY,
-    Math.min(MAX_LONG_RENDER_REMOTION_CONCURRENCY, parsed)
+    Math.min(MAX_LONG_RENDER_REMOTION_CONCURRENCY, cpuBudget, memoryBudget)
   );
 }
 const SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
@@ -487,12 +513,15 @@ function isLongLocalRender(clipDurationSec: number): boolean {
 // Frame-level Remotion concurrency for a render. Hosted stays at 1; long local renders
 // are bounded to avoid the Chrome OOM crash; short local renders keep Remotion's fast
 // default (null = pick from CPU budget).
-export function resolveRemotionRenderConcurrency(clipDurationSec: number): number | null {
+export function resolveRemotionRenderConcurrency(
+  clipDurationSec: number,
+  telemetry: Stage3RenderResourceTelemetry = captureStage3RenderResourceTelemetry()
+): number | null {
   if (isMemoryConstrainedRuntime()) {
     return MEMORY_CONSTRAINED_REMOTION_CONCURRENCY;
   }
   if (isLongLocalRender(clipDurationSec)) {
-    return resolveLongRenderRemotionConcurrency();
+    return resolveDynamicLongRenderRemotionConcurrency(telemetry);
   }
   return null;
 }

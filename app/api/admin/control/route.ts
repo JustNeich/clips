@@ -32,7 +32,8 @@ import {
   getChannelPublishIntegration,
   getChannelPublishSettings,
   listApprovedRenderExportsForChannel,
-  listChannelPublications
+  listChannelPublications,
+  upsertChannelPublishSettings
 } from "../../../../lib/publication-store";
 import { requireRuntimeTool } from "../../../../lib/runtime-capabilities";
 import {
@@ -135,6 +136,7 @@ const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
   clips_owner_create_channel: "entity:write",
   clips_owner_update_channel: "entity:write",
   clips_owner_upload_channel_asset: "entity:write",
+  clips_owner_update_channel_publish_settings: "entity:write",
   clips_owner_delete_channel: "entity:write",
   clips_owner_list_templates: "flow:read",
   clips_owner_create_template: "entity:write",
@@ -178,6 +180,25 @@ function resolveStringArray(value: unknown): string[] | undefined {
     return undefined;
   }
   return value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean);
+}
+
+function resolveObject<T>(value: unknown): T | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as T)
+    : undefined;
+}
+
+function resolveNullableStringField(
+  input: Record<string, unknown>,
+  key: string
+): string | null | undefined {
+  if (!Object.prototype.hasOwnProperty.call(input, key)) {
+    return undefined;
+  }
+  if (input[key] === null) {
+    return null;
+  }
+  return resolveString(input[key]);
 }
 
 function mergeStage3SnapshotPatch(
@@ -338,7 +359,17 @@ function summarizeChannel(channel: Channel): Record<string, unknown> {
     name: channel.name,
     username: channel.username,
     archivedAt: channel.archivedAt ?? null,
+    systemPrompt: channel.systemPrompt,
+    descriptionPrompt: channel.descriptionPrompt,
+    examplesJson: channel.examplesJson,
+    stage2ExamplesConfig: channel.stage2ExamplesConfig,
+    stage2HardConstraints: channel.stage2HardConstraints,
+    stage2PromptConfig: channel.stage2PromptConfig,
+    stage2SourceOverlayConfig: channel.stage2SourceOverlayConfig,
     templateId: channel.templateId,
+    avatarAssetId: channel.avatarAssetId,
+    defaultBackgroundAssetId: channel.defaultBackgroundAssetId,
+    defaultMusicAssetId: channel.defaultMusicAssetId,
     defaultClipDurationSec: channel.defaultClipDurationSec,
     publishing: {
       ready: isChannelPublishIntegrationReady(integration),
@@ -548,6 +579,11 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       username: resolveString(input.username),
       systemPrompt: resolveString(input.systemPrompt),
       descriptionPrompt: resolveString(input.descriptionPrompt),
+      examplesJson: resolveString(input.examplesJson),
+      stage2ExamplesConfig: resolveObject<Channel["stage2ExamplesConfig"]>(input.stage2ExamplesConfig),
+      stage2HardConstraints: resolveObject<Channel["stage2HardConstraints"]>(input.stage2HardConstraints),
+      stage2PromptConfig: resolveObject<Channel["stage2PromptConfig"]>(input.stage2PromptConfig),
+      stage2SourceOverlayConfig: resolveObject<Channel["stage2SourceOverlayConfig"]>(input.stage2SourceOverlayConfig),
       templateId: resolveString(input.templateId),
       defaultClipDurationSec: resolveNumber(input.defaultClipDurationSec)
     });
@@ -571,9 +607,15 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       systemPrompt: resolveString(input.systemPrompt),
       descriptionPrompt: resolveString(input.descriptionPrompt),
       examplesJson: resolveString(input.examplesJson),
+      stage2ExamplesConfig: resolveObject<Channel["stage2ExamplesConfig"]>(input.stage2ExamplesConfig),
+      stage2HardConstraints: resolveObject<Channel["stage2HardConstraints"]>(input.stage2HardConstraints),
+      stage2PromptConfig: resolveObject<Channel["stage2PromptConfig"]>(input.stage2PromptConfig),
+      stage2SourceOverlayConfig: resolveObject<Channel["stage2SourceOverlayConfig"]>(input.stage2SourceOverlayConfig),
       templateId: resolveString(input.templateId),
       defaultClipDurationSec: resolveNumber(input.defaultClipDurationSec),
-      defaultBackgroundAssetId: resolveString(input.defaultBackgroundAssetId)
+      avatarAssetId: resolveNullableStringField(input, "avatarAssetId"),
+      defaultBackgroundAssetId: resolveNullableStringField(input, "defaultBackgroundAssetId"),
+      defaultMusicAssetId: resolveNullableStringField(input, "defaultMusicAssetId")
     });
     auditControl({
       auth,
@@ -585,6 +627,51 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       payload: { username: updated.username }
     });
     return { channel: summarizeChannel(updated) };
+  }
+
+  if (tool === "clips_owner_update_channel_publish_settings") {
+    const channel = await requireChannel(auth.workspace.id, input);
+    const current = getChannelPublishSettings(channel.id);
+    const patch: Parameters<typeof upsertChannelPublishSettings>[0]["patch"] = {};
+    const timezone = resolveString(input.timezone);
+    const firstSlotLocalTime = resolveString(input.firstSlotLocalTime);
+    const dailySlotCount = resolveNumber(input.dailySlotCount);
+    const slotIntervalMinutes = resolveNumber(input.slotIntervalMinutes);
+    const uploadLeadMinutes = resolveNumber(input.uploadLeadMinutes);
+    if (timezone) patch.timezone = timezone;
+    if (firstSlotLocalTime) patch.firstSlotLocalTime = firstSlotLocalTime;
+    if (dailySlotCount !== undefined) patch.dailySlotCount = dailySlotCount;
+    if (slotIntervalMinutes !== undefined) patch.slotIntervalMinutes = slotIntervalMinutes;
+    if (typeof input.autoQueueEnabled === "boolean") {
+      patch.autoQueueEnabled = input.autoQueueEnabled;
+    }
+    if (uploadLeadMinutes !== undefined) patch.uploadLeadMinutes = uploadLeadMinutes;
+    if (typeof input.notifySubscribersByDefault === "boolean") {
+      patch.notifySubscribersByDefault = input.notifySubscribersByDefault;
+    }
+    if (Object.keys(patch).length === 0) {
+      throw new Response(JSON.stringify({ error: "At least one publish setting is required." }), {
+        status: 400,
+        headers: { "content-type": "application/json" }
+      });
+    }
+    const settings = upsertChannelPublishSettings({
+      workspaceId: auth.workspace.id,
+      channelId: channel.id,
+      userId: auth.user.id,
+      patch
+    });
+    scheduleChannelPublicationProcessing();
+    auditControl({
+      auth,
+      action: "owner_control.channel_publish_settings.updated",
+      entityType: "channel_publish_settings",
+      entityId: channel.id,
+      channelId: channel.id,
+      status: "succeeded",
+      payload: { previousSettings: current, settings }
+    });
+    return { channel: summarizeChannel(channel), previousSettings: current, settings };
   }
 
   if (tool === "clips_owner_upload_channel_asset") {
@@ -1247,7 +1334,20 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
 
   if (tool === "clips_owner_run_video_pipeline") {
     const sourceUrl = resolveString(input.sourceUrl);
+    const requestedMode = resolveString(input.mode);
+    const agentCaptionProvided = input.agentCaption !== undefined && input.agentCaption !== null;
     if (!sourceUrl) {
+      if (requestedMode === "agent_manual" || agentCaptionProvided) {
+        throw new Response(
+          JSON.stringify({
+            error: "agent_manual_source_url_required",
+            code: "agent_manual_source_url_required",
+            message:
+              "agent_manual requires a nonempty sourceUrl; daily-pool and publication fallback are forbidden."
+          }),
+          { status: 400, headers: { "content-type": "application/json" } }
+        );
+      }
       return runOwnerDailyPool(auth, input);
     }
     const channel = await requireChannel(auth.workspace.id, input);
@@ -1255,19 +1355,50 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     if (!isSupportedUrl(normalizedUrl)) {
       throw new Response(JSON.stringify({ error: SUPPORTED_SOURCE_ERROR_MESSAGE }), { status: 400 });
     }
+    const mode: Stage2RunMode = requestedMode === "auto" ? "auto" : "manual";
+    const agentCaption = parseAgentManualCaption(input.agentCaption);
+    if (agentCaptionProvided && !agentCaption) {
+      throw new Response(
+        JSON.stringify({
+          error: "agent_caption_malformed",
+          code: "agent_caption_malformed",
+          message:
+            "agentCaption was provided but is missing string top/bottom fields; refusing to silently fall back to platform generation."
+        }),
+        { status: 400, headers: { "content-type": "application/json" } }
+      );
+    }
+    if (requestedMode === "agent_manual" && !agentCaption) {
+      throw new Response(
+        JSON.stringify({
+          error: "agent_caption_required",
+          code: "agent_caption_required",
+          message:
+            "mode=agent_manual requires agentCaption with string top/bottom fields; platform fallback is forbidden."
+        }),
+        { status: 400, headers: { "content-type": "application/json" } }
+      );
+    }
     const dryRun = resolveBoolean(input.dryRun);
     if (dryRun) {
       return {
         dryRun: true,
         channel: summarizeChannel(channel),
         sourceUrl: normalizedUrl,
+        captionSource: agentCaption ? "agent_manual" : "platform",
         planned: ["create_or_get_chat", "enqueue_stage2_run"],
         note: "Stage 3 render/publication requires a selected Stage 2 option unless using a channel-specific daily pool runner."
       };
     }
-    await Promise.all([requireRuntimeTool("ffmpeg"), requireRuntimeTool("ffprobe"), requireRuntimeTool("codex")]);
-    const integration = requireSharedCodexAvailable(auth.workspace.id);
-    await ensureCodexLoggedIn(integration.codexHomePath as string);
+    await Promise.all([
+      requireRuntimeTool("ffmpeg"),
+      requireRuntimeTool("ffprobe"),
+      ...(agentCaption ? [] : [requireRuntimeTool("codex")])
+    ]);
+    if (!agentCaption) {
+      const integration = requireSharedCodexAvailable(auth.workspace.id);
+      await ensureCodexLoggedIn(integration.codexHomePath as string);
+    }
     const chat = await createOrGetChatBySource({
       rawUrl: normalizedUrl,
       channelIdRaw: channel.id,
@@ -1281,27 +1412,6 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     const activeStage2Run = findActiveStage2RunForChat(chat.id, auth.workspace.id);
     if (activeStage2Run) {
       throw new Response(JSON.stringify({ error: "stage2_run_already_active", run: activeStage2Run }), { status: 409 });
-    }
-    const requestedMode = resolveString(input.mode);
-    const mode: Stage2RunMode = requestedMode === "auto" ? "auto" : "manual";
-    // agent_manual mode: an external agent supplies the final caption text; the
-    // platform skips generation but still runs the hard-constraint validator.
-    const agentCaptionProvided = input.agentCaption !== undefined && input.agentCaption !== null;
-    const agentCaption = parseAgentManualCaption(input.agentCaption);
-    // Fail loudly instead of silently downgrading to platform generation: a
-    // malformed agentCaption (missing string top/bottom) used to be swallowed,
-    // dropping the agent's text onto the unvalidated path. Surface it so the
-    // caller fixes the payload rather than shipping platform-generated text.
-    if (agentCaptionProvided && !agentCaption) {
-      throw new Response(
-        JSON.stringify({
-          error: "agent_caption_malformed",
-          code: "agent_caption_malformed",
-          message:
-            "agentCaption was provided but is missing string top/bottom fields; refusing to silently fall back to platform generation."
-        }),
-        { status: 400, headers: { "content-type": "application/json" } }
-      );
     }
     const run = enqueueAndScheduleStage2Run({
       workspaceId: auth.workspace.id,

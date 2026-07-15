@@ -56,6 +56,44 @@ const channelRefSchema = {
 
 const looseObjectSchema = z.object({}).passthrough();
 
+export const clipsOwnerUpdateChannelInputSchema = z.object({
+  ...channelRefSchema,
+  name: z.string().optional(),
+  username: z.string().optional(),
+  systemPrompt: z.string().optional(),
+  descriptionPrompt: z.string().optional(),
+  examplesJson: z.string().optional(),
+  stage2ExamplesConfig: looseObjectSchema.optional(),
+  stage2HardConstraints: looseObjectSchema.optional(),
+  stage2PromptConfig: looseObjectSchema.optional(),
+  stage2SourceOverlayConfig: looseObjectSchema.optional(),
+  templateId: z.string().optional(),
+  avatarAssetId: z.string().nullable().optional(),
+  defaultBackgroundAssetId: z.string().nullable().optional(),
+  defaultMusicAssetId: z.string().nullable().optional(),
+  defaultClipDurationSec: z.number().int().optional()
+});
+
+export const clipsOwnerUploadChannelAssetInputSchema = z.object({
+  ...channelRefSchema,
+  kind: z.enum(["avatar", "background", "music"]),
+  fileName: z.string().optional(),
+  mimeType: z.string(),
+  dataBase64: z.string(),
+  setAsDefault: z.boolean().optional()
+});
+
+export const clipsOwnerUpdateChannelPublishSettingsInputSchema = z.object({
+  ...channelRefSchema,
+  timezone: z.string().optional(),
+  firstSlotLocalTime: z.string().optional(),
+  dailySlotCount: z.number().int().min(1).max(12).optional(),
+  slotIntervalMinutes: z.number().int().min(5).max(240).optional(),
+  autoQueueEnabled: z.boolean().optional(),
+  uploadLeadMinutes: z.number().int().min(5).max(1440).optional(),
+  notifySubscribersByDefault: z.boolean().optional()
+});
+
 export const clipsOwnerRenderVideoInputSchema = z.object({
   ...channelRefSchema,
   chatId: z.string(),
@@ -64,6 +102,51 @@ export const clipsOwnerRenderVideoInputSchema = z.object({
   publishAfterRender: z.boolean().optional(),
   snapshot: looseObjectSchema.optional()
 });
+
+export const clipsOwnerRunVideoPipelineInputSchema = z
+  .object({
+    ...channelRefSchema,
+    sourceUrl: z.string().optional(),
+    title: z.string().optional(),
+    eventText: z.string().optional(),
+    userInstruction: z.string().optional(),
+    mode: z.enum(["manual", "auto", "platform_v1", "agent_manual"]).optional(),
+    agentCaption: z
+      .object({
+        top: z.string(),
+        bottom: z.string(),
+        topRu: z.string().optional(),
+        bottomRu: z.string().optional(),
+        highlights: z.any().optional()
+      })
+      .optional(),
+    categorySlug: z.string().optional(),
+    limit: z.number().int().min(1).max(3).optional(),
+    attemptBudget: z.number().int().min(1).max(12).optional(),
+    dryRun: z.boolean().optional(),
+    async: z.boolean().optional(),
+    background: z.boolean().optional()
+  })
+  .superRefine((value, context) => {
+    if (
+      (value.mode === "agent_manual" || value.agentCaption !== undefined) &&
+      !value.sourceUrl?.trim()
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sourceUrl"],
+        message:
+          "A nonempty sourceUrl is required for agent_manual; daily-pool fallback is forbidden."
+      });
+    }
+    if (value.mode === "agent_manual" && !value.agentCaption) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["agentCaption"],
+        message: "agentCaption is required when mode=agent_manual; platform fallback is forbidden."
+      });
+    }
+  });
 
 const server = new McpServer({
   name: "clips-owner-control",
@@ -122,6 +205,11 @@ server.registerTool(
       username: z.string().optional(),
       systemPrompt: z.string().optional(),
       descriptionPrompt: z.string().optional(),
+      examplesJson: z.string().optional(),
+      stage2ExamplesConfig: looseObjectSchema.optional(),
+      stage2HardConstraints: looseObjectSchema.optional(),
+      stage2PromptConfig: looseObjectSchema.optional(),
+      stage2SourceOverlayConfig: looseObjectSchema.optional(),
       templateId: z.string().optional(),
       defaultClipDurationSec: z.number().int().optional()
     })
@@ -134,18 +222,31 @@ server.registerTool(
   {
     title: "Update Clips channel",
     description: "Update a workspace channel's identity, prompts, template, or default duration.",
-    inputSchema: z.object({
-      ...channelRefSchema,
-      name: z.string().optional(),
-      username: z.string().optional(),
-      systemPrompt: z.string().optional(),
-      descriptionPrompt: z.string().optional(),
-      examplesJson: z.string().optional(),
-      templateId: z.string().optional(),
-      defaultClipDurationSec: z.number().int().optional()
-    })
+    inputSchema: clipsOwnerUpdateChannelInputSchema
   },
   async (input) => ownerControl("clips_owner_update_channel", input)
+);
+
+server.registerTool(
+  "clips_owner_upload_channel_asset",
+  {
+    title: "Upload Clips channel asset",
+    description:
+      "Upload an avatar, background, or music asset and optionally make it the channel default.",
+    inputSchema: clipsOwnerUploadChannelAssetInputSchema
+  },
+  async (input) => ownerControl("clips_owner_upload_channel_asset", input)
+);
+
+server.registerTool(
+  "clips_owner_update_channel_publish_settings",
+  {
+    title: "Update Clips channel publish settings",
+    description:
+      "Update a channel's timezone, slot grid, auto-queue, upload lead, and subscriber notification defaults.",
+    inputSchema: clipsOwnerUpdateChannelPublishSettingsInputSchema
+  },
+  async (input) => ownerControl("clips_owner_update_channel_publish_settings", input)
 );
 
 server.registerTool(
@@ -428,29 +529,7 @@ server.registerTool(
   {
     title: "Run Clips video pipeline",
     description: "Run the daily-pool pipeline, or create a chat and enqueue Stage 2 for one source URL.",
-    inputSchema: z.object({
-      ...channelRefSchema,
-      sourceUrl: z.string().optional(),
-      title: z.string().optional(),
-      eventText: z.string().optional(),
-      userInstruction: z.string().optional(),
-      mode: z.enum(["manual", "auto", "platform_v1", "agent_manual"]).optional(),
-      agentCaption: z
-        .object({
-          top: z.string(),
-          bottom: z.string(),
-          topRu: z.string().optional(),
-          bottomRu: z.string().optional(),
-          highlights: z.any().optional()
-        })
-        .optional(),
-      categorySlug: z.string().optional(),
-      limit: z.number().int().min(1).max(3).optional(),
-      attemptBudget: z.number().int().min(1).max(12).optional(),
-      dryRun: z.boolean().optional(),
-      async: z.boolean().optional(),
-      background: z.boolean().optional()
-    })
+    inputSchema: clipsOwnerRunVideoPipelineInputSchema
   },
   async (input) => ownerControl("clips_owner_run_video_pipeline", input)
 );

@@ -6,17 +6,24 @@ import test from "node:test";
 
 import { GET as getAdminFlows } from "../app/api/admin/flows/route";
 import { POST as ownerControlRoute } from "../app/api/admin/control/route";
-import { appendChatEvent, createChannel, createOrGetChatByUrl } from "../lib/chat-history";
+import {
+  appendChatEvent,
+  createChannel,
+  createOrGetChatByUrl,
+  getChannelById
+} from "../lib/chat-history";
 import { buildPublicationSlotCandidateFromDateAndIndex, DEFAULT_CHANNEL_PUBLISH_SETTINGS } from "../lib/channel-publishing";
 import {
   authenticateMcpMachineCredentialForScope,
   createMcpMachineCredential
 } from "../lib/mcp-machine-credential-store";
 import { createMcpAccessToken } from "../lib/mcp-token-store";
+import { getDb } from "../lib/db/client";
 import {
   createChannelPublication,
   createRenderExport,
-  getChannelPublicationById
+  getChannelPublicationById,
+  getChannelPublishSettings
 } from "../lib/publication-store";
 import { completeStage3Job, enqueueStage3Job, getStage3Job } from "../lib/stage3-job-store";
 import { bootstrapOwner } from "../lib/team-store";
@@ -127,7 +134,8 @@ async function appendStage2CaptionEvent(chatId: string): Promise<void> {
           {
             option: 1,
             top: "SERVER SNAPSHOT TOP",
-            bottom: "Server-side Stage 2 caption text must reach the MCP render snapshot.",
+            bottom:
+              "Server-side Stage 2 caption text must reach the complete MCP snapshot before every approved render.",
             highlights: { top: [], bottom: [] }
           }
         ],
@@ -438,7 +446,11 @@ test("owner control blocks channel-story render_video until an editor/judge snap
         }
       }
     });
-    assert.equal(approved.status, 202);
+    assert.equal(
+      approved.status,
+      202,
+      JSON.stringify(await approved.clone().json().catch(() => null))
+    );
     const rendered = (await approved.json()) as { job: { id: string } };
     const enqueued = getStage3Job(rendered.job.id);
     assert.ok(enqueued);
@@ -494,6 +506,85 @@ test("owner control creates, reads, and updates managed templates", async () => 
       input: { templateId: "does-not-exist" }
     });
     assert.equal(missing.status, 404);
+  });
+});
+
+test("owner control administers channel setup, assets, and publish settings", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel } = await seedOwnerControl(appDataDir);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "channel-admin-agent",
+      scopes: ["entity:write", "flow:read"]
+    });
+
+    const setupResponse = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_update_channel",
+      input: {
+        channelId: channel.id,
+        systemPrompt: "Agent-managed channel concept",
+        stage2HardConstraints: {
+          topLengthMin: 20,
+          topLengthMax: 70,
+          bottomLengthMin: 24,
+          bottomLengthMax: 100,
+          bannedWords: ["forbidden"],
+          bannedOpeners: []
+        },
+        stage2SourceOverlayConfig: {
+          enabled: false,
+          prompt: "Keep the source clean."
+        }
+      }
+    });
+    assert.equal(setupResponse.status, 200);
+    const setup = (await setupResponse.json()) as {
+      channel: {
+        systemPrompt: string;
+        stage2HardConstraints: { topLengthMin: number; bannedWords: string[] };
+        stage2SourceOverlayConfig: { enabled: boolean };
+      };
+    };
+    assert.equal(setup.channel.systemPrompt, "Agent-managed channel concept");
+    assert.equal(setup.channel.stage2HardConstraints.topLengthMin, 20);
+    assert.deepEqual(setup.channel.stage2HardConstraints.bannedWords, ["forbidden"]);
+    assert.equal(setup.channel.stage2SourceOverlayConfig.enabled, false);
+
+    const assetResponse = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_upload_channel_asset",
+      input: {
+        channelId: channel.id,
+        kind: "background",
+        fileName: "background.png",
+        mimeType: "image/png",
+        dataBase64: Buffer.from("test-background").toString("base64"),
+        setAsDefault: true
+      }
+    });
+    assert.equal(assetResponse.status, 200);
+    const uploaded = (await assetResponse.json()) as { asset: { id: string } };
+    assert.equal((await getChannelById(channel.id))?.defaultBackgroundAssetId, uploaded.asset.id);
+
+    const publishResponse = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_update_channel_publish_settings",
+      input: {
+        channelId: channel.id,
+        autoQueueEnabled: false,
+        dailySlotCount: 3,
+        notifySubscribersByDefault: false
+      }
+    });
+    assert.equal(publishResponse.status, 200);
+    assert.equal(getChannelPublishSettings(channel.id).autoQueueEnabled, false);
+    assert.equal(getChannelPublishSettings(channel.id).dailySlotCount, 3);
+
+    const clearResponse = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_update_channel",
+      input: { channelId: channel.id, defaultBackgroundAssetId: null }
+    });
+    assert.equal(clearResponse.status, 200);
+    assert.equal((await getChannelById(channel.id))?.defaultBackgroundAssetId, null);
   });
 });
 
@@ -608,7 +699,7 @@ test("owner control render_video builds a full caption snapshot with upright sou
     assert.equal(payload.snapshot?.topText, "SERVER SNAPSHOT TOP");
     assert.equal(
       payload.snapshot?.bottomText,
-      "Server-side Stage 2 caption text must reach the MCP render snapshot."
+      "Server-side Stage 2 caption text must reach the complete MCP snapshot before every approved render."
     );
     assert.equal(payload.snapshot?.sourceOverlayText, "source: owner mcp");
     assert.equal(payload.snapshot?.renderPlan?.durationMode, "source_full");
@@ -760,7 +851,7 @@ test("owner control render_video merges a caller renderPlan patch onto the full 
     assert.equal(payload.snapshot?.topText, "SERVER SNAPSHOT TOP");
     assert.equal(
       payload.snapshot?.bottomText,
-      "Server-side Stage 2 caption text must reach the MCP render snapshot."
+      "Server-side Stage 2 caption text must reach the complete MCP snapshot before every approved render."
     );
     assert.ok(payload.snapshot?.templateSnapshot?.snapshotHash);
     assert.ok(payload.snapshot?.textFit?.fitHash);
@@ -894,7 +985,7 @@ test("owner control render_video reuses the latest editor source crop instead of
 
     assert.equal(
       payload.snapshot?.bottomText,
-      "Server-side Stage 2 caption text must reach the MCP render snapshot."
+      "Server-side Stage 2 caption text must reach the complete MCP snapshot before every approved render."
     );
     assert.equal(payload.snapshot?.clipStartSec, 3.5);
     assert.equal(payload.snapshot?.clipDurationSec, 7.75);
@@ -928,7 +1019,7 @@ test("owner control render_video drops stale server text fit when caller patches
         channelId: channel.id,
         chatId: chat.id,
         snapshot: {
-          topText: "CALLER PATCH TOP",
+          topText: "CALLER PATCH TOP TEXT",
           renderPlan: {
             sourceCrop: {
               enabled: true,
@@ -962,10 +1053,10 @@ test("owner control render_video drops stale server text fit when caller patches
       };
     };
 
-    assert.equal(payload.snapshot?.topText, "CALLER PATCH TOP");
+    assert.equal(payload.snapshot?.topText, "CALLER PATCH TOP TEXT");
     assert.equal(
       payload.snapshot?.bottomText,
-      "Server-side Stage 2 caption text must reach the MCP render snapshot."
+      "Server-side Stage 2 caption text must reach the complete MCP snapshot before every approved render."
     );
     assert.equal(payload.snapshot?.templateSnapshot, undefined);
     assert.equal(payload.snapshot?.textFit, undefined);
@@ -998,6 +1089,92 @@ test("owner control video pipeline accepts platform_v1 as the current manual Sta
     const payload = (await response.json()) as { dryRun?: boolean; planned?: string[] };
     assert.equal(payload.dryRun, true);
     assert.deepEqual(payload.planned, ["create_or_get_chat", "enqueue_stage2_run"]);
+  });
+});
+
+test("owner control refuses explicit agent_manual mode without a valid caption", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel } = await seedOwnerControl(appDataDir);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "agent-manual-caption-required",
+      scopes: ["pipeline:run"]
+    });
+
+    const missing = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_run_video_pipeline",
+      input: {
+        channelId: channel.id,
+        sourceUrl: "https://www.instagram.com/reel/DZA_hMoznPK/",
+        mode: "agent_manual"
+      }
+    });
+    assert.equal(missing.status, 400);
+    assert.equal((await missing.json()).code, "agent_caption_required");
+
+    const malformed = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_run_video_pipeline",
+      input: {
+        channelId: channel.id,
+        sourceUrl: "https://www.instagram.com/reel/DZA_hMoznPK/",
+        mode: "agent_manual",
+        agentCaption: { top: "MISSING BOTTOM" }
+      }
+    });
+    assert.equal(malformed.status, 400);
+    assert.equal((await malformed.json()).code, "agent_caption_malformed");
+  });
+});
+
+test("owner control never delegates agent_manual without sourceUrl to the daily pool", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel } = await seedOwnerControl(appDataDir);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "agent-manual-source-required",
+      scopes: ["pipeline:run"]
+    });
+    const count = (table: "copscopes_daily_runs" | "stage3_jobs" | "channel_publications") =>
+      Number(
+        (
+          getDb()
+            .prepare(`SELECT COUNT(*) AS count FROM ${table}`)
+            .get() as { count: number }
+        ).count
+      );
+    const before = {
+      dailyRuns: count("copscopes_daily_runs"),
+      stage3Jobs: count("stage3_jobs"),
+      publications: count("channel_publications")
+    };
+    const caption = {
+      top: "AGENT MANUAL SOURCE IS REQUIRED",
+      bottom: "An explicit source must exist before the manual Stage 2 handoff can start."
+    };
+
+    for (const input of [
+      { channelId: channel.id, mode: "agent_manual", agentCaption: caption },
+      { channelId: channel.id, agentCaption: caption }
+    ]) {
+      const response = await postOwnerControl(machine.secret, {
+        tool: "clips_owner_run_video_pipeline",
+        input
+      });
+      assert.equal(response.status, 400);
+      assert.equal((await response.json()).code, "agent_manual_source_url_required");
+    }
+
+    assert.deepEqual(
+      {
+        dailyRuns: count("copscopes_daily_runs"),
+        stage3Jobs: count("stage3_jobs"),
+        publications: count("channel_publications")
+      },
+      before,
+      "agent_manual without sourceUrl must not enter daily pool, Stage 3, or publication paths"
+    );
   });
 });
 

@@ -21,7 +21,7 @@ export type Stage2VNextStageId =
   | "title_and_seo"
   | "feedback_capture";
 
-export type Stage2PipelineVersion = "legacy" | "vnext" | "native_caption_v3";
+export type Stage2PipelineVersion = "legacy" | "vnext" | "native_caption_v3" | "agent_manual";
 
 export type Stage2VNextFlagResolutionSource = "override" | "env" | "default_false";
 

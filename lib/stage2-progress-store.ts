@@ -55,7 +55,7 @@ export type Stage2RunRequest = {
   sourceUrl: string;
   userInstruction: string | null;
   mode: Stage2RunMode;
-  /** When present, agent-supplied final caption text overrides Stage 2 generation (still validated). */
+  /** When present, agent-supplied final text uses the isolated, validated agent_manual path. */
   agentCaption?: AgentManualCaption | null;
   baseRunId?: string | null;
   debugMode?: Stage2DebugMode;
@@ -138,6 +138,26 @@ function parseJsonOrNull<T>(raw: string | null | undefined): T | null {
   }
 }
 
+function parseAgentCaptionField(
+  request: unknown,
+  sourceLabel: "Stage 2 request" | "Persisted Stage 2 request"
+): AgentManualCaption | undefined {
+  if (!request || typeof request !== "object") {
+    return undefined;
+  }
+  const record = request as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(record, "agentCaption")) {
+    return undefined;
+  }
+  const agentCaption = parseAgentManualCaption(record.agentCaption);
+  if (!agentCaption) {
+    throw new Error(
+      `${sourceLabel} contains malformed agentCaption; platform fallback is forbidden.`
+    );
+  }
+  return agentCaption;
+}
+
 function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
   const parsed = parseJsonOrNull<Partial<Stage2RunRequest>>(record.request_json);
   const mode = normalizeMode(parsed?.mode ?? record.mode);
@@ -155,11 +175,10 @@ function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
   const debugMode = parsed?.debugMode === "raw" ? "raw" : "summary";
   // Carry the agent-supplied caption across the DB round-trip. Without this the
   // first persist/read in saveRecord silently strips agentCaption (it was never
-  // re-read here), so the stage2-runner never applied the agent text and the
-  // platform-generated winner always shipped. Reuse the same strict parser the
-  // ingest path uses so malformed persisted data is treated as absent (fail-safe)
-  // and the field is only present when a valid caption was provided.
-  const agentCaption = parseAgentManualCaption(parsed?.agentCaption);
+  // re-read here), so the stage2-runner could not enter the isolated
+  // agent_manual path. Reuse the same strict parser as ingest so the field is
+  // only present when the complete caption payload was persisted.
+  const agentCaption = parseAgentCaptionField(parsed, "Persisted Stage 2 request");
   const channelCandidate =
     parsed?.channel && typeof parsed.channel === "object"
       ? (parsed.channel as Partial<Stage2RunRequest["channel"]>)
@@ -360,6 +379,7 @@ export function createStage2Run(input: {
   chatId?: string | null;
   request: Stage2RunRequest;
 }): Stage2RunRecord {
+  parseAgentCaptionField(input.request, "Stage 2 request");
   const stamp = nowIso();
   const runId = newId();
   const record = saveRecord({
