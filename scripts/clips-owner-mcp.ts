@@ -1,11 +1,34 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { createHash, randomUUID } from "node:crypto";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 
 type JsonRecord = Record<string, unknown>;
 
 const appUrl = (process.env.CLIPS_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+const OWNER_ARTIFACT_DIR = path.join(os.tmpdir(), "clips-owner-artifacts");
+const OWNER_ARTIFACT_MAX_BYTES = 2 * 1024 * 1024 * 1024;
+
+type DownloadStage3ArtifactOptions = {
+  appUrl?: string;
+  artifactDir?: string;
+  fetchImpl?: typeof fetch;
+  maxBytes?: number;
+  token?: string;
+};
+
+type DownloadedStage3Artifact = {
+  jobId: string;
+  localPath: string;
+  fileName: string;
+  sizeBytes: number;
+  sha256: string;
+  mimeType: string;
+};
 
 function getToken(): string {
   const token = process.env.CLIPS_MCP_TOKEN?.trim() ?? "";
@@ -13,6 +36,176 @@ function getToken(): string {
     throw new Error("CLIPS_MCP_TOKEN is required.");
   }
   return token;
+}
+
+function decodeContentDispositionFileName(header: string | null): string | null {
+  if (!header) {
+    return null;
+  }
+  const encoded = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header)?.[1]?.trim();
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded.replace(/^"|"$/g, ""));
+    } catch {
+      // Fall through to the plain filename form.
+    }
+  }
+  return /filename\s*=\s*"([^"]+)"/i.exec(header)?.[1]?.trim() ??
+    /filename\s*=\s*([^;]+)/i.exec(header)?.[1]?.trim() ??
+    null;
+}
+
+export function sanitizeOwnerArtifactFileName(
+  candidate: string | null | undefined,
+  fallback = "stage3-artifact.mp4"
+): string {
+  const leaf = path.posix.basename((candidate ?? "").replaceAll("\\", "/").replaceAll("\0", ""));
+  const sanitized = leaf
+    .normalize("NFKC")
+    .replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, "_")
+    .replace(/^\.+/, "")
+    .trim();
+  if (!sanitized || sanitized === "." || sanitized === "..") {
+    return fallback;
+  }
+  return sanitized.slice(0, 180);
+}
+
+function redactToken(value: string, token: string): string {
+  return token ? value.split(token).join("[redacted]") : value;
+}
+
+async function readHttpError(response: Response, token: string): Promise<string> {
+  const raw = (await response.text().catch(() => "")).slice(0, 4096);
+  if (!raw) {
+    return `HTTP ${response.status}`;
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const message =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed) &&
+      typeof (parsed as JsonRecord).error === "string"
+        ? String((parsed as JsonRecord).error)
+        : raw;
+    return `HTTP ${response.status}: ${redactToken(message, token)}`;
+  } catch {
+    return `HTTP ${response.status}: ${redactToken(raw, token)}`;
+  }
+}
+
+async function ensureSafeArtifactDirectory(artifactDir: string): Promise<void> {
+  await fs.mkdir(artifactDir, { recursive: true, mode: 0o700 });
+  const stat = await fs.lstat(artifactDir);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error("Clips owner artifact path is not a safe directory.");
+  }
+  await fs.chmod(artifactDir, 0o700);
+}
+
+export async function downloadStage3ArtifactToTemp(
+  jobIdInput: string,
+  options: DownloadStage3ArtifactOptions = {}
+): Promise<DownloadedStage3Artifact> {
+  const jobId = jobIdInput.trim();
+  if (!jobId) {
+    throw new Error("jobId is required.");
+  }
+
+  const token = options.token ?? getToken();
+  const baseUrl = (options.appUrl ?? appUrl).replace(/\/+$/, "");
+  const maxBytes = options.maxBytes ?? OWNER_ARTIFACT_MAX_BYTES;
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+    throw new Error("Artifact size limit must be a positive safe integer.");
+  }
+
+  let response: Response;
+  try {
+    response = await (options.fetchImpl ?? fetch)(
+      `${baseUrl}/api/admin/render-exports/${encodeURIComponent(jobId)}`,
+      {
+        redirect: "error",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "video/*, application/octet-stream;q=0.9, */*;q=0.1"
+        }
+      }
+    );
+  } catch (error) {
+    const message = error instanceof Error ? redactToken(error.message, token) : "Unknown fetch error.";
+    throw new Error(`Stage 3 artifact download failed: ${message}`);
+  }
+  if (!response.ok) {
+    throw new Error(`Stage 3 artifact download failed: ${await readHttpError(response, token)}`);
+  }
+  if (!response.body) {
+    throw new Error("Stage 3 artifact download failed: response body is empty.");
+  }
+
+  const contentLength = Number.parseInt(response.headers.get("content-length") ?? "", 10);
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    await response.body.cancel().catch(() => undefined);
+    throw new Error(`Stage 3 artifact exceeds the ${maxBytes}-byte download limit.`);
+  }
+
+  const artifactDir = path.resolve(options.artifactDir ?? OWNER_ARTIFACT_DIR);
+  await ensureSafeArtifactDirectory(artifactDir);
+  const remoteFileName = sanitizeOwnerArtifactFileName(
+    decodeContentDispositionFileName(response.headers.get("content-disposition")),
+    "stage3-artifact.mp4"
+  );
+  const jobKey = createHash("sha256").update(jobId).digest("hex").slice(0, 12);
+  const uniqueKey = randomUUID().replaceAll("-", "").slice(0, 12);
+  const fileName = `${jobKey}-${uniqueKey}-${remoteFileName}`;
+  const localPath = path.join(artifactDir, fileName);
+  const partPath = `${localPath}.part`;
+  const reader = response.body.getReader();
+  const hash = createHash("sha256");
+  let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
+  let sizeBytes = 0;
+
+  try {
+    handle = await fs.open(partPath, "wx", 0o600);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      if (!value?.byteLength) {
+        continue;
+      }
+      if (sizeBytes + value.byteLength > maxBytes) {
+        throw new Error(`Stage 3 artifact exceeds the ${maxBytes}-byte download limit.`);
+      }
+      hash.update(value);
+      let offset = 0;
+      while (offset < value.byteLength) {
+        const { bytesWritten } = await handle.write(value, offset, value.byteLength - offset);
+        if (bytesWritten <= 0) {
+          throw new Error("Stage 3 artifact download stopped before the file was complete.");
+        }
+        offset += bytesWritten;
+      }
+      sizeBytes += value.byteLength;
+    }
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    await fs.rename(partPath, localPath);
+  } catch (error) {
+    await reader.cancel().catch(() => undefined);
+    await handle?.close().catch(() => undefined);
+    await fs.rm(partPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
+
+  return {
+    jobId,
+    localPath,
+    fileName,
+    sizeBytes,
+    sha256: hash.digest("hex"),
+    mimeType: response.headers.get("content-type")?.trim() || "application/octet-stream"
+  };
 }
 
 function jsonContent(value: unknown) {
@@ -167,6 +360,10 @@ export const clipsOwnerRenderPreviewInputSchema = z.object({
   sourceUrl: z.string(),
   chatId: z.string().optional(),
   snapshot: stage3OwnerSnapshotSchema.optional()
+});
+
+export const clipsOwnerDownloadStage3ArtifactInputSchema = z.object({
+  jobId: z.string().trim().min(1).max(200)
 });
 
 export const clipsOwnerRunVideoPipelineInputSchema = z
@@ -502,10 +699,21 @@ server.registerTool(
   {
     title: "Render Clips Stage 3 preview frames",
     description:
-      "Enqueue a media-only Stage 3 preview clip for the editor/judge crop loop. This artifact validates source timing, crop, fit and donor-wrapper removal only; it intentionally does not render the channel card, author row, caption text or highlights. Pass sourceUrl and the editor's snapshot (renderPlan.sourceCrop/videoFit/segments/...). sourceCrop x/y/width/height are normalized fractions from 0 to 1, never source pixels; x + width and y + height must stay within 1. Returns a job id and a poll url; poll /api/stage3/preview/jobs/<id> for the clip. Caption and template composition are validated on the final render. No vision logic runs server-side.",
+      "Enqueue a media-only Stage 3 preview clip for the editor/judge crop loop. This artifact validates source timing, crop, fit and donor-wrapper removal only; it intentionally does not render the channel card, author row, caption text or highlights. Pass sourceUrl and the editor's snapshot (renderPlan.sourceCrop/videoFit/segments/...). sourceCrop x/y/width/height are normalized fractions from 0 to 1, never source pixels; x + width and y + height must stay within 1. Returns a job id and a poll url; poll /api/stage3/preview/jobs/<id> for the clip. After completion, use clips_owner_download_stage3_artifact with the jobId. Caption and template composition are validated on the final render. No vision logic runs server-side.",
     inputSchema: clipsOwnerRenderPreviewInputSchema
   },
   async (input) => ownerControl("clips_owner_render_preview", input)
+);
+
+server.registerTool(
+  "clips_owner_download_stage3_artifact",
+  {
+    title: "Download completed Clips Stage 3 artifact",
+    description:
+      "Download a completed Stage 3 preview or final render into the MCP machine's protected temporary Clips artifact directory. The directory is selected automatically; callers provide only the jobId. Returns the local path, file name, size, SHA-256 hash, MIME type, and job id.",
+    inputSchema: clipsOwnerDownloadStage3ArtifactInputSchema
+  },
+  async (input) => jsonContent(await downloadStage3ArtifactToTemp(input.jobId))
 );
 
 server.registerTool(
