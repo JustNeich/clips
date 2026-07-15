@@ -20,6 +20,8 @@ import {
   issueStage3WorkerPairingToken,
   listStage3Workers
 } from "../lib/stage3-worker-store";
+import { resolveRequiredStage3WorkerReadiness } from "../lib/stage3-worker-readiness";
+import { getExpectedStage3WorkerRuntimeVersion } from "../lib/stage3-worker-runtime-manifest";
 
 async function withIsolatedAppData<T>(run: (appDataDir: string) => Promise<T>): Promise<T> {
   const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-stage3-worker-status-"));
@@ -62,6 +64,15 @@ function seedWorkspace(workspaceId: string, userId: string): void {
   ).run(newId(), workspaceId, userId, "owner", stamp, stamp);
 }
 
+test("required_worker_id migration is idempotent", async () => {
+  await withIsolatedAppData(async () => {
+    const readColumns = () => (getDb().prepare("PRAGMA table_info(stage3_jobs)").all() as Array<{ name: string }>).map((row) => row.name);
+    assert.ok(readColumns().includes("required_worker_id"));
+    delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
+    assert.ok(readColumns().includes("required_worker_id"));
+  });
+});
+
 test("listStage3Workers reports busy worker with current job kind for active local jobs", async () => {
   await withIsolatedAppData(async () => {
     const workspaceId = "w1";
@@ -69,10 +80,12 @@ test("listStage3Workers reports busy worker with current job kind for active loc
     seedWorkspace(workspaceId, userId);
 
     const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+    const expectedBuild = await getExpectedStage3WorkerRuntimeVersion();
     const exchanged = exchangeStage3WorkerPairingToken({
       pairingToken: pairing.token,
       label: "worker",
-      platform: "darwin-arm64"
+      platform: "darwin-arm64",
+      appVersion: expectedBuild
     });
 
     const job = enqueueStage3Job({
@@ -96,6 +109,13 @@ test("listStage3Workers reports busy worker with current job kind for active loc
     assert.equal(workers[0]?.status, "busy");
     assert.equal(workers[0]?.currentJobId, job.id);
     assert.equal(workers[0]?.currentJobKind, "editing-proxy");
+    const exactReadiness = await resolveRequiredStage3WorkerReadiness({
+      workspaceId,
+      userId,
+      workerId: exchanged.worker.id
+    });
+    assert.equal(exactReadiness.ready, true);
+    assert.equal(exactReadiness.reason, null);
   });
 });
 
@@ -152,6 +172,68 @@ test("outdated local worker marks queued render jobs failed instead of leaving t
       .prepare("SELECT message FROM stage3_job_events WHERE job_id = ? ORDER BY created_at ASC")
       .all(render.id) as Array<{ message: string }>;
     assert.ok(events.some((event) => event.message === "Queued local job blocked by outdated worker runtime."));
+  });
+});
+
+test("requiredWorkerId prevents fallback while generic jobs remain claimable", async () => {
+  await withIsolatedAppData(async () => {
+    const workspaceId = "w-targeted";
+    const userId = "u-targeted";
+    seedWorkspace(workspaceId, userId);
+    const makeWorker = (label: string) => {
+      const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+      return exchangeStage3WorkerPairingToken({ pairingToken: pairing.token, label, platform: "darwin-arm64" }).worker;
+    };
+    const mac = makeWorker("MacBook");
+    const zoro = makeWorker("Zoro");
+    const pinned = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "local",
+      requiredWorkerId: mac.id,
+      payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=pinned" })
+    });
+    assert.equal(getStage3Job(pinned.id)?.requiredWorkerId, mac.id);
+    assert.equal(
+      claimNextQueuedStage3JobForWorker({ workerId: zoro.id, workspaceId, userId, supportedKinds: ["render"] }),
+      null
+    );
+    assert.equal(
+      claimNextQueuedStage3JobForWorker({ workerId: mac.id, workspaceId, userId, supportedKinds: ["render"] })?.id,
+      pinned.id
+    );
+
+    const generic = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "preview",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=generic" })
+    });
+    assert.equal(
+      claimNextQueuedStage3JobForWorker({ workerId: zoro.id, workspaceId, userId, supportedKinds: ["preview"] })?.id,
+      generic.id
+    );
+  });
+});
+
+test("outdated-worker sweep binds workerId before kind filters", async () => {
+  await withIsolatedAppData(async () => {
+    const workspaceId = "w-binding";
+    const userId = "u-binding";
+    seedWorkspace(workspaceId, userId);
+    const makeWorker = (label: string) => {
+      const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+      return exchangeStage3WorkerPairingToken({ pairingToken: pairing.token, label, platform: "darwin-arm64" }).worker;
+    };
+    const oldWorker = makeWorker("old");
+    const otherWorker = makeWorker("other");
+    const forOld = enqueueStage3Job({ workspaceId, userId, kind: "render", executionTarget: "local", requiredWorkerId: oldWorker.id, payloadJson: "{}" });
+    const forOther = enqueueStage3Job({ workspaceId, userId, kind: "render", executionTarget: "local", requiredWorkerId: otherWorker.id, payloadJson: "{}" });
+    assert.equal(failQueuedLocalStage3JobsForWorkerUpdateRequired({ workspaceId, userId, workerId: oldWorker.id, supportedKinds: ["render"] }), 1);
+    assert.equal(getStage3Job(forOld.id)?.status, "failed");
+    assert.equal(getStage3Job(forOther.id)?.status, "queued");
   });
 });
 

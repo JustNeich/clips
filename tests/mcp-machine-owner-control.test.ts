@@ -18,7 +18,7 @@ import {
   createMcpMachineCredential
 } from "../lib/mcp-machine-credential-store";
 import { createMcpAccessToken } from "../lib/mcp-token-store";
-import { getDb } from "../lib/db/client";
+import { getDb, nowIso } from "../lib/db/client";
 import {
   createChannelPublication,
   createRenderExport,
@@ -26,7 +26,8 @@ import {
   getChannelPublishSettings
 } from "../lib/publication-store";
 import { completeStage3Job, enqueueStage3Job, getStage3Job } from "../lib/stage3-job-store";
-import { bootstrapOwner } from "../lib/team-store";
+import { bootstrapOwner, updateWorkspaceStage3ExecutionTarget } from "../lib/team-store";
+import { getExpectedStage3WorkerRuntimeVersion } from "../lib/stage3-worker-runtime-manifest";
 
 async function withIsolatedAppData<T>(run: (appDataDir: string) => Promise<T>): Promise<T> {
   const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-mcp-machine-test-"));
@@ -511,7 +512,13 @@ test("owner control creates, reads, and updates managed templates", async () => 
 
 test("owner control administers channel setup, assets, and publish settings", async () => {
   await withIsolatedAppData(async (appDataDir) => {
-    const { owner, channel } = await seedOwnerControl(appDataDir);
+    const { owner, channel, publication } = await seedOwnerControl(appDataDir);
+    const unrelated = await createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Unrelated Barracks",
+      username: "unrelated-barracks"
+    });
     const machine = createMcpMachineCredential({
       workspaceId: owner.workspace.id,
       ownerUserId: owner.user.id,
@@ -578,6 +585,8 @@ test("owner control administers channel setup, assets, and publish settings", as
     assert.equal(publishResponse.status, 200);
     assert.equal(getChannelPublishSettings(channel.id).autoQueueEnabled, false);
     assert.equal(getChannelPublishSettings(channel.id).dailySlotCount, 3);
+    assert.equal(getChannelPublishSettings(unrelated.id).autoQueueEnabled, true);
+    assert.equal(getChannelPublicationById(publication.id)?.status, "queued");
 
     const clearResponse = await postOwnerControl(machine.secret, {
       tool: "clips_owner_update_channel",
@@ -1221,5 +1230,140 @@ test("owner control enforces machine scopes and destructive intent", async () =>
     });
     assert.equal(canceledResponse.status, 200);
     assert.equal(getChannelPublicationById(publication.id)?.status, "canceled");
+  });
+});
+
+test("compact video task context stays channel-specific and excludes prompt corpora", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel } = await seedOwnerControl(appDataDir);
+    const stamp = nowIso();
+    const workerId = "macbook-context-worker";
+    getDb().prepare(
+      `INSERT INTO stage3_workers
+        (id, workspace_id, user_id, label, platform, hostname, app_version, capabilities_json, last_seen_at, revoked_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?)`
+    ).run(workerId, owner.workspace.id, owner.user.id, "MacBook", "darwin-arm64", "macbook", "test-build", stamp, stamp, stamp);
+    const machine = createMcpMachineCredential({ workspaceId: owner.workspace.id, ownerUserId: owner.user.id, machineId: "video-context-agent", scopes: ["flow:read"] });
+    const response = await postOwnerControl(machine.secret, { tool: "clips_owner_get_video_task_context", input: { channelId: channel.id, requiredWorkerId: workerId, approvedMontageLimit: 3 } });
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    assert.ok(text.length < 40_000, `compact context was ${text.length} chars`);
+    const context = JSON.parse(text) as { channel: Record<string, unknown>; production: { formatPipeline: string }; requiredWorker: { id: string; hostname: string }; publications: { total: number }; approvedMontageGeometries: unknown[] };
+    assert.deepEqual(Object.keys(context.channel).sort(), ["id", "name", "username"]);
+    assert.match(context.production.formatPipeline, /^(classic_top_bottom|story_lead_main_caption)$/);
+    assert.equal(context.requiredWorker.id, workerId);
+    assert.equal(context.requiredWorker.hostname, "macbook");
+    assert.equal(context.publications.total, 1);
+    assert.ok(context.approvedMontageGeometries.length <= 3);
+    for (const forbidden of ["stage2StyleProfile", "internalPromptNotes", "systemPrompt", "descriptionPrompt", "examplesJson", "customExamples"]) {
+      assert.equal(text.includes(`\"${forbidden}\"`), false, forbidden);
+    }
+    assert.doesNotMatch(text, /"prompt"\s*:/i);
+  });
+});
+
+test("shared managed templates are immutable in place while dedicated templates remain editable", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner } = await seedOwnerControl(appDataDir);
+    const machine = createMcpMachineCredential({ workspaceId: owner.workspace.id, ownerUserId: owner.user.id, machineId: "template-binding-agent", scopes: ["entity:write", "flow:read"] });
+    const createShared = await postOwnerControl(machine.secret, { tool: "clips_owner_create_template", input: { name: "Shared" } });
+    const shared = (await createShared.json()) as { template: { id: string } };
+    await createChannel({ workspaceId: owner.workspace.id, creatorUserId: owner.user.id, name: "Shared A", username: "shared-a", templateId: shared.template.id });
+    await createChannel({ workspaceId: owner.workspace.id, creatorUserId: owner.user.id, name: "Shared B", username: "shared-b", templateId: shared.template.id });
+    const blocked = await postOwnerControl(machine.secret, { tool: "clips_owner_update_template", input: { templateId: shared.template.id, name: "Must clone" } });
+    assert.equal(blocked.status, 409);
+    assert.equal(((await blocked.json()) as { code: string }).code, "shared_template_mutation_requires_clone");
+    const createDedicated = await postOwnerControl(machine.secret, { tool: "clips_owner_create_template", input: { name: "Dedicated" } });
+    const dedicated = (await createDedicated.json()) as { template: { id: string } };
+    await createChannel({ workspaceId: owner.workspace.id, creatorUserId: owner.user.id, name: "Dedicated A", username: "dedicated-a", templateId: dedicated.template.id });
+    const allowed = await postOwnerControl(machine.secret, { tool: "clips_owner_update_template", input: { templateId: dedicated.template.id, name: "Dedicated v2" } });
+    assert.equal(allowed.status, 200);
+  });
+});
+
+test("strict agent render is pinned, local-only, and preserves explicit final duration", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    updateWorkspaceStage3ExecutionTarget(owner.workspace.id, "local");
+    const expectedBuild = (await getExpectedStage3WorkerRuntimeVersion()) ?? "test-build";
+    const stamp = nowIso();
+    const workerId = "macbook-render-worker";
+    getDb().prepare(
+      `INSERT INTO stage3_workers
+        (id, workspace_id, user_id, label, platform, hostname, app_version, capabilities_json, last_seen_at, revoked_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?)`
+    ).run(workerId, owner.workspace.id, owner.user.id, "MacBook", "darwin-arm64", "macbook", expectedBuild, stamp, stamp, stamp);
+    const machine = createMcpMachineCredential({ workspaceId: owner.workspace.id, ownerUserId: owner.user.id, machineId: "strict-render-agent", scopes: ["pipeline:run"] });
+    const before = Number((getDb().prepare("SELECT COUNT(*) AS count FROM stage3_jobs").get() as { count: number }).count);
+    const missingPin = await postOwnerControl(machine.secret, { tool: "clips_owner_render_video", input: { channelId: channel.id, chatId: chat.id, strictAgentRender: true, sourceDurationSec: 42, snapshot: { clipDurationSec: 9.25, renderPlan: { segments: [{ startSec: 2, endSec: 11.25, speed: 1 }] } } } });
+    assert.equal(missingPin.status, 400);
+    assert.equal(Number((getDb().prepare("SELECT COUNT(*) AS count FROM stage3_jobs").get() as { count: number }).count), before);
+    const publishBlocked = await postOwnerControl(machine.secret, { tool: "clips_owner_render_video", input: { channelId: channel.id, chatId: chat.id, strictAgentRender: true, requiredWorkerId: workerId, sourceDurationSec: 42, publishAfterRender: true, snapshot: { clipDurationSec: 9.25, renderPlan: { segments: [{ startSec: 2, endSec: 11.25, speed: 1 }] } } } });
+    assert.equal(publishBlocked.status, 400);
+    const accepted = await postOwnerControl(machine.secret, { tool: "clips_owner_render_video", input: { channelId: channel.id, chatId: chat.id, strictAgentRender: true, requiredWorkerId: workerId, sourceDurationSec: 42, publishAfterRender: false, snapshot: { clipDurationSec: 9.25, renderPlan: { segments: [{ startSec: 2, endSec: 11.25, speed: 1 }] } } } });
+    assert.equal(accepted.status, 202, JSON.stringify(await accepted.clone().json().catch(() => null)));
+    const body = (await accepted.json()) as { job: { id: string } };
+    const job = getStage3Job(body.job.id);
+    assert.equal(job?.requiredWorkerId, workerId);
+    const payload = JSON.parse(job?.payloadJson ?? "{}") as { publishAfterRender?: boolean; snapshot?: { clipDurationSec?: number } };
+    assert.equal(payload.publishAfterRender, false);
+    assert.equal(payload.snapshot?.clipDurationSec, 9.25);
+  });
+});
+
+test("offline required worker is rejected before strict render enqueue", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    updateWorkspaceStage3ExecutionTarget(owner.workspace.id, "local");
+    const stale = new Date(Date.now() - 10 * 60_000).toISOString();
+    const workerId = "offline-worker";
+    getDb().prepare(
+      `INSERT INTO stage3_workers
+        (id, workspace_id, user_id, label, platform, hostname, app_version, capabilities_json, last_seen_at, revoked_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?)`
+    ).run(workerId, owner.workspace.id, owner.user.id, "Offline", "darwin-arm64", "zoro", "old", stale, stale, stale);
+    const machine = createMcpMachineCredential({ workspaceId: owner.workspace.id, ownerUserId: owner.user.id, machineId: "offline-render-agent", scopes: ["pipeline:run"] });
+    const before = Number((getDb().prepare("SELECT COUNT(*) AS count FROM stage3_jobs").get() as { count: number }).count);
+    const response = await postOwnerControl(machine.secret, { tool: "clips_owner_render_video", input: { channelId: channel.id, chatId: chat.id, strictAgentRender: true, requiredWorkerId: workerId, sourceDurationSec: 42, publishAfterRender: false, snapshot: { clipDurationSec: 8, renderPlan: { segments: [{ startSec: 0, endSec: 8, speed: 1 }] } } } });
+    assert.equal(response.status, 503);
+    const body = (await response.json()) as { status: string; code: string };
+    assert.equal(body.status, "blocked");
+    assert.equal(body.code, "worker_offline");
+    assert.equal(Number((getDb().prepare("SELECT COUNT(*) AS count FROM stage3_jobs").get() as { count: number }).count), before);
+  });
+});
+
+test("owner preview persists an online required worker and blocks an offline target before enqueue", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    updateWorkspaceStage3ExecutionTarget(owner.workspace.id, "local");
+    const expectedBuild = (await getExpectedStage3WorkerRuntimeVersion()) ?? "test-build";
+    const stamp = nowIso();
+    const stale = new Date(Date.now() - 10 * 60_000).toISOString();
+    const insertWorker = (id: string, lastSeenAt: string) => getDb().prepare(
+      `INSERT INTO stage3_workers
+        (id, workspace_id, user_id, label, platform, hostname, app_version, capabilities_json, last_seen_at, revoked_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?)`
+    ).run(id, owner.workspace.id, owner.user.id, id, "darwin-arm64", id, expectedBuild, lastSeenAt, lastSeenAt, lastSeenAt);
+    insertWorker("online-mac", stamp);
+    insertWorker("offline-zoro", stale);
+    const machine = createMcpMachineCredential({ workspaceId: owner.workspace.id, ownerUserId: owner.user.id, machineId: "targeted-preview-agent", scopes: ["pipeline:run"] });
+    const accepted = await postOwnerControl(machine.secret, { tool: "clips_owner_render_preview", input: { channelId: channel.id, sourceUrl: chat.url, requiredWorkerId: "online-mac", snapshot: { clipDurationSec: 8, renderPlan: { segments: [{ startSec: 0, endSec: 8, speed: 1 }] } } } });
+    assert.equal(accepted.status, 202, JSON.stringify(await accepted.clone().json().catch(() => null)));
+    const acceptedBody = (await accepted.json()) as { job: { id: string } };
+    assert.equal(getStage3Job(acceptedBody.job.id)?.requiredWorkerId, "online-mac");
+    const countAfterAccepted = Number((getDb().prepare("SELECT COUNT(*) AS count FROM stage3_jobs").get() as { count: number }).count);
+    const blocked = await postOwnerControl(machine.secret, { tool: "clips_owner_render_preview", input: { channelId: channel.id, sourceUrl: chat.url, requiredWorkerId: "offline-zoro", snapshot: { clipDurationSec: 8, renderPlan: { segments: [{ startSec: 0, endSec: 8, speed: 1 }] } } } });
+    assert.equal(blocked.status, 503);
+    const blockedBody = (await blocked.json()) as { status: string; code: string };
+    assert.equal(blockedBody.status, "blocked");
+    assert.equal(blockedBody.code, "worker_offline");
+    assert.equal(Number((getDb().prepare("SELECT COUNT(*) AS count FROM stage3_jobs").get() as { count: number }).count), countAfterAccepted);
+    const missing = await postOwnerControl(machine.secret, { tool: "clips_owner_render_preview", input: { channelId: channel.id, sourceUrl: chat.url, requiredWorkerId: "missing-worker", snapshot: { clipDurationSec: 8, renderPlan: { segments: [{ startSec: 0, endSec: 8, speed: 1 }] } } } });
+    assert.equal(missing.status, 503);
+    const missingBody = (await missing.json()) as { status: string; code: string };
+    assert.equal(missingBody.status, "blocked");
+    assert.equal(missingBody.code, "worker_not_found");
+    assert.equal(Number((getDb().prepare("SELECT COUNT(*) AS count FROM stage3_jobs").get() as { count: number }).count), countAfterAccepted);
   });
 });

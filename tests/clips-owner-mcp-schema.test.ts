@@ -48,6 +48,50 @@ test("clips_owner_render_video schema preserves caller snapshot media controls",
   assert.equal(sourceCrop.source, "editor-controlled-crop");
 });
 
+test("clips_owner_render_video keeps generic compatibility but strict agent render requires explicit final timing", () => {
+  assert.equal(clipsOwnerRenderVideoInputSchema.safeParse({ channelId: "c", chatId: "h" }).success, true);
+  assert.equal(
+    clipsOwnerRenderVideoInputSchema.safeParse({
+      channelId: "c",
+      chatId: "h",
+      strictAgentRender: true,
+      requiredWorkerId: "macbook-worker",
+      sourceDurationSec: 42,
+      snapshot: { renderPlan: {} }
+    }).success,
+    false
+  );
+  assert.equal(
+    clipsOwnerRenderVideoInputSchema.safeParse({
+      channelId: "c",
+      chatId: "h",
+      strictAgentRender: true,
+      sourceDurationSec: 42,
+      snapshot: { clipDurationSec: 8, renderPlan: { segments: [{ startSec: 0, endSec: 8 }] } }
+    }).success,
+    false
+  );
+  const strict = clipsOwnerRenderVideoInputSchema.parse({
+    channelId: "c",
+    chatId: "h",
+    strictAgentRender: true,
+    requiredWorkerId: "macbook-worker",
+    sourceDurationSec: 42,
+    snapshot: {
+      clipDurationSec: 11.25,
+      renderPlan: { segments: [{ startSec: 4, endSec: 15.25, speed: 1 }] }
+    }
+  });
+  assert.equal((strict.snapshot as { clipDurationSec: number }).clipDurationSec, 11.25);
+  assert.equal(
+    clipsOwnerRenderVideoInputSchema.safeParse({
+      ...strict,
+      publishAfterRender: true
+    }).success,
+    false
+  );
+});
+
 test("clips_owner_run_video_pipeline schema requires caption for explicit agent_manual mode", () => {
   const missingSource = clipsOwnerRunVideoPipelineInputSchema.safeParse({
     channelId: "channel-1",

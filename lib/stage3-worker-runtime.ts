@@ -24,6 +24,7 @@ import {
 } from "./stage3-worker-job-timeout";
 import { ensureManagedStage3WorkerTools } from "./stage3-worker-managed-tools";
 import type { Stage3RenderProgressEvent } from "./stage3-render-service";
+import { readSystemMemoryTelemetry } from "./system-resource-telemetry";
 
 declare const __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__: string | undefined;
 
@@ -53,6 +54,7 @@ export type Stage3WorkerAdmissionTelemetry = {
   totalMemoryBytes: number | null;
   freeMemoryBytes: number | null;
   freeMemoryRatio: number | null;
+  memoryProvider: string | null;
   activeRenderProcesses: number | null;
   activeWorkerJobs: number;
   telemetryError: string | null;
@@ -169,34 +171,55 @@ function resolveFiniteEnvNumber(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
-function countActiveRenderProcesses(processList: string): number {
-  const matchingPids = new Set<string>();
+type ProcessSnapshot = { pid: number; ppid: number; command: string };
+
+function parseProcessTable(processList: string): ProcessSnapshot[] {
+  const processes: ProcessSnapshot[] = [];
   for (const rawLine of processList.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line) continue;
-    const pid =
-      line.match(/^(\d+)/)?.[1] ??
-      line.match(/^"[^"]*","(\d+)"/)?.[1] ??
-      "";
-    if (!pid || pid === String(process.pid)) continue;
-    if (
-      /\b(remotion|ffmpeg|ffprobe)\b/i.test(line) ||
-      /\b(chrome|chromium)(?:\.exe)?\b.*(?:--headless|--remote-debugging-port)/i.test(line)
-    ) {
-      matchingPids.add(pid);
-    }
+    const match = line.match(/^(\d+)\s+(\d+)\s+(.+)$/);
+    if (!match) continue;
+    processes.push({ pid: Number(match[1]), ppid: Number(match[2]), command: match[3] });
   }
-  return matchingPids.size;
+  return processes;
+}
+
+export function countDescendantRenderProcesses(processList: string, workerPid: number): number {
+  const processes = parseProcessTable(processList);
+  const byPid = new Map(processes.map((entry) => [entry.pid, entry]));
+  const isDescendant = (entry: ProcessSnapshot) => {
+    const visited = new Set<number>();
+    let current = entry;
+    while (current.ppid > 0 && !visited.has(current.ppid)) {
+      if (current.ppid === workerPid) return true;
+      visited.add(current.ppid);
+      const parent = byPid.get(current.ppid);
+      if (!parent) return false;
+      current = parent;
+    }
+    return false;
+  };
+  return processes.filter(
+    (entry) =>
+      entry.pid !== workerPid &&
+      isDescendant(entry) &&
+      (/\b(remotion|ffmpeg|ffprobe)\b/i.test(entry.command) ||
+        /\b(chrome|chromium)(?:\.exe)?\b.*--headless/i.test(entry.command))
+  ).length;
 }
 
 async function readActiveRenderProcessCount(): Promise<number> {
-  const command = process.platform === "win32" ? "tasklist" : "ps";
-  const args = process.platform === "win32" ? ["/FO", "CSV", "/NH"] : ["-axo", "pid=,command="];
+  if (process.platform === "win32") {
+    throw new Error("windows_process_ancestry_unavailable");
+  }
+  const command = "/bin/ps";
+  const args = ["-axo", "pid=,ppid=,command="];
   const { stdout } = await execFileAsync(command, args, {
     encoding: "utf8",
     maxBuffer: 4 * 1024 * 1024
   });
-  return countActiveRenderProcesses(stdout);
+  return countDescendantRenderProcesses(stdout, process.pid);
 }
 
 export function evaluateStage3WorkerAdmission(
@@ -266,15 +289,28 @@ export async function collectStage3WorkerAdmissionReport(input: {
     loadAverage1m: number;
     totalMemoryBytes: number;
     freeMemoryBytes: number;
+    memoryProvider?: string;
   };
 } = {}): Promise<Stage3WorkerAdmissionReport> {
   const capturedAt = new Date().toISOString();
   try {
+  const memory = input.systemSnapshot
+    ? {
+        totalMemoryBytes: input.systemSnapshot.totalMemoryBytes,
+        availableMemoryBytes: input.systemSnapshot.freeMemoryBytes,
+        provider: input.systemSnapshot.memoryProvider ?? "test",
+        error: null
+      }
+      : await readSystemMemoryTelemetry();
+    if (memory.totalMemoryBytes === null || memory.availableMemoryBytes === null) {
+      throw new Error(memory.error ?? "memory_telemetry_unavailable");
+    }
     const snapshot = input.systemSnapshot ?? {
       cpuCount: os.cpus().length,
       loadAverage1m: os.loadavg()[0] ?? Number.NaN,
-      totalMemoryBytes: os.totalmem(),
-      freeMemoryBytes: os.freemem()
+      totalMemoryBytes: memory.totalMemoryBytes,
+      freeMemoryBytes: memory.availableMemoryBytes,
+      memoryProvider: memory.provider ?? undefined
     };
     const activeRenderProcesses = await (
       input.processCountReader ?? readActiveRenderProcessCount
@@ -301,6 +337,7 @@ export async function collectStage3WorkerAdmissionReport(input: {
       totalMemoryBytes: snapshot.totalMemoryBytes,
       freeMemoryBytes: snapshot.freeMemoryBytes,
       freeMemoryRatio: snapshot.freeMemoryBytes / snapshot.totalMemoryBytes,
+      memoryProvider: snapshot.memoryProvider ?? memory.provider ?? null,
       activeRenderProcesses,
       activeWorkerJobs: Math.max(0, Math.floor(input.activeWorkerJobs ?? 0)),
       telemetryError: null
@@ -315,6 +352,7 @@ export async function collectStage3WorkerAdmissionReport(input: {
       totalMemoryBytes: null,
       freeMemoryBytes: null,
       freeMemoryRatio: null,
+      memoryProvider: null,
       activeRenderProcesses: null,
       activeWorkerJobs: Math.max(0, Math.floor(input.activeWorkerJobs ?? 0)),
       telemetryError: error instanceof Error ? error.message : String(error)

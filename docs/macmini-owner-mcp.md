@@ -92,6 +92,7 @@ Core tools exposed by `clips-owner`:
 - `clips_owner_get_integrations_readiness`
 - `clips_owner_list_channels`
 - `clips_owner_get_channel`
+- `clips_owner_get_video_task_context`
 - `clips_owner_create_channel`
 - `clips_owner_update_channel`
 - `clips_owner_upload_channel_asset`
@@ -132,6 +133,37 @@ active render processes, and active worker jobs. Missing telemetry, high load,
 low memory, or another active render defers the claim. Long-render Remotion
 concurrency is chosen from the current CPU/load/memory snapshot instead of a
 fixed worker setting.
+
+### Bounded video-task contract
+
+Video agents should start with `clips_owner_get_video_task_context`, not the
+workspace-wide status, channel, worker, publication, or template list tools.
+Its input identifies one channel, one `requiredWorkerId`, and an optional
+`approvedMontageLimit` from 0 to 3. The response is deliberately compact: the
+channel identity; effective format, constraints, duration, and asset ids; the
+active template semantics/config/hash/assets; the exact worker host/status/build;
+channel-only publication counts; and at most the requested approved montage
+geometries. It does not include channel prompts, examples, or the Stage 2 corpus.
+The wider admin tools remain available for owner administration, but are not the
+video-task read surface.
+
+Project Kings final MP4 requests use `clips_owner_render_video` with
+`strictAgentRender: true`. In that mode, `requiredWorkerId`, a positive
+`sourceDurationSec`, a positive final `snapshot.clipDurationSec`, and nonempty
+`snapshot.renderPlan.segments` are mandatory. `publishAfterRender` must be
+`false`: strict renders are local-only and never schedule or publish. Missing,
+offline, or runtime-incompatible required workers return a blocked response
+before enqueue. A compatible busy worker is still live and may accept a pinned
+job into its queue. The worker pin is persisted in the job and in render/preview
+dedupe identity; another worker cannot claim or reuse it. Generic non-strict
+owner renders retain their existing compatibility behavior.
+Queued owner render and preview requests return HTTP 202; an already-completed
+deduplicated result returns HTTP 200.
+
+Managed templates report their active channel bindings. An in-place update is
+blocked when a template is bound to more than one active channel; create and bind
+a dedicated template first. Disabling one channel's `autoQueueEnabled` is
+channel-specific and does not wake the global publication processor.
 
 ## Git and Render Deploy Access
 

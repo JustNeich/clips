@@ -94,6 +94,7 @@ import {
   resolveStage3OutputDurationSec
 } from "./stage3-duration";
 import { resolveStage3HostedRenderEngineTimeoutMs } from "./stage3-worker-job-timeout";
+import { readSystemMemoryTelemetry } from "./system-resource-telemetry";
 
 export const REMOTION_RENDER_TIMEOUT_MS = 9 * 60_000;
 export const RENDER_WAIT_TIMEOUT_MS = 60_000;
@@ -116,14 +117,6 @@ export type Stage3RenderResourceTelemetry = {
   loadAverage1m: number;
   freeMemoryBytes: number;
 };
-
-function captureStage3RenderResourceTelemetry(): Stage3RenderResourceTelemetry {
-  return {
-    cpuCount: os.cpus().length,
-    loadAverage1m: os.loadavg()[0] ?? Number.NaN,
-    freeMemoryBytes: os.freemem()
-  };
-}
 
 // Long-render frame concurrency is selected from current CPU/load/memory each
 // time a render starts. Invalid telemetry fails safely to one renderer.
@@ -241,8 +234,11 @@ function resolveStage3ExecutionRoot(): string {
 }
 
 export type Stage3RenderRequestBody = {
+  requiredWorkerId?: string;
+  strictAgentRender?: boolean;
   requestId?: string;
   sourceUrl?: string;
+  sourceDurationSec?: number;
   channelId?: string;
   workspaceId?: string;
   chatId?: string;
@@ -515,13 +511,15 @@ function isLongLocalRender(clipDurationSec: number): boolean {
 // default (null = pick from CPU budget).
 export function resolveRemotionRenderConcurrency(
   clipDurationSec: number,
-  telemetry: Stage3RenderResourceTelemetry = captureStage3RenderResourceTelemetry()
+  telemetry?: Stage3RenderResourceTelemetry
 ): number | null {
   if (isMemoryConstrainedRuntime()) {
     return MEMORY_CONSTRAINED_REMOTION_CONCURRENCY;
   }
   if (isLongLocalRender(clipDurationSec)) {
-    return resolveDynamicLongRenderRemotionConcurrency(telemetry);
+    return resolveDynamicLongRenderRemotionConcurrency(
+      telemetry ?? { cpuCount: Number.NaN, loadAverage1m: Number.NaN, freeMemoryBytes: Number.NaN }
+    );
   }
   return null;
 }
@@ -1181,11 +1179,17 @@ async function runRemotionRender(params: {
       }
     : undefined;
 
+  const memoryTelemetry = await readSystemMemoryTelemetry();
+  const renderResourceTelemetry: Stage3RenderResourceTelemetry = {
+    cpuCount: os.cpus().length,
+    loadAverage1m: os.loadavg()[0] ?? Number.NaN,
+    freeMemoryBytes: memoryTelemetry.availableMemoryBytes ?? Number.NaN
+  };
   const buildRenderArgs = (forceMinimalConcurrency: boolean) => {
     const memorySafe = forceMinimalConcurrency || shouldUseMemorySafeRenderOptions(params.clipDurationSec);
     const concurrency = forceMinimalConcurrency
       ? MEMORY_CONSTRAINED_REMOTION_CONCURRENCY
-      : resolveRemotionRenderConcurrency(params.clipDurationSec);
+      : resolveRemotionRenderConcurrency(params.clipDurationSec, renderResourceTelemetry);
     return {
       composition: composition as { id: string } & Record<string, unknown>,
       serveUrl,
@@ -1292,7 +1296,8 @@ async function runRemotionRender(params: {
       // retry once at concurrency=1 with full memory-safe options, reusing the already
       // prepared source. Hosted runs are already at minimal concurrency, so skip there.
       const alreadyMinimal =
-        resolveRemotionRenderConcurrency(params.clipDurationSec) === MEMORY_CONSTRAINED_REMOTION_CONCURRENCY;
+        resolveRemotionRenderConcurrency(params.clipDurationSec, renderResourceTelemetry) ===
+        MEMORY_CONSTRAINED_REMOTION_CONCURRENCY;
       if (!alreadyMinimal && isBrowserCrashError(error)) {
         if (isStage3WorkerRuntime()) {
           console.warn(

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildStage3RenderRequestDedupeKey } from "../lib/stage3-render-request";
+import { buildStage3PreviewDedupeKey } from "../lib/stage3-preview-service";
 
 test("buildStage3RenderRequestDedupeKey is stable for the same scoped request id fallback", () => {
   const keyA = buildStage3RenderRequestDedupeKey(
@@ -104,4 +105,23 @@ test("buildStage3RenderRequestDedupeKey changes when source overlay text changes
 
 test("buildStage3RenderRequestDedupeKey returns null without requestId or render content", () => {
   assert.equal(buildStage3RenderRequestDedupeKey({}), null);
+});
+
+test("Stage 3 render and preview dedupe keys isolate worker pins", async () => {
+  const render = { sourceUrl: "https://www.instagram.com/reel/pin/", channelId: "c1", snapshot: { clipDurationSec: 8 } };
+  assert.notEqual(
+    buildStage3RenderRequestDedupeKey(render, { workspaceId: "w1", userId: "u1" }),
+    buildStage3RenderRequestDedupeKey({ ...render, requiredWorkerId: "mac" }, { workspaceId: "w1", userId: "u1" })
+  );
+  assert.notEqual(
+    buildStage3RenderRequestDedupeKey({ ...render, requiredWorkerId: "mac" }, { workspaceId: "w1", userId: "u1" }),
+    buildStage3RenderRequestDedupeKey({ ...render, requiredWorkerId: "zoro" }, { workspaceId: "w1", userId: "u1" })
+  );
+
+  const preview = { sourceUrl: "https://www.instagram.com/reel/pin/", channelId: "c1" };
+  const genericPreview = await buildStage3PreviewDedupeKey(preview);
+  const macPreview = await buildStage3PreviewDedupeKey({ ...preview, requiredWorkerId: "mac" });
+  const zoroPreview = await buildStage3PreviewDedupeKey({ ...preview, requiredWorkerId: "zoro" });
+  assert.notEqual(genericPreview, macPreview);
+  assert.notEqual(macPreview, zoroPreview);
 });

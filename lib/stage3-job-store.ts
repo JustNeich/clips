@@ -21,6 +21,7 @@ type JobRow = {
   kind: string;
   status: string;
   execution_target: string | null;
+  required_worker_id: string | null;
   assigned_worker_id: string | null;
   lease_expires_at: string | null;
   heartbeat_at: string | null;
@@ -64,6 +65,7 @@ type EnqueueStage3JobInput = {
   kind: Stage3JobKind;
   payloadJson: string;
   executionTarget?: Stage3ExecutionTarget | null;
+  requiredWorkerId?: string | null;
   dedupeKey?: string | null;
   attemptLimit?: number | null;
   attemptGroup?: string | null;
@@ -258,6 +260,7 @@ function mapJobRow(row: JobRow | null): Stage3JobRecord | null {
     kind,
     status,
     executionTarget: normalizeExecutionTarget(row.execution_target),
+    requiredWorkerId: row.required_worker_id ? String(row.required_worker_id) : null,
     assignedWorkerId: row.assigned_worker_id ? String(row.assigned_worker_id) : null,
     workerLabel: row.assigned_worker_label ? String(row.assigned_worker_label) : null,
     leaseUntil: row.lease_expires_at ? String(row.lease_expires_at) : null,
@@ -506,6 +509,10 @@ export function enqueueStage3JobWithOutcome(input: EnqueueStage3JobInput): Stage
     const stamp = nowIso();
     const dedupeKey = input.dedupeKey?.trim() || null;
     const executionTarget = input.executionTarget ?? "local";
+    const requiredWorkerId = input.requiredWorkerId?.trim() || null;
+    if (requiredWorkerId && executionTarget !== "local") {
+      throw new Error("requiredWorkerId is only valid for local Stage 3 jobs.");
+    }
     const attemptLimit =
       typeof input.attemptLimit === "number" && Number.isFinite(input.attemptLimit) && input.attemptLimit > 0
         ? Math.max(1, Math.round(input.attemptLimit))
@@ -544,6 +551,7 @@ export function enqueueStage3JobWithOutcome(input: EnqueueStage3JobInput): Stage
                   user_id = ?,
                   status = 'queued',
                   execution_target = ?,
+                  required_worker_id = ?,
                   assigned_worker_id = NULL,
                   lease_expires_at = NULL,
                   heartbeat_at = NULL,
@@ -563,6 +571,7 @@ export function enqueueStage3JobWithOutcome(input: EnqueueStage3JobInput): Stage
           input.workspaceId,
           input.userId,
           executionTarget,
+          requiredWorkerId,
           input.payloadJson,
           resetAttempts || !terminalRetry ? 0 : previousAttempts,
           attemptLimit,
@@ -586,14 +595,15 @@ export function enqueueStage3JobWithOutcome(input: EnqueueStage3JobInput): Stage
     const jobId = newId();
     db.prepare(
       `INSERT INTO stage3_jobs
-        (id, workspace_id, user_id, kind, status, execution_target, assigned_worker_id, lease_expires_at, heartbeat_at, dedupe_key, payload_json, result_json, error_code, error_message, recoverable, attempts, attempt_limit, attempt_group, created_at, updated_at, started_at, completed_at)
-        VALUES (?, ?, ?, ?, 'queued', ?, NULL, NULL, NULL, ?, ?, NULL, NULL, NULL, 1, 0, ?, ?, ?, ?, NULL, NULL)`
+        (id, workspace_id, user_id, kind, status, execution_target, required_worker_id, assigned_worker_id, lease_expires_at, heartbeat_at, dedupe_key, payload_json, result_json, error_code, error_message, recoverable, attempts, attempt_limit, attempt_group, created_at, updated_at, started_at, completed_at)
+        VALUES (?, ?, ?, ?, 'queued', ?, ?, NULL, NULL, NULL, ?, ?, NULL, NULL, NULL, 1, 0, ?, ?, ?, ?, NULL, NULL)`
     ).run(
       jobId,
       input.workspaceId,
       input.userId,
       input.kind,
       executionTarget,
+      requiredWorkerId,
       dedupeKey,
       input.payloadJson,
       attemptLimit,
@@ -604,7 +614,8 @@ export function enqueueStage3JobWithOutcome(input: EnqueueStage3JobInput): Stage
     appendStage3JobEvent(jobId, "info", "Queued job.", {
       kind: input.kind,
       dedupeKey,
-      executionTarget
+      executionTarget,
+      requiredWorkerId
     });
     return {
       job: mapJobRow(readJobRow(jobId)) as Stage3JobRecord,
@@ -1144,6 +1155,7 @@ export function failQueuedLocalStage3JobsForWorkerUpdateRequired(
             AND workspace_id = ?
             AND user_id = ?
             AND status = 'queued'
+            AND (required_worker_id IS NULL OR required_worker_id = ?)
             AND kind IN (${kinds.map(() => "?").join(", ")})
           ORDER BY created_at ASC`
       : `SELECT *
@@ -1152,8 +1164,11 @@ export function failQueuedLocalStage3JobsForWorkerUpdateRequired(
             AND workspace_id = ?
             AND user_id = ?
             AND status = 'queued'
+            AND (required_worker_id IS NULL OR required_worker_id = ?)
           ORDER BY created_at ASC`;
-    const params = kinds ? [input.workspaceId, userId, ...kinds] : [input.workspaceId, userId];
+    const params = kinds
+      ? [input.workspaceId, userId, input.workerId?.trim() || "", ...kinds]
+      : [input.workspaceId, userId, input.workerId?.trim() || ""];
     const rows = db.prepare(query).all(...params) as JobRow[];
     if (!rows.length) {
       return [];
@@ -1313,6 +1328,7 @@ export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInp
             AND workspace_id = ?
             AND user_id = ?
             AND status = 'queued'
+            AND (required_worker_id IS NULL OR required_worker_id = ?)
             AND kind IN (${kinds.map(() => "?").join(", ")})
           ORDER BY ${buildLocalStage3JobPrioritySql("kind")} ASC, created_at ASC
           LIMIT 1`
@@ -1321,9 +1337,10 @@ export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInp
             AND workspace_id = ?
             AND user_id = ?
             AND status = 'queued'
+            AND (required_worker_id IS NULL OR required_worker_id = ?)
           ORDER BY ${buildLocalStage3JobPrioritySql("kind")} ASC, created_at ASC
           LIMIT 1`;
-    const baseParams = [input.workspaceId, userId];
+    const baseParams = [input.workspaceId, userId, input.workerId];
     const params = kinds
       ? [...baseParams, ...kinds]
       : baseParams;

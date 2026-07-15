@@ -753,6 +753,7 @@ export type Stage3JobSummary = {
   kind: Stage3JobKind;
   status: Stage3JobStatus;
   executionTarget: Stage3ExecutionTarget;
+  requiredWorkerId: string | null;
   assignedWorkerId: string | null;
   workerLabel: string | null;
   leaseUntil: string | null;

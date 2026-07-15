@@ -94,14 +94,36 @@ export const clipsOwnerUpdateChannelPublishSettingsInputSchema = z.object({
   notifySubscribersByDefault: z.boolean().optional()
 });
 
-export const clipsOwnerRenderVideoInputSchema = z.object({
-  ...channelRefSchema,
-  chatId: z.string(),
-  templateId: z.string().optional(),
-  sourceDurationSec: z.number().positive().optional(),
-  publishAfterRender: z.boolean().optional(),
-  snapshot: looseObjectSchema.optional()
-});
+export const clipsOwnerRenderVideoInputSchema = z
+  .object({
+    ...channelRefSchema,
+    chatId: z.string(),
+    templateId: z.string().optional(),
+    requiredWorkerId: z.string().min(1).optional(),
+    strictAgentRender: z.boolean().optional(),
+    sourceDurationSec: z.number().positive().optional(),
+    publishAfterRender: z.boolean().optional(),
+    snapshot: looseObjectSchema.optional()
+  })
+  .superRefine((value, context) => {
+    if (!value.strictAgentRender) return;
+    if (!value.requiredWorkerId?.trim()) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["requiredWorkerId"], message: "Exact requiredWorkerId is mandatory for strict agent render." });
+    }
+    if (value.publishAfterRender === true) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["publishAfterRender"], message: "Strict agent renders are local-only; publishAfterRender=true is forbidden." });
+    }
+    if (!value.sourceDurationSec) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["sourceDurationSec"], message: "sourceDurationSec is required for strict agent render." });
+    }
+    const snapshot = value.snapshot as { clipDurationSec?: unknown; renderPlan?: { segments?: unknown } } | undefined;
+    if (typeof snapshot?.clipDurationSec !== "number" || snapshot.clipDurationSec <= 0) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["snapshot", "clipDurationSec"], message: "Explicit positive final clipDurationSec is required for strict agent render." });
+    }
+    if (!Array.isArray(snapshot?.renderPlan?.segments) || snapshot.renderPlan.segments.length === 0) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["snapshot", "renderPlan", "segments"], message: "Explicit nonempty segments are required for strict agent render." });
+    }
+  });
 
 export const clipsOwnerRunVideoPipelineInputSchema = z
   .object({
@@ -306,6 +328,20 @@ server.registerTool(
 );
 
 server.registerTool(
+  "clips_owner_get_video_task_context",
+  {
+    title: "Get compact Clips video task context",
+    description: "Read only the channel production contract, active template, exact required worker, publication counts, and a bounded approved-geometry sample. Does not return prompt corpora or full channel objects.",
+    inputSchema: z.object({
+      ...channelRefSchema,
+      requiredWorkerId: z.string().min(1),
+      approvedMontageLimit: z.number().int().min(0).max(3).optional()
+    })
+  },
+  async (input) => ownerControl("clips_owner_get_video_task_context", input)
+);
+
+server.registerTool(
   "clips_owner_update_template",
   {
     title: "Update Clips template",
@@ -428,6 +464,7 @@ server.registerTool(
       ...channelRefSchema,
       sourceUrl: z.string(),
       chatId: z.string().optional(),
+      requiredWorkerId: z.string().min(1).optional(),
       snapshot: looseObjectSchema.optional()
     })
   },

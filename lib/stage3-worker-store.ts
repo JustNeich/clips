@@ -571,6 +571,23 @@ export function listStage3Workers(input: { workspaceId: string; userId?: string 
     .filter((row): row is Stage3WorkerRecord => Boolean(row));
 }
 
+export function getStage3WorkerById(input: {
+  workspaceId: string;
+  workerId: string;
+  userId?: string | null;
+}): Stage3WorkerRecord | null {
+  const worker = mapWorkerRow(readWorkerRow(input.workerId));
+  if (
+    !worker ||
+    worker.workspaceId !== input.workspaceId ||
+    worker.revokedAt !== null ||
+    (input.userId?.trim() && worker.userId !== input.userId.trim())
+  ) {
+    return null;
+  }
+  return worker;
+}
+
 export function revokeStage3Worker(input: { workerId: string; workspaceId: string; userId: string }): Stage3WorkerRecord {
   return runInTransaction((db) => {
     const row =

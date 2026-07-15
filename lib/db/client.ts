@@ -216,6 +216,7 @@ function applyDbMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "audit_log", "status", "TEXT");
   addColumnIfMissing(db, "audit_log", "severity", "TEXT NOT NULL DEFAULT 'info'");
   addColumnIfMissing(db, "stage3_jobs", "execution_target", "TEXT NOT NULL DEFAULT 'local'");
+  addColumnIfMissing(db, "stage3_jobs", "required_worker_id", "TEXT");
   addColumnIfMissing(db, "stage3_jobs", "assigned_worker_id", "TEXT");
   addColumnIfMissing(db, "stage3_jobs", "lease_expires_at", "TEXT");
   addColumnIfMissing(db, "stage3_jobs", "heartbeat_at", "TEXT");

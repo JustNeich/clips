@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { requireOwnerOrMcpMachineScope, requireSharedCodexAvailable } from "../../../../lib/auth/guards";
 import { appendFlowAuditEvent } from "../../../../lib/audit-log-store";
 import {
@@ -64,6 +64,7 @@ import {
   resolveStage3WorkerPublicOrigin
 } from "../../../../lib/stage3-worker-commands";
 import {
+  getStage3WorkerById,
   issueStage3WorkerPairingToken,
   listStage3Workers
 } from "../../../../lib/stage3-worker-store";
@@ -89,7 +90,10 @@ import { getFlowObservabilityDetail, listFlowObservability } from "../../../../l
 import type { McpMachineCredentialScope } from "../../../../lib/mcp-machine-credential-store";
 import { resolveStage3Execution } from "../../../../lib/stage3-execution";
 import { buildStage3PreviewDedupeKey, type Stage3PreviewRequestBody } from "../../../../lib/stage3-preview-service";
-import { resolveStage3LocalWorkerReadiness } from "../../../../lib/stage3-worker-readiness";
+import {
+  resolveRequiredStage3WorkerReadiness,
+  resolveStage3LocalWorkerReadiness
+} from "../../../../lib/stage3-worker-readiness";
 import { enqueueAndScheduleStage3Job } from "../../../../lib/stage3-job-runtime";
 import {
   listCompletedStage3RenderJobsForChat,
@@ -133,6 +137,7 @@ const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
   clips_owner_get_integrations_readiness: "integration:readiness",
   clips_owner_list_channels: "flow:read",
   clips_owner_get_channel: "flow:read",
+  clips_owner_get_video_task_context: "flow:read",
   clips_owner_create_channel: "entity:write",
   clips_owner_update_channel: "entity:write",
   clips_owner_upload_channel_asset: "entity:write",
@@ -393,6 +398,36 @@ function summarizeChannel(channel: Channel): Record<string, unknown> {
   };
 }
 
+function getTemplateBindings(workspaceId: string, templateId: string) {
+  const channels = getDb()
+    .prepare(
+      `SELECT id, name, username FROM channels
+        WHERE workspace_id = ? AND template_id = ? AND archived_at IS NULL
+        ORDER BY name ASC, id ASC`
+    )
+    .all(workspaceId, templateId) as Array<{ id: string; name: string; username: string }>;
+  return { count: channels.length, channels };
+}
+
+function getChannelPublicationCounts(channelId: string) {
+  const rows = getDb()
+    .prepare("SELECT status, COUNT(*) AS count FROM channel_publications WHERE channel_id = ? GROUP BY status")
+    .all(channelId) as Array<{ status: string; count: number }>;
+  return {
+    total: rows.reduce((sum, row) => sum + Number(row.count || 0), 0),
+    byStatus: Object.fromEntries(rows.map((row) => [String(row.status), Number(row.count || 0)]))
+  };
+}
+
+function compactTemplateAsset(value: string | null | undefined) {
+  if (!value) return null;
+  return {
+    ref: value.length <= 512 ? value : null,
+    bytes: Buffer.byteLength(value, "utf8"),
+    sha256: createHash("sha256").update(value).digest("hex")
+  };
+}
+
 async function resolveChannel(workspaceId: string, input: Record<string, unknown>): Promise<Channel | null> {
   const channelId = resolveString(input.channelId);
   if (channelId) {
@@ -571,6 +606,101 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     return { channel: summarizeChannel(channel) };
   }
 
+  if (tool === "clips_owner_get_video_task_context") {
+    const channel = await requireChannel(auth.workspace.id, input);
+    const requiredWorkerId = resolveString(input.requiredWorkerId);
+    if (!requiredWorkerId) {
+      throw new Response(JSON.stringify({ error: "requiredWorkerId is required." }), { status: 400 });
+    }
+    const worker = getStage3WorkerById({ workspaceId: auth.workspace.id, workerId: requiredWorkerId });
+    if (!worker) {
+      throw new Response(JSON.stringify({ error: "Required Stage 3 worker not found." }), { status: 404 });
+    }
+    const template = await readManagedTemplate(channel.templateId, { workspaceId: auth.workspace.id });
+    const exportLimit = Math.max(0, Math.min(3, Math.floor(resolveNumber(input.approvedMontageLimit) ?? 3)));
+    const approved = exportLimit
+      ? listApprovedRenderExportsForChannel({
+          workspaceId: auth.workspace.id,
+          channelId: channel.id,
+          templateId: channel.templateId,
+          limit: exportLimit
+        })
+      : [];
+    const templateHash = template
+      ? createHash("sha256")
+          .update(JSON.stringify({
+            id: template.id,
+            updatedAt: template.updatedAt,
+            content: template.content,
+            templateConfig: template.templateConfig,
+            shadowLayers: template.shadowLayers
+          }))
+          .digest("hex")
+      : null;
+    const layoutKind = template?.templateConfig.layoutKind ?? null;
+    const formatPipeline = layoutKind === "channel_story" ? "story_lead_main_caption" : "classic_top_bottom";
+    return {
+      channel: { id: channel.id, name: channel.name, username: channel.username },
+      production: {
+        formatPipeline,
+        stage2WorkerProfileId: channel.stage2WorkerProfileId,
+        hardConstraints: channel.stage2HardConstraints,
+        sourceOverlay: { enabled: channel.stage2SourceOverlayConfig.enabled },
+        durationSec: channel.defaultClipDurationSec,
+        assets: {
+          avatarAssetId: channel.avatarAssetId,
+          backgroundAssetId: channel.defaultBackgroundAssetId,
+          musicAssetId: channel.defaultMusicAssetId
+        }
+      },
+      template: template
+        ? {
+            id: template.id,
+            name: template.name,
+            description: template.description,
+            layoutFamily: template.layoutFamily,
+            baseTemplateId: template.baseTemplateId,
+            semantics: {
+              layoutKind,
+              formatPipeline,
+              highlights: template.content.highlights,
+              topHighlightPhrases: template.content.topHighlightPhrases,
+              previewScale: template.content.previewScale
+            },
+            config: template.templateConfig,
+            shadowLayers: template.shadowLayers,
+            hash: templateHash,
+            assets: {
+              media: compactTemplateAsset(template.content.mediaAsset),
+              background: compactTemplateAsset(template.content.backgroundAsset),
+              avatar: compactTemplateAsset(template.content.avatarAsset)
+            }
+          }
+        : { id: channel.templateId, managed: false, hash: null },
+      requiredWorker: {
+        id: worker.id,
+        hostname: worker.hostname,
+        status: worker.status,
+        build: worker.appVersion,
+        platform: worker.platform
+      },
+      publications: getChannelPublicationCounts(channel.id),
+      approvedMontageGeometries: approved.map((item) => ({
+        renderExportId: item.renderExportId,
+        templateId: item.templateId,
+        createdAt: item.createdAt,
+        montage: item.montage,
+        approval: {
+          status: item.approval.status,
+          judgeVerdict: item.approval.judgeVerdict,
+          innerVideoOnly: item.approval.innerVideoOnly,
+          donorWrapperVisible: item.approval.donorWrapperVisible,
+          approvedAt: item.approval.approvedAt
+        }
+      }))
+    };
+  }
+
   if (tool === "clips_owner_create_channel") {
     const channel = await createChannel({
       workspaceId: auth.workspace.id,
@@ -661,7 +791,9 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       userId: auth.user.id,
       patch
     });
-    scheduleChannelPublicationProcessing();
+    if (patch.autoQueueEnabled !== false) {
+      scheduleChannelPublicationProcessing();
+    }
     auditControl({
       auth,
       action: "owner_control.channel_publish_settings.updated",
@@ -799,13 +931,25 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     if (!template) {
       throw new Response(JSON.stringify({ error: "Template not found." }), { status: 404 });
     }
-    return { template };
+    return { template, bindings: getTemplateBindings(auth.workspace.id, templateId) };
   }
 
   if (tool === "clips_owner_update_template") {
     const templateId = resolveString(input.templateId);
     if (!templateId) {
       throw new Response(JSON.stringify({ error: "templateId is required." }), { status: 400 });
+    }
+    const bindings = getTemplateBindings(auth.workspace.id, templateId);
+    if (bindings.count > 1) {
+      throw new Response(
+        JSON.stringify({
+          error: "shared_template_mutation_requires_clone",
+          code: "shared_template_mutation_requires_clone",
+          message: "This template is bound to multiple channels. Create a distinct template and bind it to one channel before editing.",
+          bindings
+        }),
+        { status: 409, headers: { "content-type": "application/json" } }
+      );
     }
     const template = await updateManagedTemplate(templateId, input, { workspaceId: auth.workspace.id });
     if (!template) {
@@ -935,6 +1079,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
         ? (input.snapshot as Partial<Stage3StateSnapshot>)
         : undefined;
     const normalizedBody = {
+      requiredWorkerId: resolveString(input.requiredWorkerId),
       channelId: channel.id,
       sourceUrl,
       workspaceId: auth.workspace.id,
@@ -942,6 +1087,22 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       ...(snapshot ? { snapshot } : {})
     } satisfies Stage3PreviewRequestBody;
     const executionTarget = resolveStage3Execution(auth.workspace.stage3ExecutionTarget).resolvedTarget;
+    if (normalizedBody.requiredWorkerId) {
+      if (executionTarget !== "local") {
+        throw new Response(JSON.stringify({ error: "required_worker_requires_local_execution" }), { status: 409 });
+      }
+      const targetedReadiness = await resolveRequiredStage3WorkerReadiness({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        workerId: normalizedBody.requiredWorkerId
+      });
+      if (!targetedReadiness.ready) {
+        throw new Response(
+          JSON.stringify({ status: "blocked", error: "required_worker_unavailable", code: targetedReadiness.reason }),
+          { status: 503, headers: { "content-type": "application/json", "Retry-After": "6" } }
+        );
+      }
+    }
     if (executionTarget === "local") {
       const readiness = await resolveStage3LocalWorkerReadiness({
         workspaceId: auth.workspace.id,
@@ -965,6 +1126,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       userId: auth.user.id,
       kind: "preview",
       executionTarget,
+      requiredWorkerId: normalizedBody.requiredWorkerId,
       payloadJson: JSON.stringify(normalizedBody),
       dedupeKey: await buildStage3PreviewDedupeKey(normalizedBody, {
         workspaceId: auth.workspace.id,
@@ -1126,6 +1288,39 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
 
   if (tool === "clips_owner_render_video") {
     const channel = await requireChannel(auth.workspace.id, input);
+    const sourceDurationSec = resolveNumber(input.sourceDurationSec);
+    const strictAgentRender = resolveBoolean(input.strictAgentRender);
+    if (strictAgentRender && !resolveString(input.requiredWorkerId)) {
+      throw new Response(JSON.stringify({ status: "blocked", error: "agent_render_required_worker_required", code: "agent_render_required_worker_required" }), {
+        status: 400,
+        headers: { "content-type": "application/json" }
+      });
+    }
+    if (strictAgentRender && input.publishAfterRender === true) {
+      throw new Response(JSON.stringify({ error: "agent_render_publication_forbidden", code: "agent_render_publication_forbidden" }), {
+        status: 400,
+        headers: { "content-type": "application/json" }
+      });
+    }
+    if (strictAgentRender && (!sourceDurationSec || sourceDurationSec <= 0)) {
+      throw new Response(JSON.stringify({ error: "agent_render_duration_required", code: "agent_render_duration_required" }), {
+        status: 400,
+        headers: { "content-type": "application/json" }
+      });
+    }
+    const explicitSnapshot = resolveObject<Stage3SnapshotPatch>(input.snapshot);
+    if (strictAgentRender && (!explicitSnapshot?.clipDurationSec || explicitSnapshot.clipDurationSec <= 0)) {
+      throw new Response(JSON.stringify({ error: "agent_render_clip_duration_required", code: "agent_render_clip_duration_required" }), {
+        status: 400,
+        headers: { "content-type": "application/json" }
+      });
+    }
+    if (strictAgentRender && (!Array.isArray(explicitSnapshot?.renderPlan?.segments) || explicitSnapshot.renderPlan.segments.length === 0)) {
+      throw new Response(JSON.stringify({ error: "agent_render_segments_required", code: "agent_render_segments_required" }), {
+        status: 400,
+        headers: { "content-type": "application/json" }
+      });
+    }
     const chatId = resolveString(input.chatId);
     if (!chatId) {
       throw new Response(JSON.stringify({ error: "chatId is required." }), { status: 400 });
@@ -1183,7 +1378,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
             channel,
             templateId: effectiveTemplateId,
             managedTemplateState,
-            sourceDurationSec: resolveNumber(input.sourceDurationSec) ?? null
+            sourceDurationSec: sourceDurationSec ?? null
           })
         : null;
     const reuseApprovedMontage = input.reuseApprovedMontage !== false;
@@ -1279,10 +1474,13 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       }
     }
     const normalizedBody = {
+      requiredWorkerId: resolveString(input.requiredWorkerId),
+      strictAgentRender,
       channelId: channel.id,
       chatId: chat.id,
       sourceUrl,
       workspaceId: auth.workspace.id,
+      ...(sourceDurationSec ? { sourceDurationSec } : {}),
       publishAfterRender: resolveBoolean(input.publishAfterRender),
       // Carry the effective template id (channel's own when none was requested)
       // so the worker's body-level fallback agrees with the embedded snapshot's
@@ -1292,11 +1490,28 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       ...(resolvedSnapshot ? { snapshot: resolvedSnapshot as Partial<Stage3StateSnapshot> } : {})
     } satisfies Stage3RenderRequestBody;
     const executionTarget = resolveStage3Execution(auth.workspace.stage3ExecutionTarget).resolvedTarget;
+    if (normalizedBody.requiredWorkerId) {
+      if (executionTarget !== "local") {
+        throw new Response(JSON.stringify({ error: "required_worker_requires_local_execution" }), { status: 409 });
+      }
+      const targetedReadiness = await resolveRequiredStage3WorkerReadiness({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        workerId: normalizedBody.requiredWorkerId
+      });
+      if (!targetedReadiness.ready) {
+        throw new Response(
+          JSON.stringify({ status: "blocked", error: "required_worker_unavailable", code: targetedReadiness.reason }),
+          { status: 503, headers: { "content-type": "application/json", "Retry-After": "6" } }
+        );
+      }
+    }
     const job = enqueueAndScheduleStage3Job({
       workspaceId: auth.workspace.id,
       userId: auth.user.id,
       kind: "render",
       executionTarget,
+      requiredWorkerId: normalizedBody.requiredWorkerId,
       dedupeKey: buildStage3RenderRequestDedupeKey(normalizedBody, {
         workspaceId: auth.workspace.id,
         userId: auth.user.id
@@ -1387,7 +1602,8 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
         sourceUrl: normalizedUrl,
         captionSource: agentCaption ? "agent_manual" : "platform",
         planned: ["create_or_get_chat", "enqueue_stage2_run"],
-        note: "Stage 3 render/publication requires a selected Stage 2 option unless using a channel-specific daily pool runner."
+        note: "Stage 3 render requires a selected Stage 2 option.",
+        nextStep: "After owner confirmation, enqueue Stage 3 with publishAfterRender=false and keep the MP4 local-only. Do not schedule or publish."
       };
     }
     await Promise.all([
@@ -1446,7 +1662,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       channel: summarizeChannel(channel),
       chat,
       run,
-      nextStep: "Wait for Stage 2 completion, select/confirm an option, then enqueue Stage 3 render with publishAfterRender=true."
+      nextStep: "Wait for Stage 2 completion and owner confirmation, then enqueue Stage 3 with publishAfterRender=false and keep the MP4 local-only. Do not schedule or publish."
     };
   }
 
@@ -1646,6 +1862,8 @@ export async function POST(request: Request): Promise<Response> {
     const accepted =
       (tool === "clips_owner_run_video_pipeline" && (result as { dryRun?: boolean }).dryRun !== true) ||
       (tool === "clips_owner_render_video" &&
+        (result as { job?: { status?: string } }).job?.status !== "completed") ||
+      (tool === "clips_owner_render_preview" &&
         (result as { job?: { status?: string } }).job?.status !== "completed");
     return Response.json(result, { status: accepted ? 202 : 200 });
   } catch (error) {

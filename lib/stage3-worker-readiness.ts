@@ -1,5 +1,5 @@
 import { getExpectedStage3WorkerRuntimeVersion, isStage3WorkerRuntimeVersionCompatible } from "./stage3-worker-runtime-manifest";
-import { listStage3Workers } from "./stage3-worker-store";
+import { getStage3WorkerById, listStage3Workers } from "./stage3-worker-store";
 
 export type Stage3LocalWorkerReadiness = {
   ready: boolean;
@@ -34,4 +34,34 @@ export async function resolveStage3LocalWorkerReadiness(input: {
     onlineWorkers,
     compatibleOnlineWorkers
   };
+}
+
+export async function resolveRequiredStage3WorkerReadiness(input: {
+  workspaceId: string;
+  userId?: string | null;
+  workerId: string;
+}) {
+  const expectedRuntimeVersion = await getExpectedStage3WorkerRuntimeVersion();
+  const worker = getStage3WorkerById(input);
+  const active = worker?.status === "online" || worker?.status === "busy";
+  const compatible = Boolean(
+    worker &&
+      active &&
+      isStage3WorkerRuntimeVersionCompatible({
+        workerAppVersion: worker.appVersion,
+        expectedRuntimeVersion
+      })
+  );
+  return {
+    ready: compatible,
+    expectedRuntimeVersion,
+    worker,
+    reason: !worker
+      ? "worker_not_found"
+      : !active
+        ? "worker_offline"
+        : compatible
+          ? null
+          : "worker_runtime_outdated"
+  } as const;
 }

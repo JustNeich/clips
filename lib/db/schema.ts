@@ -530,6 +530,7 @@ CREATE TABLE IF NOT EXISTS stage3_jobs (
   kind TEXT NOT NULL,
   status TEXT NOT NULL,
   execution_target TEXT NOT NULL DEFAULT 'local',
+  required_worker_id TEXT,
   assigned_worker_id TEXT,
   lease_expires_at TEXT,
   heartbeat_at TEXT,

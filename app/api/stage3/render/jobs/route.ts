@@ -4,7 +4,7 @@ import { buildStage3JobEnvelope, buildStage3JobErrorBody } from "../../../../../
 import { enqueueAndScheduleStage3Job } from "../../../../../lib/stage3-job-runtime";
 import { buildStage3RenderRequestDedupeKey } from "../../../../../lib/stage3-render-request";
 import { Stage3RenderRequestBody } from "../../../../../lib/stage3-render-service";
-import { resolveStage3LocalWorkerReadiness } from "../../../../../lib/stage3-worker-readiness";
+import { resolveRequiredStage3WorkerReadiness, resolveStage3LocalWorkerReadiness } from "../../../../../lib/stage3-worker-readiness";
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../../../lib/ytdlp";
 import { auditStage3RequestFailure } from "../../../../../lib/stage3-observability";
 
@@ -69,6 +69,15 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const executionTarget = resolveStage3Execution(auth.workspace.stage3ExecutionTarget).resolvedTarget;
+    const requiredWorkerId = body?.requiredWorkerId?.trim() || undefined;
+    if (requiredWorkerId) {
+      const readiness = executionTarget === "local"
+        ? await resolveRequiredStage3WorkerReadiness({ workspaceId: auth.workspace.id, userId: auth.user.id, workerId: requiredWorkerId })
+        : null;
+      if (!readiness?.ready) {
+        return Response.json({ status: "blocked", error: "required_worker_unavailable", code: readiness?.reason ?? "required_worker_requires_local_execution" }, { status: 503 });
+      }
+    }
     if (executionTarget === "local") {
       const readiness = await resolveStage3LocalWorkerReadiness({
         workspaceId: auth.workspace.id,
@@ -115,6 +124,7 @@ export async function POST(request: Request): Promise<Response> {
       userId: auth.user.id,
       kind: "render",
       executionTarget,
+      requiredWorkerId,
       dedupeKey: buildStage3RenderRequestDedupeKey({ ...(body ?? {}), channelId, sourceUrl }, {
         workspaceId: auth.workspace.id,
         userId: auth.user.id

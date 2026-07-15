@@ -70,6 +70,7 @@ const previewInflight = new Map<string, Promise<void>>();
 export const PREVIEW_WAIT_TIMEOUT_MS = 20_000;
 
 export type Stage3PreviewRequestBody = {
+  requiredWorkerId?: string;
   sourceUrl?: string;
   chatId?: string;
   channelId?: string;
@@ -450,10 +451,11 @@ export async function buildStage3PreviewDedupeKey(
     templateRevision: managedTemplateRuntime.updatedAt
   });
   const userId = scope?.userId?.trim() ?? "";
+  const workerKey = body.requiredWorkerId?.trim() || "any-worker";
   if (!workspaceId || !userId) {
-    return `preview:${STAGE3_PREVIEW_CACHE_VERSION}:global:${previewKey}`;
+    return `preview:${STAGE3_PREVIEW_CACHE_VERSION}:global:${workerKey}:${previewKey}`;
   }
-  return `preview:${STAGE3_PREVIEW_CACHE_VERSION}:${workspaceId}:${userId}:${previewKey}`;
+  return `preview:${STAGE3_PREVIEW_CACHE_VERSION}:${workspaceId}:${userId}:${workerKey}:${previewKey}`;
 }
 
 export async function prepareStage3Preview(

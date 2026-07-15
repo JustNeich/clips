@@ -28,6 +28,7 @@ export function buildStage3JobEnvelope(
     kind: job.kind,
     status: job.status,
     executionTarget: job.executionTarget,
+    requiredWorkerId: job.requiredWorkerId,
     assignedWorkerId: job.assignedWorkerId,
     workerLabel: job.workerLabel,
     leaseUntil: job.leaseUntil,

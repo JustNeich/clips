@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  countDescendantRenderProcesses,
   collectStage3WorkerAdmissionReport,
   evaluateStage3WorkerAdmission,
   type Stage3WorkerAdmissionTelemetry
@@ -20,6 +21,7 @@ function telemetry(
     totalMemoryBytes: 16 * GIB,
     freeMemoryBytes: 8 * GIB,
     freeMemoryRatio: 0.5,
+    memoryProvider: "test",
     activeRenderProcesses: 0,
     activeWorkerJobs: 0,
     telemetryError: null,
@@ -112,4 +114,18 @@ test("collected active render process count blocks pre-claim admission", async (
     assert.equal(report.telemetry.activeRenderProcesses, 2);
     assert.ok(report.reasons.includes("active_render_process_detected"));
   });
+});
+
+test("process admission ignores unrelated browsers and counts only render descendants", () => {
+  const table = [
+    "100 1 node clips-stage3-worker.cjs start",
+    "200 1 /Applications/AdsPower Global.app/Chrome --remote-debugging-port=1234 --headless",
+    "210 200 /Applications/AdsPower Global.app/Chrome Helper --type=renderer",
+    "300 100 node remotion render composition",
+    "301 300 /Applications/Google Chrome for Testing --headless --no-sandbox",
+    "302 100 ffmpeg -i source.mp4 output.mp4",
+    "400 1 ffmpeg -i unrelated.mp4 unrelated-output.mp4"
+  ].join("\n");
+  assert.equal(countDescendantRenderProcesses(table, 100), 3);
+  assert.equal(countDescendantRenderProcesses(table, 999), 0);
 });

@@ -127,6 +127,7 @@ type EnqueueJobInput = {
   kind: Stage3JobKind;
   payloadJson: string;
   executionTarget?: Stage3ExecutionTarget | null;
+  requiredWorkerId?: string | null;
   dedupeKey?: string | null;
   attemptLimit?: number | null;
   attemptGroup?: string | null;
