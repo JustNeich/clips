@@ -1,0 +1,11 @@
+{
+  "templateId": "oracle-animal-fact-card-v1-5eac7299",
+  "timestamp": "2026-07-16T21:24:44Z",
+  "compareScope": "full",
+  "mismatchPercent": 78.26519097222222,
+  "mismatchPixels": 1622907,
+  "totalPixels": 2073600,
+  "threshold": 0.085,
+  "pass": false,
+  "chromeMismatchPercent": null
+}

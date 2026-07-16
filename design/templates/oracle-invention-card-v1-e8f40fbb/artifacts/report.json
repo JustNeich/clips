@@ -1,0 +1,11 @@
+{
+  "templateId": "oracle-invention-card-v1-e8f40fbb",
+  "timestamp": "2026-07-16T21:24:44Z",
+  "compareScope": "full",
+  "mismatchPercent": 77.04841820987655,
+  "mismatchPixels": 1597676,
+  "totalPixels": 2073600,
+  "threshold": 0.085,
+  "pass": false,
+  "chromeMismatchPercent": null
+}

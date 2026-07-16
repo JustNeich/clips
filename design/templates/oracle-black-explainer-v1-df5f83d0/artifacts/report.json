@@ -1,0 +1,11 @@
+{
+  "templateId": "oracle-black-explainer-v1-df5f83d0",
+  "timestamp": "2026-07-16T21:24:44Z",
+  "compareScope": "full",
+  "mismatchPercent": 58.99479166666667,
+  "mismatchPixels": 1223316,
+  "totalPixels": 2073600,
+  "threshold": 0.085,
+  "pass": false,
+  "chromeMismatchPercent": null
+}

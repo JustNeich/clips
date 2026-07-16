@@ -1,0 +1,11 @@
+{
+  "templateId": "oracle-story-card-v1-035d8abd",
+  "timestamp": "2026-07-16T21:24:44Z",
+  "compareScope": "full",
+  "mismatchPercent": 67.99165702160495,
+  "mismatchPixels": 1409875,
+  "totalPixels": 2073600,
+  "threshold": 0.085,
+  "pass": false,
+  "chromeMismatchPercent": null
+}
