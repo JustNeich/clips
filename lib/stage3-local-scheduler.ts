@@ -72,10 +72,10 @@ export function resolveStage3RenderDurationSec(payloadJson: string): number | nu
     ? (snapshot.renderPlan as Record<string, unknown>)
     : null;
   return (
-    readFiniteDuration(payload.clipDurationSec) ??
     readFiniteDuration(renderPlan?.targetDurationSec) ??
-    readFiniteDuration(snapshot?.clipDurationSec) ??
-    readFiniteDuration(snapshotRenderPlan?.targetDurationSec)
+    readFiniteDuration(snapshotRenderPlan?.targetDurationSec) ??
+    readFiniteDuration(payload.clipDurationSec) ??
+    readFiniteDuration(snapshot?.clipDurationSec)
   );
 }
 

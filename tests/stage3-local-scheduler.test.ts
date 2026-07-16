@@ -56,6 +56,15 @@ function seedWorkspace(workspaceId = "w1", userId = "u1"): void {
 test("resource profiles and work identity are derived by Clips, not by an editor", () => {
   const shortPayload = JSON.stringify({ channelId: "dark", workItemId: "dark-1", revision: 2, clipDurationSec: 18 });
   const longPayload = JSON.stringify({ channelId: "dark", workItemId: "dark-2", revision: 1, clipDurationSec: 18.01 });
+  const normalizedLongPayload = JSON.stringify({
+    channelId: "dark",
+    workItemId: "dark-3",
+    revision: 1,
+    snapshot: {
+      clipDurationSec: 6,
+      renderPlan: { targetDurationSec: 22.134 }
+    }
+  });
   assert.deepEqual(resolveStage3WorkIdentity(shortPayload), {
     channelId: "dark",
     workItemId: "dark-1",
@@ -63,6 +72,7 @@ test("resource profiles and work identity are derived by Clips, not by an editor
   });
   assert.equal(resolveStage3LocalResourceProfile("render", shortPayload), "render-short");
   assert.equal(resolveStage3LocalResourceProfile("render", longPayload), "render-long");
+  assert.equal(resolveStage3LocalResourceProfile("render", normalizedLongPayload), "render-long");
   assert.equal(resolveStage3LocalResourceProfile("source-download", "{}"), "download");
   assert.equal(resolveStage3LocalResourceProfile("editing-proxy", "{}"), "media");
 });
