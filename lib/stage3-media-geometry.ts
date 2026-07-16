@@ -90,6 +90,7 @@ export function applyStage3MediaGeometryToTemplateSnapshot(
   const card = snapshot.layout.card
     ? { ...snapshot.layout.card, y: snapshot.layout.card.y + half, height: snapshot.layout.card.height - delta }
     : snapshot.layout.card;
+  const isChannelStory = snapshot.computed.layoutKind === "channel_story";
 
   return {
     ...snapshot,
@@ -107,9 +108,13 @@ export function applyStage3MediaGeometryToTemplateSnapshot(
         height
       },
       bottom: shiftUp(snapshot.layout.bottom),
-      author: shiftUp(snapshot.layout.author),
-      avatar: shiftUp(snapshot.layout.avatar),
-      bottomText: shiftUp(snapshot.layout.bottomText)
+      // In channel-story layouts the author and body text are ABOVE media.
+      // They belong to the top group and must move with the re-centered card.
+      // Moving them upward (the classic bottom-panel rule) places them outside
+      // the shortened card and clips all but the last caption line.
+      author: isChannelStory ? shiftDown(snapshot.layout.author) : shiftUp(snapshot.layout.author),
+      avatar: isChannelStory ? shiftDown(snapshot.layout.avatar) : shiftUp(snapshot.layout.avatar),
+      bottomText: isChannelStory ? shiftDown(snapshot.layout.bottomText) : shiftUp(snapshot.layout.bottomText)
     }
   };
 }
