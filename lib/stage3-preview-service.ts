@@ -62,7 +62,7 @@ import { queueThrottledBackgroundTask } from "./throttled-background-task";
 
 const PREVIEW_CACHE_ROOT = path.join(getAppDataDir(), "stage3-cache");
 const PREVIEW_CACHE_DIR = path.join(PREVIEW_CACHE_ROOT, "previews");
-const STAGE3_PREVIEW_CACHE_VERSION = "v4";
+const STAGE3_PREVIEW_CACHE_VERSION = "v5";
 const DEFAULT_TEXT_SCALE = 1.25;
 const SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
 const previewInflight = new Map<string, Promise<void>>();
@@ -121,6 +121,34 @@ async function resolveStage3AssetFile(params: {
 
 function hashKey(value: string): string {
   return createHash("sha1").update(value).digest("hex");
+}
+
+function stableSerializePreviewValue(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerializePreviewValue(item)).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableSerializePreviewValue(record[key])}`)
+    .join(",")}}`;
+}
+
+function buildPreviewRequestFingerprint(body: Stage3PreviewRequestBody): string {
+  return hashKey(
+    stableSerializePreviewValue({
+      channelId: body.channelId?.trim() ?? "",
+      chatId: body.chatId?.trim() ?? "",
+      agentPrompt: body.agentPrompt ?? "",
+      clipStartSec: body.clipStartSec ?? null,
+      clipDurationSec: body.clipDurationSec ?? null,
+      renderPlan: body.renderPlan ?? null,
+      snapshot: body.snapshot ?? null
+    })
+  );
 }
 
 function parseFiniteNumber(value: unknown): number | null {
@@ -408,6 +436,7 @@ function buildPreviewCacheKey(params: {
   clipStartSec: number;
   renderPlan: Stage3RenderPlan;
   templateRevision: string;
+  requestFingerprint: string;
 }): string {
   return hashKey(
     JSON.stringify({
@@ -416,6 +445,7 @@ function buildPreviewCacheKey(params: {
       clipStartSec: Number(params.clipStartSec.toFixed(3)),
       clipDurationSec: params.renderPlan.targetDurationSec,
       templateRevision: params.templateRevision,
+      requestFingerprint: params.requestFingerprint,
       renderPlan: params.renderPlan,
       musicAssetId: params.renderPlan.musicAssetId,
       sourceAudioGain: Number(params.renderPlan.sourceAudioGain.toFixed(3)),
@@ -443,11 +473,13 @@ export async function buildStage3PreviewDedupeKey(
     snapshot?.managedTemplateState,
     { workspaceId: workspaceId || null }
   );
+  const requestFingerprint = buildPreviewRequestFingerprint(body);
   const previewKey = buildPreviewCacheKey({
     sourceKey: hashKey(sourceUrl),
     clipStartSec,
     renderPlan,
-    templateRevision: managedTemplateRuntime.updatedAt
+    templateRevision: managedTemplateRuntime.updatedAt,
+    requestFingerprint
   });
   const userId = scope?.userId?.trim() ?? "";
   if (!workspaceId || !userId) {
@@ -554,7 +586,8 @@ export async function prepareStage3Preview(
       sourceKey: source.sourceKey,
       clipStartSec,
       renderPlan,
-      templateRevision: managedTemplateRuntime.updatedAt
+      templateRevision: managedTemplateRuntime.updatedAt,
+      requestFingerprint: buildPreviewRequestFingerprint(body)
     });
     const previewPath = path.join(PREVIEW_CACHE_DIR, `${previewKey}.mp4`);
 

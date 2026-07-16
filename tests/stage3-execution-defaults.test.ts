@@ -438,3 +438,48 @@ test("preview job route falls back to local when host mode is saved but temporar
     }
   );
 });
+
+test("Stage 3 preview dedupe separates channels and visible snapshots", async () => {
+  const scope = { workspaceId: "workspace-1", userId: "owner-1" };
+  const base = {
+    sourceUrl: "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+    channelId: "channel-a",
+    renderPlan: {
+      authorName: "First channel",
+      authorHandle: "@first_channel",
+      avatarAssetId: "avatar-a"
+    },
+    snapshot: {
+      topText: "FIRST CHANNEL",
+      bottomText: "Exact preview text for the first channel.",
+      captionHighlights: { top: [], bottom: [] }
+    }
+  };
+
+  const same = await buildStage3PreviewDedupeKey(base, scope);
+  const sameReordered = await buildStage3PreviewDedupeKey(
+    {
+      ...base,
+      renderPlan: {
+        avatarAssetId: base.renderPlan.avatarAssetId,
+        authorHandle: base.renderPlan.authorHandle,
+        authorName: base.renderPlan.authorName
+      },
+      snapshot: {
+        captionHighlights: base.snapshot.captionHighlights,
+        bottomText: base.snapshot.bottomText,
+        topText: base.snapshot.topText
+      }
+    },
+    scope
+  );
+  const otherChannel = await buildStage3PreviewDedupeKey({ ...base, channelId: "channel-b" }, scope);
+  const otherText = await buildStage3PreviewDedupeKey(
+    { ...base, snapshot: { ...base.snapshot, bottomText: "A different visible result." } },
+    scope
+  );
+
+  assert.equal(same, sameReordered);
+  assert.notEqual(same, otherChannel);
+  assert.notEqual(same, otherText);
+});
