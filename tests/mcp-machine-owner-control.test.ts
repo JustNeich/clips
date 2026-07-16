@@ -210,6 +210,45 @@ test("machine credential can read flows and owner status while short flow token 
   });
 });
 
+test("one shared observer can read one exact Stage 3 job without changing it", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "oracle-render-observer",
+      scopes: ["flow:read"]
+    });
+    const job = enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "render",
+      payloadJson: JSON.stringify({
+        channelId: channel.id,
+        chatId: chat.id,
+        workItemId: "dark-2026-07-16-1",
+        revision: 2,
+        clipDurationSec: 6
+      })
+    });
+
+    const response = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_get_stage3_job",
+      input: { jobId: job.id }
+    });
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as {
+      job?: { id?: string; status?: string; workItemId?: string; revision?: number; resourceProfile?: string };
+    };
+    assert.equal(body.job?.id, job.id);
+    assert.equal(body.job?.status, "queued");
+    assert.equal(body.job?.workItemId, "dark-2026-07-16-1");
+    assert.equal(body.job?.revision, 2);
+    assert.equal(body.job?.resourceProfile, "render-short");
+    assert.equal(getStage3Job(job.id)?.status, "queued");
+  });
+});
+
 test("clips_owner_list_render_exports returns only judge-approved montages, filtered by template", async () => {
   await withIsolatedAppData(async (appDataDir) => {
     const { owner, channel, chat } = await seedOwnerControl(appDataDir);

@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 
 export type Stage3RenderRequestDedupeInput = {
   requestId?: string;
+  workItemId?: string;
+  revision?: number;
   sourceUrl?: string;
   channelId?: string;
   chatId?: string;
@@ -61,6 +63,11 @@ function buildContentFingerprint(body: Stage3RenderRequestDedupeInput): string |
     return null;
   }
   const payload = {
+    workItemId: cleanString(body.workItemId),
+    revision:
+      typeof body.revision === "number" && Number.isFinite(body.revision) && body.revision >= 1
+        ? Math.floor(body.revision)
+        : null,
     sourceUrl,
     chatId,
     channelId: cleanString(body.channelId),

@@ -945,7 +945,7 @@ test("artifact storage failures reset attempts so manual retries can recover aft
   });
 });
 
-test("local render sweep interrupts older queued renders for the same chat", async () => {
+test("local render sweep interrupts an older revision of the same work item", async () => {
   await withIsolatedAppData(async () => {
     const workspaceId = "w1";
     const userId = "u1";
@@ -959,6 +959,8 @@ test("local render sweep interrupts older queued renders for the same chat", asy
       dedupeKey: "render-request:w1:u1:older",
       payloadJson: JSON.stringify({
         chatId: "chat-1",
+        workItemId: "video-1",
+        revision: 1,
         sourceUrl: "https://example.com/older",
         renderTitle: "Older"
       })
@@ -971,20 +973,23 @@ test("local render sweep interrupts older queued renders for the same chat", asy
       dedupeKey: "render-request:w1:u1:newer",
       payloadJson: JSON.stringify({
         chatId: "chat-1",
+        workItemId: "video-1",
+        revision: 2,
         sourceUrl: "https://example.com/newer",
         renderTitle: "Newer"
       })
     });
 
     const db = getDb();
+    const nowMs = Date.now();
     db.prepare("UPDATE stage3_jobs SET created_at = ?, updated_at = ? WHERE id = ?").run(
-      "2026-05-01T07:00:00.000Z",
-      "2026-05-01T07:00:00.000Z",
+      new Date(nowMs - 5_000).toISOString(),
+      new Date(nowMs - 5_000).toISOString(),
       older.id
     );
     db.prepare("UPDATE stage3_jobs SET created_at = ?, updated_at = ? WHERE id = ?").run(
-      "2026-05-01T08:00:00.000Z",
-      new Date().toISOString(),
+      new Date(nowMs).toISOString(),
+      new Date(nowMs).toISOString(),
       newer.id
     );
 

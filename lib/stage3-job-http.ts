@@ -25,6 +25,10 @@ export function buildStage3JobEnvelope(
 
   const summary: Stage3JobSummary = {
     id: job.id,
+    channelId: job.channelId,
+    workItemId: job.workItemId,
+    revision: job.revision,
+    resourceProfile: job.resourceProfile,
     kind: job.kind,
     status: job.status,
     executionTarget: job.executionTarget,

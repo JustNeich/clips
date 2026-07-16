@@ -13,6 +13,8 @@ test("clips_owner_render_video schema preserves caller snapshot media controls",
   const parsed = clipsOwnerRenderVideoInputSchema.parse({
     channelId: "channel-1",
     chatId: "chat-1",
+    workItemId: "dark-2026-07-16-1",
+    revision: 2,
     sourceDurationSec: 54,
     snapshot: {
       topText: "Caller top",
@@ -40,6 +42,8 @@ test("clips_owner_render_video schema preserves caller snapshot media controls",
   const sourceCrop = renderPlan.sourceCrop as Record<string, unknown>;
 
   assert.equal(snapshot.topText, "Caller top");
+  assert.equal(parsed.workItemId, "dark-2026-07-16-1");
+  assert.equal(parsed.revision, 2);
   assert.equal(snapshot.clipStartSec, 3.25);
   assert.equal(snapshot.focusY, 0.42);
   assert.equal(renderPlan.videoZoom, 1.12);

@@ -92,6 +92,7 @@ import { buildStage3PreviewDedupeKey, type Stage3PreviewRequestBody } from "../.
 import { resolveStage3LocalWorkerReadiness } from "../../../../lib/stage3-worker-readiness";
 import { enqueueAndScheduleStage3Job } from "../../../../lib/stage3-job-runtime";
 import {
+  getStage3Job,
   listCompletedStage3RenderJobsForChat,
   type Stage3JobRecord
 } from "../../../../lib/stage3-job-store";
@@ -143,6 +144,7 @@ const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
   clips_owner_get_template: "flow:read",
   clips_owner_update_template: "entity:write",
   clips_owner_render_video: "pipeline:run",
+  clips_owner_get_stage3_job: "flow:read",
   clips_owner_list_members: "flow:read",
   clips_owner_list_channel_access: "flow:read",
   clips_owner_set_channel_access: "entity:write",
@@ -1089,6 +1091,25 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     return { workers: listStage3Workers({ workspaceId: auth.workspace.id, userId: resolveString(input.userId) }) };
   }
 
+  if (tool === "clips_owner_get_stage3_job") {
+    const jobId = resolveString(input.jobId);
+    if (!jobId) {
+      throw new Response(JSON.stringify({ error: "jobId is required." }), { status: 400 });
+    }
+    const job = getStage3Job(jobId);
+    if (!job || job.workspaceId !== auth.workspace.id) {
+      throw new Response(JSON.stringify({ error: "Stage 3 job not found." }), { status: 404 });
+    }
+    const artifactUrl = !job.artifact
+      ? null
+      : job.kind === "editing-proxy"
+        ? `/api/stage3/editing-proxy/jobs/${job.id}?download=1`
+        : job.kind === "preview" || job.kind === "render"
+          ? `/api/stage3/${job.kind}/jobs/${job.id}?download=1`
+          : null;
+    return buildStage3JobEnvelope(job, artifactUrl);
+  }
+
   if (tool === "clips_owner_pair_stage3_worker") {
     const issued = issueStage3WorkerPairingToken({
       workspaceId: auth.workspace.id,
@@ -1281,6 +1302,10 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     const normalizedBody = {
       channelId: channel.id,
       chatId: chat.id,
+      ...(resolveString(input.workItemId) ? { workItemId: resolveString(input.workItemId)! } : {}),
+      ...(resolveNumber(input.revision) !== null
+        ? { revision: Math.max(1, Math.floor(resolveNumber(input.revision)!)) }
+        : {}),
       sourceUrl,
       workspaceId: auth.workspace.id,
       publishAfterRender: resolveBoolean(input.publishAfterRender),

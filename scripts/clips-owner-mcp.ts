@@ -97,6 +97,8 @@ export const clipsOwnerUpdateChannelPublishSettingsInputSchema = z.object({
 export const clipsOwnerRenderVideoInputSchema = z.object({
   ...channelRefSchema,
   chatId: z.string(),
+  workItemId: z.string().min(1).optional(),
+  revision: z.number().int().min(1).optional(),
   templateId: z.string().optional(),
   sourceDurationSec: z.number().positive().optional(),
   publishAfterRender: z.boolean().optional(),
@@ -323,10 +325,23 @@ server.registerTool(
   {
     title: "Render Clips video",
     description:
-      "Enqueue a Stage 3 render for a chat on a channel. Returns the render job, a poll url, and an authenticated download url. Pass sourceDurationSec (seconds) to render the FULL source (e.g. a 53.6s talking-head) instead of the channel default clip length; omit it to use the channel's default duration.",
+      "Enqueue one Stage 3 render. Oracle callers should pass a stable workItemId for the video and increment revision only for a repaired version. Returns the render job, a poll url, and an authenticated download url. Pass sourceDurationSec (seconds) to render the FULL source (e.g. a 53.6s talking-head) instead of the channel default clip length; omit it to use the channel's default duration.",
     inputSchema: clipsOwnerRenderVideoInputSchema
   },
   async (input) => ownerControl("clips_owner_render_video", input)
+);
+
+server.registerTool(
+  "clips_owner_get_stage3_job",
+  {
+    title: "Get one Stage 3 job",
+    description:
+      "Read one exact Stage 3 queue job by jobId, including terminal status and artifact link. Read-only; intended for one shared Oracle completion observer.",
+    inputSchema: z.object({
+      jobId: z.string().min(1)
+    })
+  },
+  async (input) => ownerControl("clips_owner_get_stage3_job", input)
 );
 
 server.registerTool(

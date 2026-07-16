@@ -750,6 +750,10 @@ export type Stage3JobArtifact = {
 
 export type Stage3JobSummary = {
   id: string;
+  channelId: string | null;
+  workItemId: string | null;
+  revision: number;
+  resourceProfile: "render-short" | "render-long" | "media" | "download";
   kind: Stage3JobKind;
   status: Stage3JobStatus;
   executionTarget: Stage3ExecutionTarget;

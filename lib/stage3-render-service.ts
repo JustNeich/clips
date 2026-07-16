@@ -94,6 +94,7 @@ import {
   resolveStage3OutputDurationSec
 } from "./stage3-duration";
 import { resolveStage3HostedRenderEngineTimeoutMs } from "./stage3-worker-job-timeout";
+import { getStage3WorkerJobContext } from "./stage3-worker-job-context";
 
 export const REMOTION_RENDER_TIMEOUT_MS = 9 * 60_000;
 export const RENDER_WAIT_TIMEOUT_MS = 60_000;
@@ -114,14 +115,18 @@ const LONG_RENDER_MEMORY_PER_RENDERER_BYTES = 2 * 1024 * 1024 * 1024;
 export type Stage3RenderResourceTelemetry = {
   cpuCount: number;
   loadAverage1m: number;
-  freeMemoryBytes: number;
+  availableMemoryBytes: number;
 };
 
 function captureStage3RenderResourceTelemetry(): Stage3RenderResourceTelemetry {
+  const resources = getStage3WorkerJobContext()?.resources;
+  if (resources) {
+    return resources;
+  }
   return {
-    cpuCount: os.cpus().length,
-    loadAverage1m: os.loadavg()[0] ?? Number.NaN,
-    freeMemoryBytes: os.freemem()
+    cpuCount: 1,
+    loadAverage1m: 1,
+    availableMemoryBytes: 0
   };
 }
 
@@ -135,8 +140,8 @@ export function resolveDynamicLongRenderRemotionConcurrency(
     telemetry.cpuCount <= 0 ||
     !Number.isFinite(telemetry.loadAverage1m) ||
     telemetry.loadAverage1m < 0 ||
-    !Number.isFinite(telemetry.freeMemoryBytes) ||
-    telemetry.freeMemoryBytes < 0
+    !Number.isFinite(telemetry.availableMemoryBytes) ||
+    telemetry.availableMemoryBytes < 0
   ) {
     return MEMORY_CONSTRAINED_REMOTION_CONCURRENCY;
   }
@@ -146,7 +151,7 @@ export function resolveDynamicLongRenderRemotionConcurrency(
   const memoryBudget = Math.max(
     1,
     Math.floor(
-      Math.max(0, telemetry.freeMemoryBytes - LONG_RENDER_MEMORY_RESERVE_BYTES) /
+      Math.max(0, telemetry.availableMemoryBytes - LONG_RENDER_MEMORY_RESERVE_BYTES) /
         LONG_RENDER_MEMORY_PER_RENDERER_BYTES
     )
   );
@@ -242,6 +247,8 @@ function resolveStage3ExecutionRoot(): string {
 
 export type Stage3RenderRequestBody = {
   requestId?: string;
+  workItemId?: string;
+  revision?: number;
   sourceUrl?: string;
   channelId?: string;
   workspaceId?: string;

@@ -13,6 +13,7 @@ import { downloadSourceVideo } from "../lib/stage3-media-agent";
 import { ensureStage3SourceCached } from "../lib/stage3-server-control";
 import { setSourceAcquisitionDownloadersForTests } from "../lib/source-acquisition";
 import { withStage3WorkerCurrentJobId } from "../lib/stage3-worker-runtime";
+import { runWithStage3WorkerJobContext } from "../lib/stage3-worker-job-context";
 import { exchangeStage3WorkerPairingToken, issueStage3WorkerPairingToken } from "../lib/stage3-worker-store";
 import { buildUploadedSourceUrl } from "../lib/uploaded-source";
 import { normalizeSupportedUrl } from "../lib/supported-url";
@@ -524,6 +525,56 @@ test("claimed worker job context forwards jobId to host source requests", { conc
     } else {
       process.env.STAGE3_WORKER_CURRENT_JOB_ID = previousCurrentJobId;
     }
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("parallel worker jobs keep source request jobIds isolated", { concurrency: false }, async () => {
+  const previousServerOrigin = process.env.STAGE3_WORKER_SERVER_ORIGIN;
+  const previousSessionToken = process.env.STAGE3_WORKER_SESSION_TOKEN;
+  const originalFetch = globalThis.fetch;
+  process.env.STAGE3_WORKER_SERVER_ORIGIN = "https://clips.example.com";
+  process.env.STAGE3_WORKER_SESSION_TOKEN = "worker-session-token";
+  const requestBodies: Array<{ url?: string; jobId?: string; cacheOnly?: boolean }> = [];
+  globalThis.fetch = (async (_input, init) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as { url?: string; jobId?: string; cacheOnly?: boolean };
+    await new Promise((resolve) => setTimeout(resolve, body.jobId === "job-a" ? 10 : 1));
+    requestBodies.push(body);
+    return Response.json({ error: "Source media ещё не готов в cache." }, { status: 404 });
+  }) as typeof fetch;
+
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-worker-parallel-job-source-"));
+  try {
+    const { maybeDownloadStage3WorkerSource } = await import("../lib/stage3-worker-source-client");
+    await Promise.all([
+      runWithStage3WorkerJobContext({ jobId: "job-a", resources: null }, () =>
+        maybeDownloadStage3WorkerSource({
+          sourceUrl: "https://www.instagram.com/reel/job-a/",
+          tmpDir,
+          cacheOnly: true
+        })
+      ),
+      runWithStage3WorkerJobContext({ jobId: "job-b", resources: null }, () =>
+        maybeDownloadStage3WorkerSource({
+          sourceUrl: "https://www.instagram.com/reel/job-b/",
+          tmpDir,
+          cacheOnly: true
+        })
+      )
+    ]);
+    assert.deepEqual(
+      requestBodies.sort((left, right) => String(left.jobId).localeCompare(String(right.jobId))),
+      [
+        { url: "https://www.instagram.com/reel/job-a/", jobId: "job-a", cacheOnly: true },
+        { url: "https://www.instagram.com/reel/job-b/", jobId: "job-b", cacheOnly: true }
+      ]
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousServerOrigin === undefined) delete process.env.STAGE3_WORKER_SERVER_ORIGIN;
+    else process.env.STAGE3_WORKER_SERVER_ORIGIN = previousServerOrigin;
+    if (previousSessionToken === undefined) delete process.env.STAGE3_WORKER_SESSION_TOKEN;
+    else process.env.STAGE3_WORKER_SESSION_TOKEN = previousSessionToken;
     await fs.rm(tmpDir, { recursive: true, force: true });
   }
 });

@@ -244,6 +244,10 @@ npm run stage2-worker
 - Тяжёлые Stage 3 jobs (`preview`, `render`, `source-download`, `agent-media-step`) выполняет отдельное desktop-приложение `Clips Worker` на ПК текущего пользователя.
 - Worker pairing доступен прямо из Stage 3 UI через deep link `clips-stage3-worker://pair?...` в блоке `Local Executor`.
 - Worker после pairing считается персональным executor-ом: он claim-ит только jobs своего `userId` внутри workspace. Онлайн-worker другого редактора больше не делает текущего пользователя `Online` и не забирает его render/preview jobs.
+- Локальный worker использует одну durable Stage 3 queue и три ограниченные линии: `render`, подготовка `media` и `source-download`. Редактор ставит job один раз; только worker решает, когда её можно запустить.
+- Для Oracle render request может передавать `workItemId` и `revision`. Новая revision отменяет только ожидающую старую revision того же ролика; общий постоянный `chatId` канала больше не используется как ключ отмены.
+- По умолчанию одновременно допускаются один короткий render (до 18 секунд), одна media-задача и две загрузки. Второй короткий render включается только явной настройкой `STAGE3_WORKER_SHORT_RENDER_MAX_CONCURRENT_JOBS=2` после измеримой калибровки.
+- Admission проверяет общую нагрузку, macOS `memory_pressure`, свободный диск и рост swap. Открытые окна AdsPower/Chrome и имена посторонних процессов не считаются render jobs.
 - Worker runtime не распаковывает серверный `node_modules` на чужой платформе: если manifest говорит, что `runtime-deps.tar.gz` собран не под текущий OS/CPU, Clips Worker делает локальный `npm install` и чинит native `esbuild`/`@rspack` bindings до claim jobs.
 - CLI остаётся совместимым advanced fallback для разработки и поддержки:
 

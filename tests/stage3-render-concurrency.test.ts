@@ -10,7 +10,7 @@ import {
 const lowLoadMacBook = {
   cpuCount: 10,
   loadAverage1m: 2,
-  freeMemoryBytes: 8 * 1024 * 1024 * 1024
+  availableMemoryBytes: 8 * 1024 * 1024 * 1024
 };
 
 // These tests run with RENDER unset, i.e. the local (non-hosted) Mac worker path,
@@ -43,7 +43,7 @@ test("long-render concurrency adapts to current CPU load and free memory", () =>
     resolveDynamicLongRenderRemotionConcurrency({
       cpuCount: 10,
       loadAverage1m: 1,
-      freeMemoryBytes: 13 * 1024 * 1024 * 1024
+      availableMemoryBytes: 13 * 1024 * 1024 * 1024
     }),
     4
   );
@@ -51,7 +51,7 @@ test("long-render concurrency adapts to current CPU load and free memory", () =>
     resolveDynamicLongRenderRemotionConcurrency({
       cpuCount: 10,
       loadAverage1m: 8,
-      freeMemoryBytes: 13 * 1024 * 1024 * 1024
+      availableMemoryBytes: 13 * 1024 * 1024 * 1024
     }),
     1
   );
@@ -59,7 +59,7 @@ test("long-render concurrency adapts to current CPU load and free memory", () =>
     resolveDynamicLongRenderRemotionConcurrency({
       cpuCount: 10,
       loadAverage1m: 1,
-      freeMemoryBytes: 4 * 1024 * 1024 * 1024
+      availableMemoryBytes: 4 * 1024 * 1024 * 1024
     }),
     1
   );
@@ -67,7 +67,7 @@ test("long-render concurrency adapts to current CPU load and free memory", () =>
     resolveDynamicLongRenderRemotionConcurrency({
       cpuCount: Number.NaN,
       loadAverage1m: 0,
-      freeMemoryBytes: 8 * 1024 * 1024 * 1024
+      availableMemoryBytes: 8 * 1024 * 1024 * 1024
     }),
     1
   );

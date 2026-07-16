@@ -3,10 +3,10 @@ import test from "node:test";
 
 import {
   collectStage3WorkerAdmissionReport,
-  countActiveRenderProcesses,
   evaluateStage3WorkerAdmission,
   type Stage3WorkerAdmissionTelemetry
 } from "../lib/stage3-worker-runtime";
+import { updateStage3SwapHistory } from "../lib/stage3-resource-telemetry";
 
 const GIB = 1024 * 1024 * 1024;
 
@@ -19,118 +19,108 @@ function telemetry(
     loadAverage1m: 2,
     normalizedLoad1m: 0.2,
     totalMemoryBytes: 16 * GIB,
-    freeMemoryBytes: 8 * GIB,
-    freeMemoryRatio: 0.5,
-    activeRenderProcesses: 0,
+    availableMemoryPercent: 0.5,
+    availableMemoryBytes: 8 * GIB,
+    diskFreeBytes: 100 * GIB,
+    swapUsedBytes: 2 * GIB,
     activeWorkerJobs: 0,
     telemetryError: null,
     ...patch
   };
 }
 
-async function withDefaultAdmissionEnv<T>(run: () => T | Promise<T>): Promise<T> {
-  const previousLoad = process.env.STAGE3_WORKER_MAX_NORMALIZED_LOAD;
-  const previousMemory = process.env.STAGE3_WORKER_MIN_FREE_MEMORY_GB;
-  delete process.env.STAGE3_WORKER_MAX_NORMALIZED_LOAD;
-  delete process.env.STAGE3_WORKER_MIN_FREE_MEMORY_GB;
-  try {
-    return await run();
-  } finally {
-    if (previousLoad === undefined) delete process.env.STAGE3_WORKER_MAX_NORMALIZED_LOAD;
-    else process.env.STAGE3_WORKER_MAX_NORMALIZED_LOAD = previousLoad;
-    if (previousMemory === undefined) delete process.env.STAGE3_WORKER_MIN_FREE_MEMORY_GB;
-    else process.env.STAGE3_WORKER_MIN_FREE_MEMORY_GB = previousMemory;
-  }
-}
+test("Stage 3 worker admits a heavy claim only with complete healthy telemetry", () => {
+  const report = evaluateStage3WorkerAdmission(telemetry(), "heavy");
+  assert.equal(report.admitted, true);
+  assert.equal(report.decision, "admit");
+  assert.deepEqual(report.reasons, []);
+});
 
-test("Stage 3 worker admits a claim only with complete healthy telemetry", async () => {
-  await withDefaultAdmissionEnv(() => {
-    const report = evaluateStage3WorkerAdmission(telemetry());
-    assert.equal(report.admitted, true);
-    assert.equal(report.decision, "admit");
-    assert.deepEqual(report.reasons, []);
+test("heavy admission defers for load, memory pressure, disk, or swap growth", () => {
+  assert.ok(
+    evaluateStage3WorkerAdmission(
+      telemetry({ loadAverage1m: 8, normalizedLoad1m: 0.8 }),
+      "heavy"
+    ).reasons.includes("system_load_above_limit")
+  );
+  assert.ok(
+    evaluateStage3WorkerAdmission(
+      telemetry({ availableMemoryPercent: 0.2, availableMemoryBytes: 3.2 * GIB }),
+      "heavy"
+    ).reasons.includes("available_memory_below_limit")
+  );
+  assert.ok(
+    evaluateStage3WorkerAdmission(telemetry({ diskFreeBytes: 19 * GIB }), "heavy").reasons.includes(
+      "disk_space_below_limit"
+    )
+  );
+  assert.ok(
+    evaluateStage3WorkerAdmission(telemetry(), "heavy", 513 * 1024 * 1024).reasons.includes(
+      "swap_growth_above_limit"
+    )
+  );
+});
+
+test("worker-owned active jobs do not block another eligible lane", () => {
+  const report = evaluateStage3WorkerAdmission(telemetry({ activeWorkerJobs: 3 }), "light");
+  assert.equal(report.admitted, true);
+  assert.deepEqual(report.reasons, []);
+});
+
+test("light admission keeps the documented lower memory and disk thresholds", () => {
+  const light = evaluateStage3WorkerAdmission(
+    telemetry({
+      loadAverage1m: 8.5,
+      normalizedLoad1m: 0.85,
+      availableMemoryPercent: 0.2,
+      availableMemoryBytes: 3.2 * GIB,
+      diskFreeBytes: 12 * GIB
+    }),
+    "light"
+  );
+  assert.equal(light.admitted, true);
+  assert.equal(evaluateStage3WorkerAdmission(telemetry({ diskFreeBytes: 9 * GIB }), "light").admitted, false);
+});
+
+test("Stage 3 worker fails closed when macOS memory telemetry is unavailable", async () => {
+  const report = await collectStage3WorkerAdmissionReport({
+    activeWorkerJobs: 0,
+    availableMemoryReader: async () => {
+      throw new Error("memory_pressure_unavailable");
+    },
+    diskFreeReader: async () => 100 * GIB,
+    swapReader: async () => 2 * GIB
   });
+  assert.equal(report.admitted, false);
+  assert.equal(report.decision, "defer");
+  assert.match(report.reasons.join(" "), /telemetry_unavailable:memory_pressure_unavailable/);
 });
 
-test("Stage 3 worker defers claims for load, memory, render processes, or an active job", async () => {
-  await withDefaultAdmissionEnv(() => {
-    assert.ok(
-      evaluateStage3WorkerAdmission(
-        telemetry({ loadAverage1m: 9, normalizedLoad1m: 0.9 })
-      ).reasons.includes("system_load_above_limit")
-    );
-    assert.ok(
-      evaluateStage3WorkerAdmission(
-        telemetry({ freeMemoryBytes: 2 * GIB, freeMemoryRatio: 0.125 })
-      ).reasons.includes("free_memory_below_limit")
-    );
-    assert.ok(
-      evaluateStage3WorkerAdmission(telemetry({ activeRenderProcesses: 1 })).reasons.includes(
-        "active_render_process_detected"
-      )
-    );
-    assert.ok(
-      evaluateStage3WorkerAdmission(telemetry({ activeWorkerJobs: 1 })).reasons.includes(
-        "worker_job_active"
-      )
-    );
+test("collected telemetry uses available memory percentage instead of process names", async () => {
+  const report = await collectStage3WorkerAdmissionReport({
+    systemSnapshot: {
+      cpuCount: 10,
+      loadAverage1m: 2,
+      totalMemoryBytes: 16 * GIB,
+      availableMemoryPercent: 0.37,
+      diskFreeBytes: 100 * GIB,
+      swapUsedBytes: 7 * GIB
+    }
   });
+  assert.equal(report.admitted, true);
+  assert.equal(report.telemetry.availableMemoryBytes, 16 * GIB * 0.37);
 });
 
-test("Stage 3 worker fails closed when required telemetry cannot be collected", async () => {
-  await withDefaultAdmissionEnv(async () => {
-    const report = await collectStage3WorkerAdmissionReport({
-      activeWorkerJobs: 0,
-      systemSnapshot: {
-        cpuCount: 10,
-        loadAverage1m: 2,
-        totalMemoryBytes: 16 * GIB,
-        freeMemoryBytes: 8 * GIB
-      },
-      processCountReader: async () => {
-        throw new Error("process_list_unavailable");
-      }
-    });
-    assert.equal(report.admitted, false);
-    assert.equal(report.decision, "defer");
-    assert.match(report.reasons.join(" "), /telemetry_unavailable:process_list_unavailable/);
-    assert.equal(report.telemetry.activeRenderProcesses, null);
-  });
-});
-
-test("collected active render process count blocks pre-claim admission", async () => {
-  await withDefaultAdmissionEnv(async () => {
-    const report = await collectStage3WorkerAdmissionReport({
-      systemSnapshot: {
-        cpuCount: 10,
-        loadAverage1m: 2,
-        totalMemoryBytes: 16 * GIB,
-        freeMemoryBytes: 8 * GIB
-      },
-      processCountReader: async () => 2
-    });
-    assert.equal(report.admitted, false);
-    assert.equal(report.telemetry.activeRenderProcesses, 2);
-    assert.ok(report.reasons.includes("active_render_process_detected"));
-  });
-});
-
-test("active render detection ignores unrelated remote-debugging browsers", () => {
-  const processList = [
-    "19129 /Applications/SunBrowser.app/Contents/MacOS/SunBrowser --user-agent=Mozilla/5.0 Chrome/146.0.7680.165 Safari/537.36 --remote-debugging-port=0",
-    "19130 /Applications/SunBrowser Helper (Renderer).app/Contents/MacOS/SunBrowser Helper (Renderer) --type=renderer --user-agent=Mozilla/5.0 Chrome/146.0.7680.165 Safari/537.36 --remote-debugging-port=0"
-  ].join("\n");
-
-  assert.equal(countActiveRenderProcesses(processList), 0);
-});
-
-test("active render detection still counts Remotion media processes", () => {
-  const processList = [
-    "20101 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --headless=new --remote-debugging-port=0",
-    "20102 /opt/homebrew/bin/ffmpeg -i source.mp4 output.mp4",
-    "20103 /opt/homebrew/bin/ffprobe -v error source.mp4",
-    "20104 node /workspace/node_modules/.bin/remotion render composition output.mp4"
-  ].join("\n");
-
-  assert.equal(countActiveRenderProcesses(processList), 4);
+test("swap growth is measured over the retained five-minute window", () => {
+  const now = Date.parse("2026-07-15T09:05:00.000Z");
+  const updated = updateStage3SwapHistory(
+    [
+      { capturedAtMs: now - 6 * 60_000, usedBytes: 1 * GIB },
+      { capturedAtMs: now - 4 * 60_000, usedBytes: 2 * GIB }
+    ],
+    telemetry({ swapUsedBytes: 2.25 * GIB }),
+    now
+  );
+  assert.equal(updated.history.length, 2);
+  assert.equal(updated.growthBytes5m, 0.25 * GIB);
 });

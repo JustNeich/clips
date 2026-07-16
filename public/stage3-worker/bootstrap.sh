@@ -174,6 +174,7 @@ const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
   "stage3-video-fit.ts",
   "stage3-video-scale.ts",
   "stage3-video-placement.ts",
+  "stage3-media-geometry.ts",
   "channel-story-media-matte.ts",
   "stage3-worker-job-timeout.ts"
 ];

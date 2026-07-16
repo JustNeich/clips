@@ -146,7 +146,7 @@ test("host queue prefers render over newer preview jobs", async () => {
   });
 });
 
-test("host queue interrupts older queued renders for the same chat", async () => {
+test("host queue interrupts only an older revision of the same work item", async () => {
   await withIsolatedAppData(async () => {
     const db = getDb();
     const stamp = nowIso();
@@ -174,6 +174,8 @@ test("host queue interrupts older queued renders for the same chat", async () =>
       executionTarget: "host",
       payloadJson: JSON.stringify({
         chatId: "chat-1",
+        workItemId: "video-1",
+        revision: 1,
         sourceUrl: "https://youtube.com/watch?v=same-source",
         renderPlan: { targetDurationSec: 6 }
       })
@@ -185,6 +187,8 @@ test("host queue interrupts older queued renders for the same chat", async () =>
       executionTarget: "host",
       payloadJson: JSON.stringify({
         chatId: "chat-1",
+        workItemId: "video-1",
+        revision: 2,
         sourceUrl: "https://youtube.com/watch?v=same-source",
         renderPlan: { targetDurationSec: 6 }
       })
@@ -397,7 +401,7 @@ test("host runtime keeps interactive jobs moving while render lane is busy", { c
   });
 });
 
-test("local worker skips superseded queued previews for the same chat", async () => {
+test("local worker skips an older preview revision of the same work item", async () => {
   await withIsolatedAppData(async () => {
     const db = getDb();
     const stamp = nowIso();
@@ -431,6 +435,8 @@ test("local worker skips superseded queued previews for the same chat", async ()
       executionTarget: "local",
       payloadJson: JSON.stringify({
         chatId: "chat-1",
+        workItemId: "video-1",
+        revision: 1,
         sourceUrl: "https://youtube.com/watch?v=same-chat",
         renderPlan: { videoZoom: 1 }
       })
@@ -443,6 +449,8 @@ test("local worker skips superseded queued previews for the same chat", async ()
       executionTarget: "local",
       payloadJson: JSON.stringify({
         chatId: "chat-1",
+        workItemId: "video-1",
+        revision: 2,
         sourceUrl: "https://youtube.com/watch?v=same-chat",
         renderPlan: { videoZoom: 1.2 }
       })

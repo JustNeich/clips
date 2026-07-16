@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { getStage3WorkerCurrentJobId } from "./stage3-worker-job-context";
 
 export type Stage3WorkerDownloadedSource = {
   filePath: string;
@@ -46,6 +47,7 @@ export async function maybeDownloadStage3WorkerSource(params: {
   if (!workerEnv) {
     return null;
   }
+  const currentJobId = getStage3WorkerCurrentJobId() ?? process.env.STAGE3_WORKER_CURRENT_JOB_ID?.trim() ?? null;
 
   const response = await fetch(`${workerEnv.serverOrigin}/api/stage3/worker/source`, {
     method: "POST",
@@ -55,9 +57,7 @@ export async function maybeDownloadStage3WorkerSource(params: {
     },
     body: JSON.stringify({
       url: params.sourceUrl,
-      ...(process.env.STAGE3_WORKER_CURRENT_JOB_ID?.trim()
-        ? { jobId: process.env.STAGE3_WORKER_CURRENT_JOB_ID.trim() }
-        : {}),
+      ...(currentJobId ? { jobId: currentJobId } : {}),
       ...(params.cacheOnly ? { cacheOnly: true } : {})
     }),
     signal: params.signal ?? undefined

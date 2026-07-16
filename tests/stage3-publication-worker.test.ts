@@ -36,6 +36,10 @@ import {
   exchangeStage3WorkerPairingToken,
   issueStage3WorkerPairingToken
 } from "../lib/stage3-worker-store";
+
+function minimalMp4Bytes(): Uint8Array {
+  return new Uint8Array([0, 0, 0, 8, 0x66, 0x74, 0x79, 0x70]);
+}
 import { bootstrapOwner } from "../lib/team-store";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
@@ -200,7 +204,7 @@ test("local worker render completion creates a render export and queued publicat
           "x-stage3-artifact-mime-type": encodeURIComponent("video/mp4"),
           "x-stage3-result-json": Buffer.from(JSON.stringify({ ok: true }), "utf-8").toString("base64url")
         },
-        body: new Uint8Array([1, 2, 3, 4])
+        body: minimalMp4Bytes()
       }),
       { params: Promise.resolve({ id: job.id }) }
     );
@@ -275,7 +279,7 @@ test("local worker render completion returns the completed artifact when post-re
           "x-stage3-artifact-mime-type": encodeURIComponent("video/mp4"),
           "x-stage3-result-json": Buffer.from(JSON.stringify({ ok: true }), "utf-8").toString("base64url")
         },
-        body: new Uint8Array([1, 2, 3, 4])
+        body: minimalMp4Bytes()
       }),
       { params: Promise.resolve({ id: job.id }) }
     );
@@ -308,7 +312,7 @@ test("render status route returns a completed artifact when recovery fails", asy
       displayName: "Owner"
     });
     const artifactPath = path.join(process.env.APP_DATA_DIR!, "completed-render.mp4");
-    await writeFile(artifactPath, new Uint8Array([1, 2, 3, 4]));
+    await writeFile(artifactPath, minimalMp4Bytes());
 
     const job = enqueueStage3Job({
       workspaceId: owner.workspace.id,
@@ -691,7 +695,7 @@ test("local worker render completion skips queued publication when publishAfterR
           "x-stage3-artifact-mime-type": encodeURIComponent("video/mp4"),
           "x-stage3-result-json": Buffer.from(JSON.stringify({ ok: true }), "utf-8").toString("base64url")
         },
-        body: new Uint8Array([1, 2, 3, 4])
+        body: minimalMp4Bytes()
       }),
       { params: Promise.resolve({ id: job.id }) }
     );
@@ -798,7 +802,7 @@ test("CopScopes render completion blocks publication and review-flags the source
           "x-stage3-artifact-mime-type": encodeURIComponent("video/mp4"),
           "x-stage3-result-json": Buffer.from(JSON.stringify({ ok: true }), "utf-8").toString("base64url")
         },
-        body: new Uint8Array([1, 2, 3, 4])
+        body: minimalMp4Bytes()
       }),
       { params: Promise.resolve({ id: job.id }) }
     );
@@ -958,7 +962,7 @@ test("CopScopes render completion blocks story-duplicate publications after rend
           "x-stage3-artifact-mime-type": encodeURIComponent("video/mp4"),
           "x-stage3-result-json": Buffer.from(JSON.stringify({ ok: true }), "utf-8").toString("base64url")
         },
-        body: new Uint8Array([1, 2, 3, 4])
+        body: minimalMp4Bytes()
       }),
       { params: Promise.resolve({ id: job.id }) }
     );
@@ -1045,7 +1049,7 @@ test("local worker render completion materializes failed publication when YouTub
           "x-stage3-artifact-mime-type": encodeURIComponent("video/mp4"),
           "x-stage3-result-json": Buffer.from(JSON.stringify({ ok: true }), "utf-8").toString("base64url")
         },
-        body: new Uint8Array([1, 2, 3, 4])
+        body: minimalMp4Bytes()
       }),
       { params: Promise.resolve({ id: job.id }) }
     );
@@ -1113,7 +1117,7 @@ test("local worker editing-proxy completion accepts multipart artifacts", async 
 
     const form = new FormData();
     form.set("resultJson", JSON.stringify({ sourceKey: "proxy-source", sourceDurationSec: 42 }));
-    form.set("artifact", new Blob([new Uint8Array([1, 2, 3, 4])], { type: "video/mp4" }), "proxy.mp4");
+    form.set("artifact", new Blob([minimalMp4Bytes()], { type: "video/mp4" }), "proxy.mp4");
 
     const response = await completeWorkerStage3Job(
       new Request(`http://localhost/api/stage3/worker/jobs/${job.id}/complete`, {
@@ -1146,7 +1150,7 @@ test("local worker editing-proxy completion accepts multipart artifacts", async 
           "x-stage3-artifact-name": encodeURIComponent("proxy.mp4"),
           "x-stage3-artifact-mime-type": encodeURIComponent("video/mp4")
         },
-        body: new Uint8Array([1, 2, 3, 4])
+        body: minimalMp4Bytes()
       }),
       { params: Promise.resolve({ id: job.id }) }
     );

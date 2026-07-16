@@ -102,6 +102,39 @@ test("buildStage3RenderRequestDedupeKey changes when source overlay text changes
   assert.notEqual(base, changed);
 });
 
+test("render dedupe keeps separate Oracle work items and revisions separate", () => {
+  const scope = { workspaceId: "workspace-1", userId: "user-1" };
+  const first = buildStage3RenderRequestDedupeKey(
+    {
+      workItemId: "dark-1",
+      revision: 1,
+      sourceUrl: "https://youtube.com/shorts/source",
+      channelId: "dark"
+    },
+    scope
+  );
+  const otherVideo = buildStage3RenderRequestDedupeKey(
+    {
+      workItemId: "dark-2",
+      revision: 1,
+      sourceUrl: "https://youtube.com/shorts/source",
+      channelId: "dark"
+    },
+    scope
+  );
+  const repaired = buildStage3RenderRequestDedupeKey(
+    {
+      workItemId: "dark-1",
+      revision: 2,
+      sourceUrl: "https://youtube.com/shorts/source",
+      channelId: "dark"
+    },
+    scope
+  );
+  assert.notEqual(first, otherVideo);
+  assert.notEqual(first, repaired);
+});
+
 test("buildStage3RenderRequestDedupeKey returns null without requestId or render content", () => {
   assert.equal(buildStage3RenderRequestDedupeKey({}), null);
 });

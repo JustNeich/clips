@@ -221,6 +221,41 @@ function applyDbMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "stage3_jobs", "heartbeat_at", "TEXT");
   addColumnIfMissing(db, "stage3_jobs", "attempt_limit", "INTEGER NOT NULL DEFAULT 3");
   addColumnIfMissing(db, "stage3_jobs", "attempt_group", "TEXT");
+  addColumnIfMissing(db, "stage3_jobs", "channel_id", "TEXT");
+  addColumnIfMissing(db, "stage3_jobs", "work_item_id", "TEXT");
+  addColumnIfMissing(db, "stage3_jobs", "revision", "INTEGER NOT NULL DEFAULT 1");
+  addColumnIfMissing(db, "stage3_jobs", "resource_profile", "TEXT NOT NULL DEFAULT 'media'");
+  db.exec(
+    `UPDATE stage3_jobs
+        SET channel_id = CASE
+              WHEN json_valid(payload_json) THEN NULLIF(trim(json_extract(payload_json, '$.channelId')), '')
+              ELSE channel_id
+            END,
+            work_item_id = CASE
+              WHEN json_valid(payload_json) THEN NULLIF(trim(json_extract(payload_json, '$.workItemId')), '')
+              ELSE work_item_id
+            END,
+            revision = CASE
+              WHEN json_valid(payload_json)
+               AND json_type(payload_json, '$.revision') IN ('integer', 'real')
+               AND json_extract(payload_json, '$.revision') >= 1
+                THEN CAST(json_extract(payload_json, '$.revision') AS INTEGER)
+              ELSE 1
+            END,
+            resource_profile = CASE
+              WHEN kind = 'source-download' THEN 'download'
+              WHEN kind <> 'render' THEN 'media'
+              WHEN json_valid(payload_json)
+               AND COALESCE(
+                 json_extract(payload_json, '$.clipDurationSec'),
+                 json_extract(payload_json, '$.renderPlan.targetDurationSec'),
+                 json_extract(payload_json, '$.snapshot.clipDurationSec'),
+                 json_extract(payload_json, '$.snapshot.renderPlan.targetDurationSec'),
+                 0
+               ) > 18 THEN 'render-long'
+              ELSE 'render-short'
+            END`
+  );
   addColumnIfMissing(
     db,
     "channel_publish_settings",
@@ -334,6 +369,12 @@ function applyDbMigrations(db: DatabaseSync): void {
   );
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_source_jobs_status_created ON source_jobs(status, created_at ASC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_stage3_jobs_local_scheduler ON stage3_jobs(execution_target, workspace_id, user_id, status, resource_profile, created_at ASC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_stage3_jobs_work_item ON stage3_jobs(workspace_id, user_id, work_item_id, kind, revision DESC)"
   );
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_channel_editorial_feedback_channel ON channel_editorial_feedback_events(channel_id, created_at DESC)"

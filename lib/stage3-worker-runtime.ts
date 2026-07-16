@@ -24,6 +24,27 @@ import {
 } from "./stage3-worker-job-timeout";
 import { ensureManagedStage3WorkerTools } from "./stage3-worker-managed-tools";
 import type { Stage3RenderProgressEvent } from "./stage3-render-service";
+import {
+  captureStage3ResourceTelemetry,
+  evaluateStage3ResourceAdmission,
+  toStage3WorkerJobResourceContext,
+  updateStage3SwapHistory,
+  type Stage3ResourceClass,
+  type Stage3ResourceTelemetry,
+  type Stage3SwapSample
+} from "./stage3-resource-telemetry";
+import {
+  getStage3LocalLaneKinds,
+  resolveStage3LocalClaimProfiles,
+  resolveStage3LocalLane,
+  resolveStage3LocalResourceProfile,
+  resolveStage3LocalSchedulerLimits,
+  type Stage3LocalLane,
+  type Stage3LocalResourceProfile
+} from "./stage3-local-scheduler";
+import {
+  runWithStage3WorkerJobContext
+} from "./stage3-worker-job-context";
 
 declare const __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__: string | undefined;
 
@@ -45,17 +66,8 @@ export type WorkerCapabilities = {
   browser: { available: boolean; path: string | null; source: string | null };
 };
 
-export type Stage3WorkerAdmissionTelemetry = {
-  capturedAt: string;
-  cpuCount: number | null;
-  loadAverage1m: number | null;
-  normalizedLoad1m: number | null;
-  totalMemoryBytes: number | null;
-  freeMemoryBytes: number | null;
-  freeMemoryRatio: number | null;
-  activeRenderProcesses: number | null;
+export type Stage3WorkerAdmissionTelemetry = Stage3ResourceTelemetry & {
   activeWorkerJobs: number;
-  telemetryError: string | null;
 };
 
 export type Stage3WorkerAdmissionReport = {
@@ -64,10 +76,12 @@ export type Stage3WorkerAdmissionReport = {
   reasons: string[];
   thresholds: {
     maxNormalizedLoad1m: number;
-    minFreeMemoryBytes: number;
-    maxActiveRenderProcesses: number;
-    maxActiveWorkerJobs: number;
+    minAvailableMemoryPercent: number;
+    minDiskFreeBytes: number;
+    maxSwapGrowthBytes5m: number;
   };
+  resourceClass: Stage3ResourceClass;
+  swapGrowthBytes5m: number;
   telemetry: Stage3WorkerAdmissionTelemetry;
 };
 
@@ -81,6 +95,7 @@ type Stage3JobEnvelope = {
   job: {
     id: string;
     kind: "preview" | "render" | "editing-proxy" | "source-download" | "agent-media-step";
+    resourceProfile?: Stage3LocalResourceProfile;
     status: "queued" | "running" | "completed" | "failed" | "interrupted";
   };
 };
@@ -125,8 +140,6 @@ type Stage3WorkerRuntimeAuthMode = "session" | "pairing" | "auto";
 
 const execFileAsync = promisify(execFile);
 const GIB = 1024 * 1024 * 1024;
-const DEFAULT_ADMISSION_MAX_NORMALIZED_LOAD = 0.8;
-const DEFAULT_ADMISSION_MIN_FREE_MEMORY_BYTES = 3 * GIB;
 const BUNDLED_WORKER_RUNTIME_VERSION = normalizeRuntimeVersion(
   typeof __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__ === "string"
     ? __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__
@@ -164,162 +177,55 @@ const DEFAULT_PUBLIC_FILES = [
   "stage3-template-badges/twitter-verified-badge.png"
 ];
 
-function resolveFiniteEnvNumber(name: string, fallback: number): number {
-  const parsed = Number(process.env[name]);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
-}
-
-export function countActiveRenderProcesses(processList: string): number {
-  const matchingPids = new Set<string>();
-  for (const rawLine of processList.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    const pid =
-      line.match(/^(\d+)/)?.[1] ??
-      line.match(/^"[^"]*","(\d+)"/)?.[1] ??
-      "";
-    if (!pid || pid === String(process.pid)) continue;
-    if (
-      /\b(remotion|ffmpeg|ffprobe)\b/i.test(line) ||
-      /\b(chrome|chromium)(?:\.exe)?\b.*--headless(?:=|\b)/i.test(line)
-    ) {
-      matchingPids.add(pid);
-    }
-  }
-  return matchingPids.size;
-}
-
-async function readActiveRenderProcessCount(): Promise<number> {
-  const command = process.platform === "win32" ? "tasklist" : "ps";
-  const args = process.platform === "win32" ? ["/FO", "CSV", "/NH"] : ["-axo", "pid=,command="];
-  const { stdout } = await execFileAsync(command, args, {
-    encoding: "utf8",
-    maxBuffer: 4 * 1024 * 1024
-  });
-  return countActiveRenderProcesses(stdout);
-}
-
 export function evaluateStage3WorkerAdmission(
-  telemetry: Stage3WorkerAdmissionTelemetry
+  telemetry: Stage3WorkerAdmissionTelemetry,
+  resourceClass: Stage3ResourceClass = "heavy",
+  swapGrowthBytes5m = 0
 ): Stage3WorkerAdmissionReport {
-  const thresholds = {
-    maxNormalizedLoad1m: resolveFiniteEnvNumber(
-      "STAGE3_WORKER_MAX_NORMALIZED_LOAD",
-      DEFAULT_ADMISSION_MAX_NORMALIZED_LOAD
-    ),
-    minFreeMemoryBytes:
-      resolveFiniteEnvNumber(
-        "STAGE3_WORKER_MIN_FREE_MEMORY_GB",
-        DEFAULT_ADMISSION_MIN_FREE_MEMORY_BYTES / GIB
-      ) * GIB,
-    maxActiveRenderProcesses: 0,
-    maxActiveWorkerJobs: 0
-  };
-  const reasons: string[] = [];
-  if (
-    telemetry.telemetryError ||
-    telemetry.cpuCount === null ||
-    telemetry.loadAverage1m === null ||
-    telemetry.normalizedLoad1m === null ||
-    telemetry.totalMemoryBytes === null ||
-    telemetry.freeMemoryBytes === null ||
-    telemetry.freeMemoryRatio === null ||
-    telemetry.activeRenderProcesses === null
-  ) {
-    reasons.push(`telemetry_unavailable${telemetry.telemetryError ? `:${telemetry.telemetryError}` : ""}`);
-  }
-  if (
-    telemetry.normalizedLoad1m !== null &&
-    telemetry.normalizedLoad1m > thresholds.maxNormalizedLoad1m
-  ) {
-    reasons.push("system_load_above_limit");
-  }
-  if (
-    telemetry.freeMemoryBytes !== null &&
-    telemetry.freeMemoryBytes < thresholds.minFreeMemoryBytes
-  ) {
-    reasons.push("free_memory_below_limit");
-  }
-  if (
-    telemetry.activeRenderProcesses !== null &&
-    telemetry.activeRenderProcesses > thresholds.maxActiveRenderProcesses
-  ) {
-    reasons.push("active_render_process_detected");
-  }
-  if (telemetry.activeWorkerJobs > thresholds.maxActiveWorkerJobs) {
-    reasons.push("worker_job_active");
-  }
+  const resourceReport = evaluateStage3ResourceAdmission(telemetry, resourceClass, swapGrowthBytes5m);
   return {
-    decision: reasons.length === 0 ? "admit" : "defer",
-    admitted: reasons.length === 0,
-    reasons,
-    thresholds,
+    decision: resourceReport.admitted ? "admit" : "defer",
+    admitted: resourceReport.admitted,
+    reasons: resourceReport.reasons,
+    thresholds: resourceReport.thresholds,
+    resourceClass,
+    swapGrowthBytes5m,
     telemetry
   };
 }
 
 export async function collectStage3WorkerAdmissionReport(input: {
   activeWorkerJobs?: number;
-  processCountReader?: () => Promise<number>;
+  resourceClass?: Stage3ResourceClass;
+  swapGrowthBytes5m?: number;
+  diskPath?: string;
   systemSnapshot?: {
     cpuCount: number;
     loadAverage1m: number;
     totalMemoryBytes: number;
-    freeMemoryBytes: number;
+    availableMemoryPercent: number;
+    diskFreeBytes: number;
+    swapUsedBytes: number;
   };
+  availableMemoryReader?: (totalMemoryBytes: number) => Promise<number>;
+  diskFreeReader?: (targetPath: string) => Promise<number>;
+  swapReader?: () => Promise<number>;
 } = {}): Promise<Stage3WorkerAdmissionReport> {
-  const capturedAt = new Date().toISOString();
-  try {
-    const snapshot = input.systemSnapshot ?? {
-      cpuCount: os.cpus().length,
-      loadAverage1m: os.loadavg()[0] ?? Number.NaN,
-      totalMemoryBytes: os.totalmem(),
-      freeMemoryBytes: os.freemem()
-    };
-    const activeRenderProcesses = await (
-      input.processCountReader ?? readActiveRenderProcessCount
-    )();
-    if (
-      !Number.isFinite(snapshot.cpuCount) ||
-      snapshot.cpuCount <= 0 ||
-      !Number.isFinite(snapshot.loadAverage1m) ||
-      snapshot.loadAverage1m < 0 ||
-      !Number.isFinite(snapshot.totalMemoryBytes) ||
-      snapshot.totalMemoryBytes <= 0 ||
-      !Number.isFinite(snapshot.freeMemoryBytes) ||
-      snapshot.freeMemoryBytes < 0 ||
-      !Number.isInteger(activeRenderProcesses) ||
-      activeRenderProcesses < 0
-    ) {
-      throw new Error("invalid_system_metrics");
-    }
-    const telemetry: Stage3WorkerAdmissionTelemetry = {
-      capturedAt,
-      cpuCount: snapshot.cpuCount,
-      loadAverage1m: snapshot.loadAverage1m,
-      normalizedLoad1m: snapshot.loadAverage1m / snapshot.cpuCount,
-      totalMemoryBytes: snapshot.totalMemoryBytes,
-      freeMemoryBytes: snapshot.freeMemoryBytes,
-      freeMemoryRatio: snapshot.freeMemoryBytes / snapshot.totalMemoryBytes,
-      activeRenderProcesses,
-      activeWorkerJobs: Math.max(0, Math.floor(input.activeWorkerJobs ?? 0)),
-      telemetryError: null
-    };
-    return evaluateStage3WorkerAdmission(telemetry);
-  } catch (error) {
-    return evaluateStage3WorkerAdmission({
-      capturedAt,
-      cpuCount: null,
-      loadAverage1m: null,
-      normalizedLoad1m: null,
-      totalMemoryBytes: null,
-      freeMemoryBytes: null,
-      freeMemoryRatio: null,
-      activeRenderProcesses: null,
-      activeWorkerJobs: Math.max(0, Math.floor(input.activeWorkerJobs ?? 0)),
-      telemetryError: error instanceof Error ? error.message : String(error)
-    });
-  }
+  const resourceTelemetry = await captureStage3ResourceTelemetry({
+    diskPath: input.diskPath,
+    systemSnapshot: input.systemSnapshot,
+    availableMemoryReader: input.availableMemoryReader,
+    diskFreeReader: input.diskFreeReader,
+    swapReader: input.swapReader
+  });
+  return evaluateStage3WorkerAdmission(
+    {
+      ...resourceTelemetry,
+      activeWorkerJobs: Math.max(0, Math.floor(input.activeWorkerJobs ?? 0))
+    },
+    input.resourceClass ?? "heavy",
+    input.swapGrowthBytes5m ?? 0
+  );
 }
 
 function workerHomeDir(): string {
@@ -337,6 +243,7 @@ function paths() {
   return {
     root,
     configPath: path.join(root, "config.json"),
+    pauseClaimsPath: path.join(root, "pause-claims"),
     cacheRoot: path.join(root, "cache"),
     toolsRoot: path.join(root, "tools")
   };
@@ -990,7 +897,33 @@ async function statusCommand(): Promise<void> {
     console.log("Stage 3 worker is not paired.");
     return;
   }
-  console.log(JSON.stringify(config, null, 2));
+  console.log(JSON.stringify({
+    ...config,
+    claimsPaused: isStage3WorkerClaimsPaused()
+  }, null, 2));
+}
+
+export function isStage3WorkerClaimsPaused(): boolean {
+  return process.env.STAGE3_WORKER_PAUSE_CLAIMS === "1" || existsSync(paths().pauseClaimsPath);
+}
+
+export async function setStage3WorkerClaimsPaused(paused: boolean): Promise<void> {
+  await ensureWorkerDirs();
+  if (paused) {
+    await fs.writeFile(paths().pauseClaimsPath, `${new Date().toISOString()}\n`, "utf8");
+    return;
+  }
+  await fs.rm(paths().pauseClaimsPath, { force: true });
+}
+
+async function pauseClaimsCommand(): Promise<void> {
+  await setStage3WorkerClaimsPaused(true);
+  console.log("Stage 3 worker stopped taking new jobs. Active jobs may finish normally.");
+}
+
+async function resumeClaimsCommand(): Promise<void> {
+  await setStage3WorkerClaimsPaused(false);
+  console.log("Stage 3 worker may take new jobs again.");
 }
 
 export async function logoutStage3Worker(): Promise<void> {
@@ -1004,6 +937,16 @@ async function logoutCommand(): Promise<void> {
 
 type ReportedWorkerCapabilities = WorkerCapabilities & {
   admission?: Stage3WorkerAdmissionReport;
+  scheduler?: {
+    acceptingClaims: boolean;
+    limits: ReturnType<typeof resolveStage3LocalSchedulerLimits>;
+    activeJobs: Array<{
+      id: string;
+      kind: Stage3JobEnvelope["job"]["kind"];
+      lane: Stage3LocalLane;
+      profile: Stage3LocalResourceProfile;
+    }>;
+  };
 };
 
 async function postWorkerHeartbeat(
@@ -1163,24 +1106,7 @@ export async function withStage3WorkerCurrentJobId<T>(
   jobId: string,
   run: () => Promise<T>
 ): Promise<T> {
-  const previousJobId = process.env.STAGE3_WORKER_CURRENT_JOB_ID;
-  process.env.STAGE3_WORKER_CURRENT_JOB_ID = jobId;
-  try {
-    return await run();
-  } finally {
-    if (previousJobId === undefined) {
-      delete process.env.STAGE3_WORKER_CURRENT_JOB_ID;
-    } else {
-      process.env.STAGE3_WORKER_CURRENT_JOB_ID = previousJobId;
-    }
-  }
-}
-
-function exitAfterTimedOutJob(): void {
-  const timer = setTimeout(() => {
-    process.exit(1);
-  }, 500);
-  timer.unref?.();
+  return runWithStage3WorkerJobContext({ jobId, resources: null }, run);
 }
 
 function summarizeStage3WorkerProgressPayload(payload: Record<string, unknown> | undefined): string {
@@ -1350,71 +1276,64 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
 
   let lastAdmissionLogKey = "";
   let lastAdmissionLogAt = 0;
+  const schedulerLimits = resolveStage3LocalSchedulerLimits();
+  const activeJobs = new Map<string, {
+    job: Stage3JobEnvelope["job"];
+    lane: Stage3LocalLane;
+    profile: Stage3LocalResourceProfile;
+    promise: Promise<void>;
+  }>();
+  let swapHistory: Stage3SwapSample[] = [];
+  let fatalError: Error | null = null;
 
-  while (!stop && !shouldStop()) {
-    try {
-      if (shouldStop()) {
-        break;
-      }
-      const admission = await collectStage3WorkerAdmissionReport({ activeWorkerJobs: 0 });
-      const reportedCapabilities: ReportedWorkerCapabilities = {
-        ...capabilities,
-        admission
-      };
-      const admissionLogKey = `${admission.decision}:${admission.reasons.join(",")}`;
-      if (
-        admissionLogKey !== lastAdmissionLogKey ||
-        Date.now() - lastAdmissionLogAt >= 30_000
-      ) {
-        const telemetry = admission.telemetry;
-        console.log(
-          [
-            `Stage 3 admission ${admission.decision}`,
-            `load=${telemetry.normalizedLoad1m?.toFixed(2) ?? "unknown"}`,
-            `freeGb=${telemetry.freeMemoryBytes === null ? "unknown" : (telemetry.freeMemoryBytes / GIB).toFixed(2)}`,
-            `activeRenderProcesses=${telemetry.activeRenderProcesses ?? "unknown"}`,
-            `activeWorkerJobs=${telemetry.activeWorkerJobs}`,
-            admission.reasons.length > 0 ? `reasons=${admission.reasons.join(",")}` : null
-          ].filter(Boolean).join(" ")
-        );
-        lastAdmissionLogKey = admissionLogKey;
-        lastAdmissionLogAt = Date.now();
-      }
-      if (!admission.admitted) {
-        await postWorkerHeartbeat(config, reportedCapabilities);
-        await new Promise((resolve) => setTimeout(resolve, 4000));
-        continue;
-      }
-      const claimResponse = await fetch(`${config.serverOrigin}/api/stage3/worker/jobs/claim`, {
-        method: "POST",
-        headers: {
-          ...authHeaders(config),
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          supportedKinds: ["preview", "render", "editing-proxy", "source-download", "agent-media-step"],
-          appVersion,
-          capabilities: reportedCapabilities
-        })
-      });
+  const buildReportedCapabilities = (
+    admission: Stage3WorkerAdmissionReport,
+    acceptingClaims = !stop && !shouldStop()
+  ): ReportedWorkerCapabilities => ({
+    ...capabilities,
+    admission,
+    scheduler: {
+      acceptingClaims,
+      limits: schedulerLimits,
+      activeJobs: [...activeJobs.values()].map((active) => ({
+        id: active.job.id,
+        kind: active.job.kind,
+        lane: active.lane,
+        profile: active.profile
+      }))
+    }
+  });
 
-      if (claimResponse.status === 204) {
-        await postWorkerHeartbeat(config, reportedCapabilities);
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        continue;
-      }
+  const logAdmission = (admission: Stage3WorkerAdmissionReport): void => {
+    const admissionLogKey = `${admission.resourceClass}:${admission.decision}:${admission.reasons.join(",")}`;
+    if (admissionLogKey === lastAdmissionLogKey && Date.now() - lastAdmissionLogAt < 30_000) {
+      return;
+    }
+    const telemetry = admission.telemetry;
+    console.log(
+      [
+        `Stage 3 ${admission.resourceClass} admission ${admission.decision}`,
+        `load=${telemetry.normalizedLoad1m?.toFixed(2) ?? "unknown"}`,
+        `availableMemory=${telemetry.availableMemoryPercent === null ? "unknown" : `${Math.round(telemetry.availableMemoryPercent * 100)}%`}`,
+        `diskGb=${telemetry.diskFreeBytes === null ? "unknown" : (telemetry.diskFreeBytes / GIB).toFixed(1)}`,
+        `swapGrowthMb=${Math.round(admission.swapGrowthBytes5m / (1024 * 1024))}`,
+        `activeWorkerJobs=${telemetry.activeWorkerJobs}`,
+        admission.reasons.length > 0 ? `reasons=${admission.reasons.join(",")}` : null
+      ].filter(Boolean).join(" ")
+    );
+    lastAdmissionLogKey = admissionLogKey;
+    lastAdmissionLogAt = Date.now();
+  };
 
-      const claimBody = (await claimResponse.json().catch(() => null)) as
-        | ({ error?: string } & Partial<ClaimedJobResponse>)
-        | null;
-      if (!claimResponse.ok || !claimBody?.job || typeof claimBody.payloadJson !== "string") {
-        throw new Error(claimBody?.error || "Failed to claim Stage 3 job.");
-      }
-
-      const job = claimBody.job;
-      const payloadJson = claimBody.payloadJson;
-      console.log(`Claimed job ${job.id} (${job.kind})`);
-      const jobController = new AbortController();
+  const startClaimedJob = (
+    job: Stage3JobEnvelope["job"],
+    payloadJson: string,
+    profile: Stage3LocalResourceProfile,
+    admission: Stage3WorkerAdmissionReport
+  ): void => {
+    const lane = resolveStage3LocalLane(profile);
+    const jobController = new AbortController();
+    const promise = (async () => {
       const busyAdmission: Stage3WorkerAdmissionReport = {
         ...admission,
         decision: "busy",
@@ -1422,10 +1341,9 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
         reasons: ["worker_job_active"],
         telemetry: {
           ...admission.telemetry,
-          activeWorkerJobs: 1
+          activeWorkerJobs: activeJobs.size
         }
       };
-
       const leaseTimer = setInterval(() => {
         void (async () => {
           const response = await fetch(`${config.serverOrigin}/api/stage3/worker/jobs/${job.id}/heartbeat`, {
@@ -1436,10 +1354,7 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
             },
             body: JSON.stringify({
               appVersion,
-              capabilities: {
-                ...capabilities,
-                admission: busyAdmission
-              }
+              capabilities: buildReportedCapabilities(busyAdmission)
             })
           }).catch(() => null);
           if (response && (response.status === 404 || response.status === 409)) {
@@ -1449,17 +1364,19 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
       }, 10_000);
 
       try {
-        const executed = await withStage3WorkerCurrentJobId(
-          job.id,
+        const executed = await runWithStage3WorkerJobContext(
+          {
+            jobId: job.id,
+            resources: toStage3WorkerJobResourceContext(admission.telemetry)
+          },
           () => runClaimedJobWithTimeout(
             job,
             payloadJson,
-            (signal) =>
-              executeStage3HeavyJobPayload(job.kind, payloadJson, {
-                signal,
-                onRenderProgress:
-                  job.kind === "render" ? (event) => logStage3WorkerRenderProgress(job.id, event) : undefined
-              }),
+            (signal) => executeStage3HeavyJobPayload(job.kind, payloadJson, {
+              signal,
+              onRenderProgress:
+                job.kind === "render" ? (event) => logStage3WorkerRenderProgress(job.id, event) : undefined
+            }),
             jobController.signal
           )
         );
@@ -1478,22 +1395,106 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
         const classified = classifyStage3HeavyJobError(job.kind, error);
         await failRemoteJob(config, job, classified);
         console.error(`Job ${job.id} failed: ${classified.message}`);
-        if (isStage3WorkerJobTimeoutError(error)) {
-          console.error("Stage 3 worker is exiting after a timed-out job. Restart the executor from Step 3 before continuing.");
+        if (isStage3WorkerJobTimeoutError(error) || error instanceof Stage3WorkerJobLeaseLostError) {
+          fatalError = error instanceof Error ? error : new Error(String(error));
           stop = true;
-          exitAfterTimedOutJob();
-        } else if (error instanceof Stage3WorkerJobLeaseLostError) {
-          console.error("Stage 3 worker is exiting after the server revoked the current job lease.");
-          stop = true;
-          exitAfterTimedOutJob();
+          console.error(
+            isStage3WorkerJobTimeoutError(error)
+              ? "Stage 3 worker stopped taking new jobs after a timed-out job."
+              : "Stage 3 worker stopped taking new jobs after the server revoked a lease."
+          );
         }
       } finally {
         clearInterval(leaseTimer);
       }
+    })().finally(() => {
+      activeJobs.delete(job.id);
+    });
+    activeJobs.set(job.id, { job, lane, profile, promise });
+  };
+
+  while (!stop && !shouldStop()) {
+    try {
+      const telemetry = await captureStage3ResourceTelemetry({ diskPath: paths().root });
+      const swapUpdate = updateStage3SwapHistory(swapHistory, telemetry);
+      swapHistory = swapUpdate.history;
+      if (isStage3WorkerClaimsPaused()) {
+        const pausedAdmission = evaluateStage3WorkerAdmission(
+          { ...telemetry, activeWorkerJobs: activeJobs.size },
+          "light",
+          swapUpdate.growthBytes5m
+        );
+        await postWorkerHeartbeat(config, buildReportedCapabilities(pausedAdmission, false));
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        continue;
+      }
+      let claimedAny = false;
+      let deferredAny = false;
+
+      for (const lane of ["render", "media", "download"] as Stage3LocalLane[]) {
+        while (!stop && !shouldStop()) {
+          const profiles = resolveStage3LocalClaimProfiles(lane, activeJobs.values(), schedulerLimits);
+          if (profiles.length === 0) {
+            break;
+          }
+          const resourceClass: Stage3ResourceClass = lane === "download" ? "light" : "heavy";
+          const admission = evaluateStage3WorkerAdmission(
+            { ...telemetry, activeWorkerJobs: activeJobs.size },
+            resourceClass,
+            swapUpdate.growthBytes5m
+          );
+          logAdmission(admission);
+          if (!admission.admitted) {
+            deferredAny = true;
+            break;
+          }
+          const reportedCapabilities = buildReportedCapabilities(admission);
+          const claimResponse = await fetch(`${config.serverOrigin}/api/stage3/worker/jobs/claim`, {
+            method: "POST",
+            headers: {
+              ...authHeaders(config),
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              supportedKinds: getStage3LocalLaneKinds(lane),
+              resourceProfiles: profiles,
+              appVersion,
+              capabilities: reportedCapabilities
+            })
+          });
+          if (claimResponse.status === 204) {
+            break;
+          }
+          const claimBody = (await claimResponse.json().catch(() => null)) as
+            | ({ error?: string } & Partial<ClaimedJobResponse>)
+            | null;
+          if (!claimResponse.ok || !claimBody?.job || typeof claimBody.payloadJson !== "string") {
+            throw new Error(claimBody?.error || "Failed to claim Stage 3 job.");
+          }
+          const job = claimBody.job;
+          const profile = job.resourceProfile ?? resolveStage3LocalResourceProfile(job.kind, claimBody.payloadJson);
+          console.log(`Claimed job ${job.id} (${job.kind}, ${profile})`);
+          startClaimedJob(job, claimBody.payloadJson, profile, admission);
+          claimedAny = true;
+        }
+      }
+
+      const heartbeatAdmission = evaluateStage3WorkerAdmission(
+        { ...telemetry, activeWorkerJobs: activeJobs.size },
+        "light",
+        swapUpdate.growthBytes5m
+      );
+      await postWorkerHeartbeat(config, buildReportedCapabilities(heartbeatAdmission));
+      await new Promise((resolve) => setTimeout(resolve, deferredAny && !claimedAny ? 15_000 : 2_000));
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
-      await new Promise((resolve) => setTimeout(resolve, 4000));
+      await new Promise((resolve) => setTimeout(resolve, 4_000));
     }
+  }
+
+  await Promise.allSettled([...activeJobs.values()].map((active) => active.promise));
+  if (fatalError) {
+    throw fatalError;
   }
 }
 
@@ -1508,6 +1509,12 @@ async function main(): Promise<void> {
     case "status":
       await statusCommand();
       return;
+    case "pause":
+      await pauseClaimsCommand();
+      return;
+    case "resume":
+      await resumeClaimsCommand();
+      return;
     case "logout":
       await logoutCommand();
       return;
@@ -1515,7 +1522,7 @@ async function main(): Promise<void> {
       await startStage3WorkerLoop();
       return;
     default:
-      console.log("Commands: pair | start | status | doctor | logout");
+      console.log("Commands: pair | start | status | pause | resume | doctor | logout");
   }
 }
 

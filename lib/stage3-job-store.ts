@@ -13,12 +13,21 @@ import {
   resolveStage3HostJobTimeoutMs as resolveStage3HostPolicyTimeoutMs,
   resolveStage3WorkerJobTimeoutMs
 } from "./stage3-worker-job-timeout";
+import {
+  resolveStage3LocalResourceProfile,
+  resolveStage3WorkIdentity,
+  type Stage3LocalResourceProfile
+} from "./stage3-local-scheduler";
 
 type JobRow = {
   id: string;
   workspace_id: string;
   user_id: string;
+  channel_id: string | null;
+  work_item_id: string | null;
+  revision: number | null;
   kind: string;
+  resource_profile: string | null;
   status: string;
   execution_target: string | null;
   assigned_worker_id: string | null;
@@ -105,6 +114,7 @@ type ClaimStage3WorkerJobInput = {
   workspaceId: string;
   userId: string;
   supportedKinds?: Stage3JobKind[];
+  resourceProfiles?: Stage3LocalResourceProfile[];
   leaseDurationMs?: number;
 };
 
@@ -194,17 +204,6 @@ function buildHostStage3JobPrioritySql(column = "kind"): string {
   END`;
 }
 
-function buildLocalStage3JobPrioritySql(column = "kind"): string {
-  return `CASE
-    WHEN ${column} = 'editing-proxy' THEN 0
-    WHEN ${column} = 'render' THEN 1
-    WHEN ${column} = 'source-download' THEN 2
-    WHEN ${column} = 'agent-media-step' THEN 3
-    WHEN ${column} = 'preview' THEN 9
-    ELSE 4
-  END`;
-}
-
 function mapArtifactFromJobRow(row: JobRow): { artifact: Stage3JobArtifact | null; filePath: string | null } {
   if (!row.artifact_file_path || !existsSync(row.artifact_file_path)) {
     return {
@@ -253,6 +252,15 @@ function mapJobRow(row: JobRow | null): Stage3JobRecord | null {
 
   return {
     id: String(row.id),
+    channelId: row.channel_id ? String(row.channel_id) : null,
+    workItemId: row.work_item_id ? String(row.work_item_id) : null,
+    revision: Math.max(1, Number(row.revision) || 1),
+    resourceProfile:
+      row.resource_profile === "render-short" ||
+      row.resource_profile === "render-long" ||
+      row.resource_profile === "download"
+        ? row.resource_profile
+        : "media",
     workspaceId: String(row.workspace_id),
     userId: String(row.user_id),
     kind,
@@ -336,12 +344,11 @@ function parseStage3JobPayload(payloadJson: string): {
 }
 
 function buildQueuedMediaSupersessionKey(row: Pick<JobRow, "workspace_id" | "user_id" | "payload_json">): string | null {
-  const payload = parseStage3JobPayload(row.payload_json);
-  const renderSource = payload.chatId ? `chat:${payload.chatId}` : payload.sourceUrl ? `source:${payload.sourceUrl}` : null;
-  if (!renderSource) {
+  const identity = resolveStage3WorkIdentity(row.payload_json);
+  if (!identity.workItemId) {
     return null;
   }
-  return `${row.workspace_id}:${row.user_id}:${renderSource}`;
+  return `${row.workspace_id}:${row.user_id}:work-item:${identity.workItemId}`;
 }
 
 function auditStage3Job(
@@ -511,6 +518,8 @@ export function enqueueStage3JobWithOutcome(input: EnqueueStage3JobInput): Stage
         ? Math.max(1, Math.round(input.attemptLimit))
         : 3;
     const attemptGroup = input.attemptGroup?.trim() || null;
+    const identity = resolveStage3WorkIdentity(input.payloadJson);
+    const resourceProfile = resolveStage3LocalResourceProfile(input.kind, input.payloadJson);
 
     if (dedupeKey) {
       const existingRow =
@@ -542,8 +551,12 @@ export function enqueueStage3JobWithOutcome(input: EnqueueStage3JobInput): Stage
           `UPDATE stage3_jobs
               SET workspace_id = ?,
                   user_id = ?,
+                  channel_id = ?,
+                  work_item_id = ?,
+                  revision = ?,
                   status = 'queued',
                   execution_target = ?,
+                  resource_profile = ?,
                   assigned_worker_id = NULL,
                   lease_expires_at = NULL,
                   heartbeat_at = NULL,
@@ -562,7 +575,11 @@ export function enqueueStage3JobWithOutcome(input: EnqueueStage3JobInput): Stage
         ).run(
           input.workspaceId,
           input.userId,
+          identity.channelId,
+          identity.workItemId,
+          identity.revision,
           executionTarget,
+          resourceProfile,
           input.payloadJson,
           resetAttempts || !terminalRetry ? 0 : previousAttempts,
           attemptLimit,
@@ -586,13 +603,17 @@ export function enqueueStage3JobWithOutcome(input: EnqueueStage3JobInput): Stage
     const jobId = newId();
     db.prepare(
       `INSERT INTO stage3_jobs
-        (id, workspace_id, user_id, kind, status, execution_target, assigned_worker_id, lease_expires_at, heartbeat_at, dedupe_key, payload_json, result_json, error_code, error_message, recoverable, attempts, attempt_limit, attempt_group, created_at, updated_at, started_at, completed_at)
-        VALUES (?, ?, ?, ?, 'queued', ?, NULL, NULL, NULL, ?, ?, NULL, NULL, NULL, 1, 0, ?, ?, ?, ?, NULL, NULL)`
+        (id, workspace_id, user_id, channel_id, work_item_id, revision, kind, resource_profile, status, execution_target, assigned_worker_id, lease_expires_at, heartbeat_at, dedupe_key, payload_json, result_json, error_code, error_message, recoverable, attempts, attempt_limit, attempt_group, created_at, updated_at, started_at, completed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, NULL, NULL, NULL, ?, ?, NULL, NULL, NULL, 1, 0, ?, ?, ?, ?, NULL, NULL)`
     ).run(
       jobId,
       input.workspaceId,
       input.userId,
+      identity.channelId,
+      identity.workItemId,
+      identity.revision,
       input.kind,
+      resourceProfile,
       executionTarget,
       dedupeKey,
       input.payloadJson,
@@ -1039,6 +1060,8 @@ function interruptSupersededQueuedMediaJobsInternal(
     )
     .all(input.executionTarget, input.kind) as JobRow[];
   const seen = new Set<string>();
+  const keptRevisionByKey = new Map<string, number>();
+  const keptRowByKey = new Map<string, JobRow>();
   const superseded: JobRow[] = [];
 
   for (const row of rows) {
@@ -1046,11 +1069,27 @@ function interruptSupersededQueuedMediaJobsInternal(
     if (!key) {
       continue;
     }
+    const revision = resolveStage3WorkIdentity(row.payload_json).revision;
+    const keptRevision = keptRevisionByKey.get(key);
+    if (keptRevision === undefined) {
+      seen.add(key);
+      keptRevisionByKey.set(key, revision);
+      keptRowByKey.set(key, row);
+      continue;
+    }
+    if (revision > keptRevision) {
+      const previous = keptRowByKey.get(key);
+      if (previous) {
+        superseded.push(previous);
+      }
+      keptRevisionByKey.set(key, revision);
+      keptRowByKey.set(key, row);
+      continue;
+    }
     if (seen.has(key)) {
       superseded.push(row);
       continue;
     }
-    seen.add(key);
   }
 
   if (!superseded.length) {
@@ -1306,27 +1345,42 @@ export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInp
     interruptSupersededQueuedLocalPreviewJobsInternal(db);
 
     const kinds = (input.supportedKinds?.length ? input.supportedKinds : null) as Stage3JobKind[] | null;
+    const resourceProfiles = input.resourceProfiles?.length ? input.resourceProfiles : null;
     const userId = input.userId.trim();
-    const query = kinds
-      ? `SELECT * FROM stage3_jobs
+    const kindFilter = kinds ? `AND kind IN (${kinds.map(() => "?").join(", ")})` : "";
+    const profileFilter = resourceProfiles
+      ? `AND resource_profile IN (${resourceProfiles.map(() => "?").join(", ")})`
+      : "";
+    const query = `SELECT queued.* FROM stage3_jobs queued
           WHERE execution_target = 'local'
             AND workspace_id = ?
             AND user_id = ?
             AND status = 'queued'
-            AND kind IN (${kinds.map(() => "?").join(", ")})
-          ORDER BY ${buildLocalStage3JobPrioritySql("kind")} ASC, created_at ASC
-          LIMIT 1`
-      : `SELECT * FROM stage3_jobs
-          WHERE execution_target = 'local'
-            AND workspace_id = ?
-            AND user_id = ?
-            AND status = 'queued'
-          ORDER BY ${buildLocalStage3JobPrioritySql("kind")} ASC, created_at ASC
+            ${kindFilter}
+            ${profileFilter}
+          ORDER BY CASE
+            WHEN queued.channel_id IS NULL OR trim(queued.channel_id) = '' THEN queued.created_at
+            ELSE COALESCE(
+              (SELECT MAX(served.started_at)
+                 FROM stage3_jobs served
+                WHERE served.execution_target = queued.execution_target
+                  AND served.workspace_id = queued.workspace_id
+                  AND served.user_id = queued.user_id
+                  AND served.channel_id = queued.channel_id
+                  AND served.started_at IS NOT NULL
+                  AND served.id <> queued.id),
+              '0000-01-01T00:00:00.000Z'
+            )
+          END ASC,
+          queued.created_at ASC,
+          queued.rowid ASC
           LIMIT 1`;
     const baseParams = [input.workspaceId, userId];
-    const params = kinds
-      ? [...baseParams, ...kinds]
-      : baseParams;
+    const params = [
+      ...baseParams,
+      ...(kinds ?? []),
+      ...(resourceProfiles ?? [])
+    ];
     const row = (db.prepare(query).get(...params) as JobRow | undefined) ?? null;
     if (!row) {
       return null;

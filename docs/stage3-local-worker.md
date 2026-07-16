@@ -33,7 +33,38 @@
   - `Windows x64`
 - Pairing и worker status доступны прямо из Stage 3 UI.
 - Local executor is personal-by-default: compatible worker может claim-ить только jobs своего `userId` внутри workspace. Worker другого редактора не считается готовностью текущего пользователя и не забирает его jobs.
+- Один worker сам владеет ограниченной параллельностью. Он не ищет открытые процессы и не разрешает каждому агенту запускать render самостоятельно:
+  - линия `render`: один короткий render по умолчанию; длинный render всегда один;
+  - линия `media`: один preview/editing-proxy/agent-media-step;
+  - линия `download`: до двух source-download;
+  - каналы чередуются, а jobs одного канала идут по порядку.
+- `workItemId` является ID конкретного ролика, а `revision` — номером его исправленной версии. Supersession работает только по `workItemId`; legacy request без этого поля никогда не отменяется только из-за общего `chatId`.
 - CLI worker остался совместимым advanced fallback для localhost, диагностики и ручной поддержки.
+
+### Сбалансированные ресурсы
+
+Перед новой render/media job worker требует: не более 75% средней CPU-нагрузки, не менее 25% доступной памяти, не менее 20 ГБ диска и не более 512 МБ роста swap за пять минут. Для download: 90%, 15% и 10 ГБ соответственно.
+
+При получении job Clips записывает её resource profile и короткий снимок нагрузки, памяти, диска и swap в историю job. Вместе с `createdAt`, `startedAt`, `completedAt`, attempts, ошибкой и artifact это даёт время ожидания, длительность и причину остановки без отдельной системы наблюдения.
+
+На macOS доступная память читается через штатный `memory_pressure`, а не через сырое `os.freemem()`. Имена процессов, окна AdsPower, SunBrowser или обычного Chrome не участвуют в решении.
+
+После отдельной калибровки два коротких render разрешаются настройкой:
+
+```bash
+STAGE3_WORKER_SHORT_RENDER_MAX_CONCURRENT_JOBS=2
+```
+
+До калибровки значение не задаётся и остаётся равным `1`. Длинный render (>18 секунд) не получает второй render-slot и временно закрывает media-линию.
+
+Чтобы мягко остановить получение новых jobs, не обрывая активные:
+
+```bash
+npm run stage3-worker -- pause
+npm run stage3-worker -- resume
+```
+
+`pause` сохраняется после перезапуска. `resume` снимает остановку.
 
 ## Что должен сделать владелец проекта
 
@@ -245,7 +276,7 @@ Legacy install hints, если manifest пока не заполнен:
 - `Online`:
   worker готов забирать jobs текущего пользователя в текущем workspace
 - `Busy`:
-  worker сейчас выполняет активный Stage 3 job; в описании статуса дополнительно показывается тип задачи (`preview`, `render`, `editing-proxy` и т.д.)
+  worker сейчас выполняет одну или несколько Stage 3 jobs. Точный список активных линий и лимиты передаются в scheduler snapshot worker heartbeat.
 
 UI worker list теперь при каждом poll автоматически очищает протухшие local leases. Если job уже потерял lease и больше не выполняется, статус должен вернуться из `Busy` в `Online` без ручного сброса executor.
 
