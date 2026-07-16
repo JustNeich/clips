@@ -128,3 +128,11 @@
 - Суммы `x + width` и `y + height` не могут выходить за `1`.
 - Owner preview/render API отклоняет пиксельные или выходящие за границы значения до постановки job в очередь. Он не должен молча зажимать `y=465` или `height=552` до узкой нижней полосы.
 - Пример полного внутреннего кадра: `x=0, y=0, width=1, height=1`. Пример обрезки верхних и нижних 20%: `x=0, y=0.2, width=1, height=0.6`.
+
+## 16. Owner preview является media-only проверкой
+
+- `clips_owner_render_preview` подготавливает только внутреннее исходное видео после timing/crop/fit. Это не композиция полной карточки.
+- В preview намеренно отсутствуют channel card, author row, caption text и highlights. Их отсутствие не является ошибкой preview.
+- Редактор использует этот artifact, чтобы доказать правильный фрагмент, кадрирование и отсутствие donor wrapper.
+- Текст, карточка, шапка и highlights проверяются на полном финальном render с `publishAfterRender=false`.
+- Ответ owner API явно возвращает `previewScope="media-only"`, список `validates` и список `doesNotValidate`, чтобы агент не угадывал назначение artifact.

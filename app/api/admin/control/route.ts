@@ -1027,7 +1027,10 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     return {
       ...buildStage3JobEnvelope(job, job.artifact ? `/api/stage3/preview/jobs/${job.id}?download=1` : null),
       channel: summarizeChannel(channel),
-      pollUrl: `/api/stage3/preview/jobs/${job.id}`
+      pollUrl: `/api/stage3/preview/jobs/${job.id}`,
+      previewScope: "media-only",
+      validates: ["source_timing", "source_crop", "video_fit", "donor_wrapper_removal"],
+      doesNotValidate: ["channel_card", "author_row", "caption_text", "caption_highlights"]
     };
   }
 

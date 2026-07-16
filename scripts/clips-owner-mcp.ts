@@ -502,7 +502,7 @@ server.registerTool(
   {
     title: "Render Clips Stage 3 preview frames",
     description:
-      "Enqueue a headless Stage 3 PREVIEW job (full-phone frames, not a final MP4) for the editor/judge loop in a routine. Pass sourceUrl and the editor's snapshot (renderPlan.sourceCrop/videoFit/segments/...). sourceCrop x/y/width/height are normalized fractions from 0 to 1, never source pixels; x + width and y + height must stay within 1. Returns a job id and a poll url; poll /api/stage3/preview/jobs/<id> for the frames. No vision logic runs server-side.",
+      "Enqueue a media-only Stage 3 preview clip for the editor/judge crop loop. This artifact validates source timing, crop, fit and donor-wrapper removal only; it intentionally does not render the channel card, author row, caption text or highlights. Pass sourceUrl and the editor's snapshot (renderPlan.sourceCrop/videoFit/segments/...). sourceCrop x/y/width/height are normalized fractions from 0 to 1, never source pixels; x + width and y + height must stay within 1. Returns a job id and a poll url; poll /api/stage3/preview/jobs/<id> for the clip. Caption and template composition are validated on the final render. No vision logic runs server-side.",
     inputSchema: clipsOwnerRenderPreviewInputSchema
   },
   async (input) => ownerControl("clips_owner_render_preview", input)

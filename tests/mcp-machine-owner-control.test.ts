@@ -375,9 +375,18 @@ test("clips_owner_render_preview enqueues a headless preview job (or degrades wh
     });
     if (preview.status === 200 || preview.status === 202) {
       // Enqueued as a preview job (202 while queued, 200 once it reaches a terminal state).
-      const body = (await preview.json()) as { job: { id: string; kind: string }; pollUrl: string };
+      const body = (await preview.json()) as {
+        job: { id: string; kind: string };
+        pollUrl: string;
+        previewScope: string;
+        validates: string[];
+        doesNotValidate: string[];
+      };
       assert.equal(body.job.kind, "preview");
       assert.equal(body.pollUrl, `/api/stage3/preview/jobs/${body.job.id}`);
+      assert.equal(body.previewScope, "media-only");
+      assert.ok(body.validates.includes("source_crop"));
+      assert.ok(body.doesNotValidate.includes("caption_text"));
       assert.equal(getStage3Job(body.job.id)?.kind, "preview");
     } else {
       // No local Stage 3 worker in the harness -> honest 503 degrade.
