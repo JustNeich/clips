@@ -14,6 +14,8 @@ import {
   downloadSourceMedia,
   findDownloadedMediaAudioIssue,
   getSourceDownloadErrorContext,
+  type SourceAcquisitionProvider,
+  type SourceDownloadProvider,
   type SourceDownloadOptions
 } from "./source-acquisition";
 import { isUploadedSourceUrl } from "./uploaded-source";
@@ -28,7 +30,7 @@ export type CachedSourceMedia = {
   fileName: string;
   title: string | null;
   videoSizeBytes: number;
-  downloadProvider: "visolix" | "ytDlp" | "upload";
+  downloadProvider: SourceDownloadProvider;
   primaryProviderError: string | null;
   downloadFallbackUsed: boolean;
   providerErrorSummary: SourceProviderErrorSummary | null;
@@ -41,7 +43,7 @@ type CachedSourceMediaMeta = {
   fileName: string;
   title: string | null;
   videoSizeBytes: number;
-  downloadProvider: "visolix" | "ytDlp" | "upload";
+  downloadProvider: SourceDownloadProvider;
   primaryProviderError: string | null;
   downloadFallbackUsed: boolean;
   providerErrorSummary: SourceProviderErrorSummary | null;
@@ -196,6 +198,8 @@ async function readMeta(sourceKey: string): Promise<CachedSourceMediaMeta> {
       downloadProvider:
         parsed.downloadProvider === "visolix"
           ? "visolix"
+          : parsed.downloadProvider === "instagramEmbed"
+            ? "instagramEmbed"
           : parsed.downloadProvider === "upload"
             ? "upload"
             : "ytDlp",
@@ -211,7 +215,8 @@ async function readMeta(sourceKey: string): Promise<CachedSourceMediaMeta> {
           ? {
               primaryProvider:
                 parsed.providerErrorSummary.primaryProvider === "visolix" ||
-                parsed.providerErrorSummary.primaryProvider === "ytDlp"
+                parsed.providerErrorSummary.primaryProvider === "ytDlp" ||
+                parsed.providerErrorSummary.primaryProvider === "instagramEmbed"
                   ? parsed.providerErrorSummary.primaryProvider
                   : null,
               primaryProviderError:
@@ -222,7 +227,8 @@ async function readMeta(sourceKey: string): Promise<CachedSourceMediaMeta> {
               primaryRetryEligible: parsed.providerErrorSummary.primaryRetryEligible === true,
               fallbackProvider:
                 parsed.providerErrorSummary.fallbackProvider === "visolix" ||
-                parsed.providerErrorSummary.fallbackProvider === "ytDlp"
+                parsed.providerErrorSummary.fallbackProvider === "ytDlp" ||
+                parsed.providerErrorSummary.fallbackProvider === "instagramEmbed"
                   ? parsed.providerErrorSummary.fallbackProvider
                   : null,
               fallbackProviderError:
@@ -426,7 +432,7 @@ export async function storeDownloadedSourceMediaCacheArtifact(input: {
   filePath: string;
   fileName: string;
   title?: string | null;
-  downloadProvider?: "visolix" | "ytDlp";
+  downloadProvider?: SourceAcquisitionProvider;
   primaryProviderError?: string | null;
   downloadFallbackUsed?: boolean;
   providerErrorSummary?: SourceProviderErrorSummary | null;
@@ -506,6 +512,10 @@ async function trySourceMediaLocalWorkerFallback(input: {
     kind: "source-download",
     executionTarget: "local",
     dedupeKey: `source-media:${input.sourceKey}`,
+    // A terminal download belongs to the failed provider attempt that created it.
+    // A later source request must retry the same local slot with fresh attempts;
+    // queued/running jobs are still deduplicated by enqueueStage3JobWithOutcome.
+    reuseCompleted: false,
     attemptLimit: 2,
     payloadJson: JSON.stringify({
       sourceUrl: input.sourceUrl,

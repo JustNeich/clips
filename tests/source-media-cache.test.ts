@@ -20,6 +20,7 @@ import {
   claimNextQueuedStage3JobForWorker,
   completeStage3Job,
   enqueueStage3Job,
+  finishStage3Job,
   getStage3Job
 } from "../lib/stage3-job-store";
 import { exchangeStage3WorkerPairingToken, issueStage3WorkerPairingToken } from "../lib/stage3-worker-store";
@@ -339,7 +340,7 @@ test("ensureSourceMediaCached prunes before writing and retries once after ENOSP
   }
 });
 
-test("ensureSourceMediaCached falls back to a local source-download job after hosted source failure", { concurrency: false }, async () => {
+test("ensureSourceMediaCached requeues a terminal local source-download after hosted source failure", { concurrency: false }, async () => {
   const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-media-local-worker-fallback-"));
   const previousAppDataDir = process.env.APP_DATA_DIR;
   const previousRender = process.env.RENDER;
@@ -366,10 +367,29 @@ test("ensureSourceMediaCached falls back to a local source-download job after ho
     }
   });
 
+  const staleJob = enqueueStage3Job({
+    workspaceId,
+    userId,
+    kind: "source-download",
+    executionTarget: "local",
+    dedupeKey: `source-media:${getSourceMediaCacheKey(url)}`,
+    attemptLimit: 2,
+    payloadJson: JSON.stringify({ sourceUrl: url })
+  });
+  getDb().prepare("UPDATE stage3_jobs SET attempts = 2 WHERE id = ?").run(staleJob.id);
+  finishStage3Job(staleJob.id, {
+    status: "failed",
+    errorCode: "stage3_job_timeout",
+    errorMessage: "Stage 3 local executor timed out while running source-download after 300s.",
+    recoverable: true
+  });
+
   try {
     const workerCompletion = (async () => {
       const claimed = await waitForWorkerClaim({ workspaceId, userId, workerId });
       assert.equal(claimed.kind, "source-download");
+      assert.equal(claimed.id, staleJob.id);
+      assert.equal(claimed.attempts, 1);
       const payload = JSON.parse(claimed.payloadJson) as {
         sourceUrl?: string;
         sourceMediaFallback?: {
@@ -411,7 +431,14 @@ test("ensureSourceMediaCached falls back to a local source-download job after ho
 
     const keepAlive = setInterval(() => undefined, 50);
     try {
-      const [cached] = await Promise.all([
+      const [first, second] = await Promise.all([
+        ensureSourceMediaCached(url, {
+          localWorkerFallback: {
+            workspaceId,
+            userId,
+            waitTimeoutMs: 3_000
+          }
+        }),
         ensureSourceMediaCached(url, {
           localWorkerFallback: {
             workspaceId,
@@ -422,12 +449,37 @@ test("ensureSourceMediaCached falls back to a local source-download job after ho
         workerCompletion
       ]);
 
-      assert.equal(cached.cacheState, "miss");
-      assert.equal(cached.fileName, "worker-source.mp4");
-      assert.equal(cached.downloadProvider, "ytDlp");
-      assert.equal(cached.downloadFallbackUsed, true);
-      assert.match(cached.primaryProviderError ?? "", /Visolix/);
-      assert.equal(await fs.readFile(cached.sourcePath).then((buffer) => buffer.length > 0), true);
+      assert.deepEqual(new Set([first.cacheState, second.cacheState]), new Set(["miss", "wait"]));
+      assert.equal(first.sourcePath, second.sourcePath);
+      assert.equal(first.fileName, "worker-source.mp4");
+      assert.equal(first.downloadProvider, "ytDlp");
+      assert.equal(first.downloadFallbackUsed, true);
+      assert.match(first.primaryProviderError ?? "", /Visolix/);
+      assert.equal(await fs.readFile(first.sourcePath).then((buffer) => buffer.length > 0), true);
+
+      const cached = await ensureSourceMediaCached(url, {
+        localWorkerFallback: {
+          workspaceId,
+          userId,
+          waitTimeoutMs: 3_000
+        }
+      });
+      assert.equal(cached.cacheState, "hit");
+      assert.equal(cached.sourcePath, first.sourcePath);
+      assert.equal(getStage3Job(staleJob.id)?.status, "completed");
+      const jobCount = getDb()
+        .prepare("SELECT COUNT(*) AS count FROM stage3_jobs WHERE kind = 'source-download'")
+        .get() as { count: number };
+      assert.equal(jobCount.count, 1);
+      assert.equal(
+        claimNextQueuedStage3JobForWorker({
+          workerId,
+          workspaceId,
+          userId,
+          supportedKinds: ["source-download"]
+        }),
+        null
+      );
     } finally {
       clearInterval(keepAlive);
     }
@@ -514,7 +566,10 @@ test("source-download worker completion stores the uploaded artifact in source m
           "Content-Type": "video/mp4",
           "x-stage3-artifact-name": encodeURIComponent("completed-worker-source.mp4"),
           "x-stage3-artifact-mime-type": encodeURIComponent("video/mp4"),
-          "x-stage3-result-json": Buffer.from(JSON.stringify({ workerCache: true }), "utf-8").toString("base64url")
+          "x-stage3-result-json": Buffer.from(
+            JSON.stringify({ workerCache: true, downloadProvider: "instagramEmbed" }),
+            "utf-8"
+          ).toString("base64url")
         },
         body: await fs.readFile(workerSourcePath)
       }),
@@ -527,12 +582,14 @@ test("source-download worker completion stores the uploaded artifact in source m
     const cached = await getCachedSourceMedia(url);
     assert.ok(cached);
     assert.equal(cached.fileName, "completed-worker-source.mp4");
-    assert.equal(cached.downloadProvider, "ytDlp");
+    assert.equal(cached.downloadProvider, "instagramEmbed");
     assert.equal(cached.downloadFallbackUsed, true);
     assert.match(cached.primaryProviderError ?? "", /Visolix/);
     const completed = getStage3Job(job.id);
     assert.equal(completed?.artifact, null);
-    assert.equal(JSON.parse(completed?.resultJson ?? "{}").sourceMediaCache, true);
+    const completedResult = JSON.parse(completed?.resultJson ?? "{}") as Record<string, unknown>;
+    assert.equal(completedResult.sourceMediaCache, true);
+    assert.equal(completedResult.downloadProvider, "instagramEmbed");
   } finally {
     resetDbAndStage3Globals();
     if (previousAppDataDir === undefined) {

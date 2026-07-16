@@ -7,7 +7,9 @@ import test from "node:test";
 import { promisify } from "node:util";
 import {
   createPinnedHttpsLookup,
+  downloadLocalInstagramReel,
   downloadSourceMedia,
+  extractInstagramEmbedVideoUrl,
   fetchSourceMetadata,
   fetchOptionalYtDlpInfo,
   getSourceDownloadErrorContext,
@@ -38,6 +40,20 @@ async function writeVideoWithoutAudio(filePath: string): Promise<void> {
     "libx264",
     "-pix_fmt",
     "yuv420p",
+    filePath
+  ]);
+}
+
+async function writeAudioWithoutVideo(filePath: string): Promise<void> {
+  await execFileAsync("ffmpeg", [
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:sample_rate=48000:duration=2",
+    "-vn",
+    "-c:a",
+    "aac",
     filePath
   ]);
 }
@@ -100,6 +116,196 @@ test("createPinnedHttpsLookup supports Node all-address lookup shape", () => {
   });
 });
 
+test("extractInstagramEmbedVideoUrl decodes the exact Reel media URL", () => {
+  const html = '<script>window.__data={"shortcode":"Day4dZcMooh","video_url":"https://scontent-ams2-1.cdninstagram.com/o1/v/source.mp4?x=1&y=2"}</script>';
+
+  assert.equal(
+    extractInstagramEmbedVideoUrl(html, "Day4dZcMooh"),
+    "https://scontent-ams2-1.cdninstagram.com/o1/v/source.mp4?x=1&y=2"
+  );
+  assert.equal(extractInstagramEmbedVideoUrl(html, "DifferentReel"), null);
+});
+
+test("downloadLocalInstagramReel downloads the exact embed MP4 and requires audio", { concurrency: false }, async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "instagram-local-source-test-"));
+  const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), "instagram-local-fixture-test-"));
+  const fixturePath = path.join(fixtureDir, "fixture.mp4");
+  await writeVideoWithAudio(fixturePath, 2);
+  const mediaBytes = await fs.readFile(fixturePath);
+  const calls: string[] = [];
+
+  setSourceAcquisitionNetworkForTests({
+    lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    fetch: async (url) => {
+      calls.push(url);
+      if (url === "https://www.instagram.com/reel/Day4dZcMooh/embed/") {
+        return new Response(
+          '<script>window.__data={"shortcode":"Day4dZcMooh","video_url":"https://scontent-ams2-1.cdninstagram.com/o1/v/source.mp4?token=test"}</script>'
+        );
+      }
+      if (url === "https://scontent-ams2-1.cdninstagram.com/o1/v/source.mp4?token=test") {
+        return new Response(mediaBytes, {
+          headers: {
+            "content-type": "video/mp4",
+            "content-length": String(mediaBytes.byteLength)
+          }
+        });
+      }
+      throw new Error(`Unexpected Instagram test URL: ${url}`);
+    }
+  });
+
+  try {
+    const result = await downloadLocalInstagramReel(
+      "https://www.instagram.com/reel/Day4dZcMooh/",
+      tmpDir
+    );
+    assert.ok(result);
+    assert.equal(result.provider, "instagramEmbed");
+    assert.equal(result.fileName, "instagram-Day4dZcMooh");
+    assert.equal(result.videoSizeBytes, mediaBytes.byteLength);
+    assert.deepEqual(calls, [
+      "https://www.instagram.com/reel/Day4dZcMooh/embed/",
+      "https://scontent-ams2-1.cdninstagram.com/o1/v/source.mp4?token=test"
+    ]);
+  } finally {
+    setSourceAcquisitionNetworkForTests(null);
+    await fs.rm(tmpDir, { recursive: true, force: true });
+    await fs.rm(fixtureDir, { recursive: true, force: true });
+  }
+});
+
+test("downloadLocalInstagramReel blocks a media URL outside Instagram CDN", { concurrency: false }, async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "instagram-local-host-guard-test-"));
+  const calls: string[] = [];
+  setSourceAcquisitionNetworkForTests({
+    lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    fetch: async (url) => {
+      calls.push(url);
+      return new Response(
+        '<script>window.__data={"shortcode":"Day4dZcMooh","video_url":"https://example.com/wrong.mp4"}</script>'
+      );
+    }
+  });
+
+  try {
+    await assert.rejects(
+      () => downloadLocalInstagramReel("https://www.instagram.com/reel/Day4dZcMooh/", tmpDir),
+      /вне доверенного Instagram CDN/
+    );
+    assert.deepEqual(calls, ["https://www.instagram.com/reel/Day4dZcMooh/embed/"]);
+  } finally {
+    setSourceAcquisitionNetworkForTests(null);
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("downloadLocalInstagramReel rejects a redirect to a different Reel", { concurrency: false }, async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "instagram-local-redirect-guard-test-"));
+  const calls: string[] = [];
+  setSourceAcquisitionNetworkForTests({
+    lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    fetch: async (url) => {
+      calls.push(url);
+      return new Response(null, {
+        status: 302,
+        headers: { Location: "https://www.instagram.com/reel/DifferentReel/embed/" }
+      });
+    }
+  });
+
+  try {
+    await assert.rejects(
+      () => downloadLocalInstagramReel("https://www.instagram.com/reel/Day4dZcMooh/", tmpDir),
+      /не совпал с запрошенным Reel/
+    );
+    assert.deepEqual(calls, ["https://www.instagram.com/reel/Day4dZcMooh/embed/"]);
+  } finally {
+    setSourceAcquisitionNetworkForTests(null);
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("downloadLocalInstagramReel does not start DNS or HTTP after a pre-aborted job", { concurrency: false }, async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "instagram-local-pre-abort-test-"));
+  let lookupCalls = 0;
+  let fetchCalls = 0;
+  setSourceAcquisitionNetworkForTests({
+    lookup: async () => {
+      lookupCalls += 1;
+      return [{ address: "93.184.216.34", family: 4 }];
+    },
+    fetch: async () => {
+      fetchCalls += 1;
+      throw new Error("HTTP must not start after abort.");
+    }
+  });
+  const controller = new AbortController();
+  controller.abort(new Error("source job already aborted"));
+
+  try {
+    await assert.rejects(
+      () =>
+        downloadLocalInstagramReel(
+          "https://www.instagram.com/reel/Day4dZcMooh/",
+          tmpDir,
+          { signal: controller.signal }
+        ),
+      /source job already aborted/
+    );
+    assert.equal(lookupCalls, 0);
+    assert.equal(fetchCalls, 0);
+  } finally {
+    setSourceAcquisitionNetworkForTests(null);
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("downloadLocalInstagramReel requires a video stream in an MP4 container", { concurrency: false }, async () => {
+  const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), "instagram-local-media-gate-fixture-"));
+  const audioOnlyPath = path.join(fixtureDir, "audio-only.mp4");
+  const wrongContainerPath = path.join(fixtureDir, "wrong-container.mkv");
+  await writeAudioWithoutVideo(audioOnlyPath);
+  await writeVideoWithAudio(wrongContainerPath, 2);
+
+  const cases = [
+    { path: audioOnlyPath, expected: /без видеодорожки/ },
+    { path: wrongContainerPath, expected: /не в MP4-контейнере/ }
+  ];
+
+  try {
+    for (const [index, current] of cases.entries()) {
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), `instagram-local-media-gate-${index}-`));
+      const mediaBytes = await fs.readFile(current.path);
+      setSourceAcquisitionNetworkForTests({
+        lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+        fetch: async (url) => {
+          if (url === "https://www.instagram.com/reel/Day4dZcMooh/embed/") {
+            return new Response(
+              '<script>window.__data={"shortcode":"Day4dZcMooh","video_url":"https://scontent-ams2-1.cdninstagram.com/o1/v/source.mp4"}</script>'
+            );
+          }
+          return new Response(mediaBytes, {
+            headers: { "content-length": String(mediaBytes.byteLength) }
+          });
+        }
+      });
+      try {
+        await assert.rejects(
+          () => downloadLocalInstagramReel("https://www.instagram.com/reel/Day4dZcMooh/", tmpDir),
+          current.expected
+        );
+      } finally {
+        setSourceAcquisitionNetworkForTests(null);
+        await fs.rm(tmpDir, { recursive: true, force: true });
+      }
+    }
+  } finally {
+    setSourceAcquisitionNetworkForTests(null);
+    await fs.rm(fixtureDir, { recursive: true, force: true });
+  }
+});
+
 test("downloadSourceMedia keeps the primary provider error when yt-dlp fallback succeeds", { concurrency: false }, async () => {
   const previousVisolixApiKey = process.env.VISOLIX_API_KEY;
   const previousRetryDelay = process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS;
@@ -149,6 +355,56 @@ test("downloadSourceMedia keeps the primary provider error when yt-dlp fallback 
       delete process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS;
     } else {
       process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS = previousRetryDelay;
+    }
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("downloadSourceMedia can use local yt-dlp without calling Visolix", { concurrency: false }, async () => {
+  const previousVisolixApiKey = process.env.VISOLIX_API_KEY;
+  process.env.VISOLIX_API_KEY = "test-visolix-key";
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-acquisition-local-only-"));
+  let visolixCalls = 0;
+  let ytDlpCalls = 0;
+
+  setSourceAcquisitionDownloadersForTests({
+    visolix: async () => {
+      visolixCalls += 1;
+      throw new Error("Visolix must not run on the paired local executor path.");
+    },
+    ytDlp: async (_rawUrl, dir) => {
+      ytDlpCalls += 1;
+      const filePath = path.join(dir, "source.mp4");
+      await fs.writeFile(filePath, "local-video");
+      return {
+        provider: "ytDlp",
+        filePath,
+        fileName: "local-source",
+        title: "Local source",
+        durationSec: 8,
+        videoSizeBytes: 11
+      };
+    }
+  });
+
+  try {
+    const result = await downloadSourceMedia(
+      "https://www.instagram.com/reel/local-only/",
+      tmpDir,
+      { skipVisolix: true }
+    );
+
+    assert.equal(result.provider, "ytDlp");
+    assert.equal(result.downloadFallbackUsed, false);
+    assert.equal(result.primaryProviderError, null);
+    assert.equal(visolixCalls, 0);
+    assert.equal(ytDlpCalls, 1);
+  } finally {
+    setSourceAcquisitionDownloadersForTests(null);
+    if (previousVisolixApiKey === undefined) {
+      delete process.env.VISOLIX_API_KEY;
+    } else {
+      process.env.VISOLIX_API_KEY = previousVisolixApiKey;
     }
     await fs.rm(tmpDir, { recursive: true, force: true });
   }

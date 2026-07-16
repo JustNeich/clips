@@ -9,7 +9,7 @@ import {
   probeVideoDurationSeconds
 } from "./stage3-media-agent";
 import { isStage3HostedFastRenderProfileEnabled } from "./stage3-render-variation";
-import { findDownloadedMediaAudioIssue } from "./source-acquisition";
+import { findDownloadedMediaAudioIssue, type SourceDownloadProvider } from "./source-acquisition";
 import { clampHostedConcurrencyLimit } from "./hosted-resource-budget";
 import { queueThrottledBackgroundTask } from "./throttled-background-task";
 import { isUploadedSourceUrl } from "./uploaded-source";
@@ -21,12 +21,14 @@ export type Stage3CachedSource = {
   sourceKey: string;
   fileName: string;
   cacheMode: "stage3-normalized" | "source-media-direct";
+  downloadProvider: SourceDownloadProvider | null;
 };
 
 export type Stage3HostedJobOptions = {
   signal?: AbortSignal | null;
   waitTimeoutMs?: number | null;
   allowSourceMediaDirect?: boolean;
+  allowWorkerHostFallback?: boolean;
 };
 
 const STAGE3_SOURCE_CACHE_NORMALIZATION_VERSION = 2;
@@ -112,12 +114,14 @@ function readMetaFileName(
   fileName: string;
   sourceDurationSec: number | null;
   normalizationVersion: number;
+  downloadProvider: SourceDownloadProvider | null;
 } {
   if (!rawMeta) {
     return {
       fileName: `${sourceKey}.mp4`,
       sourceDurationSec: null,
-      normalizationVersion: 0
+      normalizationVersion: 0,
+      downloadProvider: null
     };
   }
 
@@ -126,6 +130,7 @@ function readMetaFileName(
       fileName?: unknown;
       sourceDurationSec?: unknown;
       normalizationVersion?: unknown;
+      downloadProvider?: unknown;
     };
     return {
       fileName:
@@ -141,13 +146,21 @@ function readMetaFileName(
         Number.isFinite(parsed.normalizationVersion) &&
         parsed.normalizationVersion >= 0
           ? parsed.normalizationVersion
-          : 0
+          : 0,
+      downloadProvider:
+        parsed.downloadProvider === "visolix" ||
+        parsed.downloadProvider === "ytDlp" ||
+        parsed.downloadProvider === "instagramEmbed" ||
+        parsed.downloadProvider === "upload"
+          ? parsed.downloadProvider
+          : null
     };
   } catch {
     return {
       fileName: `${sourceKey}.mp4`,
       sourceDurationSec: null,
-      normalizationVersion: 0
+      normalizationVersion: 0,
+      downloadProvider: null
     };
   }
 }
@@ -157,6 +170,7 @@ async function writeSourceMeta(params: {
   fileName: string;
   sourceDurationSec: number | null;
   normalizationVersion?: number;
+  downloadProvider?: SourceDownloadProvider | null;
 }): Promise<void> {
   await fs
     .writeFile(
@@ -164,7 +178,8 @@ async function writeSourceMeta(params: {
       JSON.stringify({
         fileName: params.fileName,
         sourceDurationSec: params.sourceDurationSec,
-        normalizationVersion: params.normalizationVersion ?? STAGE3_SOURCE_CACHE_NORMALIZATION_VERSION
+        normalizationVersion: params.normalizationVersion ?? STAGE3_SOURCE_CACHE_NORMALIZATION_VERSION,
+        downloadProvider: params.downloadProvider ?? null
       }),
       "utf-8"
     )
@@ -407,7 +422,8 @@ export async function ensureStage3SourceCached(
         metaPath: directMetaPath,
         fileName: meta.fileName,
         sourceDurationSec,
-        normalizationVersion: 0
+        normalizationVersion: 0,
+        downloadProvider: meta.downloadProvider
       });
     }
     return {
@@ -415,7 +431,8 @@ export async function ensureStage3SourceCached(
       sourceDurationSec,
       sourceKey,
       fileName: meta.fileName,
-      cacheMode: "source-media-direct"
+      cacheMode: "source-media-direct",
+      downloadProvider: meta.downloadProvider
     };
   }
 
@@ -444,13 +461,15 @@ export async function ensureStage3SourceCached(
         await writeSourceMeta({
           metaPath,
           fileName: meta.fileName,
-          sourceDurationSec
+          sourceDurationSec,
+          downloadProvider: meta.downloadProvider
         });
       } else if ((normalizedCacheIsCurrent || !useDirectSource) && (!rawMeta || meta.sourceDurationSec === null)) {
         await writeSourceMeta({
           metaPath,
           fileName: meta.fileName,
-          sourceDurationSec
+          sourceDurationSec,
+          downloadProvider: meta.downloadProvider
         });
       }
 
@@ -460,7 +479,8 @@ export async function ensureStage3SourceCached(
           sourceDurationSec,
           sourceKey,
           fileName: meta.fileName,
-          cacheMode: "stage3-normalized"
+          cacheMode: "stage3-normalized",
+          downloadProvider: meta.downloadProvider
         };
       }
     }
@@ -475,7 +495,14 @@ export async function ensureStage3SourceCached(
     await fs.mkdir(sourceCacheDir, { recursive: true });
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-source-cache-"));
     try {
-      const downloaded = await runHostedStage3HeavyJob(() => downloadSourceVideo(sourceUrl, tmpDir), options);
+      const downloaded = await runHostedStage3HeavyJob(
+        () =>
+          downloadSourceVideo(sourceUrl, tmpDir, {
+            allowWorkerHostFallback: options?.allowWorkerHostFallback,
+            signal: options?.signal
+          }),
+        options
+      );
       if (useDirectSource) {
         const downloadedPath = downloaded.filePath;
         const sourceDurationSec = await probeVideoDurationSeconds(downloadedPath);
@@ -489,7 +516,8 @@ export async function ensureStage3SourceCached(
             metaPath: directMetaPath,
             fileName: downloaded.fileName,
             sourceDurationSec: directDurationSec,
-            normalizationVersion: 0
+            normalizationVersion: 0,
+            downloadProvider: downloaded.downloadProvider
           });
           scheduleStage3SourceCachePrune();
           return {
@@ -497,7 +525,8 @@ export async function ensureStage3SourceCached(
             sourceDurationSec: directDurationSec,
             sourceKey,
             fileName: downloaded.fileName,
-            cacheMode: "source-media-direct" as const
+            cacheMode: "source-media-direct" as const,
+            downloadProvider: downloaded.downloadProvider
           };
         }
         return {
@@ -505,7 +534,8 @@ export async function ensureStage3SourceCached(
           sourceDurationSec,
           sourceKey,
           fileName: downloaded.fileName,
-          cacheMode: "source-media-direct" as const
+          cacheMode: "source-media-direct" as const,
+          downloadProvider: downloaded.downloadProvider
         };
       }
       await normalizeCachedSourceIntoPlace({
@@ -517,7 +547,8 @@ export async function ensureStage3SourceCached(
       await writeSourceMeta({
         metaPath,
         fileName: downloaded.fileName,
-        sourceDurationSec
+        sourceDurationSec,
+        downloadProvider: downloaded.downloadProvider
       });
       scheduleStage3SourceCachePrune();
 
@@ -526,7 +557,8 @@ export async function ensureStage3SourceCached(
         sourceDurationSec,
         sourceKey,
         fileName: downloaded.fileName,
-        cacheMode: "stage3-normalized"
+        cacheMode: "stage3-normalized",
+        downloadProvider: downloaded.downloadProvider
       };
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });

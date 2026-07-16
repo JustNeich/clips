@@ -40,6 +40,7 @@ export async function maybeDownloadStage3WorkerSource(params: {
   sourceUrl: string;
   tmpDir: string;
   cacheOnly?: boolean;
+  signal?: AbortSignal | null;
 }): Promise<Stage3WorkerDownloadedSource | null> {
   const workerEnv = readWorkerSourceEnv();
   if (!workerEnv) {
@@ -58,7 +59,8 @@ export async function maybeDownloadStage3WorkerSource(params: {
         ? { jobId: process.env.STAGE3_WORKER_CURRENT_JOB_ID.trim() }
         : {}),
       ...(params.cacheOnly ? { cacheOnly: true } : {})
-    })
+    }),
+    signal: params.signal ?? undefined
   });
 
   if (response.status === 404) {

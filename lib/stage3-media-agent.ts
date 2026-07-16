@@ -4,7 +4,11 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { STAGE3_SEGMENT_SPEED_OPTIONS } from "../app/components/types";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
-import { downloadSourceMedia } from "./source-acquisition";
+import {
+  downloadLocalInstagramReel,
+  downloadSourceMedia,
+  type SourceDownloadProvider
+} from "./source-acquisition";
 import { ensureSourceMediaCached } from "./source-media-cache";
 import { Stage3RenderPlan, Stage3StateSnapshot } from "./stage3-agent";
 import { computeManagedTemplateTextFit } from "./managed-template-runtime";
@@ -96,6 +100,24 @@ function isMemoryConstrainedRuntime(): boolean {
 
 function isPairedStage3WorkerRuntime(): boolean {
   return Boolean(process.env.STAGE3_WORKER_SERVER_ORIGIN?.trim() && process.env.STAGE3_WORKER_SESSION_TOKEN?.trim());
+}
+
+function normalizeSourceDownloadProvider(value: string | null | undefined): SourceDownloadProvider | null {
+  return value === "visolix" ||
+    value === "ytDlp" ||
+    value === "instagramEmbed" ||
+    value === "upload"
+    ? value
+    : null;
+}
+
+function throwIfSourceDownloadAborted(signal: AbortSignal | null | undefined): void {
+  if (!signal?.aborted) {
+    return;
+  }
+  throw signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException("The operation was aborted.", "AbortError");
 }
 
 function getEncodeProfile(profile: Stage3MediaProfile): EncodeProfile {
@@ -364,13 +386,19 @@ export function clampClipStart(
 
 export async function downloadSourceVideo(
   rawUrl: string,
-  tmpDir: string
-): Promise<{ filePath: string; fileName: string }> {
+  tmpDir: string,
+  options: { allowWorkerHostFallback?: boolean; signal?: AbortSignal | null } = {}
+): Promise<{
+  filePath: string;
+  fileName: string;
+  downloadProvider: SourceDownloadProvider | null;
+}> {
   if (!isPairedStage3WorkerRuntime()) {
-    const cached = await ensureSourceMediaCached(rawUrl);
+    const cached = await ensureSourceMediaCached(rawUrl, { signal: options.signal });
     return {
       filePath: cached.sourcePath,
-      fileName: sanitizeFileName(cached.fileName)
+      fileName: sanitizeFileName(cached.fileName),
+      downloadProvider: cached.downloadProvider
     };
   }
 
@@ -378,15 +406,18 @@ export async function downloadSourceVideo(
     const hostedCached = await maybeDownloadStage3WorkerSource({
       sourceUrl: rawUrl,
       tmpDir,
-      cacheOnly: true
+      cacheOnly: true,
+      signal: options.signal
     });
     if (hostedCached) {
       return {
         filePath: hostedCached.filePath,
-        fileName: sanitizeFileName(hostedCached.fileName)
+        fileName: sanitizeFileName(hostedCached.fileName),
+        downloadProvider: normalizeSourceDownloadProvider(hostedCached.provider)
       };
     }
   } catch {
+    throwIfSourceDownloadAborted(options.signal);
     // Cache-only host lookup is an optimization; local acquisition remains the primary fallback.
   }
 
@@ -394,15 +425,18 @@ export async function downloadSourceVideo(
     try {
       const hosted = await maybeDownloadStage3WorkerSource({
         sourceUrl: rawUrl,
-        tmpDir
+        tmpDir,
+        signal: options.signal
       });
       if (hosted) {
         return {
           filePath: hosted.filePath,
-          fileName: sanitizeFileName(hosted.fileName)
+          fileName: sanitizeFileName(hosted.fileName),
+          downloadProvider: normalizeSourceDownloadProvider(hosted.provider)
         };
       }
     } catch (hostedError) {
+      throwIfSourceDownloadAborted(options.signal);
       const hostedMessage =
         hostedError instanceof Error ? hostedError.message : "host source fallback failed";
       throw new Error(`Не удалось получить загруженный mp4 через production host: ${hostedMessage}`);
@@ -411,33 +445,66 @@ export async function downloadSourceVideo(
     throw new Error("Загруженный mp4 не найден в production source cache для локального Stage 3 worker.");
   }
 
+  let instagramError: unknown = null;
   try {
-    const downloaded = await downloadSourceMedia(rawUrl, tmpDir);
+    const instagram = await downloadLocalInstagramReel(rawUrl, tmpDir, {
+      signal: options.signal
+    });
+    if (instagram) {
+      return {
+        filePath: instagram.filePath,
+        fileName: sanitizeFileName(instagram.fileName),
+        downloadProvider: instagram.provider
+      };
+    }
+  } catch (error) {
+    throwIfSourceDownloadAborted(options.signal);
+    instagramError = error;
+  }
+
+  try {
+    const downloaded = await downloadSourceMedia(rawUrl, tmpDir, {
+      skipVisolix: true,
+      signal: options.signal
+    });
     return {
       filePath: downloaded.filePath,
-      fileName: sanitizeFileName(downloaded.fileName)
+      fileName: sanitizeFileName(downloaded.fileName),
+      downloadProvider: downloaded.provider
     };
   } catch (localError) {
+    throwIfSourceDownloadAborted(options.signal);
+    const instagramMessage =
+      instagramError instanceof Error ? instagramError.message.trim() : "";
+    const localMessage =
+      localError instanceof Error ? localError.message : "local source fetch failed";
+    const effectiveLocalError = instagramMessage
+      ? new Error(`Instagram local download: ${instagramMessage} yt-dlp: ${localMessage}`)
+      : localError;
+    if (options.allowWorkerHostFallback === false) {
+      throw effectiveLocalError;
+    }
     try {
       const hosted = await maybeDownloadStage3WorkerSource({
         sourceUrl: rawUrl,
-        tmpDir
+        tmpDir,
+        signal: options.signal
       });
       if (hosted) {
         return {
           filePath: hosted.filePath,
-          fileName: sanitizeFileName(hosted.fileName)
+          fileName: sanitizeFileName(hosted.fileName),
+          downloadProvider: normalizeSourceDownloadProvider(hosted.provider)
         };
       }
     } catch (hostedError) {
-      const localMessage =
-        localError instanceof Error ? localError.message : "local source fetch failed";
+      throwIfSourceDownloadAborted(options.signal);
       const hostedMessage =
         hostedError instanceof Error ? hostedError.message : "host source fallback failed";
       throw new Error(`${localMessage} Host fallback: ${hostedMessage}`);
     }
 
-    throw localError;
+    throw effectiveLocalError;
   }
 }
 

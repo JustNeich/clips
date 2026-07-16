@@ -163,14 +163,16 @@ export async function executeStage3HeavyJobPayload(
       throw new Error("Stage 3 source-download job is missing sourceUrl.");
     }
     const cached = await ensureStage3SourceCached(sourceUrl, {
-      signal: options?.signal ?? undefined
+      signal: options?.signal ?? undefined,
+      allowWorkerHostFallback: false
     });
     return {
       resultJson: JSON.stringify({
         sourceKey: cached.sourceKey,
         sourceDurationSec: cached.sourceDurationSec,
         fileName: cached.fileName,
-        cacheMode: cached.cacheMode
+        cacheMode: cached.cacheMode,
+        downloadProvider: cached.downloadProvider
       }),
       artifact: {
         filePath: cached.sourcePath,

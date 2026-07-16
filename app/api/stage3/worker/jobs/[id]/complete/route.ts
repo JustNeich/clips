@@ -11,7 +11,10 @@ import {
   STAGE3_ARTIFACT_STORAGE_FULL_MESSAGE
 } from "../../../../../../../lib/stage3-job-artifacts";
 import { storeDownloadedSourceMediaCacheArtifact } from "../../../../../../../lib/source-media-cache";
-import type { SourceProviderErrorSummary } from "../../../../../../../app/components/types";
+import type {
+  SourceProviderErrorSummary,
+  SourceProviderId
+} from "../../../../../../../app/components/types";
 import { buildStage3JobEnvelope } from "../../../../../../../lib/stage3-job-http";
 import {
   DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS,
@@ -296,6 +299,10 @@ function parseJsonObject(raw: string | null): Record<string, unknown> {
   }
 }
 
+function parseSourceProviderId(value: unknown): SourceProviderId | null {
+  return value === "visolix" || value === "ytDlp" || value === "instagramEmbed" ? value : null;
+}
+
 function parseSourceDownloadPayload(raw: string): {
   sourceUrl: string;
   primaryProviderError: string | null;
@@ -448,17 +455,18 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
           if (!sourcePayload.sourceUrl) {
             return Response.json({ error: "Source download job is missing sourceUrl." }, { status: 400 });
           }
+          const completedResult = parseJsonObject(resultJson);
           const cached = await storeDownloadedSourceMediaCacheArtifact({
             sourceUrl: sourcePayload.sourceUrl,
             filePath: artifactFile.filePath,
             fileName: artifactFile.name || `${current.id}.mp4`,
-            downloadProvider: "ytDlp",
+            downloadProvider: parseSourceProviderId(completedResult.downloadProvider) ?? "ytDlp",
             primaryProviderError: sourcePayload.primaryProviderError,
             downloadFallbackUsed: Boolean(sourcePayload.primaryProviderError),
             providerErrorSummary: sourcePayload.providerErrorSummary
           });
           resultJson = JSON.stringify({
-            ...parseJsonObject(resultJson),
+            ...completedResult,
             sourceKey: cached.sourceKey,
             fileName: cached.fileName,
             videoSizeBytes: cached.videoSizeBytes,

@@ -59,7 +59,7 @@ export type CommentsPayload = {
   allComments: CommentItem[];
 };
 
-export type SourceProviderId = "visolix" | "ytDlp";
+export type SourceProviderId = "visolix" | "ytDlp" | "instagramEmbed";
 
 export type SourceProviderErrorSummary = {
   primaryProvider: SourceProviderId | null;

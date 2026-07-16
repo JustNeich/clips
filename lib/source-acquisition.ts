@@ -35,6 +35,12 @@ const DEFAULT_VISOLIX_YOUTUBE_FORMAT = "720";
 const DEFAULT_SOURCE_DOWNLOAD_RETRY_DELAY_MS = 5_000;
 const MAX_REMOTE_SOURCE_DOWNLOAD_BYTES = 1024 * 1024 * 1024;
 const MAX_SAFE_REMOTE_REDIRECTS = 3;
+const INSTAGRAM_EMBED_FETCH_TIMEOUT_MS = 20_000;
+const INSTAGRAM_EMBED_MEDIA_TIMEOUT_MS = 180_000;
+const MAX_INSTAGRAM_EMBED_HTML_BYTES = 2 * 1024 * 1024;
+const INSTAGRAM_EMBED_USER_AGENT =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 " +
+  "Version/18.5 Mobile/15E148 Safari/604.1";
 
 type VisolixInitResponse = {
   success?: unknown;
@@ -109,7 +115,23 @@ type SourceDownloadCoreResult = Omit<
   "primaryProviderError" | "downloadFallbackUsed" | "providerErrorSummary"
 >;
 
-type SourceDownloadOverride = (rawUrl: string, tmpDir: string) => Promise<SourceDownloadCoreResult>;
+type SourceDownloadOverride = (
+  rawUrl: string,
+  tmpDir: string,
+  options?: SourceDownloadOptions
+) => Promise<SourceDownloadCoreResult>;
+
+export type LocalInstagramReelDownload = {
+  provider: "instagramEmbed";
+  filePath: string;
+  fileName: string;
+  videoSizeBytes: number;
+};
+
+type LocalInstagramReelDownloadOverride = (
+  rawUrl: string,
+  tmpDir: string
+) => Promise<LocalInstagramReelDownload | null>;
 
 export type SourceDownloadRetryNotice = {
   provider: SourceAcquisitionProvider;
@@ -121,6 +143,8 @@ export type SourceDownloadRetryNotice = {
 
 export type SourceDownloadOptions = {
   onRetryScheduled?: (notice: SourceDownloadRetryNotice) => Promise<void> | void;
+  skipVisolix?: boolean;
+  signal?: AbortSignal | null;
 };
 
 export type SourceDownloadErrorContext = {
@@ -141,6 +165,7 @@ export class SourceDownloadError extends Error {
 
 let testVisolixDownloader: SourceDownloadOverride | null = null;
 let testYtDlpDownloader: SourceDownloadOverride | null = null;
+let testInstagramEmbedDownloader: LocalInstagramReelDownloadOverride | null = null;
 let testSafeLookup:
   | ((hostname: string) => Promise<Array<{ address: string; family?: number }>>)
   | null = null;
@@ -151,11 +176,13 @@ export function setSourceAcquisitionDownloadersForTests(
     | {
         visolix?: SourceDownloadOverride | null;
         ytDlp?: SourceDownloadOverride | null;
+        instagramEmbed?: LocalInstagramReelDownloadOverride | null;
       }
     | null
 ): void {
   testVisolixDownloader = input?.visolix ?? null;
   testYtDlpDownloader = input?.ytDlp ?? null;
+  testInstagramEmbedDownloader = input?.instagramEmbed ?? null;
 }
 
 export function setSourceAcquisitionNetworkForTests(
@@ -654,7 +681,17 @@ function responseHeadersFromIncoming(headers: IncomingHttpHeaders): Headers {
   return output;
 }
 
+function throwIfRemoteFetchAborted(signal: AbortSignal | null | undefined): void {
+  if (!signal?.aborted) {
+    return;
+  }
+  throw signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException("The operation was aborted.", "AbortError");
+}
+
 async function fetchPinnedHttpsUrl(safe: SafeRemoteUrl, init: RequestInit): Promise<Response> {
+  throwIfRemoteFetchAborted(init.signal);
   if (testSafeFetch) {
     return testSafeFetch(safe.url, init);
   }
@@ -704,15 +741,26 @@ async function fetchSafeRemoteUrl(
   rawUrl: string,
   init: RequestInit,
   label: string,
-  redirectsLeft = MAX_SAFE_REMOTE_REDIRECTS
+  redirectsLeft = MAX_SAFE_REMOTE_REDIRECTS,
+  validateUrl?: (url: URL) => void
 ): Promise<Response> {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(rawUrl);
+  } catch {
+    throw new Error(`${label} вернул некорректный URL.`);
+  }
+  validateUrl?.(parsedUrl);
+  throwIfRemoteFetchAborted(init.signal);
   const safe = await resolveSafeRemoteUrl(rawUrl, label);
+  throwIfRemoteFetchAborted(init.signal);
   const response = await fetchPinnedHttpsUrl(safe, {
     ...init,
     redirect: "manual"
   });
   if (response.status >= 300 && response.status < 400) {
     const location = response.headers.get("location");
+    await response.body?.cancel().catch(() => undefined);
     if (!location || redirectsLeft <= 0) {
       throw new Error(`${label} вернул небезопасный redirect.`);
     }
@@ -720,7 +768,7 @@ async function fetchSafeRemoteUrl(
     if (new URL(nextUrl).origin !== new URL(safe.url).origin && hasSensitiveRedirectHeaders(init)) {
       throw new Error(`${label} вернул cross-origin redirect для запроса с sensitive headers.`);
     }
-    return fetchSafeRemoteUrl(nextUrl, init, label, redirectsLeft - 1);
+    return fetchSafeRemoteUrl(nextUrl, init, label, redirectsLeft - 1, validateUrl);
   }
   return response;
 }
@@ -1023,10 +1071,26 @@ async function pollVisolixDownload(progressUrl: string): Promise<string> {
 async function downloadRemoteFile(
   downloadUrl: string,
   destinationPath: string,
-  providerLabel: string
+  providerLabel: string,
+  options: {
+    signal?: AbortSignal | null;
+    headers?: HeadersInit;
+    validateUrl?: (url: URL) => void;
+  } = {}
 ): Promise<number> {
-  const response = await fetchSafeRemoteUrl(downloadUrl, { cache: "no-store" }, providerLabel);
+  const response = await fetchSafeRemoteUrl(
+    downloadUrl,
+    {
+      cache: "no-store",
+      headers: options.headers,
+      signal: options.signal ?? undefined
+    },
+    providerLabel,
+    MAX_SAFE_REMOTE_REDIRECTS,
+    options.validateUrl
+  );
   if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
     throw new Error(`Не удалось скачать файл из ${providerLabel} (HTTP ${response.status}).`);
   }
   if (!response.body) {
@@ -1034,6 +1098,7 @@ async function downloadRemoteFile(
   }
   const contentLength = Number.parseInt(response.headers.get("content-length") ?? "", 10);
   if (Number.isFinite(contentLength) && contentLength > MAX_REMOTE_SOURCE_DOWNLOAD_BYTES) {
+    await response.body.cancel().catch(() => undefined);
     throw new Error(`${providerLabel} вернул слишком большой файл.`);
   }
 
@@ -1044,6 +1109,266 @@ async function downloadRemoteFile(
   );
   const stat = await fs.stat(destinationPath);
   return stat.size;
+}
+
+async function runWithTimeout<T>(input: {
+  timeoutMs: number;
+  timeoutMessage: string;
+  signal?: AbortSignal | null;
+  task: (signal: AbortSignal) => Promise<T>;
+}): Promise<T> {
+  const controller = new AbortController();
+  const signal = input.signal
+    ? AbortSignal.any([input.signal, controller.signal])
+    : controller.signal;
+  const timeout = setTimeout(
+    () => controller.abort(new DOMException(input.timeoutMessage, "TimeoutError")),
+    input.timeoutMs
+  );
+  try {
+    return await input.task(signal);
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(input.timeoutMessage);
+    }
+    if (input.signal?.aborted) {
+      throw input.signal.reason instanceof Error
+        ? input.signal.reason
+        : new DOMException("The operation was aborted.", "AbortError");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function readResponseTextWithinLimit(
+  response: Response,
+  maxBytes: number,
+  label: string,
+  signal: AbortSignal
+): Promise<string> {
+  if (!response.body) {
+    throw new Error(`${label} не вернул тело ответа.`);
+  }
+  const contentLength = Number.parseInt(response.headers.get("content-length") ?? "", 10);
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    await response.body.cancel().catch(() => undefined);
+    throw new Error(`${label} вернул слишком большой HTML-ответ.`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let output = "";
+  try {
+    while (true) {
+      if (signal.aborted) {
+        throw signal.reason instanceof Error
+          ? signal.reason
+          : new DOMException("The operation was aborted.", "AbortError");
+      }
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        throw new Error(`${label} вернул слишком большой HTML-ответ.`);
+      }
+      output += decoder.decode(value, { stream: true });
+    }
+    output += decoder.decode();
+    return output;
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function getInstagramReelShortcode(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(normalizeSupportedUrl(rawUrl));
+    if (parsed.protocol !== "https:" || parsed.hostname.toLowerCase() !== "www.instagram.com") {
+      return null;
+    }
+    const match = parsed.pathname.match(/^\/reel\/([A-Za-z0-9_-]+)\/?$/i);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function decodeInstagramEmbedEscapedString(rawValue: string): string {
+  let value = rawValue;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const decoded = JSON.parse(`"${value}"`) as unknown;
+      if (typeof decoded !== "string" || decoded === value) {
+        break;
+      }
+      value = decoded;
+    } catch {
+      break;
+    }
+  }
+  return value.replaceAll("&amp;", "&");
+}
+
+export function extractInstagramEmbedVideoUrl(
+  html: string,
+  expectedShortcode: string
+): string | null {
+  const normalizedHtml = html
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#34;", '"')
+    .replaceAll("&#x22;", '"');
+  const shortcodePattern = /\\?"shortcode\\?"\s*:\s*\\?"([A-Za-z0-9_-]+)(?=\\?")/gi;
+  const shortcodes = Array.from(
+    normalizedHtml.matchAll(shortcodePattern),
+    (match) => match[1] ?? ""
+  ).filter(Boolean);
+  if (
+    !expectedShortcode ||
+    shortcodes.length === 0 ||
+    shortcodes.some((shortcode) => shortcode !== expectedShortcode)
+  ) {
+    return null;
+  }
+
+  const pattern = /\\?"video_url\\?"\s*:\s*\\?"(https:[^"<>]{1,16384}?)(?=\\?")/gi;
+  const candidates: string[] = [];
+
+  for (const match of normalizedHtml.matchAll(pattern)) {
+    const decoded = decodeInstagramEmbedEscapedString(match[1] ?? "").trim();
+    if (!decoded) {
+      continue;
+    }
+    try {
+      const parsed = new URL(decoded);
+      if (parsed.protocol === "https:") {
+        candidates.push(parsed.toString());
+      }
+    } catch {
+      // Continue in case another media record contains a valid URL.
+    }
+  }
+  return candidates.length === 1 ? candidates[0] ?? null : null;
+}
+
+function validateInstagramEmbedPageUrl(url: URL, expectedShortcode: string): void {
+  if (
+    url.protocol !== "https:" ||
+    url.port !== "" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.hostname.toLowerCase() !== "www.instagram.com" ||
+    url.pathname !== `/reel/${expectedShortcode}/embed/`
+  ) {
+    throw new Error("Instagram embed redirect не совпал с запрошенным Reel.");
+  }
+}
+
+function validateInstagramMediaUrl(url: URL): void {
+  const hostname = url.hostname.toLowerCase();
+  const trustedHost =
+    hostname === "cdninstagram.com" ||
+    hostname.endsWith(".cdninstagram.com") ||
+    hostname === "fbcdn.net" ||
+    hostname.endsWith(".fbcdn.net");
+  if (
+    url.protocol !== "https:" ||
+    url.port !== "" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    !trustedHost
+  ) {
+    throw new Error("Instagram embed вернул media URL вне доверенного Instagram CDN.");
+  }
+}
+
+export async function downloadLocalInstagramReel(
+  rawUrl: string,
+  tmpDir: string,
+  options: { signal?: AbortSignal | null } = {}
+): Promise<LocalInstagramReelDownload | null> {
+  const shortcode = getInstagramReelShortcode(rawUrl);
+  if (!shortcode) {
+    return null;
+  }
+  if (testInstagramEmbedDownloader) {
+    return testInstagramEmbedDownloader(rawUrl, tmpDir);
+  }
+
+  const embedUrl = `https://www.instagram.com/reel/${encodeURIComponent(shortcode)}/embed/`;
+  const headers = {
+    Accept: "text/html,application/xhtml+xml",
+    "Accept-Language": "en-US,en;q=0.9",
+    "User-Agent": INSTAGRAM_EMBED_USER_AGENT
+  };
+  const html = await runWithTimeout({
+    timeoutMs: INSTAGRAM_EMBED_FETCH_TIMEOUT_MS,
+    timeoutMessage: "Instagram embed не ответил вовремя.",
+    signal: options.signal,
+    task: async (signal) => {
+      const response = await fetchSafeRemoteUrl(
+        embedUrl,
+        { cache: "no-store", headers, signal },
+        "Instagram embed",
+        MAX_SAFE_REMOTE_REDIRECTS,
+        (url) => validateInstagramEmbedPageUrl(url, shortcode)
+      );
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined);
+        throw new Error(`Instagram embed вернул HTTP ${response.status}.`);
+      }
+      return readResponseTextWithinLimit(
+        response,
+        MAX_INSTAGRAM_EMBED_HTML_BYTES,
+        "Instagram embed",
+        signal
+      );
+    }
+  });
+
+  const mediaUrl = extractInstagramEmbedVideoUrl(html, shortcode);
+  if (!mediaUrl) {
+    throw new Error("Instagram embed не вернул video_url для указанного публичного Reel.");
+  }
+  validateInstagramMediaUrl(new URL(mediaUrl));
+
+  const targetPath = path.join(tmpDir, "source.mp4");
+  try {
+    const videoSizeBytes = await runWithTimeout({
+      timeoutMs: INSTAGRAM_EMBED_MEDIA_TIMEOUT_MS,
+      timeoutMessage: "Скачивание Instagram Reel не завершилось вовремя.",
+      signal: options.signal,
+      task: (signal) =>
+        downloadRemoteFile(mediaUrl, targetPath, "Instagram embed media", {
+          signal,
+          headers: {
+            Referer: embedUrl,
+            "User-Agent": INSTAGRAM_EMBED_USER_AGENT
+          },
+          validateUrl: validateInstagramMediaUrl
+        })
+    });
+    const audioIssue = await findDownloadedMediaAudioIssue(targetPath, {
+      providerLabel: "Instagram embed",
+      requireSuccessfulProbe: true
+    });
+    if (audioIssue) {
+      throw new Error(audioIssue);
+    }
+    return {
+      provider: "instagramEmbed",
+      filePath: targetPath,
+      fileName: sanitizeOutputName(`instagram-${shortcode}`, "instagram-source"),
+      videoSizeBytes
+    };
+  } catch (error) {
+    await fs.rm(targetPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
 }
 
 function sanitizeOutputName(rawName: string | null, fallback: string): string {
@@ -1081,6 +1406,7 @@ async function downloadViaYtDlp(input: {
   titleHint?: string | null;
   durationHint?: number | null;
   errorContextUrl?: string | null;
+  signal?: AbortSignal | null;
 }): Promise<Omit<SourceDownloadCoreResult, "provider">> {
   const ytDlpPath = await resolveYtDlpExecutable();
   if (!ytDlpPath) {
@@ -1111,7 +1437,8 @@ async function downloadViaYtDlp(input: {
     await runWithHostedSubprocessGate(() =>
       execFileAsync(ytDlpPath, args, {
         timeout: 5 * 60 * 1000,
-        maxBuffer: 1024 * 1024 * 16
+        maxBuffer: 1024 * 1024 * 16,
+        signal: input.signal ?? undefined
       })
     );
   } catch (error) {
@@ -1154,12 +1481,17 @@ async function downloadViaYtDlp(input: {
   };
 }
 
-async function tryYtDlpDownload(rawUrl: string, tmpDir: string): Promise<SourceDownloadCoreResult> {
+async function tryYtDlpDownload(
+  rawUrl: string,
+  tmpDir: string,
+  options: SourceDownloadOptions = {}
+): Promise<SourceDownloadCoreResult> {
   const sourceUrl = normalizeSupportedUrl(rawUrl);
   const downloaded = await downloadViaYtDlp({
     sourceUrl,
     tmpDir,
-    errorContextUrl: sourceUrl
+    errorContextUrl: sourceUrl,
+    signal: options.signal
   });
 
   return {
@@ -1170,7 +1502,7 @@ async function tryYtDlpDownload(rawUrl: string, tmpDir: string): Promise<SourceD
 
 export async function findDownloadedMediaAudioIssue(
   filePath: string,
-  options: { providerLabel?: string } = {}
+  options: { providerLabel?: string; requireSuccessfulProbe?: boolean } = {}
 ): Promise<string | null> {
   const providerLabel = options.providerLabel?.trim() || "Source provider";
   try {
@@ -1180,7 +1512,7 @@ export async function findDownloadedMediaAudioIssue(
         "-v",
         "error",
         "-show_entries",
-        "stream=codec_type,duration:format=duration",
+        "stream=codec_type,duration:format=duration,format_name",
         "-of",
         "json",
         filePath
@@ -1189,9 +1521,19 @@ export async function findDownloadedMediaAudioIssue(
     );
     const parsed = JSON.parse(stdout) as {
       streams?: Array<{ codec_type?: unknown; duration?: unknown }>;
-      format?: { duration?: unknown };
+      format?: { duration?: unknown; format_name?: unknown };
     };
     const streams = Array.isArray(parsed.streams) ? parsed.streams : [];
+    if (options.requireSuccessfulProbe && !streams.some((stream) => stream.codec_type === "video")) {
+      return `${providerLabel} вернул файл без видеодорожки.`;
+    }
+    const formatNames =
+      typeof parsed.format?.format_name === "string"
+        ? parsed.format.format_name.split(",").map((value) => value.trim().toLowerCase())
+        : [];
+    if (options.requireSuccessfulProbe && !formatNames.includes("mp4")) {
+      return `${providerLabel} вернул файл не в MP4-контейнере.`;
+    }
     const audioDurations = streams
       .filter((stream) => stream.codec_type === "audio")
       .map((stream) => stream.duration);
@@ -1214,7 +1556,9 @@ export async function findDownloadedMediaAudioIssue(
     }
     return null;
   } catch {
-    return null;
+    return options.requireSuccessfulProbe
+      ? `${providerLabel} вернул файл, который ffprobe не смог проверить.`
+      : null;
   }
 }
 
@@ -1230,8 +1574,11 @@ export async function downloadSourceMedia(
 
   const visolixDownloader = testVisolixDownloader ?? tryVisolixDownload;
   const ytDlpDownloader = testYtDlpDownloader ?? tryYtDlpDownload;
-  const hostedFallbackSkippedReason = buildHostedFallbackSkippedReason(sourceUrl);
-  const shouldAttemptVisolix = Boolean(hostedFallbackSkippedReason) || isVisolixConfigured();
+  const hostedFallbackSkippedReason = options.skipVisolix
+    ? null
+    : buildHostedFallbackSkippedReason(sourceUrl);
+  const shouldAttemptVisolix =
+    !options.skipVisolix && (Boolean(hostedFallbackSkippedReason) || isVisolixConfigured());
   const shouldSkipHostedFallback = Boolean(hostedFallbackSkippedReason);
   let summary = createProviderErrorSummary({
     primaryProvider: shouldAttemptVisolix ? "visolix" : "ytDlp",
@@ -1241,7 +1588,7 @@ export async function downloadSourceMedia(
 
   if (shouldAttemptVisolix) {
     try {
-      const downloaded = await visolixDownloader(sourceUrl, tmpDir);
+      const downloaded = await visolixDownloader(sourceUrl, tmpDir, options);
       const audioIssue = await findDownloadedMediaAudioIssue(downloaded.filePath, {
         providerLabel: "Visolix"
       });
@@ -1296,7 +1643,7 @@ export async function downloadSourceMedia(
         });
         await sleep(retryDelayMs);
         try {
-          const downloaded = await visolixDownloader(sourceUrl, tmpDir);
+          const downloaded = await visolixDownloader(sourceUrl, tmpDir, options);
           return {
             ...downloaded,
             primaryProviderError: null,
@@ -1337,7 +1684,7 @@ export async function downloadSourceMedia(
   }
 
   try {
-    const downloaded = await ytDlpDownloader(sourceUrl, tmpDir);
+    const downloaded = await ytDlpDownloader(sourceUrl, tmpDir, options);
     return {
       ...downloaded,
       primaryProviderError,

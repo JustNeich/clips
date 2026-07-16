@@ -45,7 +45,8 @@ import {
 } from "./team-store";
 import {
   fetchOptionalYtDlpInfo,
-  SourceDownloadError
+  SourceDownloadError,
+  type SourceDownloadProvider
 } from "./source-acquisition";
 import { ensureSourceMediaCached } from "./source-media-cache";
 import {
@@ -529,7 +530,7 @@ export async function downloadVideoAndMetadata(
   videoSizeBytes: number;
   sourceCacheKey: string;
   sourceCacheState: "hit" | "miss" | "wait";
-  downloadProvider: "visolix" | "ytDlp" | "upload";
+  downloadProvider: SourceDownloadProvider;
   primaryProviderError: string | null;
   downloadFallbackUsed: boolean;
   providerErrorSummary: Stage2Response["source"]["providerErrorSummary"];

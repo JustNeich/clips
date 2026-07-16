@@ -219,13 +219,16 @@ test("downloadSourceVideo keeps local acquisition when host cache is cold", { co
   const previousSessionToken = process.env.STAGE3_WORKER_SESSION_TOKEN;
   const previousCurrentJobId = process.env.STAGE3_WORKER_CURRENT_JOB_ID;
   const previousAppDataDir = process.env.APP_DATA_DIR;
+  const previousVisolixApiKey = process.env.VISOLIX_API_KEY;
   const originalFetch = globalThis.fetch;
   const url = "https://www.instagram.com/reel/host-cache-cold/";
   let localDownloadCalls = 0;
+  let visolixCalls = 0;
 
   process.env.APP_DATA_DIR = appDataDir;
   process.env.STAGE3_WORKER_SERVER_ORIGIN = "https://clips.example.com";
   process.env.STAGE3_WORKER_SESSION_TOKEN = "worker-session";
+  process.env.VISOLIX_API_KEY = "test-visolix-key";
 
   globalThis.fetch = (async (input, init) => {
     assert.equal(String(input), "https://clips.example.com/api/stage3/worker/source");
@@ -235,6 +238,11 @@ test("downloadSourceVideo keeps local acquisition when host cache is cold", { co
   }) as typeof fetch;
 
   setSourceAcquisitionDownloadersForTests({
+    instagramEmbed: async () => null,
+    visolix: async () => {
+      visolixCalls += 1;
+      throw new Error("paired local worker must bypass Visolix");
+    },
     ytDlp: async (_rawUrl, tmpDir) => {
       localDownloadCalls += 1;
       const filePath = path.join(tmpDir, "source.mp4");
@@ -257,6 +265,7 @@ test("downloadSourceVideo keeps local acquisition when host cache is cold", { co
     assert.equal(downloaded.fileName, "local-source");
     assert.equal(await fs.readFile(downloaded.filePath, "utf-8"), "local-video");
     assert.equal(localDownloadCalls, 1);
+    assert.equal(visolixCalls, 0);
   } finally {
     setSourceAcquisitionDownloadersForTests(null);
     globalThis.fetch = originalFetch;
@@ -275,8 +284,191 @@ test("downloadSourceVideo keeps local acquisition when host cache is cold", { co
     } else {
       process.env.STAGE3_WORKER_SESSION_TOKEN = previousSessionToken;
     }
+    if (previousVisolixApiKey === undefined) {
+      delete process.env.VISOLIX_API_KEY;
+    } else {
+      process.env.VISOLIX_API_KEY = previousVisolixApiKey;
+    }
     await fs.rm(tmpDir, { recursive: true, force: true });
     await fs.rm(appDataDir, { recursive: true, force: true });
+  }
+});
+
+test("source-download uses exact local Instagram download before yt-dlp", { concurrency: false }, async () => {
+  const previousServerOrigin = process.env.STAGE3_WORKER_SERVER_ORIGIN;
+  const previousSessionToken = process.env.STAGE3_WORKER_SESSION_TOKEN;
+  const originalFetch = globalThis.fetch;
+  const url = "https://www.instagram.com/reel/local-embed-success/";
+  let ytDlpCalls = 0;
+
+  process.env.STAGE3_WORKER_SERVER_ORIGIN = "https://clips.example.com";
+  process.env.STAGE3_WORKER_SESSION_TOKEN = "worker-session";
+  globalThis.fetch = (async (_input, init) => {
+    assert.equal(init?.body, JSON.stringify({ url, cacheOnly: true }));
+    return Response.json({ error: "Source media ещё не готов в cache." }, { status: 404 });
+  }) as typeof fetch;
+  setSourceAcquisitionDownloadersForTests({
+    instagramEmbed: async (_rawUrl, tmpDir) => {
+      const filePath = path.join(tmpDir, "source.mp4");
+      await fs.writeFile(filePath, "instagram-local-video");
+      return {
+        provider: "instagramEmbed",
+        filePath,
+        fileName: "instagram-local-embed-success",
+        videoSizeBytes: 21
+      };
+    },
+    ytDlp: async () => {
+      ytDlpCalls += 1;
+      throw new Error("yt-dlp must not run after the local Instagram download succeeds");
+    }
+  });
+
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-instagram-local-success-"));
+  try {
+    const downloaded = await downloadSourceVideo(url, tmpDir, {
+      allowWorkerHostFallback: false
+    });
+    assert.equal(downloaded.fileName, "instagram-local-embed-success");
+    assert.equal(await fs.readFile(downloaded.filePath, "utf-8"), "instagram-local-video");
+    assert.equal(ytDlpCalls, 0);
+  } finally {
+    setSourceAcquisitionDownloadersForTests(null);
+    globalThis.fetch = originalFetch;
+    if (previousServerOrigin === undefined) {
+      delete process.env.STAGE3_WORKER_SERVER_ORIGIN;
+    } else {
+      process.env.STAGE3_WORKER_SERVER_ORIGIN = previousServerOrigin;
+    }
+    if (previousSessionToken === undefined) {
+      delete process.env.STAGE3_WORKER_SESSION_TOKEN;
+    } else {
+      process.env.STAGE3_WORKER_SESSION_TOKEN = previousSessionToken;
+    }
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("source-download fails locally without a recursive host request", { concurrency: false }, async () => {
+  const previousServerOrigin = process.env.STAGE3_WORKER_SERVER_ORIGIN;
+  const previousSessionToken = process.env.STAGE3_WORKER_SESSION_TOKEN;
+  const previousCurrentJobId = process.env.STAGE3_WORKER_CURRENT_JOB_ID;
+  const originalFetch = globalThis.fetch;
+  const url = "https://www.instagram.com/reel/local-download-failure/";
+  const requests: unknown[] = [];
+
+  process.env.STAGE3_WORKER_SERVER_ORIGIN = "https://clips.example.com";
+  process.env.STAGE3_WORKER_SESSION_TOKEN = "worker-session";
+  process.env.STAGE3_WORKER_CURRENT_JOB_ID = "source-download-job";
+  globalThis.fetch = (async (_input, init) => {
+    requests.push(JSON.parse(String(init?.body ?? "{}")));
+    return Response.json({ error: "Source media ещё не готов в cache." }, { status: 404 });
+  }) as typeof fetch;
+  setSourceAcquisitionDownloadersForTests({
+    instagramEmbed: async () => {
+      throw new Error("embed unavailable");
+    },
+    ytDlp: async () => {
+      throw new Error("Instagram authentication required");
+    }
+  });
+
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-source-no-recursion-"));
+  try {
+    await assert.rejects(
+      () =>
+        downloadSourceVideo(url, tmpDir, {
+          allowWorkerHostFallback: false
+        }),
+      /embed unavailable.*Instagram authentication required/
+    );
+    assert.deepEqual(requests, [
+      {
+        url,
+        jobId: "source-download-job",
+        cacheOnly: true
+      }
+    ]);
+  } finally {
+    setSourceAcquisitionDownloadersForTests(null);
+    globalThis.fetch = originalFetch;
+    if (previousServerOrigin === undefined) {
+      delete process.env.STAGE3_WORKER_SERVER_ORIGIN;
+    } else {
+      process.env.STAGE3_WORKER_SERVER_ORIGIN = previousServerOrigin;
+    }
+    if (previousSessionToken === undefined) {
+      delete process.env.STAGE3_WORKER_SESSION_TOKEN;
+    } else {
+      process.env.STAGE3_WORKER_SESSION_TOKEN = previousSessionToken;
+    }
+    if (previousCurrentJobId === undefined) {
+      delete process.env.STAGE3_WORKER_CURRENT_JOB_ID;
+    } else {
+      process.env.STAGE3_WORKER_CURRENT_JOB_ID = previousCurrentJobId;
+    }
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("source-download abort stops local acquisition without a recursive host request", { concurrency: false }, async () => {
+  const previousServerOrigin = process.env.STAGE3_WORKER_SERVER_ORIGIN;
+  const previousSessionToken = process.env.STAGE3_WORKER_SESSION_TOKEN;
+  const originalFetch = globalThis.fetch;
+  const url = "https://www.instagram.com/reel/local-download-abort/";
+  const requests: unknown[] = [];
+  let markYtDlpStarted: (() => void) | null = null;
+  const ytDlpStarted = new Promise<void>((resolve) => {
+    markYtDlpStarted = resolve;
+  });
+
+  process.env.STAGE3_WORKER_SERVER_ORIGIN = "https://clips.example.com";
+  process.env.STAGE3_WORKER_SESSION_TOKEN = "worker-session";
+  globalThis.fetch = (async (_input, init) => {
+    requests.push(JSON.parse(String(init?.body ?? "{}")));
+    return Response.json({ error: "Source media ещё не готов в cache." }, { status: 404 });
+  }) as typeof fetch;
+  setSourceAcquisitionDownloadersForTests({
+    instagramEmbed: async () => null,
+    ytDlp: async (_rawUrl, _tmpDir, options) => {
+      const signal = options?.signal;
+      assert.ok(signal);
+      markYtDlpStarted?.();
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener(
+          "abort",
+          () => reject(signal.reason instanceof Error ? signal.reason : new Error("aborted")),
+          { once: true }
+        );
+      });
+    }
+  });
+
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-source-abort-"));
+  const controller = new AbortController();
+  try {
+    const pending = downloadSourceVideo(url, tmpDir, {
+      allowWorkerHostFallback: false,
+      signal: controller.signal
+    });
+    await ytDlpStarted;
+    controller.abort(new Error("owner aborted source download"));
+    await assert.rejects(pending, /owner aborted source download/);
+    assert.deepEqual(requests, [{ url, cacheOnly: true }]);
+  } finally {
+    setSourceAcquisitionDownloadersForTests(null);
+    globalThis.fetch = originalFetch;
+    if (previousServerOrigin === undefined) {
+      delete process.env.STAGE3_WORKER_SERVER_ORIGIN;
+    } else {
+      process.env.STAGE3_WORKER_SERVER_ORIGIN = previousServerOrigin;
+    }
+    if (previousSessionToken === undefined) {
+      delete process.env.STAGE3_WORKER_SESSION_TOKEN;
+    } else {
+      process.env.STAGE3_WORKER_SESSION_TOKEN = previousSessionToken;
+    }
+    await fs.rm(tmpDir, { recursive: true, force: true });
   }
 });
 

@@ -123,7 +123,13 @@ function resolveSourcePreview(rawUrl: string | null, channelId?: string | null):
 }
 
 function formatProviderLabel(provider: SourceProviderId | null | undefined): string {
-  return provider === "visolix" ? "Visolix" : provider === "ytDlp" ? "yt-dlp" : "не задан";
+  if (provider === "visolix") {
+    return "Visolix";
+  }
+  if (provider === "ytDlp") {
+    return "yt-dlp";
+  }
+  return provider === "instagramEmbed" ? "Instagram embed" : "не задан";
 }
 
 function formatRetryCountdown(remainingMs: number): string {
