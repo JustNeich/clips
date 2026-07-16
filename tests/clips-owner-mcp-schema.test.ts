@@ -2,12 +2,59 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  clipsOwnerRenderPreviewInputSchema,
   clipsOwnerRenderVideoInputSchema,
   clipsOwnerRunVideoPipelineInputSchema,
   clipsOwnerUpdateChannelInputSchema,
   clipsOwnerUpdateChannelPublishSettingsInputSchema,
   clipsOwnerUploadChannelAssetInputSchema
 } from "../scripts/clips-owner-mcp";
+
+test("Stage 3 owner schemas reject pixel sourceCrop before enqueue", () => {
+  const pixelCrop = {
+    enabled: true,
+    x: 0,
+    y: 465,
+    width: 720,
+    height: 552
+  };
+  const preview = clipsOwnerRenderPreviewInputSchema.safeParse({
+    channelId: "channel-1",
+    sourceUrl: "https://www.instagram.com/reel/example/",
+    snapshot: { renderPlan: { sourceCrop: pixelCrop } }
+  });
+  const render = clipsOwnerRenderVideoInputSchema.safeParse({
+    channelId: "channel-1",
+    chatId: "chat-1",
+    snapshot: { renderPlan: { sourceCrop: pixelCrop } }
+  });
+
+  assert.equal(preview.success, false);
+  assert.equal(render.success, false);
+});
+
+test("Stage 3 owner schemas accept bounded normalized sourceCrop", () => {
+  const sourceCrop = {
+    enabled: true,
+    x: 0.05,
+    y: 0.2,
+    width: 0.9,
+    height: 0.65
+  };
+  const preview = clipsOwnerRenderPreviewInputSchema.safeParse({
+    channelId: "channel-1",
+    sourceUrl: "https://www.instagram.com/reel/example/",
+    snapshot: { renderPlan: { sourceCrop } }
+  });
+  const render = clipsOwnerRenderVideoInputSchema.safeParse({
+    channelId: "channel-1",
+    chatId: "chat-1",
+    snapshot: { renderPlan: { sourceCrop } }
+  });
+
+  assert.equal(preview.success, true);
+  assert.equal(render.success, true);
+});
 
 test("clips_owner_render_video schema preserves caller snapshot media controls", () => {
   const parsed = clipsOwnerRenderVideoInputSchema.parse({

@@ -254,6 +254,46 @@ function hasEditorSourceCrop(snapshot: Stage3SnapshotPatch | null): boolean {
   return Boolean(crop && crop.enabled === true && crop.width > 0 && crop.height > 0);
 }
 
+function assertNormalizedSourceCrop(snapshot: Stage3SnapshotPatch | null | undefined): void {
+  const crop = snapshot?.renderPlan?.sourceCrop;
+  if (!crop || crop.enabled === false) {
+    return;
+  }
+  const entries = [
+    ["x", crop.x],
+    ["y", crop.y],
+    ["width", crop.width],
+    ["height", crop.height]
+  ] as const;
+  const invalidEntry = entries.find(
+    ([key, value]) =>
+      typeof value !== "number" ||
+      !Number.isFinite(value) ||
+      value < 0 ||
+      value > 1 ||
+      ((key === "width" || key === "height") && value <= 0)
+  );
+  const extendsPastSource =
+    !invalidEntry && (crop.x + crop.width > 1 || crop.y + crop.height > 1);
+  if (!invalidEntry && !extendsPastSource) {
+    return;
+  }
+  const field = invalidEntry?.[0] ?? (crop.x + crop.width > 1 ? "width" : "height");
+  throw new Response(
+    JSON.stringify({
+      error: "source_crop_must_be_normalized",
+      code: "source_crop_must_be_normalized",
+      field: `snapshot.renderPlan.sourceCrop.${field}`,
+      message:
+        "sourceCrop uses normalized fractions from 0 to 1, not source pixels; x + width and y + height must stay within 1."
+    }),
+    {
+      status: 400,
+      headers: { "content-type": "application/json" }
+    }
+  );
+}
+
 function hasApprovedVisualGate(snapshot: Stage3SnapshotPatch | null): boolean {
   const approval = snapshot?.zoroKingApproval;
   return Boolean(
@@ -936,6 +976,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       input.snapshot && typeof input.snapshot === "object"
         ? (input.snapshot as Partial<Stage3StateSnapshot>)
         : undefined;
+    assertNormalizedSourceCrop(snapshot ?? null);
     const normalizedBody = {
       channelId: channel.id,
       sourceUrl,
@@ -1222,6 +1263,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
         callerSnapshot
       ) ??
       (managedTemplateState ? { managedTemplateState } : null);
+    assertNormalizedSourceCrop(resolvedSnapshot);
     const visualGateRequired = requiresChannelStoryVisualGate({
       templateId: effectiveTemplateId,
       managedTemplateState

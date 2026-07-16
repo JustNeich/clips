@@ -56,6 +56,63 @@ const channelRefSchema = {
 
 const looseObjectSchema = z.object({}).passthrough();
 
+const normalizedSourceCropSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    x: z.number().min(0).max(1).optional(),
+    y: z.number().min(0).max(1).optional(),
+    width: z.number().positive().max(1).optional(),
+    height: z.number().positive().max(1).optional()
+  })
+  .passthrough()
+  .superRefine((crop, context) => {
+    if (crop.enabled === false) {
+      return;
+    }
+    for (const key of ["x", "y", "width", "height"] as const) {
+      if (crop[key] === undefined) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} is required when sourceCrop is enabled.`
+        });
+      }
+    }
+    if (
+      crop.x !== undefined &&
+      crop.width !== undefined &&
+      crop.x + crop.width > 1
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["width"],
+        message: "sourceCrop x + width must not exceed 1."
+      });
+    }
+    if (
+      crop.y !== undefined &&
+      crop.height !== undefined &&
+      crop.y + crop.height > 1
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["height"],
+        message: "sourceCrop y + height must not exceed 1."
+      });
+    }
+  });
+
+const stage3OwnerSnapshotSchema = z
+  .object({
+    renderPlan: z
+      .object({
+        sourceCrop: normalizedSourceCropSchema.optional()
+      })
+      .passthrough()
+      .optional()
+  })
+  .passthrough();
+
 export const clipsOwnerUpdateChannelInputSchema = z.object({
   ...channelRefSchema,
   name: z.string().optional(),
@@ -102,7 +159,14 @@ export const clipsOwnerRenderVideoInputSchema = z.object({
   templateId: z.string().optional(),
   sourceDurationSec: z.number().positive().optional(),
   publishAfterRender: z.boolean().optional(),
-  snapshot: looseObjectSchema.optional()
+  snapshot: stage3OwnerSnapshotSchema.optional()
+});
+
+export const clipsOwnerRenderPreviewInputSchema = z.object({
+  ...channelRefSchema,
+  sourceUrl: z.string(),
+  chatId: z.string().optional(),
+  snapshot: stage3OwnerSnapshotSchema.optional()
 });
 
 export const clipsOwnerRunVideoPipelineInputSchema = z
@@ -325,7 +389,7 @@ server.registerTool(
   {
     title: "Render Clips video",
     description:
-      "Enqueue one Stage 3 render. Oracle callers should pass a stable workItemId for the video and increment revision only for a repaired version. Returns the render job, a poll url, and an authenticated download url. Pass sourceDurationSec (seconds) to render the FULL source (e.g. a 53.6s talking-head) instead of the channel default clip length; omit it to use the channel's default duration.",
+      "Enqueue one Stage 3 render. Oracle callers should pass a stable workItemId for the video and increment revision only for a repaired version. snapshot.renderPlan.sourceCrop uses normalized x/y/width/height fractions from 0 to 1, never source pixels. Returns the render job, a poll url, and an authenticated download url. Pass sourceDurationSec (seconds) to render the FULL source (e.g. a 53.6s talking-head) instead of the channel default clip length; omit it to use the channel's default duration.",
     inputSchema: clipsOwnerRenderVideoInputSchema
   },
   async (input) => ownerControl("clips_owner_render_video", input)
@@ -438,13 +502,8 @@ server.registerTool(
   {
     title: "Render Clips Stage 3 preview frames",
     description:
-      "Enqueue a headless Stage 3 PREVIEW job (full-phone frames, not a final MP4) for the editor/judge loop in a routine. Pass sourceUrl and the editor's snapshot (renderPlan.sourceCrop/videoFit/segments/...). Returns a job id and a poll url; poll /api/stage3/preview/jobs/<id> for the frames. No vision logic runs server-side.",
-    inputSchema: z.object({
-      ...channelRefSchema,
-      sourceUrl: z.string(),
-      chatId: z.string().optional(),
-      snapshot: looseObjectSchema.optional()
-    })
+      "Enqueue a headless Stage 3 PREVIEW job (full-phone frames, not a final MP4) for the editor/judge loop in a routine. Pass sourceUrl and the editor's snapshot (renderPlan.sourceCrop/videoFit/segments/...). sourceCrop x/y/width/height are normalized fractions from 0 to 1, never source pixels; x + width and y + height must stay within 1. Returns a job id and a poll url; poll /api/stage3/preview/jobs/<id> for the frames. No vision logic runs server-side.",
+    inputSchema: clipsOwnerRenderPreviewInputSchema
   },
   async (input) => ownerControl("clips_owner_render_preview", input)
 );

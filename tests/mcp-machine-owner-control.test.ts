@@ -348,6 +348,23 @@ test("clips_owner_render_preview enqueues a headless preview job (or degrades wh
     });
     assert.equal(badUrl.status, 400);
 
+    const pixelCrop = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_render_preview",
+      input: {
+        channelId: channel.id,
+        sourceUrl: chat.url,
+        snapshot: {
+          renderPlan: {
+            sourceCrop: { enabled: true, x: 0, y: 465, width: 720, height: 552 }
+          }
+        }
+      }
+    });
+    assert.equal(pixelCrop.status, 400);
+    const pixelCropBody = (await pixelCrop.json()) as { code?: string; field?: string };
+    assert.equal(pixelCropBody.code, "source_crop_must_be_normalized");
+    assert.equal(pixelCropBody.field, "snapshot.renderPlan.sourceCrop.y");
+
     const preview = await postOwnerControl(machine.secret, {
       tool: "clips_owner_render_preview",
       input: {
@@ -368,6 +385,35 @@ test("clips_owner_render_preview enqueues a headless preview job (or degrades wh
       const body = (await preview.json()) as { error: string };
       assert.equal(body.error, "stage3_worker_unavailable");
     }
+  });
+});
+
+test("owner control blocks pixel sourceCrop before final render enqueue", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "pixel-crop-render-agent",
+      scopes: ["flow:read", "pipeline:run"]
+    });
+
+    const response = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_render_video",
+      input: {
+        channelId: channel.id,
+        chatId: chat.id,
+        snapshot: {
+          renderPlan: {
+            sourceCrop: { enabled: true, x: 0, y: 465, width: 720, height: 552 }
+          }
+        }
+      }
+    });
+
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as { code?: string };
+    assert.equal(body.code, "source_crop_must_be_normalized");
   });
 });
 
