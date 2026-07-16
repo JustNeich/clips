@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   collectStage3WorkerAdmissionReport,
+  countActiveRenderProcesses,
   evaluateStage3WorkerAdmission,
   type Stage3WorkerAdmissionTelemetry
 } from "../lib/stage3-worker-runtime";
@@ -112,4 +113,24 @@ test("collected active render process count blocks pre-claim admission", async (
     assert.equal(report.telemetry.activeRenderProcesses, 2);
     assert.ok(report.reasons.includes("active_render_process_detected"));
   });
+});
+
+test("active render detection ignores unrelated remote-debugging browsers", () => {
+  const processList = [
+    "19129 /Applications/SunBrowser.app/Contents/MacOS/SunBrowser --user-agent=Mozilla/5.0 Chrome/146.0.7680.165 Safari/537.36 --remote-debugging-port=0",
+    "19130 /Applications/SunBrowser Helper (Renderer).app/Contents/MacOS/SunBrowser Helper (Renderer) --type=renderer --user-agent=Mozilla/5.0 Chrome/146.0.7680.165 Safari/537.36 --remote-debugging-port=0"
+  ].join("\n");
+
+  assert.equal(countActiveRenderProcesses(processList), 0);
+});
+
+test("active render detection still counts Remotion media processes", () => {
+  const processList = [
+    "20101 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --headless=new --remote-debugging-port=0",
+    "20102 /opt/homebrew/bin/ffmpeg -i source.mp4 output.mp4",
+    "20103 /opt/homebrew/bin/ffprobe -v error source.mp4",
+    "20104 node /workspace/node_modules/.bin/remotion render composition output.mp4"
+  ].join("\n");
+
+  assert.equal(countActiveRenderProcesses(processList), 4);
 });

@@ -169,7 +169,7 @@ function resolveFiniteEnvNumber(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
-function countActiveRenderProcesses(processList: string): number {
+export function countActiveRenderProcesses(processList: string): number {
   const matchingPids = new Set<string>();
   for (const rawLine of processList.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -181,7 +181,7 @@ function countActiveRenderProcesses(processList: string): number {
     if (!pid || pid === String(process.pid)) continue;
     if (
       /\b(remotion|ffmpeg|ffprobe)\b/i.test(line) ||
-      /\b(chrome|chromium)(?:\.exe)?\b.*(?:--headless|--remote-debugging-port)/i.test(line)
+      /\b(chrome|chromium)(?:\.exe)?\b.*--headless(?:=|\b)/i.test(line)
     ) {
       matchingPids.add(pid);
     }
