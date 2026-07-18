@@ -82,6 +82,29 @@ test("reports an HTTP error without creating a partial artifact", async (t) => {
   assert.deepEqual(await listFilesIfPresent(artifactDir), []);
 });
 
+test("preserves immutable artifact unavailable code from the exact-job endpoint", async (t) => {
+  const artifactDir = await makeArtifactDir(t);
+
+  await assert.rejects(
+    downloadStage3ArtifactToTemp("completed-but-pruned", {
+      appUrl: "https://clips.example",
+      artifactDir,
+      token: "test-machine-secret",
+      fetchImpl: async () =>
+        Response.json(
+          {
+            error: "Completed Stage 3 artifact bytes are no longer available.",
+            code: "immutable_artifact_unavailable"
+          },
+          { status: 410 }
+        )
+    }),
+    /HTTP 410 \[immutable_artifact_unavailable\]/
+  );
+
+  assert.deepEqual(await listFilesIfPresent(artifactDir), []);
+});
+
 test("enforces the streaming size limit and removes the .part file", async (t) => {
   const artifactDir = await makeArtifactDir(t);
   const body = new ReadableStream<Uint8Array>({

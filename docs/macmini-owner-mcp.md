@@ -153,7 +153,10 @@ final render completes, call `clips_owner_download_stage3_artifact` with its
 `jobId`; the MCP process saves the artifact under the operating system's
 temporary `clips-owner-artifacts` directory and returns the local path, byte
 size, SHA-256 hash, and MIME type. The caller cannot choose an arbitrary output
-directory.
+directory. The endpoint resolves the exact requested job even when a newer job
+exists in the same flow. If retention has already removed bytes for an otherwise
+completed job, it returns HTTP 410 with `immutable_artifact_unavailable` instead
+of reporting that the job is unfinished.
 
 Before every worker claim, the selected machine reports CPU/load, free memory,
 active render processes, and active worker jobs. Missing telemetry, high load,

@@ -67,6 +67,21 @@ export type Stage3JobRecord = Stage3JobSummary & {
   attemptGroup: string | null;
 };
 
+export type Stage3JobArtifactDownloadRecord = {
+  id: string;
+  workspaceId: string;
+  kind: Stage3JobKind;
+  storedStatus: Stage3JobStatus;
+  artifact: {
+    id: string;
+    fileName: string;
+    mimeType: string;
+    filePath: string;
+    sizeBytes: number;
+    createdAt: string;
+  } | null;
+};
+
 type EnqueueStage3JobInput = {
   workspaceId: string;
   userId: string;
@@ -429,6 +444,38 @@ function shouldResetTerminalRetryAttempts(
 
 export function getStage3Job(jobId: string): Stage3JobRecord | null {
   return mapJobRow(readJobRow(jobId));
+}
+
+export function getStage3JobArtifactDownloadRecord(
+  jobId: string
+): Stage3JobArtifactDownloadRecord | null {
+  const row = readJobRow(jobId);
+  if (!row) {
+    return null;
+  }
+  const hasArtifactRecord = Boolean(
+    row.artifact_id &&
+    row.artifact_file_name &&
+    row.artifact_mime_type &&
+    row.artifact_file_path &&
+    row.artifact_created_at
+  );
+  return {
+    id: String(row.id),
+    workspaceId: String(row.workspace_id),
+    kind: normalizeJobKind(String(row.kind)),
+    storedStatus: normalizeJobStatus(String(row.status)),
+    artifact: hasArtifactRecord
+      ? {
+          id: String(row.artifact_id),
+          fileName: String(row.artifact_file_name),
+          mimeType: String(row.artifact_mime_type),
+          filePath: String(row.artifact_file_path),
+          sizeBytes: Number(row.artifact_size_bytes) || 0,
+          createdAt: String(row.artifact_created_at)
+        }
+      : null
+  };
 }
 
 export function listCompletedStage3RenderJobsForChat(input: {

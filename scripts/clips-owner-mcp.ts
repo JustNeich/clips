@@ -87,7 +87,12 @@ async function readHttpError(response: Response, token: string): Promise<string>
       typeof (parsed as JsonRecord).error === "string"
         ? String((parsed as JsonRecord).error)
         : raw;
-    return `HTTP ${response.status}: ${redactToken(message, token)}`;
+    const code =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed) &&
+      typeof (parsed as JsonRecord).code === "string"
+        ? String((parsed as JsonRecord).code).trim()
+        : "";
+    return `HTTP ${response.status}${code ? ` [${redactToken(code, token)}]` : ""}: ${redactToken(message, token)}`;
   } catch {
     return `HTTP ${response.status}: ${redactToken(raw, token)}`;
   }
