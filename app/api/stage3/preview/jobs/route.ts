@@ -29,6 +29,15 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const auth = await requireAuth(request);
+    if (body?.sourceBinding) {
+      return Response.json(
+        buildStage3JobErrorBody({
+          message: "completed source binding is available only through the owner-controlled contract.",
+          recoverable: false
+        }),
+        { status: 403 }
+      );
+    }
     const channelId = body?.channelId?.trim() ?? "";
     if (!channelId) {
       return Response.json(

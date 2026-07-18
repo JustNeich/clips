@@ -17,6 +17,7 @@ import { runWithStage3WorkerJobContext } from "../lib/stage3-worker-job-context"
 import { exchangeStage3WorkerPairingToken, issueStage3WorkerPairingToken } from "../lib/stage3-worker-store";
 import { buildUploadedSourceUrl } from "../lib/uploaded-source";
 import { normalizeSupportedUrl } from "../lib/supported-url";
+import type { Stage3CompletedSourceBinding } from "../lib/stage3-source-binding";
 
 const execFileAsync = promisify(execFile);
 
@@ -292,6 +293,87 @@ test("downloadSourceVideo keeps local acquisition when host cache is cold", { co
     }
     await fs.rm(tmpDir, { recursive: true, force: true });
     await fs.rm(appDataDir, { recursive: true, force: true });
+  }
+});
+
+test("completed source binding never falls back to URL acquisition when host media is unavailable", { concurrency: false }, async () => {
+  const previousServerOrigin = process.env.STAGE3_WORKER_SERVER_ORIGIN;
+  const previousSessionToken = process.env.STAGE3_WORKER_SESSION_TOKEN;
+  const previousCurrentJobId = process.env.STAGE3_WORKER_CURRENT_JOB_ID;
+  const originalFetch = globalThis.fetch;
+  const url = "https://www.instagram.com/reel/exact-bound-media/";
+  const sourceBinding: Stage3CompletedSourceBinding = {
+    kind: "completed-source-job",
+    sourceJobId: "source-job-1",
+    sourceCacheKey: "source-cache-1",
+    sourceUrl: url,
+    sourceDurationSec: 17.069,
+    sourceWidth: 720,
+    sourceHeight: 1280,
+    sourceSizeBytes: 123_456,
+    sourceSha256: "a".repeat(64)
+  };
+  let localDownloadCalls = 0;
+
+  process.env.STAGE3_WORKER_SERVER_ORIGIN = "https://clips.example.com";
+  process.env.STAGE3_WORKER_SESSION_TOKEN = "worker-session";
+  process.env.STAGE3_WORKER_CURRENT_JOB_ID = "preview-job-1";
+
+  globalThis.fetch = (async (input, init) => {
+    assert.equal(String(input), "https://clips.example.com/api/stage3/worker/source");
+    assert.equal(
+      init?.body,
+      JSON.stringify({
+        url,
+        jobId: "preview-job-1",
+        sourceBinding,
+        cacheOnly: true
+      })
+    );
+    return Response.json({ error: "Bound media is unavailable." }, { status: 404 });
+  }) as typeof fetch;
+
+  setSourceAcquisitionDownloadersForTests({
+    instagramEmbed: async () => {
+      localDownloadCalls += 1;
+      throw new Error("must not run");
+    },
+    visolix: async () => {
+      localDownloadCalls += 1;
+      throw new Error("must not run");
+    },
+    ytDlp: async () => {
+      localDownloadCalls += 1;
+      throw new Error("must not run");
+    }
+  });
+
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-bound-source-no-fallback-"));
+  try {
+    await assert.rejects(
+      downloadSourceVideo(url, tmpDir, { sourceBinding }),
+      /Bound completed source media is unavailable/
+    );
+    assert.equal(localDownloadCalls, 0);
+  } finally {
+    setSourceAcquisitionDownloadersForTests(null);
+    globalThis.fetch = originalFetch;
+    if (previousServerOrigin === undefined) {
+      delete process.env.STAGE3_WORKER_SERVER_ORIGIN;
+    } else {
+      process.env.STAGE3_WORKER_SERVER_ORIGIN = previousServerOrigin;
+    }
+    if (previousSessionToken === undefined) {
+      delete process.env.STAGE3_WORKER_SESSION_TOKEN;
+    } else {
+      process.env.STAGE3_WORKER_SESSION_TOKEN = previousSessionToken;
+    }
+    if (previousCurrentJobId === undefined) {
+      delete process.env.STAGE3_WORKER_CURRENT_JOB_ID;
+    } else {
+      process.env.STAGE3_WORKER_CURRENT_JOB_ID = previousCurrentJobId;
+    }
+    await fs.rm(tmpDir, { recursive: true, force: true });
   }
 });
 

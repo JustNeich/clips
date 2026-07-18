@@ -116,6 +116,7 @@ Core tools exposed by `clips-owner`:
 - `clips_owner_run_video_pipeline`
 - `clips_owner_render_video`
 - `clips_owner_render_preview`
+- `clips_owner_preflight_completed_source`
 - `clips_owner_list_render_exports`
 - `clips_owner_run_agent_pipeline`
 - `clips_flow_get_source_decomposition`
@@ -126,6 +127,23 @@ template selection, asset selection, and default clip duration.
 auto-queue, upload lead, and subscriber notification defaults. Destructive
 tools keep their exact-id intent checks even when the machine credential has all
 scopes.
+
+When a source URL can resolve to changing platform media, bind Stage 3 to the
+already-completed Stage 1 artifact:
+
+1. Call `clips_owner_preflight_completed_source` with `channelId`, `chatId`, and
+   `completedSource` containing `jobId`, `expectedCacheKey`,
+   `expectedDurationSec`, `expectedWidth`, `expectedHeight`, and optional
+   `expectedSizeBytes`.
+2. The read-only preflight checks workspace/channel/chat ownership and the
+   current host bytes, then returns an immutable SHA-256 binding. It creates no
+   Stage 3 job.
+3. Pass the same `completedSource` object to `clips_owner_render_preview` or
+   `clips_owner_render_video`. The server embeds the verified binding in the
+   worker job. A bound worker request rejects missing or mismatched bytes and
+   never falls back to downloading the URL.
+
+Calls that omit `completedSource` retain the existing URL acquisition behavior.
 
 Before every worker claim, the selected machine reports CPU/load, free memory,
 active render processes, and active worker jobs. Missing telemetry, high load,

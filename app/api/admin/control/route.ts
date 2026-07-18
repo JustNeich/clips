@@ -104,6 +104,12 @@ import { findLatestStage2Event } from "../../../../lib/chat-workflow";
 import { buildDefaultStage3RenderSnapshot } from "../../../../lib/stage3-default-snapshot";
 import { CHANNEL_STORY_TEMPLATE_ID } from "../../../../lib/stage3-template";
 import type { Stage3RenderPlan, Stage3StateSnapshot } from "../../../../app/components/types";
+import {
+  resolveCompletedSourceBindingForEnqueue,
+  Stage3SourceBindingError,
+  type Stage3CompletedSourceBinding,
+  type Stage3CompletedSourceExpectation
+} from "../../../../lib/stage3-source-binding";
 
 export const runtime = "nodejs";
 
@@ -144,6 +150,7 @@ const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
   clips_owner_get_template: "flow:read",
   clips_owner_update_template: "entity:write",
   clips_owner_render_video: "pipeline:run",
+  clips_owner_preflight_completed_source: "flow:read",
   clips_owner_get_stage3_job: "flow:read",
   clips_owner_list_members: "flow:read",
   clips_owner_list_channel_access: "flow:read",
@@ -188,6 +195,70 @@ function resolveObject<T>(value: unknown): T | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as T)
     : undefined;
+}
+
+function resolveCompletedSourceExpectation(value: unknown): Stage3CompletedSourceExpectation | null {
+  const record = resolveObject<Record<string, unknown>>(value);
+  if (!record) {
+    return null;
+  }
+  const jobId = resolveString(record.jobId);
+  const expectedCacheKey = resolveString(record.expectedCacheKey);
+  const expectedDurationSec = resolveNumber(record.expectedDurationSec);
+  const expectedWidth = resolveNumber(record.expectedWidth);
+  const expectedHeight = resolveNumber(record.expectedHeight);
+  const expectedSizeBytes = resolveNumber(record.expectedSizeBytes);
+  if (
+    !jobId ||
+    !expectedCacheKey ||
+    expectedDurationSec === undefined ||
+    expectedDurationSec <= 0 ||
+    expectedWidth === undefined ||
+    expectedWidth <= 0 ||
+    expectedHeight === undefined ||
+    expectedHeight <= 0
+  ) {
+    throw new Response(
+      JSON.stringify({
+        error: "completedSource requires jobId, expectedCacheKey, expectedDurationSec, expectedWidth and expectedHeight."
+      }),
+      { status: 400, headers: { "content-type": "application/json" } }
+    );
+  }
+  return {
+    jobId,
+    expectedCacheKey,
+    expectedDurationSec,
+    expectedWidth: Math.floor(expectedWidth),
+    expectedHeight: Math.floor(expectedHeight),
+    ...(expectedSizeBytes !== undefined && expectedSizeBytes > 0
+      ? { expectedSizeBytes: Math.floor(expectedSizeBytes) }
+      : {})
+  };
+}
+
+async function resolveOwnerCompletedSourceBinding(input: {
+  workspaceId: string;
+  channelId: string;
+  chatId: string;
+  sourceUrl?: string | null;
+  expectation: Stage3CompletedSourceExpectation;
+}): Promise<Stage3CompletedSourceBinding> {
+  try {
+    return await resolveCompletedSourceBindingForEnqueue(input);
+  } catch (error) {
+    if (error instanceof Stage3SourceBindingError) {
+      throw new Response(
+        JSON.stringify({
+          error: error.code,
+          code: error.code,
+          message: error.message
+        }),
+        { status: error.status, headers: { "content-type": "application/json" } }
+      );
+    }
+    throw error;
+  }
 }
 
 function resolveNullableStringField(
@@ -961,17 +1032,76 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     };
   }
 
+  if (tool === "clips_owner_preflight_completed_source") {
+    const channel = await requireChannel(auth.workspace.id, input);
+    const chatId = resolveString(input.chatId);
+    if (!chatId) {
+      throw new Response(JSON.stringify({ error: "chatId is required." }), { status: 400 });
+    }
+    const chat = await getChatById(chatId);
+    if (!chat || chat.workspaceId !== auth.workspace.id) {
+      throw new Response(JSON.stringify({ error: "Chat not found." }), { status: 404 });
+    }
+    if (chat.channelId !== channel.id) {
+      throw new Response(JSON.stringify({ error: "Chat does not belong to the channel." }), { status: 400 });
+    }
+    const expectation = resolveCompletedSourceExpectation(input.completedSource);
+    if (!expectation) {
+      throw new Response(JSON.stringify({ error: "completedSource is required." }), { status: 400 });
+    }
+    const sourceBinding = await resolveOwnerCompletedSourceBinding({
+      workspaceId: auth.workspace.id,
+      channelId: channel.id,
+      chatId: chat.id,
+      sourceUrl: chat.url,
+      expectation
+    });
+    return {
+      ok: true,
+      mode: "completed-source-job",
+      createsJob: false,
+      urlFallbackAllowed: false,
+      channel: summarizeChannel(channel),
+      chatId: chat.id,
+      sourceBinding
+    };
+  }
+
   if (tool === "clips_owner_render_preview") {
     const channel = await requireChannel(auth.workspace.id, input);
+    const chatId = resolveString(input.chatId);
+    const expectation = resolveCompletedSourceExpectation(input.completedSource);
     const rawSourceUrl = resolveString(input.sourceUrl);
-    const sourceUrl = rawSourceUrl ? normalizeSupportedUrl(rawSourceUrl) : "";
+    let sourceBinding: Stage3CompletedSourceBinding | null = null;
+    if (expectation) {
+      if (!chatId) {
+        throw new Response(JSON.stringify({ error: "chatId is required with completedSource." }), {
+          status: 400,
+          headers: { "content-type": "application/json" }
+        });
+      }
+      const chat = await getChatById(chatId);
+      if (!chat || chat.workspaceId !== auth.workspace.id) {
+        throw new Response(JSON.stringify({ error: "Chat not found." }), { status: 404 });
+      }
+      if (chat.channelId !== channel.id) {
+        throw new Response(JSON.stringify({ error: "Chat does not belong to the channel." }), { status: 400 });
+      }
+      sourceBinding = await resolveOwnerCompletedSourceBinding({
+        workspaceId: auth.workspace.id,
+        channelId: channel.id,
+        chatId: chat.id,
+        sourceUrl: rawSourceUrl ?? chat.url,
+        expectation
+      });
+    }
+    const sourceUrl = sourceBinding?.sourceUrl ?? (rawSourceUrl ? normalizeSupportedUrl(rawSourceUrl) : "");
     if (!sourceUrl || !isSupportedUrl(sourceUrl)) {
       throw new Response(JSON.stringify({ error: "A supported sourceUrl is required for a preview." }), {
         status: 400,
         headers: { "content-type": "application/json" }
       });
     }
-    const chatId = resolveString(input.chatId);
     const snapshot =
       input.snapshot && typeof input.snapshot === "object"
         ? (input.snapshot as Partial<Stage3StateSnapshot>)
@@ -982,6 +1112,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       sourceUrl,
       workspaceId: auth.workspace.id,
       ...(chatId ? { chatId } : {}),
+      ...(sourceBinding ? { sourceBinding } : {}),
       ...(snapshot ? { snapshot } : {})
     } satisfies Stage3PreviewRequestBody;
     const executionTarget = resolveStage3Execution(auth.workspace.stage3ExecutionTarget).resolvedTarget;
@@ -1022,13 +1153,17 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       channelId: channel.id,
       chatId: chatId ?? null,
       status: job.status,
-      payload: { executionTarget }
+      payload: {
+        executionTarget,
+        sourceMode: sourceBinding ? "completed-source-job" : "url"
+      }
     });
     return {
       ...buildStage3JobEnvelope(job, job.artifact ? `/api/stage3/preview/jobs/${job.id}?download=1` : null),
       channel: summarizeChannel(channel),
       pollUrl: `/api/stage3/preview/jobs/${job.id}`,
       previewScope: "media-only",
+      sourceMode: sourceBinding ? "completed-source-job" : "url",
       validates: ["source_timing", "source_crop", "video_fit", "donor_wrapper_removal"],
       doesNotValidate: ["channel_card", "author_row", "caption_text", "caption_highlights"]
     };
@@ -1206,6 +1341,32 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     if (!isSupportedUrl(sourceUrl)) {
       throw new Response(JSON.stringify({ error: SUPPORTED_SOURCE_ERROR_MESSAGE }), { status: 400 });
     }
+    const completedSourceExpectation = resolveCompletedSourceExpectation(input.completedSource);
+    const sourceBinding = completedSourceExpectation
+      ? await resolveOwnerCompletedSourceBinding({
+          workspaceId: auth.workspace.id,
+          channelId: channel.id,
+          chatId: chat.id,
+          sourceUrl,
+          expectation: completedSourceExpectation
+        })
+      : null;
+    const requestedSourceDurationSec =
+      resolveNumber(input.sourceDurationSec) ?? sourceBinding?.sourceDurationSec ?? null;
+    if (
+      sourceBinding &&
+      requestedSourceDurationSec !== null &&
+      Math.abs(requestedSourceDurationSec - sourceBinding.sourceDurationSec) > 0.05
+    ) {
+      throw new Response(
+        JSON.stringify({
+          error: "completed_source_duration_mismatch",
+          code: "completed_source_duration_mismatch",
+          message: "sourceDurationSec does not match the completed source binding."
+        }),
+        { status: 409, headers: { "content-type": "application/json" } }
+      );
+    }
     const requestedTemplateId = resolveString(input.templateId);
     // The render target is the explicitly-requested template id when the caller
     // supplies one, otherwise the channel's own template (UI parity: the React
@@ -1248,7 +1409,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
             channel,
             templateId: effectiveTemplateId,
             managedTemplateState,
-            sourceDurationSec: resolveNumber(input.sourceDurationSec) ?? null
+            sourceDurationSec: requestedSourceDurationSec
           })
         : null;
     const reuseApprovedMontage = input.reuseApprovedMontage !== false;
@@ -1353,6 +1514,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
         : {}),
       sourceUrl,
       workspaceId: auth.workspace.id,
+      ...(sourceBinding ? { sourceBinding } : {}),
       publishAfterRender: resolveBoolean(input.publishAfterRender),
       // Carry the effective template id (channel's own when none was requested)
       // so the worker's body-level fallback agrees with the embedded snapshot's
@@ -1385,6 +1547,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       payload: {
         executionTarget,
         publishAfterRender: normalizedBody.publishAfterRender,
+        sourceMode: sourceBinding ? "completed-source-job" : "url",
         templateId: effectiveTemplateId ?? null,
         renderGate: visualGateRequired ? "approved_visual_snapshot" : "not_required",
         reusedApprovedMontageStage3JobId: reusedMontage?.job.id ?? null

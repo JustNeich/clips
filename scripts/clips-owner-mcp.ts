@@ -113,6 +113,15 @@ const stage3OwnerSnapshotSchema = z
   })
   .passthrough();
 
+export const clipsOwnerCompletedSourceExpectationSchema = z.object({
+  jobId: z.string().min(1),
+  expectedCacheKey: z.string().min(1),
+  expectedDurationSec: z.number().positive(),
+  expectedWidth: z.number().int().positive(),
+  expectedHeight: z.number().int().positive(),
+  expectedSizeBytes: z.number().int().positive().optional()
+});
+
 export const clipsOwnerUpdateChannelInputSchema = z.object({
   ...channelRefSchema,
   name: z.string().optional(),
@@ -151,22 +160,61 @@ export const clipsOwnerUpdateChannelPublishSettingsInputSchema = z.object({
   notifySubscribersByDefault: z.boolean().optional()
 });
 
-export const clipsOwnerRenderVideoInputSchema = z.object({
-  ...channelRefSchema,
-  chatId: z.string(),
-  workItemId: z.string().min(1).optional(),
-  revision: z.number().int().min(1).optional(),
-  templateId: z.string().optional(),
-  sourceDurationSec: z.number().positive().optional(),
-  publishAfterRender: z.boolean().optional(),
-  snapshot: stage3OwnerSnapshotSchema.optional()
-});
+export const clipsOwnerRenderVideoInputSchema = z
+  .object({
+    ...channelRefSchema,
+    chatId: z.string(),
+    workItemId: z.string().min(1).optional(),
+    revision: z.number().int().min(1).optional(),
+    templateId: z.string().optional(),
+    sourceDurationSec: z.number().positive().optional(),
+    completedSource: clipsOwnerCompletedSourceExpectationSchema.optional(),
+    publishAfterRender: z.boolean().optional(),
+    snapshot: stage3OwnerSnapshotSchema.optional()
+  })
+  .superRefine((value, context) => {
+    if (
+      value.completedSource &&
+      value.sourceDurationSec !== undefined &&
+      Math.abs(value.sourceDurationSec - value.completedSource.expectedDurationSec) > 0.05
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sourceDurationSec"],
+        message: "sourceDurationSec must match completedSource.expectedDurationSec."
+      });
+    }
+  });
 
-export const clipsOwnerRenderPreviewInputSchema = z.object({
+export const clipsOwnerRenderPreviewInputSchema = z
+  .object({
+    ...channelRefSchema,
+    sourceUrl: z.string().optional(),
+    chatId: z.string().optional(),
+    completedSource: clipsOwnerCompletedSourceExpectationSchema.optional(),
+    snapshot: stage3OwnerSnapshotSchema.optional()
+  })
+  .superRefine((value, context) => {
+    if (!value.sourceUrl?.trim() && !value.completedSource) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sourceUrl"],
+        message: "sourceUrl or completedSource is required."
+      });
+    }
+    if (value.completedSource && !value.chatId?.trim()) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["chatId"],
+        message: "chatId is required with completedSource."
+      });
+    }
+  });
+
+export const clipsOwnerPreflightCompletedSourceInputSchema = z.object({
   ...channelRefSchema,
-  sourceUrl: z.string(),
-  chatId: z.string().optional(),
-  snapshot: stage3OwnerSnapshotSchema.optional()
+  chatId: z.string().min(1),
+  completedSource: clipsOwnerCompletedSourceExpectationSchema
 });
 
 export const clipsOwnerRunVideoPipelineInputSchema = z
@@ -389,10 +437,21 @@ server.registerTool(
   {
     title: "Render Clips video",
     description:
-      "Enqueue one Stage 3 render. Oracle callers should pass a stable workItemId for the video and increment revision only for a repaired version. snapshot.renderPlan.sourceCrop uses normalized x/y/width/height fractions from 0 to 1, never source pixels. Returns the render job, a poll url, and an authenticated download url. Pass sourceDurationSec (seconds) to render the FULL source (e.g. a 53.6s talking-head) instead of the channel default clip length; omit it to use the channel's default duration.",
+      "Enqueue one Stage 3 render. Oracle callers should pass a stable workItemId for the video and increment revision only for a repaired version. snapshot.renderPlan.sourceCrop uses normalized x/y/width/height fractions from 0 to 1, never source pixels. Returns the render job, a poll url, and an authenticated download url. Pass sourceDurationSec (seconds) to render the FULL source (e.g. a 53.6s talking-head) instead of the channel default clip length; omit it to use the channel's default duration. To reuse already-verified Stage 1 media without URL re-resolution, pass completedSource with the completed source job id and expected cache key/duration/dimensions. Bound mode is fail-closed and never falls back to the URL.",
     inputSchema: clipsOwnerRenderVideoInputSchema
   },
   async (input) => ownerControl("clips_owner_render_video", input)
+);
+
+server.registerTool(
+  "clips_owner_preflight_completed_source",
+  {
+    title: "Preflight completed Clips source media",
+    description:
+      "Read-only validation for binding Stage 3 preview/render to an existing completed Stage 1 source job. Verifies workspace/channel/chat ownership plus expected cache key, duration, dimensions and optional size; computes the immutable SHA-256 used by the worker. Creates no Stage 3 job and performs no URL fallback.",
+    inputSchema: clipsOwnerPreflightCompletedSourceInputSchema
+  },
+  async (input) => ownerControl("clips_owner_preflight_completed_source", input)
 );
 
 server.registerTool(
@@ -502,7 +561,7 @@ server.registerTool(
   {
     title: "Render Clips Stage 3 preview frames",
     description:
-      "Enqueue a media-only Stage 3 preview clip for the editor/judge crop loop. This artifact validates source timing, crop, fit and donor-wrapper removal only; it intentionally does not render the channel card, author row, caption text or highlights. Pass sourceUrl and the editor's snapshot (renderPlan.sourceCrop/videoFit/segments/...). sourceCrop x/y/width/height are normalized fractions from 0 to 1, never source pixels; x + width and y + height must stay within 1. Returns a job id and a poll url; poll /api/stage3/preview/jobs/<id> for the clip. Caption and template composition are validated on the final render. No vision logic runs server-side.",
+      "Enqueue a media-only Stage 3 preview clip for the editor/judge crop loop. This artifact validates source timing, crop, fit and donor-wrapper removal only; it intentionally does not render the channel card, author row, caption text or highlights. Pass sourceUrl for the legacy acquisition path, or completedSource plus chatId to reuse an already-verified completed Stage 1 artifact without URL re-resolution. Bound mode validates cache key/duration/dimensions and is fail-closed: it never falls back to the URL. Pass the editor's snapshot (renderPlan.sourceCrop/videoFit/segments/...). sourceCrop x/y/width/height are normalized fractions from 0 to 1, never source pixels; x + width and y + height must stay within 1. Returns a job id and a poll url; poll /api/stage3/preview/jobs/<id> for the clip. Caption and template composition are validated on the final render. No vision logic runs server-side.",
     inputSchema: clipsOwnerRenderPreviewInputSchema
   },
   async (input) => ownerControl("clips_owner_render_preview", input)

@@ -95,6 +95,7 @@ import {
 } from "./stage3-duration";
 import { resolveStage3HostedRenderEngineTimeoutMs } from "./stage3-worker-job-timeout";
 import { getStage3WorkerJobContext } from "./stage3-worker-job-context";
+import type { Stage3CompletedSourceBinding } from "./stage3-source-binding";
 
 export const REMOTION_RENDER_TIMEOUT_MS = 9 * 60_000;
 export const RENDER_WAIT_TIMEOUT_MS = 60_000;
@@ -250,6 +251,7 @@ export type Stage3RenderRequestBody = {
   workItemId?: string;
   revision?: number;
   sourceUrl?: string;
+  sourceBinding?: Stage3CompletedSourceBinding;
   channelId?: string;
   workspaceId?: string;
   chatId?: string;
@@ -1556,7 +1558,8 @@ export async function renderStage3Video(
       const cached = await ensureStage3SourceCached(sourceUrl, {
         signal: options?.signal,
         waitTimeoutMs,
-        allowSourceMediaDirect: isStage3HostedFastRenderProfileEnabled()
+        allowSourceMediaDirect: isStage3HostedFastRenderProfileEnabled(),
+        sourceBinding: body.sourceBinding
       });
       Object.assign(sourceCachePayload, {
         sourceKey: cached.sourceKey,

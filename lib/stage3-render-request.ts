@@ -5,6 +5,7 @@ export type Stage3RenderRequestDedupeInput = {
   workItemId?: string;
   revision?: number;
   sourceUrl?: string;
+  sourceBinding?: unknown;
   channelId?: string;
   chatId?: string;
   publishAfterRender?: boolean;
@@ -69,6 +70,7 @@ function buildContentFingerprint(body: Stage3RenderRequestDedupeInput): string |
         ? Math.floor(body.revision)
         : null,
     sourceUrl,
+    sourceBinding: body.sourceBinding ?? null,
     chatId,
     channelId: cleanString(body.channelId),
     publishAfterRender: body.publishAfterRender === true,

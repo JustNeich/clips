@@ -59,6 +59,7 @@ import {
   resolveCanonicalStage3RenderPolicy
 } from "./stage3-render-plan";
 import { queueThrottledBackgroundTask } from "./throttled-background-task";
+import type { Stage3CompletedSourceBinding } from "./stage3-source-binding";
 
 const PREVIEW_CACHE_ROOT = path.join(getAppDataDir(), "stage3-cache");
 const PREVIEW_CACHE_DIR = path.join(PREVIEW_CACHE_ROOT, "previews");
@@ -71,6 +72,7 @@ export const PREVIEW_WAIT_TIMEOUT_MS = 20_000;
 
 export type Stage3PreviewRequestBody = {
   sourceUrl?: string;
+  sourceBinding?: Stage3CompletedSourceBinding;
   chatId?: string;
   channelId?: string;
   workspaceId?: string;
@@ -142,6 +144,7 @@ function buildPreviewRequestFingerprint(body: Stage3PreviewRequestBody): string 
     stableSerializePreviewValue({
       channelId: body.channelId?.trim() ?? "",
       chatId: body.chatId?.trim() ?? "",
+      sourceBinding: body.sourceBinding ?? null,
       agentPrompt: body.agentPrompt ?? "",
       clipStartSec: body.clipStartSec ?? null,
       clipDurationSec: body.clipDurationSec ?? null,
@@ -475,7 +478,11 @@ export async function buildStage3PreviewDedupeKey(
   );
   const requestFingerprint = buildPreviewRequestFingerprint(body);
   const previewKey = buildPreviewCacheKey({
-    sourceKey: hashKey(sourceUrl),
+    sourceKey: body.sourceBinding
+      ? hashKey(
+          `completed-source-job:${body.sourceBinding.sourceJobId}:${body.sourceBinding.sourceCacheKey}:${body.sourceBinding.sourceSha256}`
+        )
+      : hashKey(sourceUrl),
     clipStartSec,
     renderPlan,
     templateRevision: managedTemplateRuntime.updatedAt,
@@ -501,7 +508,8 @@ export async function prepareStage3Preview(
   await fs.mkdir(PREVIEW_CACHE_DIR, { recursive: true });
   const source = await ensureStage3SourceCached(sourceUrl, {
     signal: options?.signal,
-    waitTimeoutMs
+    waitTimeoutMs,
+    sourceBinding: body.sourceBinding
   });
   const clipDurationSec = sanitizeClipDuration(body.clipDurationSec);
   const snapshot = body.snapshot;

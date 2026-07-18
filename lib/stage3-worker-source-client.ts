@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { getStage3WorkerCurrentJobId } from "./stage3-worker-job-context";
+import type { Stage3CompletedSourceBinding } from "./stage3-source-binding";
 
 export type Stage3WorkerDownloadedSource = {
   filePath: string;
@@ -39,6 +40,7 @@ function decodeStage3SourceFileNameHeader(value: string | null): string | null {
 
 export async function maybeDownloadStage3WorkerSource(params: {
   sourceUrl: string;
+  sourceBinding?: Stage3CompletedSourceBinding;
   tmpDir: string;
   cacheOnly?: boolean;
   signal?: AbortSignal | null;
@@ -58,6 +60,7 @@ export async function maybeDownloadStage3WorkerSource(params: {
     body: JSON.stringify({
       url: params.sourceUrl,
       ...(currentJobId ? { jobId: currentJobId } : {}),
+      ...(params.sourceBinding ? { sourceBinding: params.sourceBinding } : {}),
       ...(params.cacheOnly ? { cacheOnly: true } : {})
     }),
     signal: params.signal ?? undefined

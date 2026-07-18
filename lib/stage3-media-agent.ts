@@ -9,12 +9,12 @@ import {
   downloadSourceMedia,
   type SourceDownloadProvider
 } from "./source-acquisition";
-import { ensureSourceMediaCached } from "./source-media-cache";
+import { ensureSourceMediaCached, getCachedSourceMedia } from "./source-media-cache";
 import { Stage3RenderPlan, Stage3StateSnapshot } from "./stage3-agent";
 import { computeManagedTemplateTextFit } from "./managed-template-runtime";
 import { maybeDownloadStage3WorkerSource } from "./stage3-worker-source-client";
 import { DEFAULT_STAGE3_CLIP_DURATION_SEC, normalizeStage3ClipDurationSec } from "./stage3-duration";
-import { sanitizeFileName } from "./ytdlp";
+import { normalizeSupportedUrl, sanitizeFileName } from "./ytdlp";
 import { buildStage3EditorSession } from "./stage3-editor-core";
 import { repairStage3BlankFlashFrames } from "./stage3-video-flash-guard";
 import { buildStage3SourceCropFfmpegFilter } from "./stage3-source-crop";
@@ -25,6 +25,10 @@ import {
 } from "./stage3-watermark-blur";
 import { isStage3HostedFastRenderProfileEnabled } from "./stage3-render-variation";
 import { isUploadedSourceUrl } from "./uploaded-source";
+import {
+  assertStage3CompletedSourceFile,
+  type Stage3CompletedSourceBinding
+} from "./stage3-source-binding";
 
 const execFileAsync = promisify(execFile);
 
@@ -387,18 +391,58 @@ export function clampClipStart(
 export async function downloadSourceVideo(
   rawUrl: string,
   tmpDir: string,
-  options: { allowWorkerHostFallback?: boolean; signal?: AbortSignal | null } = {}
+  options: {
+    allowWorkerHostFallback?: boolean;
+    sourceBinding?: Stage3CompletedSourceBinding;
+    signal?: AbortSignal | null;
+  } = {}
 ): Promise<{
   filePath: string;
   fileName: string;
   downloadProvider: SourceDownloadProvider | null;
 }> {
+  const sourceBinding = options.sourceBinding;
+  if (sourceBinding && normalizeSupportedUrl(rawUrl) !== sourceBinding.sourceUrl) {
+    throw new Error("Completed source binding URL does not match the requested source URL.");
+  }
+
   if (!isPairedStage3WorkerRuntime()) {
+    if (sourceBinding) {
+      const cached = await getCachedSourceMedia(rawUrl);
+      if (!cached || cached.sourceKey !== sourceBinding.sourceCacheKey) {
+        throw new Error("Bound completed source media is unavailable in the host cache.");
+      }
+      await assertStage3CompletedSourceFile(cached.sourcePath, sourceBinding);
+      return {
+        filePath: cached.sourcePath,
+        fileName: sanitizeFileName(cached.fileName),
+        downloadProvider: cached.downloadProvider
+      };
+    }
     const cached = await ensureSourceMediaCached(rawUrl, { signal: options.signal });
     return {
       filePath: cached.sourcePath,
       fileName: sanitizeFileName(cached.fileName),
       downloadProvider: cached.downloadProvider
+    };
+  }
+
+  if (sourceBinding) {
+    const hosted = await maybeDownloadStage3WorkerSource({
+      sourceUrl: rawUrl,
+      sourceBinding,
+      tmpDir,
+      cacheOnly: true,
+      signal: options.signal
+    });
+    if (!hosted) {
+      throw new Error("Bound completed source media is unavailable on the production host.");
+    }
+    await assertStage3CompletedSourceFile(hosted.filePath, sourceBinding);
+    return {
+      filePath: hosted.filePath,
+      fileName: sanitizeFileName(hosted.fileName),
+      downloadProvider: normalizeSourceDownloadProvider(hosted.provider)
     };
   }
 

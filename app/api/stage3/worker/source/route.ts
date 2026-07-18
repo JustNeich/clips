@@ -7,17 +7,35 @@ import { getStage3Job } from "../../../../../lib/stage3-job-store";
 import { ensureSourceMediaCached, getCachedSourceMedia } from "../../../../../lib/source-media-cache";
 import { isUploadedSourceUrl } from "../../../../../lib/uploaded-source";
 import { isSupportedUrl, normalizeSupportedUrl, SUPPORTED_SOURCE_ERROR_MESSAGE } from "../../../../../lib/ytdlp";
+import {
+  assertStage3CompletedSourceFile,
+  stage3SourceBindingsEqual,
+  type Stage3CompletedSourceBinding
+} from "../../../../../lib/stage3-source-binding";
 
 export const runtime = "nodejs";
 
-function readJobPayloadSourceUrl(payloadJson: string): string | null {
+function readJobPayloadSourceRequest(payloadJson: string): {
+  sourceUrl: string | null;
+  sourceBinding: Stage3CompletedSourceBinding | null;
+} {
   try {
-    const parsed = JSON.parse(payloadJson) as { sourceUrl?: unknown };
-    return typeof parsed.sourceUrl === "string" && parsed.sourceUrl.trim()
-      ? normalizeSupportedUrl(parsed.sourceUrl.trim())
-      : null;
+    const parsed = JSON.parse(payloadJson) as {
+      sourceUrl?: unknown;
+      sourceBinding?: Stage3CompletedSourceBinding;
+    };
+    return {
+      sourceUrl:
+        typeof parsed.sourceUrl === "string" && parsed.sourceUrl.trim()
+          ? normalizeSupportedUrl(parsed.sourceUrl.trim())
+          : null,
+      sourceBinding:
+        parsed.sourceBinding?.kind === "completed-source-job"
+          ? parsed.sourceBinding
+          : null
+    };
   } catch {
-    return null;
+    return { sourceUrl: null, sourceBinding: null };
   }
 }
 
@@ -26,6 +44,7 @@ function requireLeasedJobSourceAccess(input: {
   workerId: string;
   jobId: string | null | undefined;
   sourceUrl: string;
+  sourceBinding: Stage3CompletedSourceBinding | null;
 }): Response | null {
   const jobId = input.jobId?.trim();
   if (!jobId) {
@@ -38,9 +57,12 @@ function requireLeasedJobSourceAccess(input: {
   if (job.assignedWorkerId !== input.workerId || job.status !== "running") {
     return Response.json({ error: "Stage 3 job is not leased by this worker." }, { status: 409 });
   }
-  const jobSourceUrl = readJobPayloadSourceUrl(job.payloadJson);
-  if (!jobSourceUrl || jobSourceUrl !== input.sourceUrl) {
+  const jobSource = readJobPayloadSourceRequest(job.payloadJson);
+  if (!jobSource.sourceUrl || jobSource.sourceUrl !== input.sourceUrl) {
     return Response.json({ error: "Source URL is not assigned to this worker job." }, { status: 403 });
+  }
+  if (!stage3SourceBindingsEqual(jobSource.sourceBinding, input.sourceBinding)) {
+    return Response.json({ error: "Completed source binding is not assigned to this worker job." }, { status: 403 });
   }
   return null;
 }
@@ -59,7 +81,12 @@ function scheduleDirectoryCleanup(dirPath: string): void {
 export async function POST(request: Request): Promise<Response> {
   try {
     const auth = requireStage3WorkerAuth(request);
-    const body = (await request.json().catch(() => null)) as { url?: string; cacheOnly?: boolean; jobId?: string } | null;
+    const body = (await request.json().catch(() => null)) as {
+      url?: string;
+      cacheOnly?: boolean;
+      jobId?: string;
+      sourceBinding?: Stage3CompletedSourceBinding;
+    } | null;
     const rawUrl = body?.url?.trim();
     const cacheOnly = body?.cacheOnly === true;
 
@@ -76,11 +103,16 @@ export async function POST(request: Request): Promise<Response> {
         { status: 400 }
       );
     }
+    const sourceBinding =
+      body?.sourceBinding?.kind === "completed-source-job"
+        ? body.sourceBinding
+        : null;
     const jobAccessError = requireLeasedJobSourceAccess({
       workspaceId: auth.workspaceId,
       workerId: auth.worker.id,
       jobId: body?.jobId,
-      sourceUrl
+      sourceUrl,
+      sourceBinding
     });
     if (jobAccessError) {
       return jobAccessError;
@@ -90,9 +122,11 @@ export async function POST(request: Request): Promise<Response> {
     let cleanupScheduled = false;
 
     try {
-      const cached = cacheOnly || isUploadedSourceUrl(sourceUrl)
+      const cached = sourceBinding
         ? await getCachedSourceMedia(sourceUrl)
-        : await ensureSourceMediaCached(sourceUrl);
+        : cacheOnly || isUploadedSourceUrl(sourceUrl)
+          ? await getCachedSourceMedia(sourceUrl)
+          : await ensureSourceMediaCached(sourceUrl);
       if (!cached) {
         return Response.json(
           {
@@ -102,6 +136,15 @@ export async function POST(request: Request): Promise<Response> {
           },
           { status: 404 }
         );
+      }
+      if (sourceBinding) {
+        if (cached.sourceKey !== sourceBinding.sourceCacheKey) {
+          return Response.json(
+            { error: "Bound completed source cache key does not match the host artifact." },
+            { status: 409 }
+          );
+        }
+        await assertStage3CompletedSourceFile(cached.sourcePath, sourceBinding);
       }
       const fileStat = await fs.stat(cached.sourcePath);
       const stream = createReadStream(cached.sourcePath);

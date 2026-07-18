@@ -14,6 +14,7 @@ import { clampHostedConcurrencyLimit } from "./hosted-resource-budget";
 import { queueThrottledBackgroundTask } from "./throttled-background-task";
 import { isUploadedSourceUrl } from "./uploaded-source";
 import { normalizeSupportedUrl } from "./ytdlp";
+import type { Stage3CompletedSourceBinding } from "./stage3-source-binding";
 
 export type Stage3CachedSource = {
   sourcePath: string;
@@ -29,6 +30,7 @@ export type Stage3HostedJobOptions = {
   waitTimeoutMs?: number | null;
   allowSourceMediaDirect?: boolean;
   allowWorkerHostFallback?: boolean;
+  sourceBinding?: Stage3CompletedSourceBinding;
 };
 
 const STAGE3_SOURCE_CACHE_NORMALIZATION_VERSION = 2;
@@ -405,7 +407,15 @@ export async function ensureStage3SourceCached(
   options?: Stage3HostedJobOptions
 ): Promise<Stage3CachedSource> {
   const sourceUrl = normalizeSupportedUrl(rawSource);
-  const sourceKey = hashKey(sourceUrl);
+  const sourceBinding = options?.sourceBinding;
+  if (sourceBinding && sourceBinding.sourceUrl !== sourceUrl) {
+    throw new Error("Completed source binding URL does not match the Stage 3 source URL.");
+  }
+  const sourceKey = sourceBinding
+    ? hashKey(
+        `completed-source-job:${sourceBinding.sourceJobId}:${sourceBinding.sourceCacheKey}:${sourceBinding.sourceSha256}`
+      )
+    : hashKey(sourceUrl);
   const sourceCacheDir = getStage3SourceCacheDir();
   const sourcePath = path.join(sourceCacheDir, `${sourceKey}.mp4`);
   const metaPath = path.join(sourceCacheDir, `${sourceKey}.json`);
@@ -499,6 +509,7 @@ export async function ensureStage3SourceCached(
         () =>
           downloadSourceVideo(sourceUrl, tmpDir, {
             allowWorkerHostFallback: options?.allowWorkerHostFallback,
+            sourceBinding,
             signal: options?.signal
           }),
         options

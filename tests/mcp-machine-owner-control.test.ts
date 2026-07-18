@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 
 import { GET as getAdminFlows } from "../app/api/admin/flows/route";
 import { POST as ownerControlRoute } from "../app/api/admin/control/route";
@@ -27,6 +29,10 @@ import {
 } from "../lib/publication-store";
 import { completeStage3Job, enqueueStage3Job, getStage3Job } from "../lib/stage3-job-store";
 import { bootstrapOwner } from "../lib/team-store";
+import { createSourceJob, finalizeSourceJobSuccess } from "../lib/source-job-store";
+import { storeDownloadedSourceMediaCacheArtifact } from "../lib/source-media-cache";
+
+const execFileAsync = promisify(execFile);
 
 async function withIsolatedAppData<T>(run: (appDataDir: string) => Promise<T>): Promise<T> {
   const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-mcp-machine-test-"));
@@ -394,6 +400,119 @@ test("clips_owner_render_preview enqueues a headless preview job (or degrades wh
       const body = (await preview.json()) as { error: string };
       assert.equal(body.error, "stage3_worker_unavailable");
     }
+  });
+});
+
+test("completed source preflight validates exact media and creates no Stage 3 job", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedOwnerControl(appDataDir);
+    const machine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "completed-source-preflight-agent",
+      scopes: ["flow:read", "pipeline:run"]
+    });
+    const sourcePath = path.join(appDataDir, "completed-source.mp4");
+    await execFileAsync("ffmpeg", [
+      "-y",
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=s=64x96:r=30:d=1",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:sample_rate=48000:duration=1",
+      "-shortest",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "aac",
+      sourcePath
+    ]);
+    const cached = await storeDownloadedSourceMediaCacheArtifact({
+      sourceUrl: chat.url,
+      filePath: sourcePath,
+      fileName: "completed-source.mp4",
+      downloadProvider: "ytDlp"
+    });
+    const sourceJob = createSourceJob({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      request: {
+        sourceUrl: chat.url,
+        autoRunStage2: false,
+        trigger: "fetch",
+        chat: { id: chat.id, channelId: channel.id },
+        channel: { id: channel.id, name: channel.name, username: channel.username }
+      }
+    });
+    finalizeSourceJobSuccess(sourceJob.jobId, {
+      chatId: chat.id,
+      channelId: channel.id,
+      sourceUrl: chat.url,
+      stage1Ready: true,
+      title: "Completed source",
+      videoFileName: cached.fileName,
+      videoSizeBytes: cached.videoSizeBytes,
+      sourceCacheKey: cached.sourceKey,
+      sourceCacheState: "hit",
+      downloadProvider: cached.downloadProvider,
+      commentsAvailable: false,
+      commentsError: null,
+      commentsPayload: null,
+      autoStage2RunId: null
+    });
+    const stage3CountBefore = Number(
+      (getDb().prepare("SELECT COUNT(*) AS count FROM stage3_jobs").get() as { count: number }).count
+    );
+
+    const response = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_preflight_completed_source",
+      input: {
+        channelId: channel.id,
+        chatId: chat.id,
+        completedSource: {
+          jobId: sourceJob.jobId,
+          expectedCacheKey: cached.sourceKey,
+          expectedDurationSec: 1,
+          expectedWidth: 64,
+          expectedHeight: 96,
+          expectedSizeBytes: cached.videoSizeBytes
+        }
+      }
+    });
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as {
+      ok: boolean;
+      createsJob: boolean;
+      urlFallbackAllowed: boolean;
+      sourceBinding: {
+        sourceJobId: string;
+        sourceCacheKey: string;
+        sourceDurationSec: number;
+        sourceWidth: number;
+        sourceHeight: number;
+        sourceSha256: string;
+      };
+    };
+    assert.equal(body.ok, true);
+    assert.equal(body.createsJob, false);
+    assert.equal(body.urlFallbackAllowed, false);
+    assert.equal(body.sourceBinding.sourceJobId, sourceJob.jobId);
+    assert.equal(body.sourceBinding.sourceCacheKey, cached.sourceKey);
+    assert.equal(body.sourceBinding.sourceWidth, 64);
+    assert.equal(body.sourceBinding.sourceHeight, 96);
+    assert.match(body.sourceBinding.sourceSha256, /^[a-f0-9]{64}$/);
+
+    const stage3CountAfter = Number(
+      (getDb().prepare("SELECT COUNT(*) AS count FROM stage3_jobs").get() as { count: number }).count
+    );
+    assert.equal(stage3CountAfter, stage3CountBefore);
   });
 });
 

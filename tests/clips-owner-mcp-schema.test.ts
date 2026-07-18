@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  clipsOwnerPreflightCompletedSourceInputSchema,
   clipsOwnerRenderPreviewInputSchema,
   clipsOwnerRenderVideoInputSchema,
   clipsOwnerRunVideoPipelineInputSchema,
@@ -9,6 +10,14 @@ import {
   clipsOwnerUpdateChannelPublishSettingsInputSchema,
   clipsOwnerUploadChannelAssetInputSchema
 } from "../scripts/clips-owner-mcp";
+
+const completedSource = {
+  jobId: "source-job-1",
+  expectedCacheKey: "cache-key-1",
+  expectedDurationSec: 17.069,
+  expectedWidth: 720,
+  expectedHeight: 1280
+};
 
 test("Stage 3 owner schemas reject pixel sourceCrop before enqueue", () => {
   const pixelCrop = {
@@ -54,6 +63,59 @@ test("Stage 3 owner schemas accept bounded normalized sourceCrop", () => {
 
   assert.equal(preview.success, true);
   assert.equal(render.success, true);
+});
+
+test("owner completed-source contract accepts exact binding and keeps the URL path compatible", () => {
+  const legacyPreview = clipsOwnerRenderPreviewInputSchema.safeParse({
+    channelId: "channel-1",
+    sourceUrl: "https://www.instagram.com/reel/example/"
+  });
+  const boundPreview = clipsOwnerRenderPreviewInputSchema.safeParse({
+    channelId: "channel-1",
+    chatId: "chat-1",
+    completedSource
+  });
+  const boundRender = clipsOwnerRenderVideoInputSchema.safeParse({
+    channelId: "channel-1",
+    chatId: "chat-1",
+    completedSource,
+    sourceDurationSec: 17.069
+  });
+  const preflight = clipsOwnerPreflightCompletedSourceInputSchema.safeParse({
+    channelId: "channel-1",
+    chatId: "chat-1",
+    completedSource
+  });
+
+  assert.equal(legacyPreview.success, true);
+  assert.equal(boundPreview.success, true);
+  assert.equal(boundRender.success, true);
+  assert.equal(preflight.success, true);
+});
+
+test("owner completed-source contract fails closed on incomplete or inconsistent expectations", () => {
+  const missingChat = clipsOwnerRenderPreviewInputSchema.safeParse({
+    channelId: "channel-1",
+    completedSource
+  });
+  const incomplete = clipsOwnerRenderPreviewInputSchema.safeParse({
+    channelId: "channel-1",
+    chatId: "chat-1",
+    completedSource: {
+      jobId: "source-job-1",
+      expectedCacheKey: "cache-key-1"
+    }
+  });
+  const mismatchedDuration = clipsOwnerRenderVideoInputSchema.safeParse({
+    channelId: "channel-1",
+    chatId: "chat-1",
+    sourceDurationSec: 6,
+    completedSource
+  });
+
+  assert.equal(missingChat.success, false);
+  assert.equal(incomplete.success, false);
+  assert.equal(mismatchedDuration.success, false);
 });
 
 test("clips_owner_render_video schema preserves caller snapshot media controls", () => {
