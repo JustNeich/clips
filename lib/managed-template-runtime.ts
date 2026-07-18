@@ -12,7 +12,10 @@ import type { ManagedTemplate, ManagedTemplateShadowLayer } from "./managed-temp
 import { assertServerRuntime } from "./server-runtime-guard";
 import type { Stage3SnapshotManagedTemplateState } from "../app/components/types";
 import { createEmptyTemplateCaptionHighlights } from "./template-highlights";
-import { isBuiltInStage3TemplateId } from "./stage3-snapshot-managed-template";
+import {
+  canonicalizeStage3SnapshotManagedTemplateState,
+  isBuiltInStage3TemplateId
+} from "./stage3-snapshot-managed-template";
 import {
   resolveManagedTemplate,
   resolveManagedTemplateSync
@@ -186,32 +189,50 @@ function toResolvedRuntimeFromSnapshot(
 
 export async function resolveManagedTemplateRuntime(
   templateId: string | null | undefined,
-  snapshotState?: Stage3SnapshotManagedTemplateState | null,
+  snapshotState?: unknown,
   options?: { workspaceId?: string | null }
 ): Promise<ResolvedManagedTemplateRuntime> {
   const candidate = typeof templateId === "string" ? templateId.trim() : "";
-  if (snapshotState?.managedId === candidate && snapshotState.updatedAt) {
-    return toResolvedRuntimeFromSnapshot(snapshotState);
-  }
   const builtInTemplateId = resolveBuiltInTemplateId(candidate);
   if (builtInTemplateId) {
     return toResolvedBuiltInRuntime(builtInTemplateId);
+  }
+  if (snapshotState !== undefined && snapshotState !== null) {
+    const canonicalSnapshotState = canonicalizeStage3SnapshotManagedTemplateState(
+      snapshotState,
+      candidate
+    );
+    if (!canonicalSnapshotState) {
+      throw new Error(
+        `managed_template_state_invalid: embedded state does not match templateId "${candidate}".`
+      );
+    }
+    return toResolvedRuntimeFromSnapshot(canonicalSnapshotState);
   }
   return toResolvedRuntime(await resolveManagedTemplate(templateId, options));
 }
 
 export function resolveManagedTemplateRuntimeSync(
   templateId: string | null | undefined,
-  snapshotState?: Stage3SnapshotManagedTemplateState | null,
+  snapshotState?: unknown,
   options?: { workspaceId?: string | null }
 ): ResolvedManagedTemplateRuntime {
   const candidate = typeof templateId === "string" ? templateId.trim() : "";
-  if (snapshotState?.managedId === candidate && snapshotState.updatedAt) {
-    return toResolvedRuntimeFromSnapshot(snapshotState);
-  }
   const builtInTemplateId = resolveBuiltInTemplateId(candidate);
   if (builtInTemplateId) {
     return toResolvedBuiltInRuntime(builtInTemplateId);
+  }
+  if (snapshotState !== undefined && snapshotState !== null) {
+    const canonicalSnapshotState = canonicalizeStage3SnapshotManagedTemplateState(
+      snapshotState,
+      candidate
+    );
+    if (!canonicalSnapshotState) {
+      throw new Error(
+        `managed_template_state_invalid: embedded state does not match templateId "${candidate}".`
+      );
+    }
+    return toResolvedRuntimeFromSnapshot(canonicalSnapshotState);
   }
   return toResolvedRuntime(resolveManagedTemplateSync(templateId, options));
 }

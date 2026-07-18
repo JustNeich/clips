@@ -2,14 +2,68 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { Stage3RenderPlan } from "../app/components/types";
-import { SCIENCE_CARD, SCIENCE_CARD_V7 } from "../lib/stage3-template";
+import {
+  CHANNEL_STORY_TEMPLATE_ID,
+  SCIENCE_CARD,
+  SCIENCE_CARD_V7,
+  STAGE3_TEMPLATE_ID,
+  cloneStage3TemplateConfig,
+  getTemplateById
+} from "../lib/stage3-template";
 import { resolveManagedTemplateRuntimeSync } from "../lib/managed-template-runtime";
 import { buildTemplateRenderSnapshot } from "../lib/stage3-template-core";
 import {
+  ORACLE_TEMPLATE_POOL_MANAGED_TEMPLATE_IDS,
   applyStage3AuthoritativePreviewContent,
+  canonicalizeStage3SnapshotManagedTemplateState,
   hasResolvedStage3ManagedTemplateState,
   resolveStage3SnapshotManagedTemplateState
 } from "../lib/stage3-snapshot-managed-template";
+
+const ORACLE_TEMPLATE_POOL_NAMES = [
+  "oracle-pool-top-bottom-observation-v1",
+  "oracle-pool-lead-body-incident-v1",
+  "oracle-pool-lead-body-evidence-v1",
+  "oracle-pool-lead-body-compact-v1",
+  "oracle-pool-body-visual-v1"
+] as const;
+
+function buildFullOraclePoolTemplateState(
+  templateId: string,
+  name: string,
+  templateConfig = cloneStage3TemplateConfig(getTemplateById(CHANNEL_STORY_TEMPLATE_ID))
+) {
+  return {
+    id: templateId,
+    name,
+    description: "Published Oracle template-pool entry",
+    layoutFamily: CHANNEL_STORY_TEMPLATE_ID,
+    baseTemplateId: CHANNEL_STORY_TEMPLATE_ID,
+    workspaceId: "oracle-workspace",
+    creatorUserId: null,
+    creatorDisplayName: null,
+    createdAt: "2026-07-18T14:20:00.000Z",
+    updatedAt: "2026-07-18T14:21:24.000Z",
+    archivedAt: null,
+    content: {
+      topText: "",
+      bottomText: "",
+      channelName: "Oracle",
+      channelHandle: "@oracle",
+      highlights: { top: [], bottom: [] },
+      topHighlightPhrases: [],
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    },
+    templateConfig,
+    shadowLayers: [],
+    versions: []
+  };
+}
 
 test("preview managed template state wins over stale page state for the same template id", () => {
   const resolved = resolveStage3SnapshotManagedTemplateState({
@@ -221,6 +275,166 @@ test("snapshot-backed managed template runtime wins without reading the local st
   assert.equal(runtime.templateConfig.card.width, SCIENCE_CARD_V7.card.width);
   assert.equal(runtime.templateConfig.author.checkAssetPath, SCIENCE_CARD_V7.author.checkAssetPath);
   assert.equal(runtime.templateConfig.channelStory, undefined);
+});
+
+test("the five published Oracle template-pool states canonicalize to compact worker state", () => {
+  assert.equal(ORACLE_TEMPLATE_POOL_MANAGED_TEMPLATE_IDS.length, 5);
+  for (const [index, templateId] of ORACLE_TEMPLATE_POOL_MANAGED_TEMPLATE_IDS.entries()) {
+    const rawState = buildFullOraclePoolTemplateState(
+      templateId,
+      ORACLE_TEMPLATE_POOL_NAMES[index]
+    );
+    const canonicalState = canonicalizeStage3SnapshotManagedTemplateState(
+      rawState,
+      templateId
+    );
+
+    assert.ok(canonicalState, templateId);
+    assert.equal(canonicalState.managedId, templateId);
+    assert.equal(canonicalState.baseTemplateId, CHANNEL_STORY_TEMPLATE_ID);
+    assert.equal(canonicalState.updatedAt, rawState.updatedAt);
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(canonicalState, "id"),
+      false,
+      `${templateId} must not keep the raw id field`
+    );
+  }
+});
+
+test("Incident full state preserves strict bottom highlight configuration and spans", () => {
+  const templateId = "oracle-pool-lead-body-incident-v1-babca826";
+  const templateConfig = cloneStage3TemplateConfig(getTemplateById(CHANNEL_STORY_TEMPLATE_ID));
+  templateConfig.highlights = {
+    enabled: true,
+    topEnabled: false,
+    bottomEnabled: true,
+    slots: [
+      {
+        slotId: "slot1",
+        enabled: true,
+        color: "#f4df36",
+        label: "Incident",
+        guidance: "Highlight the incident evidence."
+      },
+      {
+        slotId: "slot2",
+        enabled: false,
+        color: "#2cc8c3",
+        label: "Disabled support",
+        guidance: ""
+      },
+      {
+        slotId: "slot3",
+        enabled: false,
+        color: "#ff5f6d",
+        label: "Disabled urgency",
+        guidance: ""
+      }
+    ]
+  };
+  const fullState = buildFullOraclePoolTemplateState(
+    templateId,
+    "oracle-pool-lead-body-incident-v1",
+    templateConfig
+  );
+
+  const runtime = resolveManagedTemplateRuntimeSync(templateId, fullState);
+  assert.equal(runtime.managedTemplateId, templateId);
+  assert.equal(runtime.baseTemplateId, CHANNEL_STORY_TEMPLATE_ID);
+  assert.equal(runtime.templateConfig.highlights.enabled, true);
+  assert.equal(runtime.templateConfig.highlights.topEnabled, false);
+  assert.equal(runtime.templateConfig.highlights.bottomEnabled, true);
+  assert.equal(runtime.templateConfig.highlights.slots[0].color, "#f4df36");
+
+  const bottomText =
+    "The bill passes close as it drifts under fish thrashes before the line snap away.";
+  assert.equal(bottomText.length, 81);
+  assert.equal(bottomText.slice(4, 21), "bill passes close");
+  assert.equal(bottomText.slice(41, 54), "fish thrashes");
+  const bottomHighlights = [
+    { start: 4, end: 21, slotId: "slot1" as const },
+    { start: 41, end: 54, slotId: "slot1" as const }
+  ];
+  const snapshot = buildTemplateRenderSnapshot({
+    templateId: runtime.baseTemplateId,
+    templateConfigOverride: runtime.templateConfig,
+    content: {
+      topText: "Close call",
+      bottomText,
+      channelName: "Nature Nearmiss",
+      channelHandle: "@nature",
+      highlights: { top: [], bottom: bottomHighlights },
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    }
+  });
+
+  assert.deepEqual(snapshot.content.highlights.top, []);
+  assert.deepEqual(snapshot.content.highlights.bottom, bottomHighlights);
+});
+
+test("unknown or mismatched full managed template state fails closed", () => {
+  const incidentId = "oracle-pool-lead-body-incident-v1-babca826";
+  const incidentState = buildFullOraclePoolTemplateState(
+    incidentId,
+    "oracle-pool-lead-body-incident-v1"
+  );
+  const unknownId = "oracle-pool-unknown-v1-deadbeef";
+  const unknownState = buildFullOraclePoolTemplateState(unknownId, "oracle-pool-unknown-v1");
+
+  assert.throws(
+    () => resolveManagedTemplateRuntimeSync(unknownId, unknownState),
+    /managed_template_state_invalid/
+  );
+  assert.throws(
+    () =>
+      resolveManagedTemplateRuntimeSync(
+        "oracle-pool-lead-body-evidence-v1-4bf5cc09",
+        incidentState
+      ),
+    /managed_template_state_invalid/
+  );
+});
+
+test("incomplete full managed template state fails closed", () => {
+  const templateId = "oracle-pool-lead-body-incident-v1-babca826";
+  const invalidState = {
+    ...buildFullOraclePoolTemplateState(
+      templateId,
+      "oracle-pool-lead-body-incident-v1"
+    ),
+    templateConfig: {
+      layoutKind: "channel_story",
+      highlights: {
+        enabled: true,
+        topEnabled: false,
+        bottomEnabled: true,
+        slots: []
+      }
+    }
+  };
+
+  assert.throws(
+    () => resolveManagedTemplateRuntimeSync(templateId, invalidState),
+    /managed_template_state_invalid/
+  );
+});
+
+test("caller state cannot override a built-in template", () => {
+  const runtime = resolveManagedTemplateRuntimeSync(STAGE3_TEMPLATE_ID, {
+    managedId: STAGE3_TEMPLATE_ID,
+    baseTemplateId: "science-card-v7",
+    templateConfig: SCIENCE_CARD_V7,
+    updatedAt: "2026-07-15T12:00:00.000Z"
+  });
+
+  assert.equal(runtime.managedTemplateId, STAGE3_TEMPLATE_ID);
+  assert.equal(runtime.baseTemplateId, STAGE3_TEMPLATE_ID);
+  assert.notEqual(runtime.updatedAt, "2026-07-15T12:00:00.000Z");
 });
 
 test("custom managed template state is not considered resolved until it has a revision", () => {
