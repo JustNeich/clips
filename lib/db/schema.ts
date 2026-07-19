@@ -564,6 +564,15 @@ CREATE TABLE IF NOT EXISTS stage3_job_events (
   FOREIGN KEY (job_id) REFERENCES stage3_jobs(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS local_first_job_recovery (
+  job_id TEXT PRIMARY KEY,
+  recovery_count INTEGER NOT NULL DEFAULT 0,
+  last_error_code TEXT,
+  last_recovered_at TEXT,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (job_id) REFERENCES stage3_jobs(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS stage3_job_artifacts (
   id TEXT PRIMARY KEY,
   job_id TEXT NOT NULL,
@@ -761,6 +770,9 @@ CREATE INDEX IF NOT EXISTS idx_stage2_runs_status_created
 
 CREATE INDEX IF NOT EXISTS idx_stage3_job_events_job
   ON stage3_job_events(job_id, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_local_first_job_recovery_updated
+  ON local_first_job_recovery(updated_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_stage3_job_artifacts_job
   ON stage3_job_artifacts(job_id, created_at DESC);

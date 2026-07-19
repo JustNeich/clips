@@ -229,6 +229,10 @@ export async function collectStage3WorkerAdmissionReport(input: {
 }
 
 function workerHomeDir(): string {
+  const explicit = process.env.STAGE3_WORKER_HOME?.trim();
+  if (explicit) {
+    return path.resolve(explicit);
+  }
   if (process.platform === "darwin") {
     return path.join(os.homedir(), "Library", "Application Support", "Clips Stage3 Worker");
   }
