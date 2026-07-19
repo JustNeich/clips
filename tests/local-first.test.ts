@@ -366,4 +366,8 @@ test("Render blueprint remains optional and cannot execute hosted Stage 3 by def
     /key:\s*STAGE3_ALLOW_HOST_EXECUTION[\s\S]*?value:\s*"0"/
   );
   assert.doesNotMatch(packageJson.scripts?.["dev:prod-api"] ?? "", /onrender\.com/i);
+  assert.equal(
+    packageJson.scripts?.postbuild,
+    "node scripts/write-local-first-build-manifest.mjs"
+  );
 });

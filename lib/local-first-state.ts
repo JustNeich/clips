@@ -375,12 +375,18 @@ export async function runLocalFirstPreflight(input: {
   }
 
   if (input.requireBuild !== false) {
+    const buildManifestPath = path.join(
+      input.repoRoot,
+      "output",
+      "local-first-build.json"
+    );
     for (const [name, filePath] of [
       ["next-build", path.join(input.repoRoot, ".next", "BUILD_ID")],
       [
         "worker-runtime",
         path.join(input.repoRoot, ".stage3-worker-runtime", "manifest.json")
-      ]
+      ],
+      ["build-manifest", buildManifestPath]
     ]) {
       addCheck(
         checks,
@@ -388,6 +394,40 @@ export async function runLocalFirstPreflight(input: {
         (await pathExists(filePath)) ? "ok" : "fail",
         filePath
       );
+    }
+    if (await pathExists(buildManifestPath)) {
+      try {
+        const built = JSON.parse(await fs.readFile(buildManifestPath, "utf8")) as {
+          format?: string;
+          gitRevision?: string;
+          lockfileSha256?: string;
+          nodeMajor?: number;
+          workerRuntimeVersion?: string | null;
+          dirty?: boolean;
+        };
+        const matches =
+          built.format === "clips-local-first-build" &&
+          built.gitRevision === runtime.gitRevision &&
+          built.lockfileSha256 === runtime.lockfileSha256 &&
+          built.nodeMajor === LOCAL_FIRST_NODE_MAJOR &&
+          built.dirty === false &&
+          Boolean(built.workerRuntimeVersion);
+        addCheck(
+          checks,
+          "build-runtime-identity",
+          matches ? "ok" : "fail",
+          matches
+            ? `${built.gitRevision} / ${built.workerRuntimeVersion}`
+            : "Production build does not match the clean Git/lockfile/Node 22 runtime. Run npm run build."
+        );
+      } catch (error) {
+        addCheck(
+          checks,
+          "build-runtime-identity",
+          "fail",
+          error instanceof Error ? error.message : String(error)
+        );
+      }
     }
   }
 
