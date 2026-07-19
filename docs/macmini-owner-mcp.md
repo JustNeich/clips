@@ -94,7 +94,6 @@ Core tools exposed by `clips-owner`:
 - `clips_owner_get_channel`
 - `clips_owner_create_channel`
 - `clips_owner_update_channel`
-- `clips_owner_inspect_channel_asset`
 - `clips_owner_upload_channel_asset`
 - `clips_owner_update_channel_publish_settings`
 - `clips_owner_delete_channel`
@@ -146,13 +145,6 @@ already-completed Stage 1 artifact:
    never falls back to downloading the URL.
 
 Calls that omit `completedSource` retain the existing URL acquisition behavior.
-
-Use `clips_owner_inspect_channel_asset` with an exact `channelId` and `assetId`
-to verify an existing asset without downloading or changing it. The read-only
-result includes the stored byte count, database-size match, SHA-256, detected
-file signature, declared-MIME match, supported image dimensions, and whether
-the asset is the channel's active avatar/background/music reference. A missing
-stored file returns HTTP 410 `channel_asset_file_unavailable`.
 
 `clips_owner_render_preview` creates a media-only MP4 for checking the selected
 source window, crop/fit, segments, and audio. It does not render the full
