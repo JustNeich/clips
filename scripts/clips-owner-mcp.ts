@@ -347,11 +347,6 @@ export const clipsOwnerUploadChannelAssetInputSchema = z.object({
   setAsDefault: z.boolean().optional()
 });
 
-export const clipsOwnerInspectChannelAssetInputSchema = z.object({
-  ...channelRefSchema,
-  assetId: z.string().min(1)
-});
-
 export const clipsOwnerUpdateChannelPublishSettingsInputSchema = z.object({
   ...channelRefSchema,
   timezone: z.string().optional(),
@@ -546,17 +541,6 @@ server.registerTool(
     inputSchema: clipsOwnerUpdateChannelInputSchema
   },
   async (input) => ownerControl("clips_owner_update_channel", input)
-);
-
-server.registerTool(
-  "clips_owner_inspect_channel_asset",
-  {
-    title: "Inspect Clips channel asset",
-    description:
-      "Read owner-authorized channel asset integrity metadata (SHA-256, byte size, MIME signature, and supported image dimensions) without returning or changing the asset bytes.",
-    inputSchema: clipsOwnerInspectChannelAssetInputSchema
-  },
-  async (input) => ownerControl("clips_owner_inspect_channel_asset", input)
 );
 
 server.registerTool(
