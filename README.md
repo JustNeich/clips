@@ -1,5 +1,10 @@
 # Shorts / Reels MP4 Downloader (Next.js)
 
+Production video flow по умолчанию local-first: API, durable queue и worker
+работают на одной активной машине, а handoff переносит state на вторую.
+Операционные команды и границы состояния: [LOCAL_FIRST.md](./LOCAL_FIRST.md).
+Render — только optional public/diagnostic service.
+
 Простое приложение на Next.js:
 - поле для ссылки (`YouTube Shorts`, `Instagram Reels`, `Facebook Reels`, `public Reddit posts`);
 - история чатов: каждая ссылка = отдельный чат;
@@ -46,7 +51,7 @@
 Требуется `Node.js 22`.
 
 ```bash
-npm install
+npm ci
 ```
 
 ## 2. Установка системных инструментов
@@ -76,6 +81,16 @@ npx remotion browser ensure
 ```
 
 ## 3. Запуск
+
+Production active-machine mode:
+
+```bash
+npm run build
+npm run local:first:preflight
+npm run local:first:start
+```
+
+Обычный dev server без production ownership supervisor:
 
 ```bash
 npm run dev
@@ -202,11 +217,13 @@ npm run stage2-worker
   - `render`
   - `source-download`
   - `agent-media-step`
-- Хост остается control plane:
+- В local-first production локальный Next server на active machine является control plane:
   - auth
   - queue/jobs
   - artifacts
   - Codex orchestration
+- Render-hosted server может дать тот же API как optional always-on/public
+  surface, но не является зависимостью preview/render/recovery/handoff.
 - `template-road` теперь считает card geometry и межстрочный интервал частью настоящего render contract:
   - правки `width / height / x / y` карточки влияют и на preview, и на render;
   - `line-height` верхнего и нижнего текста сохраняется без отката после autosave/reload;
@@ -240,13 +257,16 @@ npm run stage2-worker
 - Поддерживаемые платформы v1:
   - `macOS arm64/x64`
   - `Windows x64`
-- Web остаётся основным интерфейсом, а сервер остаётся control plane для auth, queue/jobs и artifacts.
+- Web остаётся основным интерфейсом; в production local-first control plane
+  запускается локально вместе с worker.
 - Тяжёлые Stage 3 jobs (`preview`, `render`, `source-download`, `agent-media-step`) выполняет отдельное desktop-приложение `Clips Worker` на ПК текущего пользователя.
 - Worker pairing доступен прямо из Stage 3 UI через deep link `clips-stage3-worker://pair?...` в блоке `Local Executor`.
 - Worker после pairing считается персональным executor-ом: он claim-ит только jobs своего `userId` внутри workspace. Онлайн-worker другого редактора больше не делает текущего пользователя `Online` и не забирает его render/preview jobs.
 - Локальный worker использует одну durable Stage 3 queue и три ограниченные линии: `render`, подготовка `media` и `source-download`. Редактор ставит job один раз; только worker решает, когда её можно запустить.
 - Для Oracle render request может передавать `workItemId` и `revision`. Новая revision отменяет только ожидающую старую revision того же ролика; общий постоянный `chatId` канала больше не используется как ключ отмены.
-- По умолчанию одновременно допускаются один короткий render (до 18 секунд), одна media-задача и две загрузки. Второй короткий render включается только явной настройкой `STAGE3_WORKER_SHORT_RENDER_MAX_CONCURRENT_JOBS=2` после измеримой калибровки.
+- Local-first всегда допускает только один render. Legacy remote-worker mode
+  может включить второй короткий render отдельной настройкой, но эта настройка
+  игнорируется при `CLIPS_LOCAL_FIRST=1`.
 - Admission проверяет общую нагрузку, macOS `memory_pressure`, свободный диск и рост swap. Открытые окна AdsPower/Chrome и имена посторонних процессов не считаются render jobs.
 - Worker runtime не распаковывает серверный `node_modules` на чужой платформе: если manifest говорит, что `runtime-deps.tar.gz` собран не под текущий OS/CPU, Clips Worker делает локальный `npm install` и чинит native `esbuild`/`@rspack` bindings до claim jobs.
 - CLI остаётся совместимым advanced fallback для разработки и поддержки:
@@ -551,9 +571,14 @@ cp .env.example .env.local
 
 Если нужен рабочий production для всего пайплайна, а не только UI preview, выносите backend на VM/container, где можно поставить `codex`, `yt-dlp`, `ffmpeg` и держать постоянное файловое хранилище.
 
-## Render deployment (recommended)
+## Render deployment (optional)
 
-Для полного пайплайна на Render используйте `Docker` runtime:
+Render не нужен для production video flow. Он допустим как отдельно выбранный
+public UI/API или diagnostic service. Blueprint отключает auto-deploy и hosted
+Stage 3 execution; Render health/credentials/deploy не входят в local-first
+preflight.
+
+Если такой optional сервис явно нужен, используйте `Docker` runtime:
 
 1. Подключите репозиторий к Render.
 2. Создайте `Web Service` с `Docker` runtime
@@ -570,7 +595,8 @@ cp .env.example .env.local
 
 В репозитории уже есть:
 - `Dockerfile` с установкой `yt-dlp`, `ffmpeg`, `ffprobe` и `codex`
-- `render.yaml` с рекомендованным регионом `Frankfurt`, `Starter` plan, mount path `/var/data` и local-worker defaults для Stage 3
+- `render.yaml` с регионом `Frankfurt`, `Starter` plan, mount path `/var/data`,
+  отключёнными auto-deploy и hosted Stage 3 execution
 
 Для `Starter` имеет смысл сразу зажать фоновые очереди:
 - `STAGE2_MAX_CONCURRENT_RUNS=1`

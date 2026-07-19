@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 const envFile = process.env.CLIPS_MCP_ENV_FILE || `${process.env.HOME || ""}/.config/assistant/clips-mcp.env`;
-const appUrl = (process.env.CLIPS_APP_URL || "https://clips-vy11.onrender.com").replace(/\/+$/, "");
+const appUrl = (process.env.CLIPS_APP_URL || "http://127.0.0.1:3000").replace(/\/+$/, "");
 const checks = [];
 
 function addCheck(name, status, detail = "") {
@@ -77,9 +77,9 @@ async function checkGithubSsh() {
 async function checkHttp() {
   try {
     const health = await fetch(`${appUrl}/api/health`, { headers: { Accept: "application/json" } });
-    addCheck("prod-health", health.ok ? "ok" : "warn", `${appUrl}/api/health -> ${health.status}`);
+    addCheck("app-health", health.ok ? "ok" : "warn", `${appUrl}/api/health -> ${health.status}`);
   } catch (error) {
-    addCheck("prod-health", "warn", error instanceof Error ? error.message : String(error));
+    addCheck("app-health", "warn", error instanceof Error ? error.message : String(error));
   }
 
   const token = process.env.CLIPS_MCP_TOKEN?.trim();

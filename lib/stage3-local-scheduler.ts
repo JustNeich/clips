@@ -112,7 +112,10 @@ function readLimit(name: string, fallback: number, maximum: number): number {
 
 export function resolveStage3LocalSchedulerLimits(): Stage3LocalSchedulerLimits {
   return {
-    shortRender: readLimit("STAGE3_WORKER_SHORT_RENDER_MAX_CONCURRENT_JOBS", 1, 2),
+    shortRender:
+      process.env.CLIPS_LOCAL_FIRST === "1"
+        ? 1
+        : readLimit("STAGE3_WORKER_SHORT_RENDER_MAX_CONCURRENT_JOBS", 1, 2),
     media: readLimit("STAGE3_WORKER_MEDIA_MAX_CONCURRENT_JOBS", 1, 2),
     download: readLimit("STAGE3_WORKER_DOWNLOAD_MAX_CONCURRENT_JOBS", 2, 4)
   };
