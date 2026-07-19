@@ -1,5 +1,11 @@
 # FIXING.md — Clips Automation Software (Zoro's target intake)
 
+> **Architecture authority:** production video flow is local-first as defined in
+> [`LOCAL_FIRST.md`](./LOCAL_FIRST.md). Render deploy/health/credentials are
+> optional public-service concerns and must never gate preview, render, recovery,
+> handoff, or verification. Sections below that describe Render as the production
+> control plane are retained only for optional hosted diagnostics.
+
 This is the authoritative, target-specific intake doc for **Zoro**, the always-on
 developer-employee that owns this repo. Zoro reads this **before** touching any
 code. The generic workflow lives in the `zoro-dev` skill; **every Clips-specific
@@ -61,10 +67,10 @@ stops and reports rather than editing blind.
   worker apps: `apps/stage3-worker`, `apps/stage3-host-render-child`,
   `apps/desktop-worker`.
 - **Product data / config:** **live product data is a SQLite DB**, not files.
-  Resolved by `lib/app-paths.ts` (`getAppDataDir`): in production (Render) it is
-  `/var/data/app/app.db` on the mounted `clips-data` disk (`render.yaml`
-  `APP_DATA_DIR=/var/data/app`); locally it is `<repo>/.data` (and the
-  git-ignored dev DB at `data/*.db`). Channels, prompts, templates, members,
+  In production local-first it lives under `CLIPS_STATE_DIR/data/app.db` and is
+  transferred only by the checksummed ownership protocol in `LOCAL_FIRST.md`.
+  Optional Render uses `/var/data/app/app.db`; ordinary dev uses `<repo>/.data`.
+  Channels, prompts, templates, members,
   channel-access grants, publications, OAuth tokens, MCP tokens all live in that
   DB — this is the Plane-B data-ops surface (see §8). Seed/fixture JSON only:
   `data/examples.json`, `data/animals_examples.json`.
@@ -100,7 +106,10 @@ these plus version control confined to this repo and the single `deploy_command`
   prod) — proven to work — see §5. Do not invent an `npx playwright test` suite
   that does not exist.
 
-## 4. Deploy — the single harness command (Zoro never pushes prod by hand)
+## 4. Optional public-service deploy
+
+This section applies only when an owner explicitly requests the external Render
+service. Local production video work does not deploy.
 
 - **`deploy_command` (the ONLY deploy path):**
   `bash "/Users/neichyabazhi/Zoro-dev/support/autonomous_workers/zoro_tools/zoro_deploy.sh"` —
