@@ -247,6 +247,7 @@ function inspectPortableDatabase(dbPath: string): {
   activeHostJobs: number;
   activeLocalRenders: number;
   hostDefaultWorkspaces: number;
+  activeOwners: number;
 } {
   if (!path.isAbsolute(dbPath)) {
     throw new Error("Database path must be absolute.");
@@ -282,7 +283,27 @@ function inspectPortableDatabase(dbPath: string): {
           ).count ?? 0
         )
       : 0;
-    return { integrity, activeHostJobs, activeLocalRenders, hostDefaultWorkspaces };
+    const activeOwners =
+      tableExists(db, "workspace_members") && tableExists(db, "users")
+        ? Number(
+            (
+              db.prepare(
+                `SELECT COUNT(*) AS count
+                   FROM workspace_members
+                   JOIN users ON users.id = workspace_members.user_id
+                  WHERE workspace_members.role = 'owner'
+                    AND users.status = 'active'`
+              ).get() as { count?: number }
+            ).count ?? 0
+          )
+        : 0;
+    return {
+      integrity,
+      activeHostJobs,
+      activeLocalRenders,
+      hostDefaultWorkspaces,
+      activeOwners
+    };
   } finally {
     db.close();
   }
@@ -385,6 +406,14 @@ export async function runLocalFirstPreflight(input: {
         "render-control-plane",
         db.activeHostJobs === 0 && db.hostDefaultWorkspaces === 0 ? "ok" : "fail",
         `active host jobs=${db.activeHostJobs}, host-default workspaces=${db.hostDefaultWorkspaces}`
+      );
+      addCheck(
+        checks,
+        "worker-owner",
+        db.activeOwners > 0 ? "ok" : "fail",
+        db.activeOwners > 0
+          ? `active owners=${db.activeOwners}`
+          : "Portable state has no active owner for automatic local worker pairing."
       );
       addCheck(
         checks,
