@@ -6,7 +6,6 @@ import {
   createChannelAsset,
   createOrGetChatBySource,
   deleteChannelById,
-  getChannelAssetById,
   getChannelById,
   getChatById,
   updateChannelById,
@@ -14,8 +13,6 @@ import {
 } from "../../../../lib/chat-history";
 import {
   buildChannelAssetUrl,
-  inspectChannelAssetBuffer,
-  readChannelAssetFile,
   saveChannelAssetFile,
   validateChannelAssetMime
 } from "../../../../lib/channel-assets";
@@ -145,7 +142,6 @@ const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
   clips_owner_get_channel: "flow:read",
   clips_owner_create_channel: "entity:write",
   clips_owner_update_channel: "entity:write",
-  clips_owner_inspect_channel_asset: "flow:read",
   clips_owner_upload_channel_asset: "entity:write",
   clips_owner_update_channel_publish_settings: "entity:write",
   clips_owner_delete_channel: "entity:write",
@@ -860,68 +856,6 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
       payload: { kind, assetId: asset.id, sizeBytes: buffer.byteLength, setAsDefault }
     });
     return { asset: { ...asset, url: buildChannelAssetUrl(asset.channelId, asset.id) } };
-  }
-
-  if (tool === "clips_owner_inspect_channel_asset") {
-    const channel = await requireChannel(auth.workspace.id, input);
-    const assetId = resolveString(input.assetId);
-    if (!assetId) {
-      throw new Response(JSON.stringify({ error: "assetId is required." }), {
-        status: 400,
-        headers: { "content-type": "application/json" }
-      });
-    }
-    const asset = await getChannelAssetById(channel.id, assetId);
-    if (!asset || asset.workspaceId !== auth.workspace.id) {
-      throw new Response(JSON.stringify({ error: "Channel asset not found." }), {
-        status: 404,
-        headers: { "content-type": "application/json" }
-      });
-    }
-    const stored = await readChannelAssetFile({
-      channelId: channel.id,
-      fileName: asset.fileName
-    });
-    if (!stored) {
-      throw new Response(
-        JSON.stringify({
-          error: "Channel asset bytes are unavailable.",
-          code: "channel_asset_file_unavailable"
-        }),
-        {
-          status: 410,
-          headers: { "content-type": "application/json" }
-        }
-      );
-    }
-    const inspection = inspectChannelAssetBuffer(stored.buffer);
-    return {
-      channel: {
-        id: channel.id,
-        name: channel.name,
-        username: channel.username
-      },
-      asset: {
-        id: asset.id,
-        kind: asset.kind,
-        originalName: asset.originalName,
-        mimeType: asset.mimeType,
-        declaredSizeBytes: asset.sizeBytes,
-        storedSizeBytes: inspection.sizeBytes,
-        sizeMatchesRecord: inspection.sizeBytes === asset.sizeBytes,
-        sha256: inspection.sha256,
-        signatureMimeType: inspection.signatureMimeType,
-        mimeMatchesSignature:
-          inspection.signatureMimeType === null ||
-          inspection.signatureMimeType === asset.mimeType.toLowerCase(),
-        imageDimensions: inspection.imageDimensions,
-        activeReferences: {
-          avatar: channel.avatarAssetId === asset.id,
-          background: channel.defaultBackgroundAssetId === asset.id,
-          music: channel.defaultMusicAssetId === asset.id
-        }
-      }
-    };
   }
 
   if (tool === "clips_owner_delete_channel") {

@@ -1,5 +1,4 @@
 import { promises as fs } from "node:fs";
-import { createHash } from "node:crypto";
 import path from "node:path";
 import { ChannelAssetKind } from "./chat-history";
 import { getAppDataDir } from "./app-paths";
@@ -130,58 +129,4 @@ export async function deleteChannelAssetDir(channelId: string): Promise<void> {
 
 export function buildChannelAssetUrl(channelId: string, assetId: string): string {
   return `/api/channels/${channelId}/assets/${assetId}`;
-}
-
-export type ChannelAssetBufferInspection = {
-  sizeBytes: number;
-  sha256: string;
-  signatureMimeType: string | null;
-  imageDimensions: { width: number; height: number } | null;
-};
-
-export function inspectChannelAssetBuffer(buffer: Buffer): ChannelAssetBufferInspection {
-  const isPng =
-    buffer.length >= 24 &&
-    buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) &&
-    buffer.subarray(12, 16).toString("ascii") === "IHDR";
-  const isJpeg = buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  const isGif =
-    buffer.length >= 10 &&
-    (buffer.subarray(0, 6).toString("ascii") === "GIF87a" ||
-      buffer.subarray(0, 6).toString("ascii") === "GIF89a");
-  const isWebp =
-    buffer.length >= 12 &&
-    buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
-    buffer.subarray(8, 12).toString("ascii") === "WEBP";
-
-  const signatureMimeType = isPng
-    ? "image/png"
-    : isJpeg
-      ? "image/jpeg"
-      : isGif
-        ? "image/gif"
-        : isWebp
-          ? "image/webp"
-          : null;
-  const imageDimensions = isPng
-    ? {
-        width: buffer.readUInt32BE(16),
-        height: buffer.readUInt32BE(20)
-      }
-    : isGif
-      ? {
-          width: buffer.readUInt16LE(6),
-          height: buffer.readUInt16LE(8)
-        }
-      : null;
-
-  return {
-    sizeBytes: buffer.byteLength,
-    sha256: createHash("sha256").update(buffer).digest("hex"),
-    signatureMimeType,
-    imageDimensions:
-      imageDimensions && imageDimensions.width > 0 && imageDimensions.height > 0
-        ? imageDimensions
-        : null
-  };
 }

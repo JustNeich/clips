@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  clipsOwnerInspectChannelAssetInputSchema,
   clipsOwnerPreflightCompletedSourceInputSchema,
   clipsOwnerRenderPreviewInputSchema,
   clipsOwnerRenderVideoInputSchema,
@@ -204,12 +203,6 @@ test("owner channel schemas expose setup, asset, and publish-setting operations"
     setAsDefault: true
   });
   assert.equal(asset.kind, "background");
-
-  const inspection = clipsOwnerInspectChannelAssetInputSchema.parse({
-    channelId: "channel-1",
-    assetId: "asset-1"
-  });
-  assert.equal(inspection.assetId, "asset-1");
 
   const settings = clipsOwnerUpdateChannelPublishSettingsInputSchema.parse({
     channelId: "channel-1",
