@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -764,6 +765,10 @@ test("owner control administers channel setup, assets, and publish settings", as
     assert.deepEqual(setup.channel.stage2HardConstraints.bannedWords, ["forbidden"]);
     assert.equal(setup.channel.stage2SourceOverlayConfig.enabled, false);
 
+    const backgroundPng = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64"
+    );
     const assetResponse = await postOwnerControl(machine.secret, {
       tool: "clips_owner_upload_channel_asset",
       input: {
@@ -771,13 +776,42 @@ test("owner control administers channel setup, assets, and publish settings", as
         kind: "background",
         fileName: "background.png",
         mimeType: "image/png",
-        dataBase64: Buffer.from("test-background").toString("base64"),
+        dataBase64: backgroundPng.toString("base64"),
         setAsDefault: true
       }
     });
     assert.equal(assetResponse.status, 200);
     const uploaded = (await assetResponse.json()) as { asset: { id: string } };
     assert.equal((await getChannelById(channel.id))?.defaultBackgroundAssetId, uploaded.asset.id);
+
+    const inspectResponse = await postOwnerControl(machine.secret, {
+      tool: "clips_owner_inspect_channel_asset",
+      input: {
+        channelId: channel.id,
+        assetId: uploaded.asset.id
+      }
+    });
+    assert.equal(inspectResponse.status, 200);
+    const inspected = (await inspectResponse.json()) as {
+      asset: {
+        sha256: string;
+        declaredSizeBytes: number;
+        storedSizeBytes: number;
+        sizeMatchesRecord: boolean;
+        signatureMimeType: string | null;
+        mimeMatchesSignature: boolean;
+        imageDimensions: { width: number; height: number } | null;
+        activeReferences: { background: boolean };
+      };
+    };
+    assert.equal(inspected.asset.sha256, createHash("sha256").update(backgroundPng).digest("hex"));
+    assert.equal(inspected.asset.declaredSizeBytes, backgroundPng.byteLength);
+    assert.equal(inspected.asset.storedSizeBytes, backgroundPng.byteLength);
+    assert.equal(inspected.asset.sizeMatchesRecord, true);
+    assert.equal(inspected.asset.signatureMimeType, "image/png");
+    assert.equal(inspected.asset.mimeMatchesSignature, true);
+    assert.deepEqual(inspected.asset.imageDimensions, { width: 1, height: 1 });
+    assert.equal(inspected.asset.activeReferences.background, true);
 
     const publishResponse = await postOwnerControl(machine.secret, {
       tool: "clips_owner_update_channel_publish_settings",
