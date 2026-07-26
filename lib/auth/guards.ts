@@ -1,4 +1,5 @@
 import { getAuthContextFromRequest, getCurrentAuthContext } from "./session";
+import { getConnectorAuthContextFromRequest } from "./connector-session";
 import { AppRole, getWorkspaceCodexIntegration } from "../team-store";
 import { getChannelAccessForUser, getChannelById } from "../chat-history";
 import { resolveChannelPermissions } from "../acl";
@@ -17,6 +18,36 @@ export async function requireAuth(request?: Request) {
     });
   }
   return auth;
+}
+
+export function requireConnectorAuth(request: Request) {
+  const auth = getConnectorAuthContextFromRequest(request);
+  if (!auth) {
+    throw new Response(JSON.stringify({ error: "Требуется авторизация в портале подключения." }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+  return auth;
+}
+
+export async function requireConnectorChannelAccess(request: Request, channelId: string) {
+  const auth = requireConnectorAuth(request);
+  const channel = await getChannelById(channelId);
+  if (!channel || channel.workspaceId !== auth.workspace.id) {
+    throw new Response(JSON.stringify({ error: "Канал не найден." }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+  const grant = await getChannelAccessForUser(channelId, auth.user.id);
+  if (!grant || grant.revokedAt || grant.accessRole !== "connect") {
+    throw new Response(JSON.stringify({ error: "Доступ запрещен." }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+  return { auth, channel, grant };
 }
 
 export function requireRole(role: AppRole, currentRole: AppRole): void {

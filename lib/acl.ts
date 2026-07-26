@@ -44,6 +44,16 @@ export function resolveChannelPermissions(input: {
     };
   }
 
+  if (role === "channel_connector") {
+    return {
+      isVisible: false,
+      canOperate: false,
+      canEditSetup: false,
+      canManageAccess: false,
+      canDelete: false
+    };
+  }
+
   return {
     isVisible: hasExplicitOperate,
     canOperate: hasExplicitOperate,

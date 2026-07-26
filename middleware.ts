@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const PUBLIC_PATHS = new Set([
   "/login",
+  "/connect/login",
   "/register",
   "/setup/bootstrap-owner",
   "/accept-invite"
@@ -16,6 +17,7 @@ function isApiPublic(pathname: string): boolean {
     pathname.startsWith("/api/auth/register") ||
     pathname.startsWith("/api/auth/bootstrap-owner") ||
     pathname.startsWith("/api/auth/accept-invite") ||
+    pathname.startsWith("/api/connect/auth/login") ||
     pathname.startsWith("/api/stage3/worker/")
   );
 }
@@ -101,18 +103,26 @@ export function middleware(request: NextRequest): NextResponse {
     if (pathname.startsWith("/api/") && !isSameOriginBrowserMutation(request)) {
       return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
     }
-    if (
-      pathname.startsWith("/api/") &&
-      !isApiPublic(pathname) &&
-      !request.cookies.get("clips_session") &&
-      !canUseBearerForApi(pathname, request)
-    ) {
-      return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    if (pathname.startsWith("/api/") && !isApiPublic(pathname)) {
+      const isConnectorApi = pathname.startsWith("/api/connect/");
+      const hasExpectedSession = isConnectorApi
+        ? Boolean(request.cookies.get("clips_connector_session"))
+        : Boolean(request.cookies.get("clips_session"));
+      if (!hasExpectedSession && !canUseBearerForApi(pathname, request)) {
+        return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+      }
     }
     return NextResponse.next();
   }
 
   if (PUBLIC_PATHS.has(pathname) || isDevDesignRoute) {
+    return NextResponse.next();
+  }
+
+  if (pathname.startsWith("/connect")) {
+    if (!request.cookies.get("clips_connector_session")) {
+      return NextResponse.redirect(new URL("/connect/login", request.url));
+    }
     return NextResponse.next();
   }
 
