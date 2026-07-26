@@ -1026,6 +1026,19 @@ test("owner provisions a channel connector without registration and the connecto
 });
 
 test("middleware keeps connector and application sessions on separate route families", () => {
+  const anonymousConnectorProvision = middleware(
+    new NextRequest("http://localhost/api/workspace/connectors", { method: "POST" })
+  );
+  assert.equal(anonymousConnectorProvision.status, 401);
+
+  const bearerConnectorProvision = middleware(
+    new NextRequest("http://localhost/api/workspace/connectors", {
+      method: "POST",
+      headers: { authorization: "Bearer control-write-token" }
+    })
+  );
+  assert.notEqual(bearerConnectorProvision.status, 401);
+
   const anonymousApi = middleware(new NextRequest("http://localhost/api/connect/channels"));
   assert.equal(anonymousApi.status, 401);
 

@@ -28,6 +28,7 @@ function canUseBearerForApi(pathname: string, request: NextRequest): boolean {
   return (
     hasBearer &&
     (pathname === "/api/auth/machine-session" ||
+      pathname === "/api/workspace/connectors" ||
       /^\/api\/channels\/[^/]+\/publishing\/youtube\/connect\/?$/.test(pathname) ||
       pathname.startsWith("/api/admin/flows") ||
       pathname === "/api/admin/audit-events" ||
