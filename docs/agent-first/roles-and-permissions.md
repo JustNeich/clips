@@ -21,6 +21,7 @@
 ## Отдельная граница `channel_connector`
 
 - аккаунт заранее создаёт `owner` или `manager` на `/team`; self-registration и invite отсутствуют;
+- localhost automation может создать тот же аккаунт через `POST /api/workspace/connectors` только с существующим bearer scope `control:write`; `flow:read` недостаточно;
 - система один раз показывает credentials и создаёт channel grant с `access_role = connect` для каждого выбранного канала;
 - вход выполняется только через `/connect/login` и создаёт session с `audience = connector` в cookie `clips_connector_session`;
 - основной `/api/auth/login` отказывает этой роли, а connector token не проходит как `audience = app` даже при подстановке в обычную cookie;

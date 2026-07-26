@@ -779,6 +779,7 @@
   - `POST /api/workspace/invites`
   - `POST /api/workspace/connectors`
 - `role nuances`:
+  - `POST /api/workspace/connectors` также принимает доверенный localhost bearer только со scope `control:write`; read-only bearer получает `401`
   - owner может выдавать `manager`, `redactor`, `redactor_limited`
   - manager может переключать только между `redactor` и `redactor_limited`
   - owner может удалять `manager`, `redactor`, `redactor_limited`

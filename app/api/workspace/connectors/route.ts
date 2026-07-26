@@ -1,5 +1,5 @@
 import { appendFlowAuditEvent } from "../../../../lib/audit-log-store";
-import { requireAuth } from "../../../../lib/auth/guards";
+import { requireAuth, requireOwnerOrMcpControlWrite } from "../../../../lib/auth/guards";
 import { getChannelById } from "../../../../lib/chat-history";
 import { asErrorResponse } from "../../../../lib/http";
 import { resolvePublicAppOrigin } from "../../../../lib/public-app-origin";
@@ -33,8 +33,16 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const auth = await requireAuth(request);
-    if (auth.membership.role !== "owner" && auth.membership.role !== "manager") {
+    const usesBearer = /^Bearer\s+\S+/i.test(request.headers.get("authorization") ?? "");
+    const auth = usesBearer
+      ? await requireOwnerOrMcpControlWrite(request)
+      : await requireAuth(request);
+    const sessionRole = "membership" in auth ? auth.membership?.role ?? null : null;
+    if (
+      sessionRole &&
+      sessionRole !== "owner" &&
+      sessionRole !== "manager"
+    ) {
       return Response.json({ error: "Forbidden." }, { status: 403 });
     }
     const channels = await Promise.all(channelIds.map((channelId) => getChannelById(channelId)));

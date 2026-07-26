@@ -134,8 +134,8 @@
 
 ### Happy path
 
-1. `owner` или `manager` открывает `/team`.
-2. Указывает имя, email и выбирает один или несколько заранее созданных Clips channels.
+1. `owner` или `manager` открывает `/team`; доверенный localhost-оператор может использовать тот же endpoint с bearer scope `control:write`.
+2. Указывает имя, login-email и выбирает один или несколько заранее созданных Clips channels.
 3. `POST /api/workspace/connectors` создаёт user + membership `channel_connector` + grant `connect` для каждого выбранного канала.
 4. UI один раз показывает portal URL, login, generated password и одну готовую пересылаемую инструкцию со списком всех каналов.
 5. Участник открывает `/connect/login`, вводит credentials и попадает в `/connect` без регистрации.
@@ -154,6 +154,7 @@
 - app routes не принимают connector session;
 - OAuth tokens остаются только на сервере;
 - password возвращается только в provisioning response и не пишется в audit.
+- machine provisioning принимает только `control:write`; `flow:read` fail-closed с `401`.
 
 ## 5. Team management
 

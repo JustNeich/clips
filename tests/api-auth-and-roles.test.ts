@@ -860,6 +860,57 @@ test("owner provisions a channel connector without registration and the connecto
         username: "hidden_channel"
       });
 
+      const readOnlyMachine = createMcpMachineCredential({
+        workspaceId: owner.workspace.id,
+        ownerUserId: owner.user.id,
+        machineId: "connector-reader",
+        scopes: ["flow:read"]
+      });
+      const deniedMachineProvisionResponse = await provisionChannelConnectorRoute(
+        new Request("https://clips.example.test/api/workspace/connectors", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${readOnlyMachine.secret}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            email: "denied-machine-connector@example.com",
+            channelIds: [hiddenChannel.id]
+          })
+        })
+      );
+      assert.equal(deniedMachineProvisionResponse.status, 401);
+
+      const machine = createMcpMachineCredential({
+        workspaceId: owner.workspace.id,
+        ownerUserId: owner.user.id,
+        machineId: "connector-provisioner",
+        scopes: ["control:write"]
+      });
+      const machineProvisionResponse = await provisionChannelConnectorRoute(
+        new Request("https://clips.example.test/api/workspace/connectors", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${machine.secret}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            email: "machine-connector@example.com",
+            displayName: "Machine Channel Partner",
+            channelIds: [hiddenChannel.id]
+          })
+        })
+      );
+      const machineProvisionBody = (await machineProvisionResponse.json()) as {
+        member?: { membership?: { role?: string } };
+        channels?: Array<{ id?: string }>;
+        credentials?: { password?: string };
+      };
+      assert.equal(machineProvisionResponse.status, 201);
+      assert.equal(machineProvisionBody.member?.membership?.role, "channel_connector");
+      assert.deepEqual(machineProvisionBody.channels?.map((channel) => channel.id), [hiddenChannel.id]);
+      assert.ok((machineProvisionBody.credentials?.password?.length ?? 0) >= 20);
+
       const provisionResponse = await provisionChannelConnectorRoute(
         new Request("https://clips.example.test/api/workspace/connectors", {
           method: "POST",
