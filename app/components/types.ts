@@ -1224,6 +1224,7 @@ export type ChannelPublishIntegrationOption = {
   id: string;
   title: string;
   customUrl: string | null;
+  thumbnailUrl: string | null;
 };
 
 export type YouTubeOAuthClientOption = {

@@ -10,13 +10,10 @@ type MemberRow = {
   user: UserRecord;
 };
 
-type ChannelOption = { id: string; name: string; username: string };
-
 type ConnectorCredentials = {
   email: string;
   password: string;
   portalUrl: string;
-  channelNames: string[];
 };
 
 const ROLE_LABELS: Record<AppRole, string> = {
@@ -30,13 +27,11 @@ const ROLE_LABELS: Record<AppRole, string> = {
 export default function TeamPage() {
   const [auth, setAuth] = useState<AuthMeResponse | null>(null);
   const [members, setMembers] = useState<MemberRow[]>([]);
-  const [channels, setChannels] = useState<ChannelOption[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<AppRole>("redactor");
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [connectorEmail, setConnectorEmail] = useState("");
   const [connectorName, setConnectorName] = useState("");
-  const [connectorChannelIds, setConnectorChannelIds] = useState<string[]>([]);
   const [connectorCredentials, setConnectorCredentials] = useState<ConnectorCredentials | null>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
@@ -55,24 +50,6 @@ export default function TeamPage() {
       throw new Error(membersBody.error ?? "Не удалось загрузить участников.");
     }
     setMembers(membersBody.members ?? []);
-    const channelsResponse = await fetch("/api/channels");
-    const channelsBody = (await channelsResponse.json()) as {
-      channels?: ChannelOption[];
-      error?: string;
-    };
-    if (!channelsResponse.ok) {
-      throw new Error(channelsBody.error ?? "Не удалось загрузить каналы.");
-    }
-    setChannels(channelsBody.channels ?? []);
-    setConnectorChannelIds((current) => {
-      const availableIds = new Set((channelsBody.channels ?? []).map((channel) => channel.id));
-      const retained = current.filter((channelId) => availableIds.has(channelId));
-      return retained.length > 0
-        ? retained
-        : channelsBody.channels?.[0]?.id
-          ? [channelsBody.channels[0].id]
-          : [];
-    });
   };
 
   useEffect(() => {
@@ -166,24 +143,19 @@ export default function TeamPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: connectorEmail,
-          displayName: connectorName,
-          channelIds: connectorChannelIds
+          displayName: connectorName
         })
       });
       const body = (await response.json().catch(() => null)) as
         | {
             error?: string;
-            channels?: Array<{ name: string }>;
             credentials?: { email: string; password: string; portalUrl: string };
           }
         | null;
       if (!response.ok || !body?.credentials) {
         throw new Error(body?.error ?? "Не удалось создать аккаунт подключения.");
       }
-      setConnectorCredentials({
-        ...body.credentials,
-        channelNames: body.channels?.map((channel) => channel.name) ?? []
-      });
+      setConnectorCredentials(body.credentials);
       setConnectorEmail("");
       setConnectorName("");
       await load();
@@ -232,14 +204,6 @@ export default function TeamPage() {
       (memberRole === "redactor" ||
         memberRole === "redactor_limited" ||
         memberRole === "channel_connector")
-    );
-  };
-
-  const toggleConnectorChannel = (channelId: string): void => {
-    setConnectorChannelIds((current) =>
-      current.includes(channelId)
-        ? current.filter((currentId) => currentId !== channelId)
-        : [...current, channelId]
     );
   };
 
@@ -316,7 +280,8 @@ export default function TeamPage() {
           <h3>Создать аккаунт подключения канала</h3>
           <p className="subtle-text">
             Участнику не понадобится регистрация или invite. Система создаст отдельный аккаунт и
-            покажет пароль один раз. Этот аккаунт работает только в портале подключения.
+            покажет пароль один раз. В портале участник самостоятельно создаёт новые каналы и не
+            видит существующие каналы workspace.
           </p>
           <div className="field-stack">
             <input
@@ -333,42 +298,10 @@ export default function TeamPage() {
               value={connectorEmail}
               onChange={(event) => setConnectorEmail(event.target.value)}
             />
-            <div className="details-section">
-              <div className="control-actions">
-                <strong>Назначенные каналы</strong>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  disabled={busy || channels.length === 0}
-                  onClick={() =>
-                    setConnectorChannelIds(
-                      connectorChannelIds.length === channels.length
-                        ? []
-                        : channels.map((channel) => channel.id)
-                    )
-                  }
-                >
-                  {connectorChannelIds.length === channels.length ? "Снять все" : "Выбрать все"}
-                </button>
-              </div>
-              <div className="field-stack">
-                {channels.map((channel) => (
-                  <label key={channel.id} className="control-actions">
-                    <input
-                      type="checkbox"
-                      checked={connectorChannelIds.includes(channel.id)}
-                      disabled={busy}
-                      onChange={() => toggleConnectorChannel(channel.id)}
-                    />
-                    <span>{channel.name} · @{channel.username}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
             <button
               type="button"
               className="btn btn-primary"
-              disabled={busy || !connectorEmail.trim() || connectorChannelIds.length === 0}
+              disabled={busy || !connectorEmail.trim()}
               onClick={() => void createConnectorAccount()}
             >
               Создать аккаунт
@@ -377,9 +310,6 @@ export default function TeamPage() {
           {connectorCredentials ? (
             <div className="details-section">
               <p><strong>Данные для участника</strong></p>
-              <p className="subtle-text">
-                Каналы: {connectorCredentials.channelNames.join(", ")}
-              </p>
               <p className="subtle-text">Страница: {connectorCredentials.portalUrl}</p>
               <p className="subtle-text">Логин: {connectorCredentials.email}</p>
               <p className="subtle-text">Пароль: <strong>{connectorCredentials.password}</strong></p>
@@ -394,12 +324,11 @@ export default function TeamPage() {
                     `Логин: ${connectorCredentials.email}`,
                     `Пароль: ${connectorCredentials.password}`,
                     "",
-                    "После входа подключите каждый канал из списка:",
-                    ...connectorCredentials.channelNames.map((channelName) => `• ${channelName}`),
+                    "После входа нажмите «Создать канал», затем «Подключить Google» и войдите в Google-аккаунт нужного YouTube-канала. Если Google покажет несколько каналов, выберите нужный. Название, username и аватарка загрузятся автоматически.",
                     "",
-                    "Для каждого канала нажмите «Подключить Google», войдите в Google-аккаунт владельца этого YouTube-канала и подтвердите доступ. Если появится выбор канала, выберите канал с тем же названием.",
+                    "Когда канал получит статус «Подключён», нажмите «Создать канал» и повторите действия для следующего. В портале видны только каналы, созданные вами. Регистрация не нужна.",
                     "",
-                    "Когда у всех каналов появится статус «Подключён», напишите мне «Готово». Регистрация не нужна — используйте только данные выше."
+                    "Если ошибочно создали пустой канал, его можно удалить до подключения. Когда подключите все каналы, напишите мне «Готово»."
                   ].join("\n");
                   void navigator.clipboard.writeText(text);
                   setStatus("Инструкция скопирована.");

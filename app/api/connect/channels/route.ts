@@ -1,7 +1,8 @@
+import { appendFlowAuditEvent } from "../../../../lib/audit-log-store";
 import { requireConnectorAuth } from "../../../../lib/auth/guards";
 import {
-  listChannelAccessForUserByChannelIds,
-  listVisibleChannelsWithStats
+  createConnectorChannelDraft,
+  listChannelsCreatedByUser
 } from "../../../../lib/chat-history";
 import { getChannelPublishIntegration } from "../../../../lib/publication-store";
 
@@ -17,7 +18,7 @@ function publicIntegration(channelId: string) {
     selectedGoogleAccountEmail: integration.selectedGoogleAccountEmail,
     selectedYoutubeChannelId: integration.selectedYoutubeChannelId,
     selectedYoutubeChannelTitle: integration.selectedYoutubeChannelTitle,
-    selectedYoutubeChannelCustomUrl: integration.selectedYoutubeChannelCustomUrl,
+      selectedYoutubeChannelCustomUrl: integration.selectedYoutubeChannelCustomUrl,
     availableChannels: integration.availableChannels,
     updatedAt: integration.updatedAt,
     lastError: integration.lastError
@@ -27,21 +28,15 @@ function publicIntegration(channelId: string) {
 export async function GET(request: Request): Promise<Response> {
   try {
     const auth = requireConnectorAuth(request);
-    const visible = await listVisibleChannelsWithStats({
+    const ownChannels = await listChannelsCreatedByUser({
       workspaceId: auth.workspace.id,
-      userId: auth.user.id,
-      role: auth.membership.role
+      userId: auth.user.id
     });
-    const grants = await listChannelAccessForUserByChannelIds(
-      visible.map((channel) => channel.id),
-      auth.user.id
-    );
-    const channels = visible
-      .filter((channel) => grants.get(channel.id)?.accessRole === "connect")
-      .map((channel) => ({
+    const channels = ownChannels.map((channel) => ({
         id: channel.id,
         name: channel.name,
         username: channel.username,
+        onboardingStatus: channel.onboardingStatus,
         integration: publicIntegration(channel.id)
       }));
     return Response.json(
@@ -52,6 +47,48 @@ export async function GET(request: Request): Promise<Response> {
     if (error instanceof Response) {
       return error;
     }
-    return Response.json({ error: "Не удалось загрузить назначенные каналы." }, { status: 500 });
+    return Response.json({ error: "Не удалось загрузить созданные каналы." }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request): Promise<Response> {
+  try {
+    const auth = requireConnectorAuth(request);
+    const result = await createConnectorChannelDraft({
+      workspaceId: auth.workspace.id,
+      creatorUserId: auth.user.id
+    });
+    if (result.created) {
+      appendFlowAuditEvent({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        channelId: result.channel.id,
+        action: "channel_connector.draft_created",
+        entityType: "channel",
+        entityId: result.channel.id,
+        stage: "auth",
+        status: "created",
+        payload: { onboardingStatus: result.channel.onboardingStatus }
+      });
+    }
+    return Response.json(
+      {
+        channel: {
+          id: result.channel.id,
+          name: result.channel.name,
+          username: result.channel.username,
+          onboardingStatus: result.channel.onboardingStatus,
+          integration: publicIntegration(result.channel.id)
+        },
+        created: result.created
+      },
+      {
+        status: result.created ? 201 : 200,
+        headers: { "Cache-Control": "no-store" }
+      }
+    );
+  } catch (error) {
+    if (error instanceof Response) return error;
+    return Response.json({ error: "Не удалось создать канал." }, { status: 500 });
   }
 }

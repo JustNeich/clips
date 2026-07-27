@@ -1,13 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type YoutubeOption = { id: string; title: string; customUrl: string | null };
+type YoutubeOption = {
+  id: string;
+  title: string;
+  customUrl: string | null;
+  thumbnailUrl: string | null;
+};
+
 type ConnectorChannel = {
   id: string;
   name: string;
   username: string;
+  onboardingStatus: "draft" | "needs_identity" | "ready";
   integration: null | {
     status: "disconnected" | "pending_selection" | "connected" | "reauth_required" | "error";
     selectedGoogleAccountEmail: string | null;
@@ -32,6 +39,9 @@ export default function ConnectorPortalPage() {
   const [status, setStatus] = useState("");
   const [statusError, setStatusError] = useState(false);
   const [busyChannelId, setBusyChannelId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [identityName, setIdentityName] = useState<Record<string, string>>({});
+  const [identityUsername, setIdentityUsername] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     const response = await fetch("/api/connect/channels", { cache: "no-store" });
@@ -41,9 +51,14 @@ export default function ConnectorPortalPage() {
     }
     const body = (await response.json().catch(() => null)) as PortalPayload | null;
     if (!response.ok || !body) {
-      throw new Error(body?.error ?? "Не удалось загрузить назначенные каналы.");
+      throw new Error(body?.error ?? "Не удалось загрузить созданные каналы.");
     }
     setPayload(body);
+    setIdentityName((current) => {
+      const next = { ...current };
+      for (const channel of body.channels) next[channel.id] ??= channel.name;
+      return next;
+    });
   }, [router]);
 
   useEffect(() => {
@@ -70,6 +85,30 @@ export default function ConnectorPortalPage() {
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [load]);
+
+  const createChannel = async () => {
+    setCreating(true);
+    setStatus("");
+    setStatusError(false);
+    try {
+      const response = await fetch("/api/connect/channels", { method: "POST" });
+      const body = (await response.json().catch(() => null)) as {
+        created?: boolean;
+        channel?: { id?: string };
+        error?: string;
+      } | null;
+      if (!response.ok || !body?.channel?.id) {
+        throw new Error(body?.error ?? "Не удалось создать канал.");
+      }
+      setStatus(body.created ? "Черновик создан. Подключите к нему Google." : "Открыт уже созданный черновик.");
+      await load();
+    } catch (error) {
+      setStatusError(true);
+      setStatus(error instanceof Error ? error.message : "Не удалось создать канал.");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const connect = async (channelId: string) => {
     setBusyChannelId(channelId);
@@ -112,11 +151,55 @@ export default function ConnectorPortalPage() {
       if (!response.ok) {
         throw new Error(body?.error ?? "Не удалось выбрать YouTube-канал.");
       }
-      setStatus("YouTube-канал выбран. Подключение завершено.");
+      setStatus("YouTube-канал выбран.");
       await load();
     } catch (error) {
       setStatusError(true);
       setStatus(error instanceof Error ? error.message : "Не удалось выбрать канал.");
+    } finally {
+      setBusyChannelId(null);
+    }
+  };
+
+  const saveIdentity = async (event: FormEvent<HTMLFormElement>, channelId: string) => {
+    event.preventDefault();
+    setBusyChannelId(channelId);
+    setStatusError(false);
+    setStatus("");
+    try {
+      const response = await fetch(`/api/connect/channels/${channelId}/identity`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: identityName[channelId] ?? "",
+          username: identityUsername[channelId] ?? ""
+        })
+      });
+      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) throw new Error(body?.error ?? "Не удалось сохранить название.");
+      setStatus("Данные канала сохранены. Подключение завершено.");
+      await load();
+    } catch (error) {
+      setStatusError(true);
+      setStatus(error instanceof Error ? error.message : "Не удалось сохранить данные канала.");
+    } finally {
+      setBusyChannelId(null);
+    }
+  };
+
+  const deleteDraft = async (channelId: string) => {
+    setBusyChannelId(channelId);
+    setStatusError(false);
+    setStatus("");
+    try {
+      const response = await fetch(`/api/connect/channels/${channelId}`, { method: "DELETE" });
+      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) throw new Error(body?.error ?? "Не удалось удалить черновик.");
+      setStatus("Пустой черновик удалён.");
+      await load();
+    } catch (error) {
+      setStatusError(true);
+      setStatus(error instanceof Error ? error.message : "Не удалось удалить черновик.");
     } finally {
       setBusyChannelId(null);
     }
@@ -144,22 +227,35 @@ export default function ConnectorPortalPage() {
         </div>
 
         <p className="subtle-text">
-          Здесь доступны только каналы, назначенные администратором. Доступа к рабочему приложению нет.
+          Здесь видны только каналы, созданные вами. Доступа к рабочему приложению Clips нет.
         </p>
+
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={creating}
+          onClick={() => void createChannel()}
+        >
+          {creating ? "Создаём..." : "Создать канал"}
+        </button>
 
         <div className="field-stack">
           {payload?.channels.map((channel) => {
             const integration = channel.integration;
             const connected = integration?.status === "connected";
+            const confirmedHandle = integration?.selectedYoutubeChannelCustomUrl?.startsWith("@")
+              ? integration.selectedYoutubeChannelCustomUrl
+              : null;
             return (
               <section key={channel.id} className="details-section">
                 <h3>{channel.name}</h3>
-                <p className="subtle-text">@{channel.username}</p>
-                {connected ? (
+                {confirmedHandle ? <p className="subtle-text">{confirmedHandle}</p> : null}
+                {channel.onboardingStatus === "ready" && connected ? (
                   <p className="status-line ok">
-                    Подключён: {integration.selectedYoutubeChannelTitle || "YouTube"}
+                    Подключён: {integration.selectedYoutubeChannelTitle || channel.name}
                   </p>
                 ) : null}
+
                 {integration?.status === "pending_selection" ? (
                   <label className="field-stack">
                     <span className="field-label">Выберите YouTube-канал</span>
@@ -167,17 +263,49 @@ export default function ConnectorPortalPage() {
                       className="text-input"
                       defaultValue=""
                       disabled={busyChannelId === channel.id}
-                      onChange={(event) =>
-                        void selectYoutubeChannel(channel.id, event.target.value)
-                      }
+                      onChange={(event) => void selectYoutubeChannel(channel.id, event.target.value)}
                     >
                       <option value="" disabled>Выберите канал</option>
                       {integration.availableChannels.map((option) => (
-                        <option key={option.id} value={option.id}>{option.title}</option>
+                        <option key={option.id} value={option.id}>
+                          {option.title || option.customUrl || option.id}
+                        </option>
                       ))}
                     </select>
                   </label>
-                ) : (
+                ) : null}
+
+                {channel.onboardingStatus === "needs_identity" && connected ? (
+                  <form className="field-stack" onSubmit={(event) => void saveIdentity(event, channel.id)}>
+                    <p className="status-line error">
+                      YouTube не вернул название. Укажите его вручную.
+                    </p>
+                    <input
+                      className="text-input"
+                      type="text"
+                      required
+                      placeholder="Название канала"
+                      value={identityName[channel.id] ?? ""}
+                      onChange={(event) =>
+                        setIdentityName((current) => ({ ...current, [channel.id]: event.target.value }))
+                      }
+                    />
+                    <input
+                      className="text-input"
+                      type="text"
+                      placeholder="YouTube handle — необязательно"
+                      value={identityUsername[channel.id] ?? ""}
+                      onChange={(event) =>
+                        setIdentityUsername((current) => ({ ...current, [channel.id]: event.target.value }))
+                      }
+                    />
+                    <button className="btn btn-primary" disabled={busyChannelId === channel.id}>
+                      Сохранить
+                    </button>
+                  </form>
+                ) : null}
+
+                {integration?.status !== "pending_selection" && channel.onboardingStatus !== "needs_identity" ? (
                   <button
                     type="button"
                     className="btn btn-primary"
@@ -190,7 +318,18 @@ export default function ConnectorPortalPage() {
                         ? "Переподключить Google"
                         : "Подключить Google"}
                   </button>
-                )}
+                ) : null}
+
+                {channel.onboardingStatus === "draft" && !integration?.selectedYoutubeChannelId ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={busyChannelId === channel.id}
+                    onClick={() => void deleteDraft(channel.id)}
+                  >
+                    Удалить пустой канал
+                  </button>
+                ) : null}
                 {integration?.lastError ? (
                   <p className="status-line error">{integration.lastError}</p>
                 ) : null}
@@ -198,7 +337,7 @@ export default function ConnectorPortalPage() {
             );
           })}
           {payload && payload.channels.length === 0 ? (
-            <p className="subtle-text">Администратор пока не назначил вам канал.</p>
+            <p className="subtle-text">Пока нет каналов. Нажмите «Создать канал».</p>
           ) : null}
         </div>
         {status ? <p className={`status-line ${statusError ? "error" : "ok"}`}>{status}</p> : null}

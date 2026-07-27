@@ -1717,8 +1717,6 @@ export async function provisionChannelConnector(input: {
   workspaceId: string;
   email: string;
   displayName: string;
-  channelIds: string[];
-  createdByUserId: string;
 }): Promise<{
   user: UserRecord;
   membership: WorkspaceMemberRecord;
@@ -1729,26 +1727,7 @@ export async function provisionChannelConnector(input: {
   if (!email) {
     throw new Error("Email is required.");
   }
-  const channelIds = Array.from(
-    new Set(input.channelIds.map((channelId) => channelId.trim()).filter(Boolean))
-  );
-  if (channelIds.length === 0) {
-    throw new Error("Выберите хотя бы один канал.");
-  }
   const db = getDb();
-  const channelRows = db
-    .prepare(
-      `SELECT id
-         FROM channels
-        WHERE workspace_id = ?
-          AND archived_at IS NULL
-          AND id IN (${channelIds.map(() => "?").join(", ")})`
-    )
-    .all(input.workspaceId, ...channelIds) as Array<{ id?: string }>;
-  const validChannelIds = new Set(channelRows.map((row) => String(row.id ?? "")));
-  if (validChannelIds.size !== channelIds.length) {
-    throw new Error("Один или несколько каналов не найдены.");
-  }
 
   const existingUser = getUserWithPasswordByEmail(email);
   if (existingUser && getMembership(existingUser.id, input.workspaceId)) {
@@ -1781,15 +1760,7 @@ export async function provisionChannelConnector(input: {
     createdAt: stamp,
     updatedAt: stamp
   };
-  const accesses: ChannelAccessRecord[] = channelIds.map((channelId) => ({
-    id: newId(),
-    channelId,
-    userId: user.id,
-    accessRole: "connect",
-    grantedByUserId: input.createdByUserId,
-    createdAt: stamp,
-    revokedAt: null
-  }));
+  const accesses: ChannelAccessRecord[] = [];
 
   runInTransaction((transaction) => {
     if (existingUser) {
@@ -1817,26 +1788,6 @@ export async function provisionChannelConnector(input: {
         membership.createdAt,
         membership.updatedAt
       );
-    const accessStatement = transaction.prepare(
-        `INSERT INTO channel_access
-          (id, channel_id, user_id, access_role, granted_by_user_id, created_at, revoked_at)
-         VALUES (?, ?, ?, ?, ?, ?, NULL)
-         ON CONFLICT(channel_id, user_id) DO UPDATE SET
-          access_role = excluded.access_role,
-          granted_by_user_id = excluded.granted_by_user_id,
-          created_at = excluded.created_at,
-          revoked_at = NULL`
-      );
-    for (const access of accesses) {
-      accessStatement.run(
-        access.id,
-        access.channelId,
-        access.userId,
-        access.accessRole,
-        access.grantedByUserId,
-        access.createdAt
-      );
-    }
     transaction
       .prepare(
         "DELETE FROM workspace_invites WHERE workspace_id = ? AND email = ? AND accepted_at IS NULL"
@@ -1844,29 +1795,10 @@ export async function provisionChannelConnector(input: {
       .run(input.workspaceId, email);
   });
 
-  const savedAccessRows = db
-    .prepare(
-      `SELECT *
-         FROM channel_access
-        WHERE user_id = ?
-          AND channel_id IN (${channelIds.map(() => "?").join(", ")})`
-    )
-    .all(user.id, ...channelIds) as Record<string, unknown>[];
-  const savedAccessByChannelId = new Map(
-    savedAccessRows.map((row) => {
-      const access = mapChannelAccess(row);
-      return [access.channelId, access] as const;
-    })
-  );
-  const savedAccesses = channelIds.map((channelId) => savedAccessByChannelId.get(channelId));
-  if (savedAccesses.some((access) => !access)) {
-    throw new Error("Channel connector access was not saved for every channel.");
-  }
-
   return {
     user,
     membership,
-    accesses: savedAccesses as ChannelAccessRecord[],
+    accesses,
     initialPassword
   };
 }

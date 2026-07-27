@@ -182,7 +182,8 @@ function connectChannelPublishing(channelId: string, withCredential = false): vo
       {
         id: "youtube-channel-1",
         title: "Daily Dopamine",
-        customUrl: "@dailydopamine"
+        customUrl: "@dailydopamine",
+        thumbnailUrl: null
       }
     ],
     scopes: ["youtube.upload"]

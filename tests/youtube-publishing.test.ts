@@ -8,6 +8,7 @@ import {
   assertYouTubePublishingConnectReady,
   buildYouTubeOAuthUrl,
   exchangeYouTubeOAuthCode,
+  listManagedYouTubeChannels,
   refreshYouTubeAccessToken,
   updateYouTubeScheduledVideo,
   uploadYouTubeVideo
@@ -205,7 +206,11 @@ test("OAuth code exchange and refresh use the selected project secret", async ()
             id: "youtube-channel-1",
             snippet: {
               title: "Daily Dopamine",
-              customUrl: "@dailydopamine"
+              customUrl: "@dailydopamine",
+              thumbnails: {
+                default: { url: "https://yt3.ggpht.com/small", width: 88, height: 88 },
+                high: { url: "https://yt3.ggpht.com/high", width: 800, height: 800 }
+              }
             }
           }
         ]
@@ -248,8 +253,32 @@ test("OAuth code exchange and refresh use the selected project secret", async ()
     );
 
     assert.equal(result.exchanged.credential.refreshToken, "refresh-token");
+    assert.equal(result.exchanged.availableChannels[0]?.thumbnailUrl, "https://yt3.ggpht.com/high");
     assert.equal(result.refreshed.accessToken, "access-2");
     assert.deepEqual(observedSecrets, ["secondary-secret", "secondary-secret"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("managed YouTube channels preserve entries with missing optional identity metadata", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    Response.json({
+      items: [
+        { id: "UC-without-title", snippet: {} },
+        { snippet: { title: "missing id" } }
+      ]
+    })) as typeof fetch;
+  try {
+    assert.deepEqual(await listManagedYouTubeChannels("token"), [
+      {
+        id: "UC-without-title",
+        title: "",
+        customUrl: null,
+        thumbnailUrl: null
+      }
+    ]);
   } finally {
     globalThis.fetch = originalFetch;
   }

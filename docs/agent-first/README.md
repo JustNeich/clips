@@ -86,7 +86,7 @@
 | --- | --- |
 | `/` | Главный рабочий shell: Step 1, Step 2, Step 3, история, выбор канала, Channel Manager, Publishing |
 | `/team` | Управление участниками и invite-ами |
-| `/connect` | Изолированный портал подключения назначенных YouTube-каналов |
+| `/connect` | Изолированный портал самостоятельного создания и подключения новых YouTube-каналов |
 
 ### Internal design tooling
 
@@ -138,7 +138,7 @@
 | `manager` | Операционное управление каналами и участниками | Не управляет owner-only workspace integrations и owner-wide bootstrap |
 | `redactor` | Ежедневный production flow и настройка доступных ему каналов | Не управляет командой и общими workspace defaults |
 | `redactor_limited` | Только рабочий цикл по выданным каналам | Не создаёт каналы, не меняет channel setup, не управляет доступами |
-| `channel_connector` | Подключить Google/YouTube к назначенному каналу | Не получает обычную app-session и не видит Clips UI |
+| `channel_connector` | Создать новый Clips channel и подключить Google/YouTube | Не получает обычную app-session, не видит Clips UI и чужие каналы |
 
 Полная матрица находится в [`docs/agent-first/roles-and-permissions.md`](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/agent-first/roles-and-permissions.md).
 
