@@ -16,17 +16,19 @@
 | Управляющий | `manager` | Операционный администратор без owner-only прав |
 | Редактор | `redactor` | Полный production flow по доступным каналам |
 | Ограниченный редактор | `redactor_limited` | Операторские действия и ограниченные render/assets настройки без полного channel setup |
-| Подключающий канал | `channel_connector` | Только отдельный портал Google/YouTube OAuth для назначенного канала |
+| Подключающий канал | `channel_connector` | Создание новых каналов и Google/YouTube OAuth только в отдельном портале |
 
 ## Отдельная граница `channel_connector`
 
 - аккаунт заранее создаёт `owner` или `manager` на `/team`; self-registration и invite отсутствуют;
 - localhost automation может создать тот же аккаунт через `POST /api/workspace/connectors` только с существующим bearer scope `control:write`; `flow:read` недостаточно;
-- система один раз показывает credentials и создаёт channel grant с `access_role = connect` для каждого выбранного канала;
+- система один раз показывает credentials; существующие каналы не назначаются и channel grants не создаются;
 - вход выполняется только через `/connect/login` и создаёт session с `audience = connector` в cookie `clips_connector_session`;
 - основной `/api/auth/login` отказывает этой роли, а connector token не проходит как `audience = app` даже при подстановке в обычную cookie;
-- `/connect` показывает только каналы с active `connect` grant;
-- разрешены старт Google OAuth и выбор YouTube destination;
+- `/connect` сначала пуст и показывает только каналы, созданные текущим connector user;
+- разрешены создание одного незавершённого черновика, удаление пустого черновика, старт Google OAuth, выбор YouTube destination и заполнение недостающего названия;
+- один YouTube destination нельзя выбрать для двух Clips channels; повторное нажатие `Создать канал` возвращает уже существующий незавершённый черновик;
+- legacy `connect` grants не дают connector visibility или access;
 - запрещены основной `/`, `/team`, channel setup, Stage 1/2/3, публикации, assets, доступы и disconnect интеграции.
 
 ## Workspace-level permissions

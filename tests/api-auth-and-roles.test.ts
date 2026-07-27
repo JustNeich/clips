@@ -8,8 +8,13 @@ import { NextRequest } from "next/server";
 import { POST as fetchComments } from "../app/api/comments/route";
 import { POST as createMachineSessionRoute } from "../app/api/auth/machine-session/route";
 import { POST as registerRoute } from "../app/api/auth/register/route";
-import { GET as listConnectorChannelsRoute } from "../app/api/connect/channels/route";
+import {
+  GET as listConnectorChannelsRoute,
+  POST as createConnectorChannelRoute
+} from "../app/api/connect/channels/route";
+import { DELETE as deleteConnectorChannelRoute } from "../app/api/connect/channels/[id]/route";
 import { POST as startConnectorYoutubeConnect } from "../app/api/connect/channels/[id]/youtube/connect/route";
+import { GET as youtubeOauthCallbackRoute } from "../app/api/integrations/youtube/callback/route";
 import { GET as getChatTrace } from "../app/api/chat-trace/[id]/route";
 import { GET as getChatRoute } from "../app/api/chats/[id]/route";
 import { GET as listChannelsRoute } from "../app/api/channels/route";
@@ -841,23 +846,11 @@ test("owner provisions a channel connector without registration and the connecto
         displayName: "Owner"
       });
       const chatHistory = await import("../lib/chat-history");
-      const assignedChannel = await chatHistory.createChannel({
+      const legacyGrantedChannel = await chatHistory.createChannel({
         workspaceId: owner.workspace.id,
         creatorUserId: owner.user.id,
-        name: "Assigned Channel",
-        username: "assigned_channel"
-      });
-      const secondAssignedChannel = await chatHistory.createChannel({
-        workspaceId: owner.workspace.id,
-        creatorUserId: owner.user.id,
-        name: "Second Assigned Channel",
-        username: "second_assigned_channel"
-      });
-      const hiddenChannel = await chatHistory.createChannel({
-        workspaceId: owner.workspace.id,
-        creatorUserId: owner.user.id,
-        name: "Hidden Channel",
-        username: "hidden_channel"
+        name: "Legacy Granted Channel",
+        username: "legacy_granted_channel"
       });
 
       const readOnlyMachine = createMcpMachineCredential({
@@ -874,8 +867,7 @@ test("owner provisions a channel connector without registration and the connecto
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            email: "denied-machine-connector@example.com",
-            channelIds: [hiddenChannel.id]
+            email: "denied-machine-connector@example.com"
           })
         })
       );
@@ -896,19 +888,16 @@ test("owner provisions a channel connector without registration and the connecto
           },
           body: JSON.stringify({
             email: "machine-connector@example.com",
-            displayName: "Machine Channel Partner",
-            channelIds: [hiddenChannel.id]
+            displayName: "Machine Channel Partner"
           })
         })
       );
       const machineProvisionBody = (await machineProvisionResponse.json()) as {
         member?: { membership?: { role?: string } };
-        channels?: Array<{ id?: string }>;
         credentials?: { password?: string };
       };
       assert.equal(machineProvisionResponse.status, 201);
       assert.equal(machineProvisionBody.member?.membership?.role, "channel_connector");
-      assert.deepEqual(machineProvisionBody.channels?.map((channel) => channel.id), [hiddenChannel.id]);
       assert.ok((machineProvisionBody.credentials?.password?.length ?? 0) >= 20);
 
       const provisionResponse = await provisionChannelConnectorRoute(
@@ -920,14 +909,12 @@ test("owner provisions a channel connector without registration and the connecto
           },
           body: JSON.stringify({
             email: "connector@example.com",
-            displayName: "Channel Partner",
-            channelIds: [assignedChannel.id, secondAssignedChannel.id]
+            displayName: "Channel Partner"
           })
         })
       );
       const provisionBody = (await provisionResponse.json()) as {
         member?: { membership?: { role?: string }; user?: { id?: string } };
-        channels?: Array<{ id?: string; name?: string }>;
         credentials?: { email?: string; password?: string; portalUrl?: string };
       };
 
@@ -936,24 +923,12 @@ test("owner provisions a channel connector without registration and the connecto
       assert.equal(provisionBody.credentials?.email, "connector@example.com");
       assert.ok((provisionBody.credentials?.password?.length ?? 0) >= 20);
       assert.equal(provisionBody.credentials?.portalUrl, "https://clips.example.test/connect/login");
-      assert.deepEqual(
-        provisionBody.channels?.map((channel) => channel.id),
-        [assignedChannel.id, secondAssignedChannel.id]
-      );
       const connectorUserId = provisionBody.member?.user?.id;
       assert.ok(connectorUserId);
       const grants = getDb()
         .prepare("SELECT channel_id, access_role FROM channel_access WHERE user_id = ?")
         .all(connectorUserId) as Array<{ channel_id?: string; access_role?: string }>;
-      assert.deepEqual(
-        grants
-          .map((grant) => [grant.channel_id, grant.access_role])
-          .sort(([left], [right]) => String(left).localeCompare(String(right))),
-        [
-          [assignedChannel.id, "connect"],
-          [secondAssignedChannel.id, "connect"]
-        ].sort(([left], [right]) => String(left).localeCompare(String(right)))
-      );
+      assert.deepEqual(grants, []);
       const inviteCount = getDb()
         .prepare("SELECT COUNT(*) as count FROM workspace_invites WHERE email = ?")
         .get("connector@example.com") as { count?: number };
@@ -975,6 +950,12 @@ test("owner provisions a channel connector without registration and the connecto
       assert.equal(connector.session.audience, "connector");
 
       const connectorCookie = `${CONNECTOR_SESSION_COOKIE}=${connector.sessionToken}`;
+      setChannelAccess({
+        channelId: legacyGrantedChannel.id,
+        userId: connector.user.id,
+        grantedByUserId: owner.user.id,
+        accessRole: "connect"
+      });
       const channelsResponse = await listConnectorChannelsRoute(
         new Request("https://clips.example.test/api/connect/channels", {
           headers: { cookie: connectorCookie }
@@ -984,10 +965,47 @@ test("owner provisions a channel connector without registration and the connecto
         channels?: Array<{ id?: string; name?: string }>;
       };
       assert.equal(channelsResponse.status, 200);
-      assert.deepEqual(
-        channelsBody.channels?.map((channel) => channel.id).sort(),
-        [assignedChannel.id, secondAssignedChannel.id].sort()
+      assert.deepEqual(channelsBody.channels, [], "legacy connect grants must not expose owner channels");
+
+      const createResponse = await createConnectorChannelRoute(
+        new Request("https://clips.example.test/api/connect/channels", {
+          method: "POST",
+          headers: { cookie: connectorCookie }
+        })
       );
+      const createBody = (await createResponse.json()) as {
+        created?: boolean;
+        channel?: { id?: string; onboardingStatus?: string };
+      };
+      assert.equal(createResponse.status, 201);
+      assert.equal(createBody.created, true);
+      assert.equal(createBody.channel?.onboardingStatus, "draft");
+      const connectorChannelId = createBody.channel?.id;
+      assert.ok(connectorChannelId);
+
+      const repeatCreateResponse = await createConnectorChannelRoute(
+        new Request("https://clips.example.test/api/connect/channels", {
+          method: "POST",
+          headers: { cookie: connectorCookie }
+        })
+      );
+      const repeatCreateBody = (await repeatCreateResponse.json()) as {
+        created?: boolean;
+        channel?: { id?: string };
+      };
+      assert.equal(repeatCreateResponse.status, 200);
+      assert.equal(repeatCreateBody.created, false);
+      assert.equal(repeatCreateBody.channel?.id, connectorChannelId);
+
+      const ownChannelsResponse = await listConnectorChannelsRoute(
+        new Request("https://clips.example.test/api/connect/channels", {
+          headers: { cookie: connectorCookie }
+        })
+      );
+      const ownChannelsBody = (await ownChannelsResponse.json()) as {
+        channels?: Array<{ id?: string }>;
+      };
+      assert.deepEqual(ownChannelsBody.channels?.map((channel) => channel.id), [connectorChannelId]);
 
       const mainAppResponse = await listChannelsRoute(
         new Request("https://clips.example.test/api/channels", {
@@ -998,29 +1016,94 @@ test("owner provisions a channel connector without registration and the connecto
 
       const oauthResponse = await startConnectorYoutubeConnect(
         new Request(
-          `https://clips.example.test/api/connect/channels/${assignedChannel.id}/youtube/connect`,
+          `https://clips.example.test/api/connect/channels/${connectorChannelId}/youtube/connect`,
           {
             method: "POST",
             headers: { cookie: connectorCookie, "Content-Type": "application/json" },
             body: JSON.stringify({ oauthClientKey: "primary" })
           }
         ),
-        { params: Promise.resolve({ id: assignedChannel.id }) }
+        { params: Promise.resolve({ id: connectorChannelId }) }
       );
       assert.equal(oauthResponse.status, 200);
+      const oauthBody = (await oauthResponse.json()) as { url?: string };
+      const oauthState = new URL(oauthBody.url ?? "https://invalid.test").searchParams.get("state");
+      assert.ok(oauthState);
 
       const deniedResponse = await startConnectorYoutubeConnect(
         new Request(
-          `https://clips.example.test/api/connect/channels/${hiddenChannel.id}/youtube/connect`,
+          `https://clips.example.test/api/connect/channels/${legacyGrantedChannel.id}/youtube/connect`,
           {
             method: "POST",
             headers: { cookie: connectorCookie, "Content-Type": "application/json" },
             body: JSON.stringify({ oauthClientKey: "primary" })
           }
         ),
-        { params: Promise.resolve({ id: hiddenChannel.id }) }
+        { params: Promise.resolve({ id: legacyGrantedChannel.id }) }
       );
       assert.equal(deniedResponse.status, 403);
+
+      const machineConnector = await loginChannelConnectorWithPassword({
+        email: "machine-connector@example.com",
+        password: machineProvisionBody.credentials?.password ?? ""
+      });
+      const crossConnectorResponse = await startConnectorYoutubeConnect(
+        new Request(
+          `https://clips.example.test/api/connect/channels/${connectorChannelId}/youtube/connect`,
+          {
+            method: "POST",
+            headers: {
+              cookie: `${CONNECTOR_SESSION_COOKIE}=${machineConnector.sessionToken}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ oauthClientKey: "primary" })
+          }
+        ),
+        { params: Promise.resolve({ id: connectorChannelId }) }
+      );
+      assert.equal(crossConnectorResponse.status, 403);
+
+      getDb()
+        .prepare("UPDATE channels SET creator_user_id = ? WHERE id = ?")
+        .run(owner.user.id, connectorChannelId);
+      const originalFetch = globalThis.fetch;
+      let callbackFetchCalled = false;
+      globalThis.fetch = (async () => {
+        callbackFetchCalled = true;
+        throw new Error("stale OAuth state must fail before token exchange");
+      }) as typeof fetch;
+      try {
+        const staleCallbackResponse = await youtubeOauthCallbackRoute(
+          new Request(
+            `https://clips.example.test/api/integrations/youtube/callback?state=${encodeURIComponent(oauthState)}&code=stale-code`
+          )
+        );
+        assert.equal(staleCallbackResponse.status, 200);
+        assert.match(await staleCallbackResponse.text(), /revoked/i);
+        assert.equal(callbackFetchCalled, false);
+      } finally {
+        globalThis.fetch = originalFetch;
+        getDb()
+          .prepare("UPDATE channels SET creator_user_id = ? WHERE id = ?")
+          .run(connector.user.id, connectorChannelId);
+      }
+
+      const deleteResponse = await deleteConnectorChannelRoute(
+        new Request(`https://clips.example.test/api/connect/channels/${connectorChannelId}`, {
+          method: "DELETE",
+          headers: { cookie: connectorCookie }
+        }),
+        { params: Promise.resolve({ id: connectorChannelId }) }
+      );
+      assert.equal(deleteResponse.status, 200);
+
+      const afterDeleteResponse = await listConnectorChannelsRoute(
+        new Request("https://clips.example.test/api/connect/channels", {
+          headers: { cookie: connectorCookie }
+        })
+      );
+      const afterDeleteBody = (await afterDeleteResponse.json()) as { channels?: unknown[] };
+      assert.deepEqual(afterDeleteBody.channels, []);
     });
   });
 });
@@ -1120,7 +1203,9 @@ test("redactor accounts can edit active channel Stage 2 settings while other int
       selectedYoutubeChannelId: "yt-secret-channel",
       selectedYoutubeChannelTitle: "Secret YouTube",
       selectedYoutubeChannelCustomUrl: "@secret",
-      availableChannels: [{ id: "yt-secret-channel", title: "Secret YouTube", customUrl: "@secret" }],
+      availableChannels: [
+        { id: "yt-secret-channel", title: "Secret YouTube", customUrl: "@secret", thumbnailUrl: null }
+      ],
       scopes: ["youtube.upload"]
     });
     const cookie = `${APP_SESSION_COOKIE}=${editor.sessionToken}`;

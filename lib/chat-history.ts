@@ -79,6 +79,7 @@ export type ChatThread = {
 };
 
 export type ChannelAssetKind = "avatar" | "background" | "music";
+export type ChannelOnboardingStatus = "draft" | "needs_identity" | "ready";
 
 export type ChannelAsset = {
   id: string;
@@ -96,6 +97,7 @@ export type Channel = {
   id: string;
   workspaceId: string;
   creatorUserId: string;
+  onboardingStatus: ChannelOnboardingStatus;
   name: string;
   username: string;
   systemPrompt: string;
@@ -262,6 +264,10 @@ function mapChannel(row: Record<string, unknown>): Channel {
     id: channelId,
     workspaceId: String(row.workspace_id),
     creatorUserId: String(row.creator_user_id),
+    onboardingStatus:
+      row.onboarding_status === "draft" || row.onboarding_status === "needs_identity"
+        ? row.onboarding_status
+        : "ready",
     name: channelName,
     username,
     systemPrompt: sanitizeTextBlock(String(row.system_prompt ?? ""), ""),
@@ -430,6 +436,78 @@ export async function listChannels(workspaceId?: string): Promise<Channel[]> {
   return Promise.all(rows.map((row) => repairChannelTemplateReference(mapChannel(row))));
 }
 
+export async function listChannelsCreatedByUser(input: {
+  workspaceId: string;
+  userId: string;
+}): Promise<Channel[]> {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT *
+         FROM channels
+        WHERE workspace_id = ?
+          AND creator_user_id = ?
+          AND archived_at IS NULL
+        ORDER BY created_at ASC`
+    )
+    .all(input.workspaceId, input.userId) as Record<string, unknown>[];
+  return Promise.all(rows.map((row) => repairChannelTemplateReference(mapChannel(row))));
+}
+
+export async function getIncompleteConnectorChannelDraft(input: {
+  workspaceId: string;
+  userId: string;
+}): Promise<Channel | null> {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT *
+         FROM channels
+        WHERE workspace_id = ?
+          AND creator_user_id = ?
+          AND archived_at IS NULL
+          AND onboarding_status IN ('draft', 'needs_identity')
+        ORDER BY created_at ASC
+        LIMIT 1`
+    )
+    .get(input.workspaceId, input.userId) as Record<string, unknown> | undefined;
+  return row ? repairChannelTemplateReference(mapChannel(row)) : null;
+}
+
+export async function createConnectorChannelDraft(input: {
+  workspaceId: string;
+  creatorUserId: string;
+}): Promise<{ channel: Channel; created: boolean }> {
+  const existing = await getIncompleteConnectorChannelDraft({
+    workspaceId: input.workspaceId,
+    userId: input.creatorUserId
+  });
+  if (existing) {
+    return { channel: existing, created: false };
+  }
+
+  const pendingSlug = `pending_${newId().replace(/[^a-zA-Z0-9]/g, "").slice(0, 12)}`;
+  try {
+    const channel = await createChannel({
+      workspaceId: input.workspaceId,
+      creatorUserId: input.creatorUserId,
+      onboardingStatus: "draft",
+      name: "Новый канал",
+      username: pendingSlug
+    });
+    return { channel, created: true };
+  } catch (error) {
+    const concurrentDraft = await getIncompleteConnectorChannelDraft({
+      workspaceId: input.workspaceId,
+      userId: input.creatorUserId
+    });
+    if (concurrentDraft) {
+      return { channel: concurrentDraft, created: false };
+    }
+    throw error;
+  }
+}
+
 function buildVisibleChannelRowsQuery(role: AppRole): { query: string; paramsFor: (input: {
   workspaceId: string;
   userId: string;
@@ -590,6 +668,7 @@ export async function getDefaultChannel(workspaceId?: string): Promise<Channel> 
 export async function createChannel(input: {
   workspaceId: string;
   creatorUserId: string;
+  onboardingStatus?: ChannelOnboardingStatus;
   name?: string;
   username?: string;
   systemPrompt?: string;
@@ -611,6 +690,7 @@ export async function createChannel(input: {
     id: newId(),
     workspaceId: input.workspaceId,
     creatorUserId: input.creatorUserId,
+    onboardingStatus: input.onboardingStatus ?? "ready",
     name: sanitizeName(input.name, "New channel"),
     username,
     systemPrompt: sanitizeTextBlock(input.systemPrompt, ""),
@@ -670,12 +750,13 @@ export async function createChannel(input: {
   const db = getDb();
   db.prepare(
     `INSERT INTO channels
-    (id, workspace_id, creator_user_id, name, username, system_prompt, description_prompt, examples_json, stage2_worker_profile_id, stage2_examples_config_json, stage2_hard_constraints_json, stage2_prompt_config_json, stage2_style_profile_json, stage2_source_overlay_config_json, template_id, avatar_asset_id, default_background_asset_id, default_music_asset_id, default_clip_duration_sec, created_at, updated_at, archived_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, NULL)`
+    (id, workspace_id, creator_user_id, onboarding_status, name, username, system_prompt, description_prompt, examples_json, stage2_worker_profile_id, stage2_examples_config_json, stage2_hard_constraints_json, stage2_prompt_config_json, stage2_style_profile_json, stage2_source_overlay_config_json, template_id, avatar_asset_id, default_background_asset_id, default_music_asset_id, default_clip_duration_sec, created_at, updated_at, archived_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, NULL)`
   ).run(
     channel.id,
     channel.workspaceId,
     channel.creatorUserId,
+    channel.onboardingStatus,
     channel.name,
     channel.username,
     channel.systemPrompt,
@@ -701,6 +782,7 @@ export async function createChannel(input: {
 export async function updateChannelById(
   channelId: string,
   patch: Partial<{
+    onboardingStatus: ChannelOnboardingStatus;
     name: string;
     username: string;
     systemPrompt: string;
@@ -731,6 +813,12 @@ export async function updateChannelById(
 
   const next = {
     ...channel,
+    onboardingStatus:
+      patch.onboardingStatus === "draft" ||
+      patch.onboardingStatus === "needs_identity" ||
+      patch.onboardingStatus === "ready"
+        ? patch.onboardingStatus
+        : channel.onboardingStatus,
     name: typeof patch.name === "string" ? sanitizeName(patch.name, channel.name) : channel.name,
     username:
       typeof patch.username === "string" ? sanitizeUsername(patch.username) : channel.username,
@@ -809,6 +897,7 @@ export async function updateChannelById(
   const db = getDb();
   db.prepare(
     `UPDATE channels SET
+      onboarding_status = ?,
       name = ?,
       username = ?,
       system_prompt = ?,
@@ -828,6 +917,7 @@ export async function updateChannelById(
       updated_at = ?
     WHERE id = ?`
   ).run(
+    next.onboardingStatus,
     next.name,
     next.username,
     next.systemPrompt,

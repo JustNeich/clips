@@ -169,7 +169,9 @@ test("CopScopes control API exposes and repairs the production publishing grid",
       selectedYoutubeChannelId: "youtube-copscopes",
       selectedYoutubeChannelTitle: "COP SCOPES",
       selectedYoutubeChannelCustomUrl: "@copscopes-x2e",
-      availableChannels: [{ id: "youtube-copscopes", title: "COP SCOPES", customUrl: "@copscopes-x2e" }],
+      availableChannels: [
+        { id: "youtube-copscopes", title: "COP SCOPES", customUrl: "@copscopes-x2e", thumbnailUrl: null }
+      ],
       scopes: ["https://www.googleapis.com/auth/youtube.upload"]
     });
     const controlToken = createMcpAccessToken({

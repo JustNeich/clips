@@ -125,10 +125,13 @@
 ## `/connect`
 
 - `purpose`: изолированный портал подключения YouTube.
-- `roles`: только `channel_connector` с active `connect` grant.
-- `controls`: все назначенные каналы, отдельный `Подключить Google` для каждого, выбор destination при нескольких YouTube-каналах, `Выйти`.
+- `roles`: только `channel_connector`; channel access требует strict creator ownership.
+- `controls`: `Создать канал`, только собственные созданные каналы, `Подключить Google`, выбор destination при нескольких YouTube-каналах, ручное название при неполных metadata, удаление пустого черновика, `Выйти`.
 - `related APIs`:
   - `GET /api/connect/channels`
+  - `POST /api/connect/channels`
+  - `DELETE /api/connect/channels/[id]`
+  - `PATCH /api/connect/channels/[id]/identity`
   - `POST /api/connect/channels/[id]/youtube/connect`
   - `PATCH /api/connect/channels/[id]/youtube/connection`
   - `POST /api/connect/auth/logout`
@@ -770,7 +773,7 @@
   - invite role select
   - button `Создать приглашение`
   - inline token output
-  - форма готового аккаунта подключения: имя, email, один или несколько назначенных каналов, `Выбрать все`
+  - форма готового аккаунта подключения: имя и email; каналы участник создаёт самостоятельно в connector portal
   - одноразовый блок credentials + `Скопировать инструкцию`
 - `resulting actions`:
   - `GET /api/workspace/members`

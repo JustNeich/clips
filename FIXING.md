@@ -27,7 +27,7 @@ stops and reports rather than editing blind.
 - **Users / roles:** the app is a single workspace with per-user membership.
   Workspace roles (`AppRole` in `lib/team-store.ts`): **`owner`**, **`manager`**,
   **`redactor`**, **`redactor_limited`**, **`channel_connector`**. Per-channel
-  grant roles are **`operate`** and connector-only **`connect`**
+  grant roles are **`operate`** and legacy connector-only **`connect`**
   (`ChannelAccessRole`, table `channel_access`). Isolation is
   enforced in `lib/acl.ts` (`resolveChannelPermissions`) + `lib/auth/guards.ts`:
   owner/manager see and operate every channel; a `redactor` sees only channels it
@@ -35,8 +35,9 @@ stops and reports rather than editing blind.
   channels granted `operate` and can never create a channel; `canManageMembers` /
   `canManageAnyChannelAccess` are owner+manager only, `canManageCodex` is owner
   only (`getEffectivePermissions`). `channel_connector` receives a separate
-  connector-session, sees only channels with an active `connect` grant, and may
-  use only the isolated `/connect` Google/YouTube OAuth surface. Zoro must preserve these role guards on every
+  connector-session, creates channels through the isolated `/connect` surface,
+  and sees only channels it created (`channel.creator_user_id = connector user`).
+  Legacy `connect` grants never authorize this portal. Zoro must preserve these role guards on every
   fix — never widen visibility, never drop a `requireOwner` / `requireChannel*`
   check.
 - **Privileged team identity:** the **chief editor — Даниил (Y UTalkin)** — is the

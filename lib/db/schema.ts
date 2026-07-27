@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS channels (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
   creator_user_id TEXT NOT NULL,
+  onboarding_status TEXT NOT NULL DEFAULT 'ready',
   name TEXT NOT NULL,
   username TEXT NOT NULL,
   system_prompt TEXT NOT NULL,

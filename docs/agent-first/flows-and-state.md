@@ -135,24 +135,26 @@
 ### Happy path
 
 1. `owner` или `manager` открывает `/team`; доверенный localhost-оператор может использовать тот же endpoint с bearer scope `control:write`.
-2. Указывает имя, login-email и выбирает один или несколько заранее созданных Clips channels.
-3. `POST /api/workspace/connectors` создаёт user + membership `channel_connector` + grant `connect` для каждого выбранного канала.
-4. UI один раз показывает portal URL, login, generated password и одну готовую пересылаемую инструкцию со списком всех каналов.
+2. Указывает имя и login-email; заранее созданные Clips channels не выбираются.
+3. `POST /api/workspace/connectors` создаёт только user + membership `channel_connector`, без channel grants.
+4. UI один раз показывает portal URL, login, generated password и готовую пересылаемую инструкцию.
 5. Участник открывает `/connect/login`, вводит credentials и попадает в `/connect` без регистрации.
-6. Участник последовательно подключает Google для каждого назначенного канала и при необходимости выбирает YouTube destination.
+6. Участник нажимает `Создать канал`, подключает Google и при необходимости выбирает YouTube destination; identity и avatar переносятся из YouTube, а отсутствующее название запрашивается вручную.
+7. После статуса `Подключён` участник создаёт следующий канал. Одновременно может существовать только один незавершённый черновик.
 
 ### Blocked path
 
 1. Email уже принадлежит active workspace member.
-2. Канал не существует или archived.
+2. Connector пытается открыть чужой или archived channel.
 3. Connector пытается войти через обычный `/login`.
-4. Connector пытается подключить канал без active `connect` grant.
+4. Connector пытается повторно использовать YouTube destination, уже выбранный другим Clips channel.
 
 ### Security state
 
 - connector session имеет отдельный audience/cookie;
 - app routes не принимают connector session;
 - OAuth tokens остаются только на сервере;
+- connector access определяется строгим ownership (`creator_user_id`), а не legacy `connect` grant;
 - password возвращается только в provisioning response и не пишется в audit.
 - machine provisioning принимает только `control:write`; `flow:read` fail-closed с `401`.
 

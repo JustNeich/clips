@@ -38,6 +38,19 @@ export type StoredYoutubeCredential = {
   scopes: string[];
 };
 
+export class YouTubeDestinationConflictError extends Error {
+  constructor() {
+    super("Этот YouTube-канал уже подключён к другому каналу.");
+    this.name = "YouTubeDestinationConflictError";
+  }
+}
+
+type ChannelOnboardingIdentity = {
+  name: string;
+  username: string;
+  onboardingStatus: "draft" | "needs_identity" | "ready";
+};
+
 type PublishSettingsRow = {
   id: string;
   workspace_id: string;
@@ -246,7 +259,7 @@ function parseOptionsJson(value: string | null | undefined): ChannelPublishInteg
         const candidate = item && typeof item === "object" ? (item as Record<string, unknown>) : null;
         const id = typeof candidate?.id === "string" ? candidate.id.trim() : "";
         const title = typeof candidate?.title === "string" ? candidate.title.trim() : "";
-        if (!id || !title) {
+        if (!id) {
           return null;
         }
         return {
@@ -255,6 +268,10 @@ function parseOptionsJson(value: string | null | undefined): ChannelPublishInteg
           customUrl:
             typeof candidate?.customUrl === "string" && candidate.customUrl.trim()
               ? candidate.customUrl.trim()
+              : null,
+          thumbnailUrl:
+            typeof candidate?.thumbnailUrl === "string" && candidate.thumbnailUrl.trim()
+              ? candidate.thumbnailUrl.trim()
               : null
         };
       })
@@ -557,6 +574,7 @@ export function saveChannelPublishIntegration(input: {
   scopes: string[];
   lastVerifiedAt?: string | null;
   lastError?: string | null;
+  channelIdentity?: ChannelOnboardingIdentity | null;
 }): ChannelPublishIntegration {
   const current = readPublishIntegrationRow(input.channelId);
   const now = nowIso();
@@ -567,10 +585,24 @@ export function saveChannelPublishIntegration(input: {
     current?.oauth_client_key?.trim() ||
     getDefaultYouTubeOAuthClientKey();
   const oauthClient = resolvePublicYouTubeOAuthClientMetadata(oauthClientKey);
-  const db = getDb();
+  runInTransaction((db) => {
+    if (input.selectedYoutubeChannelId) {
+      const conflict = db
+        .prepare(
+          `SELECT channel_id
+             FROM channel_publish_integrations
+            WHERE selected_youtube_channel_id = ?
+              AND channel_id <> ?
+            LIMIT 1`
+        )
+        .get(input.selectedYoutubeChannelId, input.channelId) as { channel_id?: string } | undefined;
+      if (conflict?.channel_id) {
+        throw new YouTubeDestinationConflictError();
+      }
+    }
 
-  if (current) {
-    db.prepare(
+    if (current) {
+      db.prepare(
       `UPDATE channel_publish_integrations
           SET status = ?,
               oauth_client_key = ?,
@@ -587,7 +619,7 @@ export function saveChannelPublishIntegration(input: {
               last_error = ?,
               updated_at = ?
         WHERE channel_id = ?`
-    ).run(
+      ).run(
       input.status,
       oauthClientKey,
       encrypted,
@@ -603,13 +635,13 @@ export function saveChannelPublishIntegration(input: {
       input.lastError ?? null,
       now,
       input.channelId
-    );
-  } else {
-    db.prepare(
+      );
+    } else {
+      db.prepare(
       `INSERT INTO channel_publish_integrations
         (id, workspace_id, channel_id, provider, status, oauth_client_key, encrypted_token_json, google_account_email, selected_youtube_channel_id, selected_youtube_channel_title, selected_youtube_channel_custom_url, available_channels_json, scopes_json, connected_by_user_id, connected_at, last_verified_at, last_error, created_at, updated_at)
         VALUES (?, ?, ?, 'youtube', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
+      ).run(
       newId(),
       input.workspaceId,
       input.channelId,
@@ -628,8 +660,29 @@ export function saveChannelPublishIntegration(input: {
       input.lastError ?? null,
       now,
       now
-    );
-  }
+      );
+    }
+
+    if (input.channelIdentity) {
+      const changed = db
+        .prepare(
+          `UPDATE channels
+              SET name = ?, username = ?, onboarding_status = ?, updated_at = ?
+            WHERE id = ? AND workspace_id = ?`
+        )
+        .run(
+          input.channelIdentity.name,
+          input.channelIdentity.username,
+          input.channelIdentity.onboardingStatus,
+          now,
+          input.channelId,
+          input.workspaceId
+        );
+      if (Number(changed.changes ?? 0) !== 1) {
+        throw new Error("Канал для YouTube-подключения не найден.");
+      }
+    }
+  });
 
   return getChannelPublishIntegration(input.channelId) ?? {
     provider: "youtube",
@@ -670,24 +723,55 @@ export function updateChannelPublishIntegrationSelection(input: {
   selectedYoutubeChannelId: string;
   selectedYoutubeChannelTitle: string;
   selectedYoutubeChannelCustomUrl: string | null;
+  channelIdentity?: ChannelOnboardingIdentity | null;
 }): ChannelPublishIntegration {
-  const db = getDb();
-  db.prepare(
-    `UPDATE channel_publish_integrations
-        SET status = 'connected',
-            selected_youtube_channel_id = ?,
-            selected_youtube_channel_title = ?,
-            selected_youtube_channel_custom_url = ?,
-            updated_at = ?,
-            last_error = NULL
-      WHERE channel_id = ?`
-  ).run(
-    input.selectedYoutubeChannelId,
-    input.selectedYoutubeChannelTitle,
-    input.selectedYoutubeChannelCustomUrl,
-    nowIso(),
-    input.channelId
-  );
+  const stamp = nowIso();
+  runInTransaction((db) => {
+    const conflict = db
+      .prepare(
+        `SELECT channel_id
+           FROM channel_publish_integrations
+          WHERE selected_youtube_channel_id = ?
+            AND channel_id <> ?
+          LIMIT 1`
+      )
+      .get(input.selectedYoutubeChannelId, input.channelId) as { channel_id?: string } | undefined;
+    if (conflict?.channel_id) {
+      throw new YouTubeDestinationConflictError();
+    }
+    const changed = db.prepare(
+      `UPDATE channel_publish_integrations
+          SET status = 'connected',
+              selected_youtube_channel_id = ?,
+              selected_youtube_channel_title = ?,
+              selected_youtube_channel_custom_url = ?,
+              updated_at = ?,
+              last_error = NULL
+        WHERE channel_id = ?`
+    ).run(
+      input.selectedYoutubeChannelId,
+      input.selectedYoutubeChannelTitle,
+      input.selectedYoutubeChannelCustomUrl,
+      stamp,
+      input.channelId
+    );
+    if (Number(changed.changes ?? 0) !== 1) {
+      throw new Error("Сначала подключите Google-аккаунт.");
+    }
+    if (input.channelIdentity) {
+      db.prepare(
+        `UPDATE channels
+            SET name = ?, username = ?, onboarding_status = ?, updated_at = ?
+          WHERE id = ?`
+      ).run(
+        input.channelIdentity.name,
+        input.channelIdentity.username,
+        input.channelIdentity.onboardingStatus,
+        stamp,
+        input.channelId
+      );
+    }
+  });
   return getChannelPublishIntegration(input.channelId)!;
 }
 

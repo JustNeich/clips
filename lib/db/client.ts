@@ -181,6 +181,7 @@ function applyDbMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "channels", "stage2_prompt_config_json", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_style_profile_json", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_source_overlay_config_json", "TEXT");
+  addColumnIfMissing(db, "channels", "onboarding_status", "TEXT NOT NULL DEFAULT 'ready'");
   addColumnIfMissing(
     db,
     "channels",
@@ -256,6 +257,17 @@ function applyDbMigrations(db: DatabaseSync): void {
                ) > 18 THEN 'render-long'
               ELSE 'render-short'
             END`
+  );
+  db.exec(
+    `UPDATE channels
+        SET onboarding_status = 'ready'
+      WHERE onboarding_status IS NULL
+         OR onboarding_status NOT IN ('draft', 'needs_identity', 'ready')`
+  );
+  db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_channels_connector_incomplete_draft
+       ON channels(workspace_id, creator_user_id)
+       WHERE archived_at IS NULL AND onboarding_status IN ('draft', 'needs_identity')`
   );
   addColumnIfMissing(
     db,

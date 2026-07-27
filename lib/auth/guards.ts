@@ -40,14 +40,13 @@ export async function requireConnectorChannelAccess(request: Request, channelId:
       headers: { "Content-Type": "application/json" }
     });
   }
-  const grant = await getChannelAccessForUser(channelId, auth.user.id);
-  if (!grant || grant.revokedAt || grant.accessRole !== "connect") {
+  if (channel.creatorUserId !== auth.user.id || channel.archivedAt) {
     throw new Response(JSON.stringify({ error: "Доступ запрещен." }), {
       status: 403,
       headers: { "Content-Type": "application/json" }
     });
   }
-  return { auth, channel, grant };
+  return { auth, channel };
 }
 
 export function requireRole(role: AppRole, currentRole: AppRole): void {

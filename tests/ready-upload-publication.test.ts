@@ -116,7 +116,8 @@ test("ready-upload route queues a finished mp4 for YouTube without creating a so
         {
           id: "youtube-channel-1",
           title: "Ready Upload Channel",
-          customUrl: "@readyupload"
+          customUrl: "@readyupload",
+          thumbnailUrl: null
         }
       ],
       scopes: ["youtube.upload"],
@@ -241,7 +242,8 @@ test("ready-upload route rejects a custom publication time in the past before qu
         {
           id: "youtube-channel-1",
           title: "Ready Upload Channel",
-          customUrl: "@readyupload"
+          customUrl: "@readyupload",
+          thumbnailUrl: null
         }
       ],
       scopes: ["youtube.upload"],

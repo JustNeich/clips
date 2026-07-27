@@ -284,6 +284,7 @@ export async function listManagedYouTubeChannels(
       snippet?: {
         title?: string;
         customUrl?: string;
+        thumbnails?: Record<string, { url?: string; width?: number; height?: number }>;
       };
     }>;
   }>({
@@ -294,13 +295,21 @@ export async function listManagedYouTubeChannels(
     .map((item) => {
       const id = item.id?.trim() ?? "";
       const title = item.snippet?.title?.trim() ?? "";
-      if (!id || !title) {
+      if (!id) {
         return null;
       }
+      const thumbnail = Object.values(item.snippet?.thumbnails ?? {})
+        .filter((candidate) => typeof candidate?.url === "string" && candidate.url.trim())
+        .sort(
+          (left, right) =>
+            Number(right.width ?? 0) * Number(right.height ?? 0) -
+            Number(left.width ?? 0) * Number(left.height ?? 0)
+        )[0];
       return {
         id,
         title,
-        customUrl: item.snippet?.customUrl?.trim() || null
+        customUrl: item.snippet?.customUrl?.trim() || null,
+        thumbnailUrl: thumbnail?.url?.trim() || null
       };
     })
     .filter((item): item is ChannelPublishIntegrationOption => Boolean(item));
