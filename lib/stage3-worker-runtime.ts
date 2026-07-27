@@ -18,11 +18,20 @@ import { ensureRspackRuntimeAvailable } from "./stage3-rspack-runtime";
 import { runStage3WorkerNpm } from "./stage3-worker-npm";
 import { completeRemoteStage3Artifact } from "./stage3-worker-completion";
 import {
+  Stage3WorkerControlPlaneError,
+  createStage3WorkerControlPlaneError,
+  formatStage3WorkerDelay,
+  initialStage3WorkerControlRetryState,
+  resolveStage3WorkerControlRetry,
+  resolveStage3WorkerRestartGuardDelayMs
+} from "./stage3-worker-connectivity";
+import {
   Stage3WorkerJobTimeoutError,
   isStage3WorkerJobTimeoutError,
   resolveStage3WorkerJobTimeoutMs
 } from "./stage3-worker-job-timeout";
 import { ensureManagedStage3WorkerTools } from "./stage3-worker-managed-tools";
+import { cleanupOrphanedStage3BrowserProcesses } from "./stage3-worker-process-cleanup";
 import type { Stage3RenderProgressEvent } from "./stage3-render-service";
 import {
   captureStage3ResourceTelemetry,
@@ -206,17 +215,25 @@ export async function collectStage3WorkerAdmissionReport(input: {
     availableMemoryPercent: number;
     diskFreeBytes: number;
     swapUsedBytes: number;
+    tcpPcbCount?: number;
+    tcpEphemeralPortCapacity?: number;
   };
   availableMemoryReader?: (totalMemoryBytes: number) => Promise<number>;
   diskFreeReader?: (targetPath: string) => Promise<number>;
   swapReader?: () => Promise<number>;
+  tcpPortPressureReader?: () => Promise<{
+    tcpPcbCount: number | null;
+    tcpEphemeralPortCapacity: number | null;
+    tcpPortPressureRatio: number | null;
+  }>;
 } = {}): Promise<Stage3WorkerAdmissionReport> {
   const resourceTelemetry = await captureStage3ResourceTelemetry({
     diskPath: input.diskPath,
     systemSnapshot: input.systemSnapshot,
     availableMemoryReader: input.availableMemoryReader,
     diskFreeReader: input.diskFreeReader,
-    swapReader: input.swapReader
+    swapReader: input.swapReader,
+    tcpPortPressureReader: input.tcpPortPressureReader
   });
   return evaluateStage3WorkerAdmission(
     {
@@ -434,7 +451,11 @@ function shouldRetryWorkerRuntimeWithPairingToken(input: {
 async function downloadBinaryFile(url: string, destination: string, init?: RequestInit): Promise<void> {
   const response = await fetch(url, init ?? { cache: "no-store" });
   if (!response.ok) {
-    throw new Error(`Failed to download ${url}: ${response.status}`);
+    throw await createStage3WorkerControlPlaneError({
+      response,
+      phase: "runtime-download",
+      fallbackMessage: `Failed to download ${url}`
+    });
   }
   const bytes = Buffer.from(await response.arrayBuffer());
   await fs.mkdir(path.dirname(destination), { recursive: true });
@@ -505,9 +526,11 @@ export async function syncStage3WorkerRuntime(
     }
   }
   if (!remoteManifestResponse.ok) {
-    throw new Error(
-      `Failed to read worker manifest from server (${remoteManifestResponse.status}).`
-    );
+    throw await createStage3WorkerControlPlaneError({
+      response: remoteManifestResponse,
+      phase: "runtime-manifest",
+      fallbackMessage: "Failed to read worker manifest from server"
+    });
   }
   const remoteManifest = (await remoteManifestResponse.json()) as WorkerRuntimeManifest;
   const remoteRuntimeVersion =
@@ -1157,6 +1180,16 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
   }
 
   await ensureWorkerDirs();
+  try {
+    await cleanupOrphanedStage3BrowserProcesses({
+      workerRoot: paths().root,
+      log: (message) => console.warn(message)
+    });
+  } catch (error) {
+    console.warn(
+      `Stage 3 orphaned browser cleanup skipped: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
   let syncResult: { updated: boolean; runtimeVersion: string | null } | null = null;
   try {
     syncResult = await syncStage3WorkerRuntime(config.serverOrigin, {
@@ -1168,6 +1201,9 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
       );
     }
   } catch (error) {
+    if (error instanceof Stage3WorkerControlPlaneError) {
+      throw error;
+    }
     throw new Error(
       `Worker runtime sync failed before job loop: ${error instanceof Error ? error.message : String(error)}`
     );
@@ -1285,6 +1321,7 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
   }>();
   let swapHistory: Stage3SwapSample[] = [];
   let fatalError: Error | null = null;
+  let controlRetryState = initialStage3WorkerControlRetryState();
 
   const buildReportedCapabilities = (
     admission: Stage3WorkerAdmissionReport,
@@ -1317,6 +1354,7 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
         `availableMemory=${telemetry.availableMemoryPercent === null ? "unknown" : `${Math.round(telemetry.availableMemoryPercent * 100)}%`}`,
         `diskGb=${telemetry.diskFreeBytes === null ? "unknown" : (telemetry.diskFreeBytes / GIB).toFixed(1)}`,
         `swapGrowthMb=${Math.round(admission.swapGrowthBytes5m / (1024 * 1024))}`,
+        `tcpPortPressure=${telemetry.tcpPortPressureRatio == null ? "unknown" : `${Math.round(telemetry.tcpPortPressureRatio * 100)}%`}`,
         `activeWorkerJobs=${telemetry.activeWorkerJobs}`,
         admission.reasons.length > 0 ? `reasons=${admission.reasons.join(",")}` : null
       ].filter(Boolean).join(" ")
@@ -1462,15 +1500,28 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
               capabilities: reportedCapabilities
             })
           });
+          if (!claimResponse.ok && claimResponse.status !== 204) {
+            throw await createStage3WorkerControlPlaneError({
+              response: claimResponse,
+              phase: "job-claim",
+              fallbackMessage: "Failed to claim Stage 3 job"
+            });
+          }
           if (claimResponse.status === 204) {
+            controlRetryState = initialStage3WorkerControlRetryState();
             break;
           }
           const claimBody = (await claimResponse.json().catch(() => null)) as
             | ({ error?: string } & Partial<ClaimedJobResponse>)
             | null;
-          if (!claimResponse.ok || !claimBody?.job || typeof claimBody.payloadJson !== "string") {
-            throw new Error(claimBody?.error || "Failed to claim Stage 3 job.");
+          if (!claimBody?.job || typeof claimBody.payloadJson !== "string") {
+            throw new Stage3WorkerControlPlaneError({
+              message: claimBody?.error || "Stage 3 job claim returned an invalid response.",
+              status: claimResponse.status,
+              phase: "job-claim"
+            });
           }
+          controlRetryState = initialStage3WorkerControlRetryState();
           const job = claimBody.job;
           const profile = job.resourceProfile ?? resolveStage3LocalResourceProfile(job.kind, claimBody.payloadJson);
           console.log(`Claimed job ${job.id} (${job.kind}, ${profile})`);
@@ -1487,14 +1538,48 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
       await postWorkerHeartbeat(config, buildReportedCapabilities(heartbeatAdmission));
       await new Promise((resolve) => setTimeout(resolve, deferredAny && !claimedAny ? 15_000 : 2_000));
     } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      await new Promise((resolve) => setTimeout(resolve, 4_000));
+      const decision = resolveStage3WorkerControlRetry({
+        error,
+        state: controlRetryState
+      });
+      controlRetryState = decision.nextState;
+      const message = error instanceof Error ? error.message : String(error);
+      if (decision.action === "stop") {
+        fatalError = error instanceof Error ? error : new Error(message);
+        stop = true;
+        console.error(
+          `Stage 3 worker stopped control-plane polling after a ${decision.kind} failure: ${message}`
+        );
+        break;
+      }
+      console.error(
+        `Stage 3 worker control-plane request failed (${controlRetryState.consecutiveFailures} consecutive): ` +
+          `${message}. Retrying in ${formatStage3WorkerDelay(decision.delayMs)}.`
+      );
+      await new Promise((resolve) => setTimeout(resolve, decision.delayMs));
     }
   }
 
   await Promise.allSettled([...activeJobs.values()].map((active) => active.promise));
   if (fatalError) {
     throw fatalError;
+  }
+}
+
+export async function runStage3WorkerStartCommand(options: {
+  startLoop?: () => Promise<void>;
+  delay?: (ms: number) => Promise<void>;
+} = {}): Promise<void> {
+  try {
+    await (options.startLoop ?? (() => startStage3WorkerLoop()))();
+  } catch (error) {
+    const delayMs = resolveStage3WorkerRestartGuardDelayMs(error);
+    console.error(
+      `Stage 3 worker restart guard is holding the failed process for ${formatStage3WorkerDelay(delayMs)} ` +
+        "to prevent a launchd/service restart storm. Re-pair or restart the worker after fixing the reported cause."
+    );
+    await (options.delay ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))))(delayMs);
+    throw error;
   }
 }
 
@@ -1519,7 +1604,7 @@ async function main(): Promise<void> {
       await logoutCommand();
       return;
     case "start":
-      await startStage3WorkerLoop();
+      await runStage3WorkerStartCommand();
       return;
     default:
       console.log("Commands: pair | start | status | pause | resume | doctor | logout");

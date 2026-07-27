@@ -179,7 +179,7 @@ test("claimed worker job timeout aborts the running task", async () => {
               },
               { once: true }
             );
-            setTimeout(resolve, 1_000).unref();
+            setTimeout(resolve, 1_000);
           })
       ),
       Stage3WorkerJobTimeoutError
@@ -206,7 +206,7 @@ test("claimed worker job stops when the server-side lease is revoked", async () 
         targetDurationSec: 6
       }
     }),
-    () => new Promise((resolve) => setTimeout(resolve, 1_000).unref()),
+    () => new Promise((resolve) => setTimeout(resolve, 1_000)),
     controller.signal
   );
   const reason = new Error("lease revoked");

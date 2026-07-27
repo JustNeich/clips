@@ -69,6 +69,8 @@ const WORKER_LIB_RUNTIME_FILES = [
 
 const WORKER_BUNDLE_SOURCE_FILES = [
   "stage3-worker-runtime.ts",
+  "stage3-worker-connectivity.ts",
+  "stage3-worker-process-cleanup.ts",
   "stage3-worker-managed-tools.ts"
 ];
 

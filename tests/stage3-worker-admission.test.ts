@@ -23,6 +23,9 @@ function telemetry(
     availableMemoryBytes: 8 * GIB,
     diskFreeBytes: 100 * GIB,
     swapUsedBytes: 2 * GIB,
+    tcpPcbCount: 100,
+    tcpEphemeralPortCapacity: 16_384,
+    tcpPortPressureRatio: 100 / 16_384,
     activeWorkerJobs: 0,
     telemetryError: null,
     ...patch
@@ -36,7 +39,7 @@ test("Stage 3 worker admits a heavy claim only with complete healthy telemetry",
   assert.deepEqual(report.reasons, []);
 });
 
-test("heavy admission defers for load, memory pressure, disk, or swap growth", () => {
+test("heavy admission defers for load, memory pressure, disk, swap growth, or TCP port pressure", () => {
   assert.ok(
     evaluateStage3WorkerAdmission(
       telemetry({ loadAverage1m: 8, normalizedLoad1m: 0.8 }),
@@ -58,6 +61,16 @@ test("heavy admission defers for load, memory pressure, disk, or swap growth", (
     evaluateStage3WorkerAdmission(telemetry(), "heavy", 513 * 1024 * 1024).reasons.includes(
       "swap_growth_above_limit"
     )
+  );
+  assert.ok(
+    evaluateStage3WorkerAdmission(
+      telemetry({
+        tcpPcbCount: 12_000,
+        tcpEphemeralPortCapacity: 16_384,
+        tcpPortPressureRatio: 12_000 / 16_384
+      }),
+      "heavy"
+    ).reasons.includes("tcp_ephemeral_port_pressure")
   );
 });
 
@@ -104,11 +117,14 @@ test("collected telemetry uses available memory percentage instead of process na
       totalMemoryBytes: 16 * GIB,
       availableMemoryPercent: 0.37,
       diskFreeBytes: 100 * GIB,
-      swapUsedBytes: 7 * GIB
+      swapUsedBytes: 7 * GIB,
+      tcpPcbCount: 200,
+      tcpEphemeralPortCapacity: 16_384
     }
   });
   assert.equal(report.admitted, true);
   assert.equal(report.telemetry.availableMemoryBytes, 16 * GIB * 0.37);
+  assert.equal(report.telemetry.tcpPortPressureRatio, 200 / 16_384);
 });
 
 test("swap growth is measured over the retained five-minute window", () => {

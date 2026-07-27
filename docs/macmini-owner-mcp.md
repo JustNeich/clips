@@ -82,7 +82,16 @@ cd "/Users/neichyabazhi/Documents/Macedonian Imperium/clips automations"
 npm run macmini:healthcheck
 ```
 
-The healthcheck verifies local tools, GitHub access, production health, and owner MCP status if `CLIPS_MCP_TOKEN` is present. It prints only token presence/status, never the token itself.
+The healthcheck verifies local tools, GitHub access, production health, and owner MCP status if `CLIPS_MCP_TOKEN` is present. On macOS it also checks:
+
+- TCP PCB / ephemeral-port pressure and exact `TIME_WAIT` count;
+- orphaned Stage 3 Remotion browser processes;
+- `com.clips.stage3-worker` launchd restart throttling and enabled/disabled state;
+- local SSH (`22`) and Screen Sharing (`5900`) listeners;
+- whether the default public route uses a VPN `utun` interface;
+- runaway worker stderr growth.
+
+Exit `1` means at least one fail condition, exit `2` means warnings only, and exit `0` means clean. It prints only token presence/status, never the token itself. Treat `tcp-port-pressure >= 80%`, missing SSH/Screen Sharing listeners, or `KeepAlive=true` without `ThrottleInterval >= 60` as a stop condition before enabling production worker claims.
 
 ## Owner Tools
 
@@ -166,11 +175,14 @@ exists in the same flow. If retention has already removed bytes for an otherwise
 completed job, it returns HTTP 410 with `immutable_artifact_unavailable` instead
 of reporting that the job is unfinished.
 
-Before every worker claim, the selected machine reports CPU/load, free memory,
-active render processes, and active worker jobs. Missing telemetry, high load,
-low memory, or another active render defers the claim. Long-render Remotion
-concurrency is chosen from the current CPU/load/memory snapshot instead of a
-fixed worker setting.
+Before every worker claim, the selected machine reports CPU/load, available
+memory, disk space, swap growth, TCP ephemeral-port pressure, and active worker
+jobs. Missing core telemetry, high load, low memory/disk, rapid swap growth, or
+TCP pressure above 60% defers the claim. Long-render Remotion concurrency is
+chosen from the current CPU/load/memory snapshot instead of a fixed worker
+setting. Invalid worker auth stops polling; transient control-plane failures use
+bounded exponential backoff and a circuit breaker instead of a permanent tight
+loop.
 
 ## Git and Render Deploy Access
 

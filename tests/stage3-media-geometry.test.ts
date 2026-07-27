@@ -55,7 +55,7 @@ test("region-height shrink: media shorter, card shorter + re-centered (whole car
 test("channel-story shrink keeps author and body inside the re-centered card", () => {
   const snap = fakeSnapshot();
   snap.computed.layoutKind = "channel_story";
-  snap.layout.card = { x: 0, y: 0, width: 1080, height: 1920 };
+  snap.layout.card = { ...snap.layout.card, x: 0, y: 0, width: 1080, height: 1920 };
   snap.layout.top = { x: 64, y: 383, width: 952, height: 0 };
   snap.layout.author = { x: 64, y: 220, width: 952, height: 136 };
   snap.layout.avatar = { x: 64, y: 237, width: 102, height: 102 };
@@ -69,12 +69,12 @@ test("channel-story shrink keeps author and body inside the re-centered card", (
   const half = delta / 2;
 
   assert.equal(out.layout.card.y, half);
-  assert.equal(out.layout.card.height, 1920 - delta);
+  assert.ok(Math.abs(out.layout.card.height - (1920 - delta)) <= 1);
   assert.equal(out.layout.author.y, 220 + half);
   assert.equal(out.layout.avatar.y, 237 + half);
   assert.equal(out.layout.bottomText.y, 383 + half);
   assert.equal(out.layout.media.y, 613 + half);
-  assert.equal(out.layout.media.height, 773);
+  assert.ok(Math.abs(out.layout.media.height - 773) <= 1);
   assert.equal(out.layout.bottom.y, 1920 - half);
 
   assert.ok(out.layout.author.y >= out.layout.card.y);

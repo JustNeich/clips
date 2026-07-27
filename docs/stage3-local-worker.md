@@ -298,6 +298,19 @@ Job-specific heartbeat для уже очищенной/failed job не долж
 
 После watchdog timeout job помечается как recoverable failure на хосте, а локальный worker завершает процесс, чтобы не продолжать держать скрытый зависший render/proxy. Автоматические повторные запросы по той же dedupe-key сохраняют счётчик попыток и останавливаются на лимите, чтобы перезапуск executor-а не возвращал один и тот же проблемный proxy/render в бесконечный цикл. Оператор должен перезапустить свежую команду из Step 3 и повторить действие. Таймауты можно временно переопределить через `STAGE3_WORKER_JOB_TIMEOUT_MS` или kind-specific env вроде `STAGE3_WORKER_RENDER_TIMEOUT_MS`.
 
+Control-plane retries также ограничены fail-closed политикой:
+
+- `401` / `403` считаются terminal auth failure: worker прекращает heartbeat/claim polling и просит выполнить pairing заново;
+- network errors, `408`, `425`, `429` и `5xx` используют exponential backoff `4s -> 8s -> 16s -> 32s -> 60s` с jitter;
+- после восьмой последовательной transient-ошибки circuit breaker открывается на 15 минут;
+- `Retry-After` от сервера имеет приоритет над локальным коротким backoff;
+- при выходе из-за ошибки start-command удерживает процесс минимум 1 минуту, 5 минут для local/protocol failure и 15 минут для auth failure, чтобы `launchd`/service manager не создал tight restart loop;
+- macOS supervisor всё равно должен иметь `ThrottleInterval >= 60`; голый `KeepAlive=true` без throttle считается небезопасной конфигурацией.
+
+Перед синхронизацией runtime worker удаляет только reparented (`PPID=1`) Remotion headless-browser процессы, которые принадлежат worker home или Remotion cache. Активные Chrome/Edge и браузеры с живым родителем cleanup не затрагивает.
+
+Pre-claim telemetry включает использование macOS TCP PCB относительно ephemeral port range. При давлении выше 60% worker перестаёт брать новые jobs, но продолжает редкий heartbeat. Это не заменяет retry circuit breaker: защита действует и против внешнего socket pressure, и против собственного control-plane retry-loop.
+
 Preview/render больше не должны тихо падать обратно на host. Если worker offline, job останется в очереди и UI покажет честное состояние ожидания.
 
 Local executor теперь намеренно привязан к конкретному пользователю после pairing. Если Даша запустила executor в том же workspace, Катя не должна видеть workspace как готовый к локальному Stage 3, пока не подключит свой Clips Worker. Preview/render job Кати не может быть выполнен executor-ом Даши. Это закрывает class сбоев, где рендер уходил на чужой компьютер.

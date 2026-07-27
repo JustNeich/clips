@@ -25,7 +25,7 @@ test("preview dedupe reuses the same completed media binding and separates chang
     chatId: "chat-1",
     sourceUrl: "https://www.instagram.com/reel/exact-media/",
     sourceBinding: binding("a"),
-    snapshot: { renderPlan: { videoFit: "cover" as const } }
+    renderPlan: { videoFit: "cover" as const }
   };
   const first = await buildStage3PreviewDedupeKey(body, scope);
   const repeated = await buildStage3PreviewDedupeKey(body, scope);

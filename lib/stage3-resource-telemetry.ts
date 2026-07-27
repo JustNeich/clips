@@ -17,6 +17,9 @@ export type Stage3ResourceTelemetry = {
   availableMemoryBytes: number | null;
   diskFreeBytes: number | null;
   swapUsedBytes: number | null;
+  tcpPcbCount?: number | null;
+  tcpEphemeralPortCapacity?: number | null;
+  tcpPortPressureRatio?: number | null;
   telemetryError: string | null;
 };
 
@@ -30,6 +33,7 @@ export type Stage3ResourceAdmissionReport = {
     minAvailableMemoryPercent: number;
     minDiskFreeBytes: number;
     maxSwapGrowthBytes5m: number;
+    maxTcpPortPressureRatio: number;
   };
   telemetry: Stage3ResourceTelemetry;
   swapGrowthBytes5m: number;
@@ -82,6 +86,45 @@ async function readDiskFreeBytes(targetPath: string): Promise<number> {
   return Number(stats.bavail) * Number(stats.bsize);
 }
 
+async function readTcpPortPressure(): Promise<{
+  tcpPcbCount: number | null;
+  tcpEphemeralPortCapacity: number | null;
+  tcpPortPressureRatio: number | null;
+}> {
+  if (process.platform !== "darwin") {
+    return {
+      tcpPcbCount: null,
+      tcpEphemeralPortCapacity: null,
+      tcpPortPressureRatio: null
+    };
+  }
+  const { stdout } = await execFileAsync(
+    "/usr/sbin/sysctl",
+    [
+      "-n",
+      "net.inet.tcp.pcbcount",
+      "net.inet.ip.portrange.first",
+      "net.inet.ip.portrange.last"
+    ],
+    { encoding: "utf8", maxBuffer: 1024 * 1024 }
+  );
+  const [rawCount, rawFirst, rawLast] = stdout.trim().split(/\s+/).map(Number);
+  const capacity = rawLast - rawFirst + 1;
+  if (
+    !Number.isFinite(rawCount) || rawCount < 0 ||
+    !Number.isFinite(rawFirst) || rawFirst < 0 ||
+    !Number.isFinite(rawLast) || rawLast < rawFirst ||
+    !Number.isFinite(capacity) || capacity <= 0
+  ) {
+    throw new Error("invalid_tcp_port_pressure_output");
+  }
+  return {
+    tcpPcbCount: rawCount,
+    tcpEphemeralPortCapacity: capacity,
+    tcpPortPressureRatio: rawCount / capacity
+  };
+}
+
 export async function captureStage3ResourceTelemetry(input: {
   diskPath?: string;
   systemSnapshot?: {
@@ -91,10 +134,17 @@ export async function captureStage3ResourceTelemetry(input: {
     availableMemoryPercent: number;
     diskFreeBytes: number;
     swapUsedBytes: number;
+    tcpPcbCount?: number;
+    tcpEphemeralPortCapacity?: number;
   };
   availableMemoryReader?: (totalMemoryBytes: number) => Promise<number>;
   diskFreeReader?: (targetPath: string) => Promise<number>;
   swapReader?: () => Promise<number>;
+  tcpPortPressureReader?: () => Promise<{
+    tcpPcbCount: number | null;
+    tcpEphemeralPortCapacity: number | null;
+    tcpPortPressureRatio: number | null;
+  }>;
 } = {}): Promise<Stage3ResourceTelemetry> {
   const capturedAt = new Date().toISOString();
   try {
@@ -110,6 +160,24 @@ export async function captureStage3ResourceTelemetry(input: {
     const swapUsedBytes = input.systemSnapshot?.swapUsedBytes ?? await (
       input.swapReader ?? readSwapUsedBytes
     )();
+    const tcpPortPressure = input.systemSnapshot
+      ? (() => {
+          const tcpPcbCount = input.systemSnapshot?.tcpPcbCount ?? null;
+          const tcpEphemeralPortCapacity = input.systemSnapshot?.tcpEphemeralPortCapacity ?? null;
+          return {
+            tcpPcbCount,
+            tcpEphemeralPortCapacity,
+            tcpPortPressureRatio:
+              tcpPcbCount !== null && tcpEphemeralPortCapacity !== null && tcpEphemeralPortCapacity > 0
+                ? tcpPcbCount / tcpEphemeralPortCapacity
+                : null
+          };
+        })()
+      : await (input.tcpPortPressureReader ?? readTcpPortPressure)().catch(() => ({
+          tcpPcbCount: null,
+          tcpEphemeralPortCapacity: null,
+          tcpPortPressureRatio: null
+        }));
     if (
       !Number.isFinite(cpuCount) || cpuCount <= 0 ||
       !Number.isFinite(loadAverage1m) || loadAverage1m < 0 ||
@@ -130,6 +198,7 @@ export async function captureStage3ResourceTelemetry(input: {
       availableMemoryBytes: totalMemoryBytes * availableMemoryPercent,
       diskFreeBytes,
       swapUsedBytes,
+      ...tcpPortPressure,
       telemetryError: null
     };
   } catch (error) {
@@ -143,6 +212,9 @@ export async function captureStage3ResourceTelemetry(input: {
       availableMemoryBytes: null,
       diskFreeBytes: null,
       swapUsedBytes: null,
+      tcpPcbCount: null,
+      tcpEphemeralPortCapacity: null,
+      tcpPortPressureRatio: null,
       telemetryError: error instanceof Error ? error.message : String(error)
     };
   }
@@ -176,7 +248,8 @@ export function evaluateStage3ResourceAdmission(
     maxNormalizedLoad1m: heavy ? 0.75 : 0.9,
     minAvailableMemoryPercent: heavy ? 0.25 : 0.15,
     minDiskFreeBytes: (heavy ? 20 : 10) * GIB,
-    maxSwapGrowthBytes5m: 512 * 1024 * 1024
+    maxSwapGrowthBytes5m: 512 * 1024 * 1024,
+    maxTcpPortPressureRatio: 0.6
   };
   const reasons: string[] = [];
   if (
@@ -202,6 +275,12 @@ export function evaluateStage3ResourceAdmission(
   }
   if (swapGrowthBytes5m > thresholds.maxSwapGrowthBytes5m) {
     reasons.push("swap_growth_above_limit");
+  }
+  if (
+    telemetry.tcpPortPressureRatio != null &&
+    telemetry.tcpPortPressureRatio > thresholds.maxTcpPortPressureRatio
+  ) {
+    reasons.push("tcp_ephemeral_port_pressure");
   }
   return {
     admitted: reasons.length === 0,
