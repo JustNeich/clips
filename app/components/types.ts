@@ -1446,7 +1446,12 @@ export type RuntimeCapabilitiesResponse = {
   };
 };
 
-export type AppRole = "owner" | "manager" | "redactor" | "redactor_limited";
+export type AppRole =
+  | "owner"
+  | "manager"
+  | "redactor"
+  | "redactor_limited"
+  | "channel_connector";
 
 export type WorkspaceRecord = {
   id: string;

@@ -16,7 +16,7 @@
 | --- | --- |
 | `docs/agent-first/README.md` | Точка входа: карта продукта, источники истины, route map, правила эскалации |
 | `docs/agent-first/surfaces-and-navigation.md` | Все UI-поверхности, модалки, вкладки, меню, кнопки, поля, шаблоны действий |
-| `docs/agent-first/roles-and-permissions.md` | Полная матрица ролей `owner` / `manager` / `redactor` / `redactor_limited` |
+| `docs/agent-first/roles-and-permissions.md` | Матрица operator-ролей и отдельная граница `channel_connector` |
 | `docs/agent-first/flows-and-state.md` | Сквозные happy-path, alternate-path, blocked-path и recovery-path по всему приложению |
 | `docs/agent-first/glossary-and-entity-map.md` | Перевод пользовательского языка в доменные сущности и UI-термины |
 | `docs/agent-first/issue-intake-playbook.md` | Как превращать жалобу или запрос в тикет инженерного качества |
@@ -77,6 +77,7 @@
 | `/login` | Вход в служебный аккаунт | Переход в рабочее приложение |
 | `/register` | Публичная регистрация редактора | Создаёт `redactor` |
 | `/accept-invite` | Принятие invite-токена | Назначает роль из invite |
+| `/connect/login` | Вход внешнего участника | Только заранее созданный `channel_connector`; регистрации нет |
 | `/setup/bootstrap-owner` | Одноразовое создание первого владельца | После инициализации показывает блокирующее сообщение |
 
 ### Основной операторский route
@@ -85,6 +86,7 @@
 | --- | --- |
 | `/` | Главный рабочий shell: Step 1, Step 2, Step 3, история, выбор канала, Channel Manager, Publishing |
 | `/team` | Управление участниками и invite-ами |
+| `/connect` | Изолированный портал подключения назначенных YouTube-каналов |
 
 ### Internal design tooling
 
@@ -136,6 +138,7 @@
 | `manager` | Операционное управление каналами и участниками | Не управляет owner-only workspace integrations и owner-wide bootstrap |
 | `redactor` | Ежедневный production flow и настройка доступных ему каналов | Не управляет командой и общими workspace defaults |
 | `redactor_limited` | Только рабочий цикл по выданным каналам | Не создаёт каналы, не меняет channel setup, не управляет доступами |
+| `channel_connector` | Подключить Google/YouTube к назначенному каналу | Не получает обычную app-session и не видит Clips UI |
 
 Полная матрица находится в [`docs/agent-first/roles-and-permissions.md`](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/agent-first/roles-and-permissions.md).
 

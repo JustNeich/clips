@@ -6,6 +6,8 @@
 - `code-verified`: [`lib/acl.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/acl.ts), [`lib/team-store.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/team-store.ts), [`lib/auth/guards.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/auth/guards.ts), [`lib/channel-edit-permissions.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/channel-edit-permissions.ts)
 - `db-verified`: cloned SQLite data и seeded role accounts
 
+`channel_connector` намеренно не добавлен в operator-колонки ниже: эта роль не является ещё одним режимом основного приложения. Для неё действует отдельная fail-closed граница, описанная ниже.
+
 ## Поддерживаемые роли
 
 | Роль | Системное имя | Смысл |
@@ -14,6 +16,18 @@
 | Управляющий | `manager` | Операционный администратор без owner-only прав |
 | Редактор | `redactor` | Полный production flow по доступным каналам |
 | Ограниченный редактор | `redactor_limited` | Операторские действия и ограниченные render/assets настройки без полного channel setup |
+| Подключающий канал | `channel_connector` | Только отдельный портал Google/YouTube OAuth для назначенного канала |
+
+## Отдельная граница `channel_connector`
+
+- аккаунт заранее создаёт `owner` или `manager` на `/team`; self-registration и invite отсутствуют;
+- localhost automation может создать тот же аккаунт через `POST /api/workspace/connectors` только с существующим bearer scope `control:write`; `flow:read` недостаточно;
+- система один раз показывает credentials и создаёт channel grant с `access_role = connect` для каждого выбранного канала;
+- вход выполняется только через `/connect/login` и создаёт session с `audience = connector` в cookie `clips_connector_session`;
+- основной `/api/auth/login` отказывает этой роли, а connector token не проходит как `audience = app` даже при подстановке в обычную cookie;
+- `/connect` показывает только каналы с active `connect` grant;
+- разрешены старт Google OAuth и выбор YouTube destination;
+- запрещены основной `/`, `/team`, channel setup, Stage 1/2/3, публикации, assets, доступы и disconnect интеграции.
 
 ## Workspace-level permissions
 

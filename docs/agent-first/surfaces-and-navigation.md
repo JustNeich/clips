@@ -113,6 +113,27 @@
   - "токен не принимается"
   - "приглашение не сработало"
 
+## `/connect/login`
+
+- `purpose`: вход заранее созданного участника подключения канала.
+- `roles`: только `channel_connector`.
+- `preconditions`: owner/manager создал аккаунт на `/team` и передал credentials.
+- `controls`: email, password, `Войти`.
+- `resulting action`: `POST /api/connect/auth/login`.
+- `guard`: создаётся connector-session, а не обычная app-session.
+
+## `/connect`
+
+- `purpose`: изолированный портал подключения YouTube.
+- `roles`: только `channel_connector` с active `connect` grant.
+- `controls`: все назначенные каналы, отдельный `Подключить Google` для каждого, выбор destination при нескольких YouTube-каналах, `Выйти`.
+- `related APIs`:
+  - `GET /api/connect/channels`
+  - `POST /api/connect/channels/[id]/youtube/connect`
+  - `PATCH /api/connect/channels/[id]/youtube/connection`
+  - `POST /api/connect/auth/logout`
+- `forbidden surfaces`: основной Clips shell, team, channel setup и publication controls.
+
 ## `/setup/bootstrap-owner`
 
 - `purpose`: одноразовый bootstrap первого владельца workspace.
@@ -142,7 +163,7 @@
 ## Header и shell chrome
 
 - `purpose`: главный контейнер операторского пайплайна.
-- `roles`: все авторизованные роли.
+- `roles`: operator-роли `owner`, `manager`, `redactor`, `redactor_limited`; `channel_connector` сюда не допускается.
 - `verification`: `browser-verified`.
 - `controls`:
   - кнопка `Открыть историю` / `Скрыть историю`
@@ -749,12 +770,16 @@
   - invite role select
   - button `Создать приглашение`
   - inline token output
+  - форма готового аккаунта подключения: имя, email, один или несколько назначенных каналов, `Выбрать все`
+  - одноразовый блок credentials + `Скопировать инструкцию`
 - `resulting actions`:
   - `GET /api/workspace/members`
   - `PATCH /api/workspace/members/[memberId]`
   - `DELETE /api/workspace/members/[memberId]`
   - `POST /api/workspace/invites`
+  - `POST /api/workspace/connectors`
 - `role nuances`:
+  - `POST /api/workspace/connectors` также принимает доверенный localhost bearer только со scope `control:write`; read-only bearer получает `401`
   - owner может выдавать `manager`, `redactor`, `redactor_limited`
   - manager может переключать только между `redactor` и `redactor_limited`
   - owner может удалять `manager`, `redactor`, `redactor_limited`

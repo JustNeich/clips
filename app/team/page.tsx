@@ -10,19 +10,34 @@ type MemberRow = {
   user: UserRecord;
 };
 
+type ChannelOption = { id: string; name: string; username: string };
+
+type ConnectorCredentials = {
+  email: string;
+  password: string;
+  portalUrl: string;
+  channelNames: string[];
+};
+
 const ROLE_LABELS: Record<AppRole, string> = {
   owner: "владелец",
   manager: "менеджер",
   redactor: "редактор",
-  redactor_limited: "редактор (ограниченный)"
+  redactor_limited: "редактор (ограниченный)",
+  channel_connector: "подключение каналов"
 };
 
 export default function TeamPage() {
   const [auth, setAuth] = useState<AuthMeResponse | null>(null);
   const [members, setMembers] = useState<MemberRow[]>([]);
+  const [channels, setChannels] = useState<ChannelOption[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<AppRole>("redactor");
   const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [connectorEmail, setConnectorEmail] = useState("");
+  const [connectorName, setConnectorName] = useState("");
+  const [connectorChannelIds, setConnectorChannelIds] = useState<string[]>([]);
+  const [connectorCredentials, setConnectorCredentials] = useState<ConnectorCredentials | null>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -40,6 +55,24 @@ export default function TeamPage() {
       throw new Error(membersBody.error ?? "Не удалось загрузить участников.");
     }
     setMembers(membersBody.members ?? []);
+    const channelsResponse = await fetch("/api/channels");
+    const channelsBody = (await channelsResponse.json()) as {
+      channels?: ChannelOption[];
+      error?: string;
+    };
+    if (!channelsResponse.ok) {
+      throw new Error(channelsBody.error ?? "Не удалось загрузить каналы.");
+    }
+    setChannels(channelsBody.channels ?? []);
+    setConnectorChannelIds((current) => {
+      const availableIds = new Set((channelsBody.channels ?? []).map((channel) => channel.id));
+      const retained = current.filter((channelId) => availableIds.has(channelId));
+      return retained.length > 0
+        ? retained
+        : channelsBody.channels?.[0]?.id
+          ? [channelsBody.channels[0].id]
+          : [];
+    });
   };
 
   useEffect(() => {
@@ -123,6 +156,45 @@ export default function TeamPage() {
     }
   };
 
+  const createConnectorAccount = async (): Promise<void> => {
+    setBusy(true);
+    setStatus("");
+    setConnectorCredentials(null);
+    try {
+      const response = await fetch("/api/workspace/connectors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: connectorEmail,
+          displayName: connectorName,
+          channelIds: connectorChannelIds
+        })
+      });
+      const body = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            channels?: Array<{ name: string }>;
+            credentials?: { email: string; password: string; portalUrl: string };
+          }
+        | null;
+      if (!response.ok || !body?.credentials) {
+        throw new Error(body?.error ?? "Не удалось создать аккаунт подключения.");
+      }
+      setConnectorCredentials({
+        ...body.credentials,
+        channelNames: body.channels?.map((channel) => channel.name) ?? []
+      });
+      setConnectorEmail("");
+      setConnectorName("");
+      await load();
+      setStatus("Аккаунт подключения создан. Передайте данные участнику безопасным способом.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Не удалось создать аккаунт подключения.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const inviteOptions: AppRole[] =
     auth?.membership.role === "owner"
       ? ["manager", "redactor", "redactor_limited"]
@@ -136,7 +208,9 @@ export default function TeamPage() {
       return ["owner"];
     }
     if (auth.membership.role === "owner") {
-      return ["manager", "redactor", "redactor_limited"];
+      return memberRole === "channel_connector"
+        ? ["channel_connector"]
+        : ["manager", "redactor", "redactor_limited"];
     }
     if (auth.membership.role === "manager") {
       return memberRole === "redactor" || memberRole === "redactor_limited"
@@ -155,7 +229,17 @@ export default function TeamPage() {
     }
     return (
       auth.membership.role === "manager" &&
-      (memberRole === "redactor" || memberRole === "redactor_limited")
+      (memberRole === "redactor" ||
+        memberRole === "redactor_limited" ||
+        memberRole === "channel_connector")
+    );
+  };
+
+  const toggleConnectorChannel = (channelId: string): void => {
+    setConnectorChannelIds((current) =>
+      current.includes(channelId)
+        ? current.filter((currentId) => currentId !== channelId)
+        : [...current, channelId]
     );
   };
 
@@ -227,6 +311,104 @@ export default function TeamPage() {
               </li>
             ))}
           </ul>
+        </section>
+        <section className="details-section">
+          <h3>Создать аккаунт подключения канала</h3>
+          <p className="subtle-text">
+            Участнику не понадобится регистрация или invite. Система создаст отдельный аккаунт и
+            покажет пароль один раз. Этот аккаунт работает только в портале подключения.
+          </p>
+          <div className="field-stack">
+            <input
+              className="text-input"
+              type="text"
+              placeholder="Имя участника"
+              value={connectorName}
+              onChange={(event) => setConnectorName(event.target.value)}
+            />
+            <input
+              className="text-input"
+              type="email"
+              placeholder="user@example.com"
+              value={connectorEmail}
+              onChange={(event) => setConnectorEmail(event.target.value)}
+            />
+            <div className="details-section">
+              <div className="control-actions">
+                <strong>Назначенные каналы</strong>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={busy || channels.length === 0}
+                  onClick={() =>
+                    setConnectorChannelIds(
+                      connectorChannelIds.length === channels.length
+                        ? []
+                        : channels.map((channel) => channel.id)
+                    )
+                  }
+                >
+                  {connectorChannelIds.length === channels.length ? "Снять все" : "Выбрать все"}
+                </button>
+              </div>
+              <div className="field-stack">
+                {channels.map((channel) => (
+                  <label key={channel.id} className="control-actions">
+                    <input
+                      type="checkbox"
+                      checked={connectorChannelIds.includes(channel.id)}
+                      disabled={busy}
+                      onChange={() => toggleConnectorChannel(channel.id)}
+                    />
+                    <span>{channel.name} · @{channel.username}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={busy || !connectorEmail.trim() || connectorChannelIds.length === 0}
+              onClick={() => void createConnectorAccount()}
+            >
+              Создать аккаунт
+            </button>
+          </div>
+          {connectorCredentials ? (
+            <div className="details-section">
+              <p><strong>Данные для участника</strong></p>
+              <p className="subtle-text">
+                Каналы: {connectorCredentials.channelNames.join(", ")}
+              </p>
+              <p className="subtle-text">Страница: {connectorCredentials.portalUrl}</p>
+              <p className="subtle-text">Логин: {connectorCredentials.email}</p>
+              <p className="subtle-text">Пароль: <strong>{connectorCredentials.password}</strong></p>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  const text = [
+                    "Здравствуйте! Вам выдан доступ для подключения YouTube-каналов к публикации.",
+                    "",
+                    `Страница входа: ${connectorCredentials.portalUrl}`,
+                    `Логин: ${connectorCredentials.email}`,
+                    `Пароль: ${connectorCredentials.password}`,
+                    "",
+                    "После входа подключите каждый канал из списка:",
+                    ...connectorCredentials.channelNames.map((channelName) => `• ${channelName}`),
+                    "",
+                    "Для каждого канала нажмите «Подключить Google», войдите в Google-аккаунт владельца этого YouTube-канала и подтвердите доступ. Если появится выбор канала, выберите канал с тем же названием.",
+                    "",
+                    "Когда у всех каналов появится статус «Подключён», напишите мне «Готово». Регистрация не нужна — используйте только данные выше."
+                  ].join("\n");
+                  void navigator.clipboard.writeText(text);
+                  setStatus("Инструкция скопирована.");
+                }}
+              >
+                Скопировать инструкцию
+              </button>
+            </div>
+          ) : null}
         </section>
         <section className="details-section">
           <h3>Создать приглашение</h3>

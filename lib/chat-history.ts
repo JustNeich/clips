@@ -40,7 +40,12 @@ import {
   resolveManagedTemplate
 } from "./managed-template-store";
 import { DEFAULT_STAGE3_CLIP_DURATION_SEC, normalizeStage3ClipDurationSec } from "./stage3-duration";
-import { getWorkspace, getWorkspaceStage2HardConstraints, type AppRole } from "./team-store";
+import {
+  getWorkspace,
+  getWorkspaceStage2HardConstraints,
+  type AppRole,
+  type ChannelAccessRole
+} from "./team-store";
 import { normalizeSupportedUrl } from "./ytdlp";
 
 export type ChatEventRole = "user" | "assistant" | "system";
@@ -116,7 +121,7 @@ export type ChannelAccessRecord = {
   id: string;
   channelId: string;
   userId: string;
-  accessRole: "operate";
+  accessRole: ChannelAccessRole;
   grantedByUserId: string;
   createdAt: string;
   revokedAt: string | null;
@@ -1279,7 +1284,7 @@ export async function getChannelAccessForUser(
     id: String(row.id),
     channelId: String(row.channel_id),
     userId: String(row.user_id),
-    accessRole: "operate",
+    accessRole: String(row.access_role) as ChannelAccessRole,
     grantedByUserId: String(row.granted_by_user_id),
     createdAt: String(row.created_at),
     revokedAt: row.revoked_at ? String(row.revoked_at) : null
@@ -1313,7 +1318,7 @@ export async function listChannelAccessForUserByChannelIds(
         id: String(row.id),
         channelId: String(row.channel_id),
         userId: String(row.user_id),
-        accessRole: "operate" as const,
+        accessRole: String(row.access_role) as ChannelAccessRole,
         grantedByUserId: String(row.granted_by_user_id),
         createdAt: String(row.created_at),
         revokedAt: row.revoked_at ? String(row.revoked_at) : null

@@ -1586,7 +1586,9 @@ export function ChannelManager({
   const backgrounds = listByKind(assets, "background");
   const music = listByKind(assets, "music");
   const activeGrantUserIds = new Set(accessGrants.map((grant) => grant.userId));
-  const accessCandidates = workspaceMembers.filter((member) => member.role !== "owner");
+  const accessCandidates = workspaceMembers.filter(
+    (member) => member.role !== "owner" && member.role !== "channel_connector"
+  );
 
   const updateStage2PromptTemplate = (
     stageId: keyof Stage2PromptConfig["stages"],

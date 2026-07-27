@@ -3,10 +3,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { NextRequest } from "next/server";
 
 import { POST as fetchComments } from "../app/api/comments/route";
 import { POST as createMachineSessionRoute } from "../app/api/auth/machine-session/route";
 import { POST as registerRoute } from "../app/api/auth/register/route";
+import { GET as listConnectorChannelsRoute } from "../app/api/connect/channels/route";
+import { POST as startConnectorYoutubeConnect } from "../app/api/connect/channels/[id]/youtube/connect/route";
 import { GET as getChatTrace } from "../app/api/chat-trace/[id]/route";
 import { GET as getChatRoute } from "../app/api/chats/[id]/route";
 import { GET as listChannelsRoute } from "../app/api/channels/route";
@@ -41,7 +44,8 @@ import { PATCH as patchPublicationRoute } from "../app/api/publications/[id]/rou
 import { POST as shiftPublicationRoute } from "../app/api/publications/[id]/shift/route";
 import type { ChannelPublishIntegration, Stage2Response } from "../app/components/types";
 import { DELETE as deleteWorkspaceMemberRoute } from "../app/api/workspace/members/[memberId]/route";
-import { APP_SESSION_COOKIE } from "../lib/auth/cookies";
+import { POST as provisionChannelConnectorRoute } from "../app/api/workspace/connectors/route";
+import { APP_SESSION_COOKIE, CONNECTOR_SESSION_COOKIE } from "../lib/auth/cookies";
 import {
   buildPublicationSlotCandidateFromDateAndIndex,
   DEFAULT_CHANNEL_PUBLISH_SETTINGS
@@ -66,9 +70,11 @@ import {
   canManageInviteRole,
   createInvite,
   listWorkspaceMembers,
+  loginChannelConnectorWithPassword,
   loginWithPassword,
   registerPublicRedactor
 } from "../lib/team-store";
+import { middleware } from "../middleware";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
   const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-api-auth-test-"));
@@ -783,6 +789,7 @@ test("team policy requires invite-issued editor accounts", async () => {
   assert.equal(canManageInviteRole("manager", "redactor"), true);
   assert.equal(canManageInviteRole("manager", "redactor_limited"), true);
   assert.equal(canManageInviteRole("manager", "manager"), false);
+  assert.equal(canManageInviteRole("owner", "channel_connector"), false);
 
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({
@@ -822,6 +829,248 @@ test("team policy requires invite-issued editor accounts", async () => {
 
     assert.equal(invitedEditor.membership.role, "redactor");
   });
+});
+
+test("owner provisions a channel connector without registration and the connector stays outside the app", async () => {
+  await withIsolatedAppData(async () => {
+    await withTestYouTubeOAuthClient(async () => {
+      const owner = await bootstrapOwner({
+        workspaceName: "Connector Workspace",
+        email: "owner@example.com",
+        password: "Password123!",
+        displayName: "Owner"
+      });
+      const chatHistory = await import("../lib/chat-history");
+      const assignedChannel = await chatHistory.createChannel({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        name: "Assigned Channel",
+        username: "assigned_channel"
+      });
+      const secondAssignedChannel = await chatHistory.createChannel({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        name: "Second Assigned Channel",
+        username: "second_assigned_channel"
+      });
+      const hiddenChannel = await chatHistory.createChannel({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        name: "Hidden Channel",
+        username: "hidden_channel"
+      });
+
+      const readOnlyMachine = createMcpMachineCredential({
+        workspaceId: owner.workspace.id,
+        ownerUserId: owner.user.id,
+        machineId: "connector-reader",
+        scopes: ["flow:read"]
+      });
+      const deniedMachineProvisionResponse = await provisionChannelConnectorRoute(
+        new Request("https://clips.example.test/api/workspace/connectors", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${readOnlyMachine.secret}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            email: "denied-machine-connector@example.com",
+            channelIds: [hiddenChannel.id]
+          })
+        })
+      );
+      assert.equal(deniedMachineProvisionResponse.status, 401);
+
+      const machine = createMcpMachineCredential({
+        workspaceId: owner.workspace.id,
+        ownerUserId: owner.user.id,
+        machineId: "connector-provisioner",
+        scopes: ["control:write"]
+      });
+      const machineProvisionResponse = await provisionChannelConnectorRoute(
+        new Request("https://clips.example.test/api/workspace/connectors", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${machine.secret}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            email: "machine-connector@example.com",
+            displayName: "Machine Channel Partner",
+            channelIds: [hiddenChannel.id]
+          })
+        })
+      );
+      const machineProvisionBody = (await machineProvisionResponse.json()) as {
+        member?: { membership?: { role?: string } };
+        channels?: Array<{ id?: string }>;
+        credentials?: { password?: string };
+      };
+      assert.equal(machineProvisionResponse.status, 201);
+      assert.equal(machineProvisionBody.member?.membership?.role, "channel_connector");
+      assert.deepEqual(machineProvisionBody.channels?.map((channel) => channel.id), [hiddenChannel.id]);
+      assert.ok((machineProvisionBody.credentials?.password?.length ?? 0) >= 20);
+
+      const provisionResponse = await provisionChannelConnectorRoute(
+        new Request("https://clips.example.test/api/workspace/connectors", {
+          method: "POST",
+          headers: {
+            cookie: `${APP_SESSION_COOKIE}=${owner.sessionToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            email: "connector@example.com",
+            displayName: "Channel Partner",
+            channelIds: [assignedChannel.id, secondAssignedChannel.id]
+          })
+        })
+      );
+      const provisionBody = (await provisionResponse.json()) as {
+        member?: { membership?: { role?: string }; user?: { id?: string } };
+        channels?: Array<{ id?: string; name?: string }>;
+        credentials?: { email?: string; password?: string; portalUrl?: string };
+      };
+
+      assert.equal(provisionResponse.status, 201);
+      assert.equal(provisionBody.member?.membership?.role, "channel_connector");
+      assert.equal(provisionBody.credentials?.email, "connector@example.com");
+      assert.ok((provisionBody.credentials?.password?.length ?? 0) >= 20);
+      assert.equal(provisionBody.credentials?.portalUrl, "https://clips.example.test/connect/login");
+      assert.deepEqual(
+        provisionBody.channels?.map((channel) => channel.id),
+        [assignedChannel.id, secondAssignedChannel.id]
+      );
+      const connectorUserId = provisionBody.member?.user?.id;
+      assert.ok(connectorUserId);
+      const grants = getDb()
+        .prepare("SELECT channel_id, access_role FROM channel_access WHERE user_id = ?")
+        .all(connectorUserId) as Array<{ channel_id?: string; access_role?: string }>;
+      assert.deepEqual(
+        grants
+          .map((grant) => [grant.channel_id, grant.access_role])
+          .sort(([left], [right]) => String(left).localeCompare(String(right))),
+        [
+          [assignedChannel.id, "connect"],
+          [secondAssignedChannel.id, "connect"]
+        ].sort(([left], [right]) => String(left).localeCompare(String(right)))
+      );
+      const inviteCount = getDb()
+        .prepare("SELECT COUNT(*) as count FROM workspace_invites WHERE email = ?")
+        .get("connector@example.com") as { count?: number };
+      assert.equal(inviteCount.count, 0);
+
+      await assert.rejects(
+        () =>
+          loginWithPassword({
+            email: "connector@example.com",
+            password: provisionBody.credentials?.password ?? ""
+          }),
+        /портал подключения каналов/i
+      );
+      const connector = await loginChannelConnectorWithPassword({
+        email: "connector@example.com",
+        password: provisionBody.credentials?.password ?? ""
+      });
+      assert.equal(connector.membership.role, "channel_connector");
+      assert.equal(connector.session.audience, "connector");
+
+      const connectorCookie = `${CONNECTOR_SESSION_COOKIE}=${connector.sessionToken}`;
+      const channelsResponse = await listConnectorChannelsRoute(
+        new Request("https://clips.example.test/api/connect/channels", {
+          headers: { cookie: connectorCookie }
+        })
+      );
+      const channelsBody = (await channelsResponse.json()) as {
+        channels?: Array<{ id?: string; name?: string }>;
+      };
+      assert.equal(channelsResponse.status, 200);
+      assert.deepEqual(
+        channelsBody.channels?.map((channel) => channel.id).sort(),
+        [assignedChannel.id, secondAssignedChannel.id].sort()
+      );
+
+      const mainAppResponse = await listChannelsRoute(
+        new Request("https://clips.example.test/api/channels", {
+          headers: { cookie: `${APP_SESSION_COOKIE}=${connector.sessionToken}` }
+        })
+      );
+      assert.equal(mainAppResponse.status, 401, "connector token must not become an app session");
+
+      const oauthResponse = await startConnectorYoutubeConnect(
+        new Request(
+          `https://clips.example.test/api/connect/channels/${assignedChannel.id}/youtube/connect`,
+          {
+            method: "POST",
+            headers: { cookie: connectorCookie, "Content-Type": "application/json" },
+            body: JSON.stringify({ oauthClientKey: "primary" })
+          }
+        ),
+        { params: Promise.resolve({ id: assignedChannel.id }) }
+      );
+      assert.equal(oauthResponse.status, 200);
+
+      const deniedResponse = await startConnectorYoutubeConnect(
+        new Request(
+          `https://clips.example.test/api/connect/channels/${hiddenChannel.id}/youtube/connect`,
+          {
+            method: "POST",
+            headers: { cookie: connectorCookie, "Content-Type": "application/json" },
+            body: JSON.stringify({ oauthClientKey: "primary" })
+          }
+        ),
+        { params: Promise.resolve({ id: hiddenChannel.id }) }
+      );
+      assert.equal(deniedResponse.status, 403);
+    });
+  });
+});
+
+test("middleware keeps connector and application sessions on separate route families", () => {
+  const anonymousConnectorProvision = middleware(
+    new NextRequest("http://localhost/api/workspace/connectors", { method: "POST" })
+  );
+  assert.equal(anonymousConnectorProvision.status, 401);
+
+  const bearerConnectorProvision = middleware(
+    new NextRequest("http://localhost/api/workspace/connectors", {
+      method: "POST",
+      headers: { authorization: "Bearer control-write-token" }
+    })
+  );
+  assert.notEqual(bearerConnectorProvision.status, 401);
+
+  const anonymousApi = middleware(new NextRequest("http://localhost/api/connect/channels"));
+  assert.equal(anonymousApi.status, 401);
+
+  const appCookieOnConnectorApi = middleware(
+    new NextRequest("http://localhost/api/connect/channels", {
+      headers: { cookie: `${APP_SESSION_COOKIE}=app-token` }
+    })
+  );
+  assert.equal(appCookieOnConnectorApi.status, 401);
+
+  const connectorApi = middleware(
+    new NextRequest("http://localhost/api/connect/channels", {
+      headers: { cookie: `${CONNECTOR_SESSION_COOKIE}=connector-token` }
+    })
+  );
+  assert.notEqual(connectorApi.status, 401);
+
+  const connectorPortalWithAppCookie = middleware(
+    new NextRequest("http://localhost/connect", {
+      headers: { cookie: `${APP_SESSION_COOKIE}=app-token` }
+    })
+  );
+  assert.equal(connectorPortalWithAppCookie.status, 307);
+  assert.equal(connectorPortalWithAppCookie.headers.get("location"), "http://localhost/connect/login");
+
+  const appWithConnectorCookie = middleware(
+    new NextRequest("http://localhost/", {
+      headers: { cookie: `${CONNECTOR_SESSION_COOKIE}=connector-token` }
+    })
+  );
+  assert.equal(appWithConnectorCookie.status, 307);
+  assert.match(appWithConnectorCookie.headers.get("location") ?? "", /\/login\?next=%2F$/);
 });
 
 test("redactor accounts can edit active channel Stage 2 settings while other internals stay closed", async () => {

@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
   workspace_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
   session_token_hash TEXT NOT NULL UNIQUE,
+  audience TEXT NOT NULL DEFAULT 'app',
   expires_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
   last_seen_at TEXT NOT NULL,

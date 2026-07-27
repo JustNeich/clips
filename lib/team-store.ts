@@ -45,9 +45,15 @@ import { decryptJsonPayload, encryptJsonPayload } from "./app-crypto";
 import { PUBLIC_REGISTRATION_DISABLED_MESSAGE } from "./auth/registration-policy";
 import type { Stage3ExecutionTarget } from "../app/components/types";
 
-export type AppRole = "owner" | "manager" | "redactor" | "redactor_limited";
+export type AppRole =
+  | "owner"
+  | "manager"
+  | "redactor"
+  | "redactor_limited"
+  | "channel_connector";
 export type WorkspaceCodexStatus = "connected" | "disconnected" | "connecting" | "error";
-export type ChannelAccessRole = "operate";
+export type ChannelAccessRole = "operate" | "connect";
+export type AuthSessionAudience = "app" | "connector";
 
 export type WorkspaceRecord = {
   id: string;
@@ -86,6 +92,7 @@ export type AuthSessionRecord = {
   id: string;
   workspaceId: string;
   userId: string;
+  audience: AuthSessionAudience;
   expiresAt: string;
   createdAt: string;
   lastSeenAt: string;
@@ -330,6 +337,7 @@ function mapSession(row: Record<string, unknown>): AuthSessionRecord {
     id: String(row.id),
     workspaceId: String(row.workspace_id),
     userId: String(row.user_id),
+    audience: String(row.audience) === "connector" ? "connector" : "app",
     expiresAt: String(row.expires_at),
     createdAt: String(row.created_at),
     lastSeenAt: String(row.last_seen_at),
@@ -986,8 +994,8 @@ export async function createUserByInvite(input: {
   userAgent?: string | null;
   ipAddress?: string | null;
 }): Promise<AuthContext & { sessionToken: string }> {
-  if (input.role === "owner") {
-    throw new Error("Owner invite is not supported.");
+  if (input.role === "owner" || input.role === "channel_connector") {
+    throw new Error("This role cannot be created through an invite.");
   }
   if (getUserWithPasswordByEmail(input.email)) {
     throw new Error("Пользователь с таким email уже существует.");
@@ -1080,6 +1088,9 @@ export async function loginWithPassword(input: {
   if (!membership) {
     throw new Error("Workspace membership not found.");
   }
+  if (membership.role === "channel_connector") {
+    throw new Error("Используйте отдельный портал подключения каналов.");
+  }
 
   const session = createAuthSession({
     workspaceId: workspace.id,
@@ -1097,11 +1108,53 @@ export async function loginWithPassword(input: {
   };
 }
 
+export async function loginChannelConnectorWithPassword(input: {
+  email: string;
+  password: string;
+  userAgent?: string | null;
+  ipAddress?: string | null;
+}): Promise<AuthContext & { sessionToken: string }> {
+  const candidate = getUserWithPasswordByEmail(input.email);
+  if (!candidate) {
+    throw new Error("Неверный email или пароль.");
+  }
+  const ok = await verifyPassword(input.password, candidate.passwordHash);
+  if (!ok) {
+    throw new Error("Неверный email или пароль.");
+  }
+
+  const workspace = getWorkspace();
+  if (!workspace) {
+    throw new Error("Workspace is not initialized.");
+  }
+  const membership = getMembership(candidate.id, workspace.id);
+  if (!membership || membership.role !== "channel_connector") {
+    throw new Error("Этот аккаунт не предназначен для подключения каналов.");
+  }
+
+  const session = createAuthSession({
+    workspaceId: workspace.id,
+    userId: candidate.id,
+    userAgent: input.userAgent ?? null,
+    ipAddress: input.ipAddress ?? null,
+    audience: "connector"
+  });
+
+  return {
+    workspace,
+    user: withoutPasswordHash(candidate),
+    membership,
+    session: session.record,
+    sessionToken: session.token
+  };
+}
+
 export function createAuthSession(input: {
   workspaceId: string;
   userId: string;
   userAgent: string | null;
   ipAddress: string | null;
+  audience?: AuthSessionAudience;
 }): { token: string; record: AuthSessionRecord } {
   const now = nowIso();
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
@@ -1110,6 +1163,7 @@ export function createAuthSession(input: {
     id: newId(),
     workspaceId: input.workspaceId,
     userId: input.userId,
+    audience: input.audience ?? "app",
     expiresAt,
     createdAt: now,
     lastSeenAt: now,
@@ -1119,12 +1173,13 @@ export function createAuthSession(input: {
 
   const db = getDb();
   db.prepare(
-    "INSERT INTO auth_sessions (id, workspace_id, user_id, session_token_hash, expires_at, created_at, last_seen_at, user_agent, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "INSERT INTO auth_sessions (id, workspace_id, user_id, session_token_hash, audience, expires_at, created_at, last_seen_at, user_agent, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   ).run(
     record.id,
     record.workspaceId,
     record.userId,
     hashToken(token),
+    record.audience,
     record.expiresAt,
     record.createdAt,
     record.lastSeenAt,
@@ -1140,7 +1195,10 @@ export function invalidateAuthSession(sessionToken: string): void {
   db.prepare("DELETE FROM auth_sessions WHERE session_token_hash = ?").run(hashToken(sessionToken));
 }
 
-export function getAuthContextByToken(sessionToken: string): AuthContext | null {
+export function getAuthContextByToken(
+  sessionToken: string,
+  audience: AuthSessionAudience = "app"
+): AuthContext | null {
   const db = getDb();
   const row = db
     .prepare(
@@ -1167,9 +1225,10 @@ export function getAuthContextByToken(sessionToken: string): AuthContext | null 
       JOIN users u ON u.id = s.user_id
       JOIN workspace_members wm ON wm.user_id = s.user_id AND wm.workspace_id = s.workspace_id
       JOIN workspaces w ON w.id = s.workspace_id
-      WHERE s.session_token_hash = ?`
+      WHERE s.session_token_hash = ?
+        AND s.audience = ?`
     )
-    .get(hashToken(sessionToken)) as Record<string, unknown> | undefined;
+    .get(hashToken(sessionToken), audience) as Record<string, unknown> | undefined;
 
   if (!row) {
     return null;
@@ -1224,6 +1283,7 @@ export function getAuthContextByToken(sessionToken: string): AuthContext | null 
       id: String(row.id),
       workspaceId: String(row.workspace_id),
       userId: String(row.user_id),
+      audience: String(row.audience) === "connector" ? "connector" : "app",
       expiresAt: String(row.expires_at),
       createdAt: String(row.created_at),
       lastSeenAt: now,
@@ -1237,7 +1297,7 @@ export function getEffectivePermissions(role: AppRole): EffectivePermissions {
   return {
     canManageMembers: role === "owner" || role === "manager",
     canManageCodex: role === "owner",
-    canCreateChannel: role !== "redactor_limited",
+    canCreateChannel: role === "owner" || role === "manager" || role === "redactor",
     canManageAnyChannelAccess: role === "owner" || role === "manager"
   };
 }
@@ -1529,21 +1589,39 @@ export function setChannelAccess(input: {
   channelId: string;
   userId: string;
   grantedByUserId: string;
+  accessRole?: ChannelAccessRole;
 }): ChannelAccessRecord {
-  const existing = listChannelAccess(input.channelId).find((item) => item.userId === input.userId);
-  if (existing) {
-    return existing;
+  const db = getDb();
+  const requestedRole = input.accessRole ?? "operate";
+  const target = db
+    .prepare(
+      `SELECT wm.role
+         FROM channels c
+         JOIN workspace_members wm
+           ON wm.workspace_id = c.workspace_id
+          AND wm.user_id = ?
+        WHERE c.id = ?
+        LIMIT 1`
+    )
+    .get(input.userId, input.channelId) as { role?: string } | undefined;
+  if (!target?.role) {
+    throw new Error("Cannot grant access to a user outside this workspace.");
+  }
+  if (target.role === "channel_connector" && requestedRole !== "connect") {
+    throw new Error("Channel connector accounts require connect access.");
+  }
+  if (target.role !== "channel_connector" && requestedRole === "connect") {
+    throw new Error("Connect access is reserved for channel connector accounts.");
   }
   const record: ChannelAccessRecord = {
     id: newId(),
     channelId: input.channelId,
     userId: input.userId,
-    accessRole: "operate",
+    accessRole: requestedRole,
     grantedByUserId: input.grantedByUserId,
     createdAt: nowIso(),
     revokedAt: null
   };
-  const db = getDb();
   db.prepare(
     `INSERT INTO channel_access (id, channel_id, user_id, access_role, granted_by_user_id, created_at, revoked_at)
      VALUES (?, ?, ?, ?, ?, ?, NULL)
@@ -1560,7 +1638,13 @@ export function setChannelAccess(input: {
     record.grantedByUserId,
     record.createdAt
   );
-  return record;
+  const saved = db
+    .prepare("SELECT * FROM channel_access WHERE channel_id = ? AND user_id = ?")
+    .get(record.channelId, record.userId) as Record<string, unknown> | undefined;
+  if (!saved) {
+    throw new Error("Channel access was not saved.");
+  }
+  return mapChannelAccess(saved);
 }
 
 export function revokeChannelAccess(channelId: string, userId: string): void {
@@ -1629,14 +1713,172 @@ export function removeWorkspaceMember(
   return current;
 }
 
+export async function provisionChannelConnector(input: {
+  workspaceId: string;
+  email: string;
+  displayName: string;
+  channelIds: string[];
+  createdByUserId: string;
+}): Promise<{
+  user: UserRecord;
+  membership: WorkspaceMemberRecord;
+  accesses: ChannelAccessRecord[];
+  initialPassword: string;
+}> {
+  const email = normalizeEmail(input.email);
+  if (!email) {
+    throw new Error("Email is required.");
+  }
+  const channelIds = Array.from(
+    new Set(input.channelIds.map((channelId) => channelId.trim()).filter(Boolean))
+  );
+  if (channelIds.length === 0) {
+    throw new Error("Выберите хотя бы один канал.");
+  }
+  const db = getDb();
+  const channelRows = db
+    .prepare(
+      `SELECT id
+         FROM channels
+        WHERE workspace_id = ?
+          AND archived_at IS NULL
+          AND id IN (${channelIds.map(() => "?").join(", ")})`
+    )
+    .all(input.workspaceId, ...channelIds) as Array<{ id?: string }>;
+  const validChannelIds = new Set(channelRows.map((row) => String(row.id ?? "")));
+  if (validChannelIds.size !== channelIds.length) {
+    throw new Error("Один или несколько каналов не найдены.");
+  }
+
+  const existingUser = getUserWithPasswordByEmail(email);
+  if (existingUser && getMembership(existingUser.id, input.workspaceId)) {
+    throw new Error("Пользователь с таким email уже существует.");
+  }
+
+  const initialPassword = randomBytes(18).toString("base64url");
+  const passwordHash = await hashPassword(initialPassword);
+  const stamp = nowIso();
+  const user: UserRecord = existingUser
+    ? {
+        ...withoutPasswordHash(existingUser),
+        displayName: input.displayName.trim() || "Channel connector",
+        status: "active",
+        updatedAt: stamp
+      }
+    : {
+        id: newId(),
+        email,
+        displayName: input.displayName.trim() || "Channel connector",
+        status: "active",
+        createdAt: stamp,
+        updatedAt: stamp
+      };
+  const membership: WorkspaceMemberRecord = {
+    id: newId(),
+    workspaceId: input.workspaceId,
+    userId: user.id,
+    role: "channel_connector",
+    createdAt: stamp,
+    updatedAt: stamp
+  };
+  const accesses: ChannelAccessRecord[] = channelIds.map((channelId) => ({
+    id: newId(),
+    channelId,
+    userId: user.id,
+    accessRole: "connect",
+    grantedByUserId: input.createdByUserId,
+    createdAt: stamp,
+    revokedAt: null
+  }));
+
+  runInTransaction((transaction) => {
+    if (existingUser) {
+      transaction
+        .prepare(
+          "UPDATE users SET password_hash = ?, display_name = ?, status = 'active', updated_at = ? WHERE id = ?"
+        )
+        .run(passwordHash, user.displayName, stamp, user.id);
+    } else {
+      transaction
+        .prepare(
+          "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        )
+        .run(user.id, user.email, passwordHash, user.displayName, user.status, user.createdAt, user.updatedAt);
+    }
+    transaction
+      .prepare(
+        "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+      )
+      .run(
+        membership.id,
+        membership.workspaceId,
+        membership.userId,
+        membership.role,
+        membership.createdAt,
+        membership.updatedAt
+      );
+    const accessStatement = transaction.prepare(
+        `INSERT INTO channel_access
+          (id, channel_id, user_id, access_role, granted_by_user_id, created_at, revoked_at)
+         VALUES (?, ?, ?, ?, ?, ?, NULL)
+         ON CONFLICT(channel_id, user_id) DO UPDATE SET
+          access_role = excluded.access_role,
+          granted_by_user_id = excluded.granted_by_user_id,
+          created_at = excluded.created_at,
+          revoked_at = NULL`
+      );
+    for (const access of accesses) {
+      accessStatement.run(
+        access.id,
+        access.channelId,
+        access.userId,
+        access.accessRole,
+        access.grantedByUserId,
+        access.createdAt
+      );
+    }
+    transaction
+      .prepare(
+        "DELETE FROM workspace_invites WHERE workspace_id = ? AND email = ? AND accepted_at IS NULL"
+      )
+      .run(input.workspaceId, email);
+  });
+
+  const savedAccessRows = db
+    .prepare(
+      `SELECT *
+         FROM channel_access
+        WHERE user_id = ?
+          AND channel_id IN (${channelIds.map(() => "?").join(", ")})`
+    )
+    .all(user.id, ...channelIds) as Record<string, unknown>[];
+  const savedAccessByChannelId = new Map(
+    savedAccessRows.map((row) => {
+      const access = mapChannelAccess(row);
+      return [access.channelId, access] as const;
+    })
+  );
+  const savedAccesses = channelIds.map((channelId) => savedAccessByChannelId.get(channelId));
+  if (savedAccesses.some((access) => !access)) {
+    throw new Error("Channel connector access was not saved for every channel.");
+  }
+
+  return {
+    user,
+    membership,
+    accesses: savedAccesses as ChannelAccessRecord[],
+    initialPassword
+  };
+}
+
 export async function createInvite(input: {
   workspaceId: string;
   email: string;
   role: AppRole;
   createdByUserId: string;
 }): Promise<{ id: string; role: AppRole; email: string; token: string; expiresAt: string }> {
-  if (input.role === "owner") {
-    throw new Error("Owner invite is not supported.");
+  if (input.role === "owner" || input.role === "channel_connector") {
+    throw new Error("This role cannot be created through an invite.");
   }
   const existingUser = getUserWithPasswordByEmail(input.email);
   if (existingUser && getMembership(existingUser.id, input.workspaceId)) {
@@ -1721,12 +1963,16 @@ export function canManageMemberRoleTransition(
   if (currentRole === "owner" || nextRole === "owner") {
     return false;
   }
+  if (currentRole === "channel_connector" || nextRole === "channel_connector") {
+    return false;
+  }
   if (actorRole === "owner") {
     return true;
   }
   if (actorRole === "manager") {
-    const managerAllowedCurrent = currentRole === "redactor" || currentRole === "redactor_limited";
-    const managerAllowedNext = nextRole === "redactor" || nextRole === "redactor_limited";
+    const managerRoles: AppRole[] = ["redactor", "redactor_limited"];
+    const managerAllowedCurrent = managerRoles.includes(currentRole);
+    const managerAllowedNext = managerRoles.includes(nextRole);
     return managerAllowedCurrent && managerAllowedNext;
   }
   return false;
@@ -1740,7 +1986,11 @@ export function canManageMemberRemoval(actorRole: AppRole, targetRole: AppRole):
     return true;
   }
   if (actorRole === "manager") {
-    return targetRole === "redactor" || targetRole === "redactor_limited";
+    return (
+      targetRole === "redactor" ||
+      targetRole === "redactor_limited" ||
+      targetRole === "channel_connector"
+    );
   }
   return false;
 }
@@ -1778,8 +2028,8 @@ export async function acceptInviteRegistration(input: {
   const now = nowIso();
   const userId = existingInviteUser?.id ?? newId();
   const role = String(preview.role) as AppRole;
-  if (role === "owner") {
-    throw new Error("Owner invite is not supported.");
+  if (role === "owner" || role === "channel_connector") {
+    throw new Error("This role cannot be created through an invite.");
   }
 
   const user: UserRecord = {
@@ -1803,6 +2053,7 @@ export async function acceptInviteRegistration(input: {
     id: newId(),
     workspaceId: membership.workspaceId,
     userId,
+    audience: "app",
     expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
     createdAt: now,
     lastSeenAt: now,
@@ -1860,12 +2111,13 @@ export async function acceptInviteRegistration(input: {
       membership.updatedAt
     );
     db.prepare(
-      "INSERT INTO auth_sessions (id, workspace_id, user_id, session_token_hash, expires_at, created_at, last_seen_at, user_agent, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO auth_sessions (id, workspace_id, user_id, session_token_hash, audience, expires_at, created_at, last_seen_at, user_agent, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ).run(
       session.id,
       session.workspaceId,
       session.userId,
       hashToken(sessionToken),
+      session.audience,
       session.expiresAt,
       session.createdAt,
       session.lastSeenAt,
