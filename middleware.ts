@@ -106,9 +106,13 @@ export function middleware(request: NextRequest): NextResponse {
     }
     if (pathname.startsWith("/api/") && !isApiPublic(pathname)) {
       const isConnectorApi = pathname.startsWith("/api/connect/");
+      const isSharedYoutubeOauthCallback =
+        pathname === "/api/integrations/youtube/callback";
       const hasExpectedSession = isConnectorApi
         ? Boolean(request.cookies.get("clips_connector_session"))
-        : Boolean(request.cookies.get("clips_session"));
+        : Boolean(request.cookies.get("clips_session")) ||
+          (isSharedYoutubeOauthCallback &&
+            Boolean(request.cookies.get("clips_connector_session")));
       if (!hasExpectedSession && !canUseBearerForApi(pathname, request)) {
         return NextResponse.json({ error: "Authentication required." }, { status: 401 });
       }

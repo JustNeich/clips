@@ -1139,6 +1139,18 @@ test("middleware keeps connector and application sessions on separate route fami
   );
   assert.notEqual(connectorApi.status, 401);
 
+  const anonymousYoutubeCallback = middleware(
+    new NextRequest("http://localhost/api/integrations/youtube/callback?state=oauth-state")
+  );
+  assert.equal(anonymousYoutubeCallback.status, 401);
+
+  const connectorYoutubeCallback = middleware(
+    new NextRequest("http://localhost/api/integrations/youtube/callback?state=oauth-state", {
+      headers: { cookie: `${CONNECTOR_SESSION_COOKIE}=connector-token` }
+    })
+  );
+  assert.notEqual(connectorYoutubeCallback.status, 401);
+
   const connectorPortalWithAppCookie = middleware(
     new NextRequest("http://localhost/connect", {
       headers: { cookie: `${APP_SESSION_COOKIE}=app-token` }
