@@ -126,7 +126,7 @@
 
 - `purpose`: изолированный портал подключения YouTube.
 - `roles`: только `channel_connector`; channel access требует strict creator ownership.
-- `controls`: `Создать канал`, только собственные созданные каналы, `Подключить Google`, выбор destination при нескольких YouTube-каналах, ручное название при неполных metadata, удаление пустого черновика, `Выйти`.
+- `controls`: `Создать канал`, только собственные созданные каналы, `Подключить Google`, обязательный явный выбор Google/Brand Account, выбор destination при нескольких YouTube-каналах, ручное название при неполных metadata, удаление пустого черновика, `Выйти`.
 - `related APIs`:
   - `GET /api/connect/channels`
   - `POST /api/connect/channels`

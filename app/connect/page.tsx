@@ -229,6 +229,10 @@ export default function ConnectorPortalPage() {
         <p className="subtle-text">
           Здесь видны только каналы, созданные вами. Доступа к рабочему приложению Clips нет.
         </p>
+        <p className="status-line">
+          В окне Google выберите отдельную строку нужного YouTube-канала или бизнес-аккаунта, а не
+          только строку с почтой. Если нужного канала нет в списке Google, не продолжайте подключение.
+        </p>
 
         <button
           type="button"

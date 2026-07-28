@@ -173,6 +173,7 @@ test("buildYouTubeOAuthUrl uses the selected OAuth project client id", () => {
   const parsed = new URL(url);
   assert.equal(parsed.searchParams.get("client_id"), "secondary-client");
   assert.equal(parsed.searchParams.get("state"), "state-1");
+  assert.deepEqual(parsed.searchParams.get("prompt")?.split(" ").sort(), ["consent", "select_account"]);
   assert.equal(
     parsed.searchParams.get("scope")?.includes("https://www.googleapis.com/auth/yt-analytics.readonly"),
     true

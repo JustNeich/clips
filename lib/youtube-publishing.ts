@@ -169,7 +169,7 @@ export function buildYouTubeOAuthUrl(request: Request, state: string, oauthClien
     redirect_uri: buildRedirectUri(request),
     response_type: "code",
     access_type: "offline",
-    prompt: "consent",
+    prompt: "select_account consent",
     include_granted_scopes: "true",
     scope: YOUTUBE_PUBLISH_SCOPES.join(" "),
     state

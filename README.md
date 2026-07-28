@@ -88,6 +88,7 @@ npm run dev
 
 - Публичная регистрация закрыта: аккаунт редактора больше нельзя создать без owner/manager-issued invite.
 - Для внешнего участника, который только подключает YouTube, owner/manager создаёт готовый аккаунт `channel_connector` на `/team`; система один раз показывает логин, сгенерированный пароль, ссылку `/connect/login` и готовую пересылаемую инструкцию. Каналы заранее не назначаются: участник создаёт их самостоятельно в `/connect`. Регистрация и accept-invite не нужны.
+- Google OAuth для подключения YouTube всегда запрашивает явный выбор Google/Brand Account (`select_account` + `consent`). Участник должен выбрать отдельную строку нужного YouTube-канала/бизнес-аккаунта; если Google её не показывает, Clips не может получить этот канал через `channels.list(mine=true)` и подключение не следует продолжать.
 - Тот же `POST /api/workspace/connectors` доступен локальному доверенному оператору с bearer scope `control:write`; `flow:read` и connector credentials provisioning не разрешают.
 - `channel_connector` использует отдельную connector-session и портал `/connect`; обычная Clips session для этой роли не создаётся. Портал показывает только активные каналы, у которых `creator_user_id` равен текущему connector user. Старые explicit `connect` grants не дают видимость или доступ.
 - В интерфейсе команды приглашение создаётся на конкретную почту; по умолчанию оно выдаёт полного редактора (`redactor`).

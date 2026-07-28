@@ -139,7 +139,7 @@
 3. `POST /api/workspace/connectors` создаёт только user + membership `channel_connector`, без channel grants.
 4. UI один раз показывает portal URL, login, generated password и готовую пересылаемую инструкцию.
 5. Участник открывает `/connect/login`, вводит credentials и попадает в `/connect` без регистрации.
-6. Участник нажимает `Создать канал`, подключает Google и при необходимости выбирает YouTube destination; identity и avatar переносятся из YouTube, а отсутствующее название запрашивается вручную.
+6. Участник нажимает `Создать канал`; Google OAuth с `select_account` + `consent` требует явно выбрать нужный Google/Brand Account. Если API возвращает несколько YouTube destinations, участник выбирает нужный в Clips; identity и avatar переносятся из YouTube, а отсутствующее название запрашивается вручную.
 7. После статуса `Подключён` участник создаёт следующий канал. Одновременно может существовать только один незавершённый черновик.
 
 ### Blocked path
