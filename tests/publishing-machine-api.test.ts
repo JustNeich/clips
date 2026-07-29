@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -557,6 +557,39 @@ test("corrupted ftyp bytes are rejected by ffprobe and content duplicates are bl
     });
     assert.equal(duplicate.response.status, 409);
     assert.equal(duplicate.body.code, "DUPLICATE_CONTENT");
+
+    const uploaded = await uploadContent({
+      uploadId: first.body.upload.id,
+      secret: machine.secret,
+      key: "content-original",
+      contentSha256: scenario.contentSha256,
+      bytes: scenario.bytes
+    });
+    assert.equal(uploaded.response.status, 200, JSON.stringify(uploaded.body));
+    const stored = getDb()
+      .prepare("SELECT source_path FROM publishing_api_uploads WHERE id = ?")
+      .get(first.body.upload.id) as { source_path?: string } | undefined;
+    assert.ok(stored?.source_path);
+    await writeFile(stored.source_path, fakeMp4);
+    getDb()
+      .prepare(
+        `UPDATE publishing_api_uploads
+            SET content_length = ?, content_sha256 = ?, uploaded_size_bytes = ?, uploaded_sha256 = ?
+          WHERE id = ?`
+      )
+      .run(fakeMp4.byteLength, fakeHash, fakeMp4.byteLength, fakeHash, first.body.upload.id);
+    const corruptedAtCommit = await commitUpload({
+      uploadId: first.body.upload.id,
+      secret: machine.secret,
+      key: "content-original",
+      contentSha256: fakeHash
+    });
+    assert.equal(corruptedAtCommit.response.status, 422);
+    assert.equal(corruptedAtCommit.body.code, "INVALID_MP4");
+    const failedRow = getDb()
+      .prepare("SELECT status FROM publishing_api_uploads WHERE id = ?")
+      .get(first.body.upload.id) as { status?: string } | undefined;
+    assert.equal(failedRow?.status, "failed");
   });
 });
 

@@ -878,7 +878,9 @@ export async function commitPublishingUpload(request: Request, uploadId: string)
     return { status: 201, body: { replayed: false, receipt: buildReceipt(committed) } };
   } catch (error) {
     if (error instanceof PublishingApiError) {
-      if (error.code !== "CONTENT_HASH_MISMATCH" && error.code !== "INVALID_MP4") {
+      if (error.code === "INVALID_MP4") {
+        setUploadState({ uploadId: row.id, status: "failed", errorCode: error.code, errorMessage: error.message });
+      } else if (error.code !== "CONTENT_HASH_MISMATCH") {
         setUploadState({ uploadId: row.id, status: "uploaded", errorCode: error.code, errorMessage: error.message });
       }
       throw error;
