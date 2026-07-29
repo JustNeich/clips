@@ -110,6 +110,7 @@
 5. `Stage 2 run` — генерация caption/title/SEO и retrieval/feedback контекста.
 6. `Stage 3 draft / preview / version` — финальная сборка, preview, executor, render plan.
 7. `Publication` — queued/scheduled/published запись для YouTube.
+8. `Machine publishing upload` — отдельный Oracle/server-to-server upload + idempotency receipt; использует существующую `Publication`, но не browser session и не slot planner.
 
 ### Ежедневный операторский сценарий
 

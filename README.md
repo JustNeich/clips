@@ -276,6 +276,7 @@ npm run stage3-worker -- start
   - `facebook.com/reel/...`
 - Дополнительно редактор может загрузить один или несколько готовых `mp4` прямо в Stage 1.
 - Если ролик уже полностью смонтирован, Step 1 даёт отдельное действие `В очередь YouTube`: один готовый `mp4` сохраняется как publishable export и ставится в обычную YouTube publication queue без Stage 2 и Stage 3 монтажа.
+- Для Oracle/server-to-server ingestion поддерживается отдельный machine contract [`docs/publishing-api.md`](docs/publishing-api.md): create upload → streaming raw MP4 upload → idempotent commit → status polling. Oracle всегда передаёт точный `publishAt`; Clips не выбирает слот и не принимает browser/connector cookies или Google tokens как machine credential.
 - В Step 1 есть чекбокс автозапуска Stage 2:
   - по умолчанию включён
   - если выключить, Step 2 стартует только вручную по кнопке `Генерировать варианты`

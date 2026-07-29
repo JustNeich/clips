@@ -140,5 +140,8 @@ export function middleware(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  matcher: ["/((?!api/stage3/worker/|.*\\..*).*)"]
+  // The Publishing API bypasses browser-session middleware. Every v1 route
+  // performs strict bearer/scope/allowlist auth itself, and raw MP4 bodies stay
+  // streaming instead of hitting the middleware body limit.
+  matcher: ["/((?!api/stage3/worker/|api/publishing/v1/|.*\\..*).*)"]
 };

@@ -1,6 +1,7 @@
 import type { ChannelPublication, ChannelPublicationScheduleMode, Stage2Response } from "../app/components/types";
 import {
   buildCustomPublicationCandidateFromLocalDateTime,
+  buildCustomPublicationCandidateFromUtcIso,
   buildChannelPublicationMetadata,
   buildPublicationSlotCandidateFromDateAndIndex,
   pickNextPublicationSlot
@@ -223,6 +224,49 @@ export function buildValidatedCustomPublicationSchedule(input: {
   });
   if (timeConflict) {
     throw new PublicationMutationError("Это время уже занято другой публикацией.", {
+      code: "TIME_OCCUPIED",
+      field: "scheduledAtLocal"
+    });
+  }
+  return scheduledPatch;
+}
+
+export function buildValidatedExactPublicationSchedule(input: {
+  channelId: string;
+  publishAt: string;
+  excludePublicationId?: string | null;
+}): {
+  scheduleMode: ChannelPublicationScheduleMode;
+  scheduledAt: string;
+  uploadReadyAt: string;
+  slotDate: string;
+  slotIndex: number;
+} {
+  let scheduledPatch: ReturnType<typeof buildCustomPublicationCandidateFromUtcIso>;
+  try {
+    scheduledPatch = buildCustomPublicationCandidateFromUtcIso({
+      settings: getChannelPublishSettings(input.channelId),
+      scheduledAt: input.publishAt
+    });
+  } catch {
+    throw new PublicationMutationError("Некорректное publishAt.", {
+      code: "CUSTOM_TIME_REQUIRED",
+      field: "scheduledAtLocal"
+    });
+  }
+  if (new Date(scheduledPatch.scheduledAt).getTime() <= Date.now()) {
+    throw new PublicationMutationError("publishAt уже в прошлом.", {
+      code: "CUSTOM_TIME_IN_PAST",
+      field: "scheduledAtLocal"
+    });
+  }
+  const timeConflict = findFuturePublicationTimeConflict({
+    channelId: input.channelId,
+    excludePublicationId: input.excludePublicationId ?? "",
+    scheduledAt: scheduledPatch.scheduledAt
+  });
+  if (timeConflict) {
+    throw new PublicationMutationError("Это publishAt уже занято другой публикацией.", {
       code: "TIME_OCCUPIED",
       field: "scheduledAtLocal"
     });
@@ -769,6 +813,48 @@ export function completeRenderExportAndMaybeQueue(input: {
     publishAfterRender: input.publishAfterRender
   });
   return { renderExport, publication };
+}
+
+export function createExactQueuedPublicationFromRenderExport(input: {
+  workspaceId: string;
+  channelId: string;
+  chatId: string;
+  renderExport: RenderExportRecord;
+  title: string;
+  description: string;
+  tags: string[];
+  publishAt: string;
+  notifySubscribers: boolean;
+  createdByUserId: string;
+}): ChannelPublication {
+  return runInTransaction(() => {
+    const schedule = buildValidatedExactPublicationSchedule({
+      channelId: input.channelId,
+      publishAt: input.publishAt
+    });
+    assertNoBlockingPublicationDuplicate({
+      channelId: input.channelId,
+      title: input.title,
+      sourceUrl: input.renderExport.sourceUrl
+    });
+    return createChannelPublication({
+      workspaceId: input.workspaceId,
+      channelId: input.channelId,
+      chatId: input.chatId,
+      renderExportId: input.renderExport.id,
+      ...schedule,
+      title: input.title,
+      description: input.description,
+      tags: input.tags,
+      notifySubscribers: input.notifySubscribers,
+      needsReview: false,
+      titleManual: true,
+      descriptionManual: true,
+      tagsManual: true,
+      scheduleManual: true,
+      createdByUserId: input.createdByUserId
+    });
+  });
 }
 
 export async function syncScheduledPublicationToYouTube(publicationId: string): Promise<ChannelPublication> {

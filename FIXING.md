@@ -240,6 +240,8 @@ upgrade. **Uncertain is gated, never auto.** For Clips:
     `app/api/auth/register/**`;
   - `app/api/publications/[id]/publish-now/**` (+ `pause`/`resume`/`retry`/
     `delete`/`shift`), `lib/publication-store.ts`;
+  - `app/api/publishing/v1/**`, `lib/publishing-api.ts`, machine publication scopes
+    or channel allowlists;
   - `app/api/channels/[id]/publishing/youtube/connect/**`,
     `app/api/integrations/youtube/callback/**`, `lib/youtube-publishing.ts`;
   - `app/api/admin/mcp-tokens/**`, `app/api/admin/mcp-machines/**`,

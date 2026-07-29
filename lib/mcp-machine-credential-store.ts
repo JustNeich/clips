@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { appendFlowAuditEvent, tryAppendFlowAuditEvent } from "./audit-log-store";
 import { getDb, newId, nowIso } from "./db/client";
-import { getWorkspace, type UserRecord, type WorkspaceRecord } from "./team-store";
+import { getMembership, getWorkspace, type UserRecord, type WorkspaceRecord } from "./team-store";
 
 export type McpMachineCredentialScope =
   | "flow:read"
@@ -12,7 +12,9 @@ export type McpMachineCredentialScope =
   | "publication:delete"
   | "worker:admin"
   | "integration:readiness"
-  | "audit:read";
+  | "audit:read"
+  | "publication:create"
+  | "publication:read";
 
 const MCP_MACHINE_SCOPES = new Set<McpMachineCredentialScope>([
   "flow:read",
@@ -23,7 +25,14 @@ const MCP_MACHINE_SCOPES = new Set<McpMachineCredentialScope>([
   "publication:delete",
   "worker:admin",
   "integration:readiness",
-  "audit:read"
+  "audit:read",
+  "publication:create",
+  "publication:read"
+]);
+
+const PUBLISHING_MACHINE_SCOPES = new Set<McpMachineCredentialScope>([
+  "publication:create",
+  "publication:read"
 ]);
 
 export const DEFAULT_MCP_MACHINE_SCOPES: McpMachineCredentialScope[] = [
@@ -45,6 +54,7 @@ export type McpMachineCredentialRecord = {
   machineId: string;
   secretHint: string;
   scopes: McpMachineCredentialScope[];
+  allowedChannelIds: string[];
   status: "active" | "revoked";
   rotatesAt: string | null;
   revokedAt: string | null;
@@ -72,6 +82,7 @@ type McpMachineCredentialRow = {
   secret_hash: string;
   secret_hint: string;
   scopes_json: string;
+  allowed_channel_ids_json?: string | null;
   status: string;
   rotates_at?: string | null;
   revoked_at?: string | null;
@@ -108,6 +119,33 @@ function parseScopes(raw: string | null | undefined): McpMachineCredentialScope[
   }
 }
 
+export function normalizeMcpMachineAllowedChannelIds(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return [...new Set(value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))]
+    .slice(0, 100);
+}
+
+function parseAllowedChannelIds(raw: string | null | undefined): string[] {
+  try {
+    return normalizeMcpMachineAllowedChannelIds(JSON.parse(raw ?? "[]") as unknown);
+  } catch {
+    return [];
+  }
+}
+
+export class McpMachineCredentialInputError extends Error {
+  readonly code: string;
+  readonly status = 400;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "McpMachineCredentialInputError";
+    this.code = code;
+  }
+}
+
 function mapMachineCredential(row: McpMachineCredentialRow): McpMachineCredentialRecord {
   return {
     id: String(row.id),
@@ -116,6 +154,7 @@ function mapMachineCredential(row: McpMachineCredentialRow): McpMachineCredentia
     machineId: String(row.machine_id),
     secretHint: String(row.secret_hint),
     scopes: parseScopes(row.scopes_json),
+    allowedChannelIds: parseAllowedChannelIds(row.allowed_channel_ids_json),
     status: row.status === "revoked" ? "revoked" : "active",
     rotatesAt: row.rotates_at ? String(row.rotates_at) : null,
     revokedAt: row.revoked_at ? String(row.revoked_at) : null,
@@ -130,6 +169,7 @@ export function createMcpMachineCredential(input: {
   ownerUserId: string;
   machineId: string;
   scopes?: McpMachineCredentialScope[] | null;
+  allowedChannelIds?: string[] | null;
   rotatesInDays?: number | null;
   replaceExisting?: boolean | null;
 }): CreatedMcpMachineCredential {
@@ -137,8 +177,45 @@ export function createMcpMachineCredential(input: {
   if (!machineId) {
     throw new Error("machineId is required.");
   }
-  const requestedScopes = normalizeMcpMachineCredentialScopes(input.scopes);
-  const scopes = requestedScopes.length > 0 ? requestedScopes : DEFAULT_MCP_MACHINE_SCOPES;
+  const scopes = input.scopes == null
+    ? DEFAULT_MCP_MACHINE_SCOPES
+    : normalizeMcpMachineCredentialScopes(input.scopes);
+  if (input.scopes != null) {
+    const hasUnknownScope = input.scopes.some(
+      (scope) => typeof scope !== "string" || !MCP_MACHINE_SCOPES.has(scope as McpMachineCredentialScope)
+    );
+    if (hasUnknownScope || scopes.length === 0) {
+      throw new McpMachineCredentialInputError(
+        "INVALID_MACHINE_SCOPES",
+        "scopes must contain only supported machine credential scopes."
+      );
+    }
+  }
+  const hasPublishingScope = scopes.some((scope) => PUBLISHING_MACHINE_SCOPES.has(scope));
+  if (hasPublishingScope && scopes.some((scope) => !PUBLISHING_MACHINE_SCOPES.has(scope))) {
+    throw new McpMachineCredentialInputError(
+      "PUBLISHING_SCOPE_MIX_FORBIDDEN",
+      "Publishing credentials may only use publication:create and publication:read."
+    );
+  }
+  if (
+    input.allowedChannelIds != null &&
+    (!Array.isArray(input.allowedChannelIds) ||
+      input.allowedChannelIds.length > 100 ||
+      input.allowedChannelIds.some((channelId) => typeof channelId !== "string" || !channelId.trim()))
+  ) {
+    throw new McpMachineCredentialInputError(
+      "INVALID_PUBLISHING_CHANNEL_ALLOWLIST",
+      "allowedChannelIds must contain 1-100 non-empty Clips channel ids."
+    );
+  }
+  const allowedChannelIds = normalizeMcpMachineAllowedChannelIds(input.allowedChannelIds);
+  if (hasPublishingScope && allowedChannelIds.length === 0) {
+    throw new McpMachineCredentialInputError(
+      "PUBLISHING_CHANNEL_ALLOWLIST_REQUIRED",
+      "Publishing credentials require at least one allowed Clips channel id."
+    );
+  }
   const rotatesInDays =
     typeof input.rotatesInDays === "number" && Number.isFinite(input.rotatesInDays)
       ? Math.max(7, Math.min(730, Math.floor(input.rotatesInDays)))
@@ -165,8 +242,8 @@ export function createMcpMachineCredential(input: {
   const id = newId();
   db.prepare(
     `INSERT INTO mcp_machine_credentials
-      (id, workspace_id, owner_user_id, machine_id, secret_hash, secret_hint, scopes_json, status, rotates_at, revoked_at, last_used_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, NULL, NULL, ?, ?)`
+      (id, workspace_id, owner_user_id, machine_id, secret_hash, secret_hint, scopes_json, allowed_channel_ids_json, status, rotates_at, revoked_at, last_used_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, NULL, NULL, ?, ?)`
   ).run(
     id,
     input.workspaceId,
@@ -175,6 +252,7 @@ export function createMcpMachineCredential(input: {
     secretHash,
     secretHint,
     JSON.stringify(scopes),
+    JSON.stringify(allowedChannelIds),
     rotatesAt,
     stamp,
     stamp
@@ -194,6 +272,7 @@ export function createMcpMachineCredential(input: {
       machineId,
       secretHint,
       scopes,
+      allowedChannelIds,
       rotatesAt
     }
   });
@@ -250,9 +329,9 @@ export function revokeMcpMachineCredential(input: {
   return record;
 }
 
-export function authenticateMcpMachineCredentialForScope(
+export function authenticateMcpMachineCredential(
   rawSecret: string,
-  requiredScope: McpMachineCredentialScope
+  requiredScope?: McpMachineCredentialScope
 ): McpMachineAuthContext | null {
   const secret = rawSecret.trim();
   if (!secret) {
@@ -271,11 +350,18 @@ export function authenticateMcpMachineCredentialForScope(
     return null;
   }
   const record = mapMachineCredential(row);
-  if (record.status !== "active" || record.revokedAt || !record.scopes.includes(requiredScope)) {
+  if (record.status !== "active" || record.revokedAt || row.owner_status !== "active") {
+    return null;
+  }
+  if (requiredScope && !record.scopes.includes(requiredScope)) {
     return null;
   }
   const workspace = getWorkspace();
   if (!workspace || workspace.id !== record.workspaceId) {
+    return null;
+  }
+  const membership = getMembership(record.ownerUserId, record.workspaceId);
+  if (!membership || membership.role !== "owner") {
     return null;
   }
   const stamp = nowIso();
@@ -298,7 +384,7 @@ export function authenticateMcpMachineCredentialForScope(
     payload: {
       machineId: record.machineId,
       secretHint: record.secretHint,
-      requiredScope,
+      ...(requiredScope ? { requiredScope } : {}),
       rotationDue: record.rotatesAt ? new Date(record.rotatesAt).getTime() <= Date.now() : false
     }
   });
@@ -312,4 +398,11 @@ export function authenticateMcpMachineCredentialForScope(
     },
     credential: { ...record, lastUsedAt: stamp, updatedAt: stamp }
   };
+}
+
+export function authenticateMcpMachineCredentialForScope(
+  rawSecret: string,
+  requiredScope: McpMachineCredentialScope
+): McpMachineAuthContext | null {
+  return authenticateMcpMachineCredential(rawSecret, requiredScope);
 }

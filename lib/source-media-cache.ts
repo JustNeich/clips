@@ -987,3 +987,15 @@ export async function storeUploadedSourceMedia(input: {
     throw error;
   }
 }
+
+export async function removeUploadedSourceMedia(sourceUrl: string): Promise<void> {
+  const normalized = normalizeSupportedUrl(sourceUrl);
+  if (!isUploadedSourceUrl(normalized)) {
+    return;
+  }
+  const sourceKey = getSourceMediaCacheKey(normalized);
+  await Promise.all([
+    fs.rm(buildSourcePath(sourceKey), { force: true }).catch(() => undefined),
+    fs.rm(buildMetaPath(sourceKey), { force: true }).catch(() => undefined)
+  ]);
+}

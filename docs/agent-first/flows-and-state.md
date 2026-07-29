@@ -499,6 +499,14 @@
 3. Готовый mp4 сохраняется как uploaded source и publishable render export.
 4. Publication создаётся в той же очереди, без Stage 2 и Stage 3 монтажа.
 
+### Oracle machine path
+
+1. Oracle выбирает Clips channel id и авторитетный `publishAt`.
+2. `POST /api/publishing/v1/uploads` резервирует idempotent upload по machine credential, SHA-256 и channel allowlist.
+3. `PUT /api/publishing/v1/uploads/{id}/content` streaming-загрузкой проверяет размер, SHA-256 и playable MP4 container/video stream.
+4. `POST /api/publishing/v1/uploads/{id}/commit` сразу создаёт защищённый render export и обычную publication queue record с custom exact time.
+5. `GET /api/publishing/v1/publications/{publicationId}` возвращает redacted receipt/status. Clips не выбирает slot/next-available и не выдаёт stored YouTube OAuth.
+
 ### Duplicate guard
 
 1. Перед созданием queued-публикации система проверяет channel-level дубли по normalized source URL и normalized title.

@@ -293,6 +293,12 @@ function applyDbMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "channel_publications", "remote_deleted_at", "TEXT");
   addColumnIfMissing(
     db,
+    "mcp_machine_credentials",
+    "allowed_channel_ids_json",
+    "TEXT NOT NULL DEFAULT '[]'"
+  );
+  addColumnIfMissing(
+    db,
     "channel_editorial_feedback_events",
     "scope",
     "TEXT NOT NULL DEFAULT 'option'"

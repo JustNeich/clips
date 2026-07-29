@@ -213,7 +213,7 @@ test("ready-upload route queues a finished mp4 for YouTube without creating a so
 
     const renderExport = getRenderExportById(body.renderExport?.id ?? "");
     assert.ok(renderExport);
-    assert.match(renderExport?.artifactFilePath ?? "", /stage3-job-artifacts\/render/);
+    assert.match(renderExport?.artifactFilePath ?? "", /render-exports/);
     assert.equal(renderExport?.sourceUrl, body.chat?.url);
 
     const cachedSource = await ensureSourceMediaCached(body.chat?.url ?? "");

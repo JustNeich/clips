@@ -932,6 +932,7 @@
 | Step 2 | `/api/pipeline/stage2`, `/api/pipeline/stage2/debug`, `/api/channels/[id]/feedback` |
 | Step 3 | `/api/stage3/preview`, `/api/stage3/render`, `/api/stage3/agent/**`, `/api/stage3/workers/**` |
 | Publishing | `/api/channels/[id]/publications`, `/api/publications/[id]/**` |
+| Machine Publishing API | `/api/publishing/v1/uploads`, `/api/publishing/v1/uploads/[id]/**`, `/api/publishing/v1/publications/[id]` |
 | Team | `/api/workspace/members/**`, `/api/workspace/invites` |
 | Channel Manager | `/api/channels/**`, `/api/channels/[id]/access`, `/api/channels/[id]/assets/**`, `/api/channels/[id]/publishing/**` |
 | Internal design tooling | `/api/design/**` |

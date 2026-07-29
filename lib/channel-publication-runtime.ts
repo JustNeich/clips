@@ -17,6 +17,10 @@ type ChannelPublicationRuntimeGlobal = typeof globalThis & {
   __clipsChannelPublicationRuntimeState__?: ChannelPublicationRuntimeState;
 };
 
+// Node clamps larger delays to 1 ms. Re-arm long-range publication wakes in
+// bounded chunks instead of spinning the runtime until a distant publishAt.
+const MAX_NODE_TIMEOUT_MS = 2_147_000_000;
+
 function getRuntimeState(): ChannelPublicationRuntimeState {
   const scope = globalThis as ChannelPublicationRuntimeGlobal;
   if (!scope.__clipsChannelPublicationRuntimeState__) {
@@ -95,7 +99,7 @@ function scheduleNextWake(): void {
     latest.wakeTimer = null;
     latest.wakeAt = null;
     scheduleChannelPublicationProcessing();
-  }, delayMs);
+  }, Math.min(delayMs, MAX_NODE_TIMEOUT_MS));
   state.wakeTimer.unref?.();
 }
 

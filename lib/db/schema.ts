@@ -425,6 +425,7 @@ CREATE TABLE IF NOT EXISTS mcp_machine_credentials (
   secret_hash TEXT NOT NULL UNIQUE,
   secret_hint TEXT NOT NULL,
   scopes_json TEXT NOT NULL,
+  allowed_channel_ids_json TEXT NOT NULL DEFAULT '[]',
   status TEXT NOT NULL DEFAULT 'active',
   rotates_at TEXT,
   revoked_at TEXT,
@@ -651,6 +652,43 @@ CREATE TABLE IF NOT EXISTS channel_publication_events (
   FOREIGN KEY (publication_id) REFERENCES channel_publications(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS publishing_api_uploads (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  machine_credential_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  request_fingerprint TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL,
+  content_length INTEGER NOT NULL,
+  content_type TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  tags_json TEXT NOT NULL,
+  publish_at TEXT NOT NULL,
+  notify_subscribers INTEGER NOT NULL DEFAULT 0,
+  source_url TEXT NOT NULL,
+  source_path TEXT,
+  uploaded_size_bytes INTEGER,
+  uploaded_sha256 TEXT,
+  status TEXT NOT NULL DEFAULT 'created',
+  publication_id TEXT,
+  render_export_id TEXT,
+  last_error_code TEXT,
+  last_error_message TEXT,
+  expires_at TEXT NOT NULL,
+  committed_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (workspace_id, machine_credential_id, idempotency_key),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (machine_credential_id) REFERENCES mcp_machine_credentials(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (publication_id) REFERENCES channel_publications(id) ON DELETE SET NULL,
+  FOREIGN KEY (render_export_id) REFERENCES render_exports(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS stage3_workers (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -781,6 +819,12 @@ CREATE INDEX IF NOT EXISTS idx_channel_publications_chat_updated
 
 CREATE INDEX IF NOT EXISTS idx_channel_publication_events_publication
   ON channel_publication_events(publication_id, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_publishing_api_uploads_content
+  ON publishing_api_uploads(workspace_id, channel_id, content_sha256, status);
+
+CREATE INDEX IF NOT EXISTS idx_publishing_api_uploads_publication
+  ON publishing_api_uploads(publication_id);
 
 CREATE INDEX IF NOT EXISTS idx_stage3_workers_user
   ON stage3_workers(workspace_id, user_id, updated_at DESC);
