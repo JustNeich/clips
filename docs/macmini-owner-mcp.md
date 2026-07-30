@@ -1,5 +1,10 @@
 # Persistent Agent Owner MCP Integration
 
+> Default production topology is local-first. Use
+> `CLIPS_APP_URL=http://127.0.0.1:3000` with the active-machine commands in
+> [`LOCAL_FIRST.md`](../LOCAL_FIRST.md). Render enrollment/deploy notes below are
+> optional public-service instructions and must not block video production.
+
 This document is the repo-backed setup guide for giving an approved MacBook or
 Mac mini agent persistent owner-level access to Clips Automations without
 repeatedly creating short-lived MCP tokens.

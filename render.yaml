@@ -5,7 +5,9 @@ services:
     region: frankfurt
     plan: starter
     dockerfilePath: ./Dockerfile
-    autoDeploy: true
+    # Render is an optional public/diagnostic surface. Production video flow is
+    # local-first and must not wait for an automatic deploy.
+    autoDeploy: false
     healthCheckPath: /api/health
     envVars:
       - key: APP_BOOTSTRAP_SECRET
@@ -65,7 +67,7 @@ services:
       - key: STAGE3_DEFAULT_EXECUTION_TARGET
         value: local
       - key: STAGE3_ALLOW_HOST_EXECUTION
-        value: "1"
+        value: "0"
       - key: STAGE3_HOST_MAX_CONCURRENT_JOBS
         value: "1"
       - key: STAGE3_HOSTED_HEAVY_JOB_MAX_CONCURRENT

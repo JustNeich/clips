@@ -1,6 +1,9 @@
 # Stage 3 Local Worker Rollout
 
-Этот документ описывает, что нужно сделать владельцу проекта и конечным пользователям, чтобы Stage 3 preview/render/agent-media offload работал предсказуемо и не убивал web service на Render.
+Этот документ сохраняет подробности worker protocol и optional hosted topology.
+Production active-machine topology теперь описана в
+[`LOCAL_FIRST.md`](../LOCAL_FIRST.md): локальный API — default control plane,
+Render не входит в критический путь.
 
 Важно: теперь production execution mode живёт на двух уровнях:
 
@@ -11,7 +14,8 @@
 
 ## Что уже реализовано
 
-- Хост работает только как control plane для Stage 3 heavy work:
+- API server работает как control plane для Stage 3 heavy work. В local-first
+  он локальный; hosted API остаётся optional:
   - auth
   - queue/jobs
   - artifacts
@@ -49,13 +53,16 @@
 
 На macOS доступная память читается через штатный `memory_pressure`, а не через сырое `os.freemem()`. Имена процессов, окна AdsPower, SunBrowser или обычного Chrome не участвуют в решении.
 
-После отдельной калибровки два коротких render разрешаются настройкой:
+Только для legacy remote-worker topology после отдельной калибровки два коротких
+render разрешаются настройкой:
 
 ```bash
 STAGE3_WORKER_SHORT_RENDER_MAX_CONCURRENT_JOBS=2
 ```
 
-До калибровки значение не задаётся и остаётся равным `1`. Длинный render (>18 секунд) не получает второй render-slot и временно закрывает media-линию.
+В local-first эта настройка принудительно ограничена значением `1`. Длинный
+render (>18 секунд) не получает второй render-slot и временно закрывает
+media-линию.
 
 Чтобы мягко остановить получение новых jobs, не обрывая активные:
 
@@ -68,12 +75,15 @@ npm run stage3-worker -- resume
 
 ## Что должен сделать владелец проекта
 
-### 1. Включить workspace-level выбор execution mode
+### 1. Optional hosted topology
+
+Следующие шаги нужны только если owner отдельно выбрал Render/public always-on
+API. Они не являются prerequisites для local-first production.
 
 Проверьте, что в Render заданы:
 
 - `STAGE3_DEFAULT_EXECUTION_TARGET=local`
-- `STAGE3_ALLOW_HOST_EXECUTION=1`
+- `STAGE3_ALLOW_HOST_EXECUTION=0` (включать host execution можно только отдельным решением)
 - `STAGE2_MAX_CONCURRENT_RUNS=1`
 - `SOURCE_MAX_CONCURRENT_JOBS=1`
 - `CHANNEL_STYLE_DISCOVERY_MAX_CONCURRENT_RUNS=1`
