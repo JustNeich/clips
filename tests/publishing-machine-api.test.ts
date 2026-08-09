@@ -278,6 +278,23 @@ test("machine Publishing API commits an allowed MP4 at Oracle's explicit publish
     assert.equal(publications[0]?.slotIndex, -1);
     const uploadReadyDelayMs = new Date(publications[0]?.uploadReadyAt ?? "").getTime() - Date.now();
     assert.ok(uploadReadyDelayMs >= 0 && uploadReadyDelayMs <= 5_000, "machine upload must become ready immediately");
+
+    const runtimeScope = globalThis as RuntimeScope;
+    const timer = runtimeScope.__clipsChannelPublicationRuntimeState__?.wakeTimer;
+    if (timer) clearTimeout(timer);
+    const dbBeforeRestart = getDb();
+    const futureUploadReadyAt = "2040-05-05T16:07:00.000Z";
+    dbBeforeRestart
+      .prepare("UPDATE channel_publications SET upload_ready_at = ? WHERE id = ?")
+      .run(futureUploadReadyAt, committed.body.receipt.publicationId);
+    dbBeforeRestart.close();
+    delete runtimeScope.__clipsAppDb;
+    delete runtimeScope.__clipsChannelPublicationRuntimeState__;
+    const migratedPublication = listChannelPublications(scenario.channel.id)[0];
+    assert.ok(
+      new Date(migratedPublication?.uploadReadyAt ?? "").getTime() <= Date.now(),
+      "startup migration must release already-queued machine uploads immediately"
+    );
     const uploadRow = getDb()
       .prepare("SELECT render_export_id FROM publishing_api_uploads WHERE id = ?")
       .get(uploadId) as { render_export_id?: string } | undefined;

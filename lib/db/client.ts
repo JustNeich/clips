@@ -166,6 +166,25 @@ function migrateLegacyStage3WorkerTokens(db: DatabaseSync): void {
   );
 }
 
+function makeQueuedMachinePublicationsUploadReady(db: DatabaseSync): void {
+  if (!hasTable(db, "channel_publications") || !hasTable(db, "publishing_api_uploads")) {
+    return;
+  }
+  const stamp = new Date().toISOString();
+  db.prepare(
+    `UPDATE channel_publications
+        SET upload_ready_at = ?, updated_at = ?
+      WHERE status = 'queued'
+        AND upload_ready_at > ?
+        AND EXISTS (
+          SELECT 1
+            FROM publishing_api_uploads machine_upload
+           WHERE machine_upload.publication_id = channel_publications.id
+             AND machine_upload.status = 'committed'
+        )`
+  ).run(stamp, stamp, stamp);
+}
+
 function applyDbMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "auth_sessions", "audience", "TEXT NOT NULL DEFAULT 'app'");
   addColumnIfMissing(db, "workspaces", "default_template_id", "TEXT");
@@ -371,6 +390,10 @@ function applyDbMigrations(db: DatabaseSync): void {
     );
   }
   migrateLegacyStage3WorkerTokens(db);
+  // Release storage held by machine-scheduled rows created before immediate
+  // YouTube upload became the default. This is idempotent and only touches the
+  // exact committed Publishing API contour.
+  makeQueuedMachinePublicationsUploadReady(db);
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_stage2_runs_workspace_updated ON stage2_runs(workspace_id, updated_at DESC)"
   );
