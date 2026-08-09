@@ -448,6 +448,7 @@ function buildReceipt(row: PublishingUploadRow) {
     contentSha256: row.content_sha256,
     publishAt: publication.scheduledAt,
     status: publication.status,
+    youtubeVideoId: publication.youtubeVideoId,
     youtubeVideoUrl: publication.youtubeVideoUrl,
     lastError: publication.lastError,
     createdAt: row.created_at,

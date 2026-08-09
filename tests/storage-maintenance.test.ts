@@ -210,7 +210,7 @@ test("storage cleanup removes old inactive render exports but keeps queued publi
   });
 });
 
-test("storage cleanup releases old scheduled media only after YouTube has a durable video id", async () => {
+test("storage cleanup releases scheduled media immediately after YouTube has a durable video id", async () => {
   await withIsolatedAppData(async () => {
     const { workspaceId, userId, channelId, chatId } = seedWorkspace();
     const db = getDb();

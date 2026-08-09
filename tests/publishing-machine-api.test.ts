@@ -21,6 +21,7 @@ import {
 import {
   getRenderExportById,
   listChannelPublications,
+  markChannelPublicationScheduled,
   saveChannelPublishIntegration,
   upsertChannelPublishSettings
 } from "../lib/publication-store";
@@ -282,6 +283,12 @@ test("machine Publishing API commits an allowed MP4 at Oracle's explicit publish
     assert.ok(renderExport);
     assert.match(renderExport?.artifactFilePath ?? "", /render-exports/);
 
+    markChannelPublicationScheduled({
+      publicationId: committed.body.receipt.publicationId,
+      youtubeVideoId: "youtube-video-machine-1",
+      youtubeVideoUrl: "https://www.youtube.com/watch?v=youtube-video-machine-1"
+    });
+
     const statusResponse = await getPublicationRoute(
       new Request(`http://localhost/api/publishing/v1/publications/${committed.body.receipt.publicationId}`, {
         headers: machineHeaders(machine.secret)
@@ -291,7 +298,12 @@ test("machine Publishing API commits an allowed MP4 at Oracle's explicit publish
     const statusBody = (await statusResponse.json()) as any;
     assert.equal(statusResponse.status, 200, JSON.stringify(statusBody));
     assert.equal(statusBody.receipt.publicationId, committed.body.receipt.publicationId);
-    assert.equal(statusBody.receipt.status, "queued");
+    assert.equal(statusBody.receipt.status, "scheduled");
+    assert.equal(statusBody.receipt.youtubeVideoId, "youtube-video-machine-1");
+    assert.equal(
+      statusBody.receipt.youtubeVideoUrl,
+      "https://www.youtube.com/watch?v=youtube-video-machine-1"
+    );
   });
 });
 
