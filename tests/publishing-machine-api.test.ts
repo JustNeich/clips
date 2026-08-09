@@ -295,6 +295,28 @@ test("machine Publishing API commits an allowed MP4 at Oracle's explicit publish
       new Date(migratedPublication?.uploadReadyAt ?? "").getTime() <= Date.now(),
       "startup migration must release already-queued machine uploads immediately"
     );
+    const staleUpdatedAt = new Date(Date.now() - 6 * 60_000).toISOString();
+    getDb()
+      .prepare(
+        `UPDATE channel_publications
+            SET status = 'uploading',
+                updated_at = ?,
+                lease_token = 'stale-machine-lease',
+                lease_expires_at = '2040-05-05T19:07:00.000Z'
+          WHERE id = ?`
+      )
+      .run(staleUpdatedAt, committed.body.receipt.publicationId);
+    getDb().close();
+    delete runtimeScope.__clipsAppDb;
+    const recoveredPublication = listChannelPublications(scenario.channel.id)[0];
+    assert.equal(recoveredPublication?.status, "queued");
+    const recoveredLease = getDb()
+      .prepare("SELECT lease_token, lease_expires_at FROM channel_publications WHERE id = ?")
+      .get(committed.body.receipt.publicationId) as
+      | { lease_token?: string | null; lease_expires_at?: string | null }
+      | undefined;
+    assert.equal(recoveredLease?.lease_token, null);
+    assert.equal(recoveredLease?.lease_expires_at, null);
     const uploadRow = getDb()
       .prepare("SELECT render_export_id FROM publishing_api_uploads WHERE id = ?")
       .get(uploadId) as { render_export_id?: string } | undefined;

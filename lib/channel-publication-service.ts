@@ -51,6 +51,8 @@ import {
 import { tryAppendFlowAuditEvent } from "./audit-log-store";
 import { runInTransaction } from "./db/client";
 import { scheduleYouTubeDurableStorageRelease } from "./storage-maintenance";
+
+const PUBLICATION_LEASE_DURATION_MS = 5 * 60_000;
 import {
   PublicationMutationError,
   type PublicationMutationErrorField
@@ -1199,7 +1201,8 @@ export async function processQueuedChannelPublication(
         }
         extendChannelPublicationLease({
           publicationId: latest.id,
-          expectedLeaseToken
+          expectedLeaseToken,
+          leaseDurationMs: PUBLICATION_LEASE_DURATION_MS
         });
       }
     });

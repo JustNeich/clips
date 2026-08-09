@@ -170,7 +170,26 @@ function makeQueuedMachinePublicationsUploadReady(db: DatabaseSync): void {
   if (!hasTable(db, "channel_publications") || !hasTable(db, "publishing_api_uploads")) {
     return;
   }
-  const stamp = new Date().toISOString();
+  const now = new Date();
+  const stamp = now.toISOString();
+  const staleUploadingCutoff = new Date(now.getTime() - 5 * 60_000).toISOString();
+  db.prepare(
+    `UPDATE channel_publications
+        SET status = 'queued',
+            upload_ready_at = ?,
+            last_error = COALESCE(last_error, 'Зависшая machine-загрузка автоматически возвращена в очередь.'),
+            updated_at = ?,
+            lease_token = NULL,
+            lease_expires_at = NULL
+      WHERE status = 'uploading'
+        AND updated_at <= ?
+        AND EXISTS (
+          SELECT 1
+            FROM publishing_api_uploads machine_upload
+           WHERE machine_upload.publication_id = channel_publications.id
+             AND machine_upload.status = 'committed'
+        )`
+  ).run(stamp, stamp, staleUploadingCutoff);
   db.prepare(
     `UPDATE channel_publications
         SET upload_ready_at = ?, updated_at = ?

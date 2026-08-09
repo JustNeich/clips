@@ -20,6 +20,7 @@ type ChannelPublicationRuntimeGlobal = typeof globalThis & {
 // Node clamps larger delays to 1 ms. Re-arm long-range publication wakes in
 // bounded chunks instead of spinning the runtime until a distant publishAt.
 const MAX_NODE_TIMEOUT_MS = 2_147_000_000;
+const PUBLICATION_LEASE_DURATION_MS = 5 * 60_000;
 
 function getRuntimeState(): ChannelPublicationRuntimeState {
   const scope = globalThis as ChannelPublicationRuntimeGlobal;
@@ -107,7 +108,9 @@ async function runChannelPublicationLoop(): Promise<void> {
   sweepPublishedChannelPublications();
 
   while (true) {
-    const claimed = claimNextReadyChannelPublication({});
+    const claimed = claimNextReadyChannelPublication({
+      leaseDurationMs: PUBLICATION_LEASE_DURATION_MS
+    });
     if (!claimed) {
       break;
     }
