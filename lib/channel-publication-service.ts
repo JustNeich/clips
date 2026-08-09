@@ -272,7 +272,16 @@ export function buildValidatedExactPublicationSchedule(input: {
       field: "scheduledAtLocal"
     });
   }
-  return scheduledPatch;
+  return {
+    ...scheduledPatch,
+    // The exact-timestamp route is the machine publishing path. Upload it to
+    // YouTube immediately, while keeping publishAt as the public release time.
+    // Once YouTube returns a durable video id, persistent MP4 storage can be
+    // released instead of accumulating until the normal per-channel lead time.
+    // A tiny delay lets the durable commit receipt return before the background
+    // uploader claims the row; operationally this is still immediate.
+    uploadReadyAt: new Date(Date.now() + 5_000).toISOString()
+  };
 }
 
 async function moveChannelPublicationIntoSlot(input: {

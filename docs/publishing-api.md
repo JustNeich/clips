@@ -145,7 +145,11 @@ Content-SHA256: <64-hex-sha256>
 
 Commit rechecks the staged file binding and destination readiness, creates the
 existing durable render export and YouTube publication queue job, applies the
-exact `publishAt`, and returns a receipt:
+exact `publishAt`, and returns a receipt. The machine publication is eligible
+for YouTube upload immediately; `publishAt` remains the public release time.
+After YouTube returns a durable video id, the server removes its local source
+and render-export MP4s so future scheduled batches cannot fill persistent
+storage:
 
 ```json
 {

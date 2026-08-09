@@ -276,6 +276,8 @@ test("machine Publishing API commits an allowed MP4 at Oracle's explicit publish
     assert.equal(publications[0]?.scheduleMode, "custom");
     assert.equal(publications[0]?.scheduledAt, PUBLISH_AT);
     assert.equal(publications[0]?.slotIndex, -1);
+    const uploadReadyDelayMs = new Date(publications[0]?.uploadReadyAt ?? "").getTime() - Date.now();
+    assert.ok(uploadReadyDelayMs >= 0 && uploadReadyDelayMs <= 5_000, "machine upload must become ready immediately");
     const uploadRow = getDb()
       .prepare("SELECT render_export_id FROM publishing_api_uploads WHERE id = ?")
       .get(uploadId) as { render_export_id?: string } | undefined;
