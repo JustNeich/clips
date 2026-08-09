@@ -50,6 +50,7 @@ import {
 } from "./youtube-publishing";
 import { tryAppendFlowAuditEvent } from "./audit-log-store";
 import { runInTransaction } from "./db/client";
+import { scheduleYouTubeDurableStorageRelease } from "./storage-maintenance";
 import {
   PublicationMutationError,
   type PublicationMutationErrorField
@@ -1140,12 +1141,14 @@ export async function processQueuedChannelPublication(
         tags: latest.tags,
         publishAt: latest.scheduledAt
       });
-      return markChannelPublicationScheduled({
+      const scheduled = markChannelPublicationScheduled({
         publicationId: latest.id,
         youtubeVideoId: latest.youtubeVideoId,
         youtubeVideoUrl: latest.youtubeVideoUrl,
         expectedLeaseToken
       });
+      scheduleYouTubeDurableStorageRelease(`youtube-durable:${scheduled.id}`);
+      return scheduled;
     }
 
     const renderExport = await ensureRenderExportArtifactAvailable(latest.renderExportId);
@@ -1219,6 +1222,7 @@ export async function processQueuedChannelPublication(
             : "Видео загружено, но финальная синхронизация метаданных не прошла."
         );
       }
+      scheduleYouTubeDurableStorageRelease(`youtube-durable:${scheduled.id}`);
     }
     return scheduled;
   } catch (error) {

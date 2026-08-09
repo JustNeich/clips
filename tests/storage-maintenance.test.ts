@@ -219,15 +219,25 @@ test("storage cleanup releases old scheduled media only after YouTube has a dura
     const cacheDir = path.join(process.env.APP_DATA_DIR!, "source-media-cache", "sources");
     const pendingSourceUrl = "upload://scheduled-pending.mp4";
     const durableSourceUrl = "upload://scheduled-durable.mp4";
+    const sharedSourceUrl = "upload://scheduled-shared.mp4";
     const pendingSourcePath = path.join(cacheDir, `${getSourceMediaCacheKey(pendingSourceUrl)}.mp4`);
     const durableSourcePath = path.join(cacheDir, `${getSourceMediaCacheKey(durableSourceUrl)}.mp4`);
+    const sharedSourcePath = path.join(cacheDir, `${getSourceMediaCacheKey(sharedSourceUrl)}.mp4`);
     const pendingRenderPath = path.join(renderExportDir, "scheduled-pending.mp4");
     const durableRenderPath = path.join(renderExportDir, "scheduled-durable.mp4");
+    const sharedRenderPath = path.join(renderExportDir, "scheduled-shared.mp4");
 
-    for (const filePath of [pendingSourcePath, durableSourcePath, pendingRenderPath, durableRenderPath]) {
+    for (const filePath of [
+      pendingSourcePath,
+      durableSourcePath,
+      sharedSourcePath,
+      pendingRenderPath,
+      durableRenderPath,
+      sharedRenderPath
+    ]) {
       await writeOldFile(filePath, "video");
     }
-    for (const filePath of [pendingSourcePath, durableSourcePath]) {
+    for (const filePath of [pendingSourcePath, durableSourcePath, sharedSourcePath]) {
       await writeFile(
         filePath.replace(/\.mp4$/i, ".json"),
         JSON.stringify({ sticky: true, downloadProvider: "upload" })
@@ -281,16 +291,24 @@ test("storage cleanup releases old scheduled media only after YouTube has a dura
 
     createScheduled("Pending scheduled", pendingRenderPath, pendingSourceUrl, null);
     createScheduled("Durable scheduled", durableRenderPath, durableSourceUrl, "youtube-durable-id");
+    createScheduled("Shared scheduled", sharedRenderPath, sharedSourceUrl, "youtube-shared-id");
+    db.prepare(
+      `INSERT INTO stage3_jobs
+        (id, workspace_id, user_id, kind, status, payload_json, created_at, updated_at)
+        VALUES (?, ?, ?, 'render', 'queued', ?, ?, ?)`
+    ).run(`job-${newId()}`, workspaceId, userId, JSON.stringify({ sourceUrl: sharedSourceUrl }), stamp, stamp);
 
     await cleanupAppStorageForWrite({
       reason: "test-scheduled-durable-cleanup",
       incomingBytes: 1024,
-      mode: "emergency"
+      mode: "normal"
     });
 
     assert.equal(existsSync(pendingRenderPath), true, "scheduled render without a YouTube id must remain");
     assert.equal(existsSync(pendingSourcePath), true, "scheduled source without a YouTube id must remain");
     assert.equal(existsSync(durableRenderPath), false, "YouTube-durable scheduled render may be released");
     assert.equal(existsSync(durableSourcePath), false, "YouTube-durable scheduled source may be released");
+    assert.equal(existsSync(sharedRenderPath), false, "YouTube-durable render may be released independently");
+    assert.equal(existsSync(sharedSourcePath), true, "an active job must keep a shared source hard-protected");
   });
 });

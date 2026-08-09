@@ -47,6 +47,9 @@ type FileEntry = {
 type StorageProtectionSnapshot = {
   protectedRenderExportPaths: Set<string>;
   protectedSourceKeys: Set<string>;
+  hardProtectedSourceKeys: Set<string>;
+  youtubeDurableRenderExportPaths: Set<string>;
+  youtubeDurableSourceKeys: Set<string>;
 };
 
 const HOUR_MS = 60 * 60_000;
@@ -190,13 +193,19 @@ function readStorageProtectionSnapshot(): StorageProtectionSnapshot {
   if (!existsSync(getDbFilePath())) {
     return {
       protectedRenderExportPaths: new Set(),
-      protectedSourceKeys: new Set()
+      protectedSourceKeys: new Set(),
+      hardProtectedSourceKeys: new Set(),
+      youtubeDurableRenderExportPaths: new Set(),
+      youtubeDurableSourceKeys: new Set()
     };
   }
 
   const db = getDb();
   const protectedRenderExportPaths = new Set<string>();
   const protectedSourceUrls = new Set<string>();
+  const hardProtectedSourceUrls = new Set<string>();
+  const youtubeDurableRenderExportPaths = new Set<string>();
+  const youtubeDurableSourceUrls = new Set<string>();
 
   const activePublicationPlaceholders = ACTIVE_PUBLICATION_STATUSES.map(() => "?").join(", ");
   const activeRenderExports = db
@@ -214,6 +223,26 @@ function readStorageProtectionSnapshot(): StorageProtectionSnapshot {
     }
     if (row.source_url) {
       protectedSourceUrls.add(row.source_url);
+      hardProtectedSourceUrls.add(row.source_url);
+    }
+  }
+
+  const youtubeDurableRows = db
+    .prepare(
+      `SELECT DISTINCT r.artifact_file_path, r.source_url
+         FROM render_exports r
+         JOIN channel_publications p ON p.render_export_id = r.id
+        WHERE p.status = 'scheduled'
+          AND p.youtube_video_id IS NOT NULL
+          AND TRIM(p.youtube_video_id) <> ''`
+    )
+    .all() as Array<{ artifact_file_path?: string; source_url?: string }>;
+  for (const row of youtubeDurableRows) {
+    if (row.artifact_file_path) {
+      youtubeDurableRenderExportPaths.add(path.resolve(row.artifact_file_path));
+    }
+    if (row.source_url) {
+      youtubeDurableSourceUrls.add(row.source_url);
     }
   }
 
@@ -224,6 +253,7 @@ function readStorageProtectionSnapshot(): StorageProtectionSnapshot {
   for (const row of activeSourceJobs) {
     if (row.source_url) {
       protectedSourceUrls.add(row.source_url);
+      hardProtectedSourceUrls.add(row.source_url);
     }
   }
 
@@ -241,7 +271,12 @@ function readStorageProtectionSnapshot(): StorageProtectionSnapshot {
     .prepare(`SELECT payload_json FROM stage3_jobs WHERE status IN (${activeJobPlaceholders})`)
     .all(...ACTIVE_JOB_STATUSES) as Array<{ payload_json?: string }>;
   for (const row of activeStage3Jobs) {
-    collectSourceUrls(parseJson(row.payload_json ?? ""), protectedSourceUrls);
+    const urls = new Set<string>();
+    collectSourceUrls(parseJson(row.payload_json ?? ""), urls);
+    for (const url of urls) {
+      protectedSourceUrls.add(url);
+      hardProtectedSourceUrls.add(url);
+    }
   }
 
   const protectedSourceKeys = new Set<string>();
@@ -252,9 +287,28 @@ function readStorageProtectionSnapshot(): StorageProtectionSnapshot {
     }
   }
 
+  const hardProtectedSourceKeys = new Set<string>();
+  for (const url of hardProtectedSourceUrls) {
+    const sourceKey = maybeSourceKey(url);
+    if (sourceKey) {
+      hardProtectedSourceKeys.add(sourceKey);
+    }
+  }
+
+  const youtubeDurableSourceKeys = new Set<string>();
+  for (const url of youtubeDurableSourceUrls) {
+    const sourceKey = maybeSourceKey(url);
+    if (sourceKey) {
+      youtubeDurableSourceKeys.add(sourceKey);
+    }
+  }
+
   return {
     protectedRenderExportPaths,
-    protectedSourceKeys
+    protectedSourceKeys,
+    hardProtectedSourceKeys,
+    youtubeDurableRenderExportPaths,
+    youtubeDurableSourceKeys
   };
 }
 
@@ -298,16 +352,19 @@ async function pruneRenderExports(ctx: CleanupContext, protection: StorageProtec
   const maxAgeMs = ctx.mode === "emergency" ? EMERGENCY_RENDER_EXPORT_MAX_AGE_MS : NORMAL_RENDER_EXPORT_MAX_AGE_MS;
   const now = Date.now();
   const files = await listFiles(dirPath);
-  await Promise.all(
-    files
-      .filter((file) => {
-        if (protection.protectedRenderExportPaths.has(path.resolve(file.filePath))) {
-          return false;
-        }
-        return now - file.mtimeMs > maxAgeMs;
-      })
-      .map((file) => removeFile(ctx, file, "render-export:inactive-old"))
-  );
+  await Promise.all(files.map(async (file) => {
+    const resolved = path.resolve(file.filePath);
+    if (protection.protectedRenderExportPaths.has(resolved)) {
+      return;
+    }
+    if (protection.youtubeDurableRenderExportPaths.has(resolved)) {
+      await removeFile(ctx, file, "render-export:youtube-durable");
+      return;
+    }
+    if (now - file.mtimeMs > maxAgeMs) {
+      await removeFile(ctx, file, "render-export:inactive-old");
+    }
+  }));
 }
 
 async function readSourceMeta(filePath: string): Promise<Record<string, unknown>> {
@@ -324,6 +381,14 @@ async function pruneSourceMediaCache(ctx: CleanupContext, protection: StoragePro
   const files = (await listFiles(dirPath)).filter((file) => file.name.endsWith(".mp4"));
   for (const file of files) {
     const sourceKey = path.basename(file.name, ".mp4");
+    if (protection.hardProtectedSourceKeys.has(sourceKey)) {
+      continue;
+    }
+    if (protection.youtubeDurableSourceKeys.has(sourceKey)) {
+      await removeFile(ctx, file, "source-media-cache:youtube-durable");
+      await removeCompanionMeta(file.filePath);
+      continue;
+    }
     if (protection.protectedSourceKeys.has(sourceKey)) {
       continue;
     }
@@ -436,6 +501,16 @@ export async function cleanupAppStorageForWrite(input: {
 
 export function scheduleAppStorageMaintenance(reason = "scheduled"): boolean {
   return queueThrottledBackgroundTask("app-storage-maintenance", 30 * 60_000, async () => {
+    await cleanupAppStorageForWrite({
+      reason,
+      incomingBytes: 0,
+      mode: "normal"
+    });
+  });
+}
+
+export function scheduleYouTubeDurableStorageRelease(reason = "youtube-durable"): boolean {
+  return queueThrottledBackgroundTask("youtube-durable-storage-release", 10_000, async () => {
     await cleanupAppStorageForWrite({
       reason,
       incomingBytes: 0,
