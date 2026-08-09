@@ -7,7 +7,7 @@ import test from "node:test";
 
 import { getDb, newId, nowIso } from "../lib/db/client";
 import { createChannelPublication, createRenderExport } from "../lib/publication-store";
-import { getSourceMediaCacheKey } from "../lib/source-media-cache";
+import { getSourceMediaCacheKey, storeUploadedSourceMedia } from "../lib/source-media-cache";
 import { cleanupAppStorageForWrite } from "../lib/storage-maintenance";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
@@ -128,6 +128,38 @@ test("storage cleanup removes old inactive uploaded sources but keeps recent cha
     assert.equal(existsSync(oldPath), false, "inactive old uploaded source must be deleted");
     assert.equal(existsSync(path.join(cacheDir, `${oldKey}.json`)), false, "deleted upload meta must be removed too");
     assert.ok(result.removedFiles.some((file) => file.path === oldPath));
+  });
+});
+
+test("machine upload reserves storage and removes stale inactive uploaded media before streaming", async () => {
+  await withIsolatedAppData(async () => {
+    const staleUrl = "upload://stale-machine-upload.mp4";
+    const staleKey = getSourceMediaCacheKey(staleUrl);
+    const cacheDir = path.join(process.env.APP_DATA_DIR!, "source-media-cache", "sources");
+    const stalePath = path.join(cacheDir, `${staleKey}.mp4`);
+    await mkdir(cacheDir, { recursive: true });
+    await writeFile(stalePath, "stale-video");
+    await writeFile(
+      path.join(cacheDir, `${staleKey}.json`),
+      JSON.stringify({ sticky: true, downloadProvider: "upload" })
+    );
+    const stale = new Date(Date.now() - 8 * 24 * 60 * 60_000);
+    await utimes(stalePath, stale, stale);
+
+    const stored = await storeUploadedSourceMedia({
+      sourceUrl: "upload://fresh-machine-upload.mp4",
+      fileName: "fresh-machine-upload.mp4",
+      expectedSizeBytes: 5,
+      sourceStream: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("video"));
+          controller.close();
+        }
+      })
+    });
+
+    assert.equal(existsSync(stalePath), false, "stale upload must be pruned before the new body is streamed");
+    assert.equal(existsSync(stored.sourcePath), true);
   });
 });
 

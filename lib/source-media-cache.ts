@@ -916,6 +916,7 @@ export async function storeUploadedSourceMedia(input: {
   fileName: string;
   title?: string | null;
   sourceStream: ReadableStream<Uint8Array>;
+  expectedSizeBytes?: number | null;
   maxBytes?: number;
   requireMp4Signature?: boolean;
 }): Promise<CachedSourceMedia> {
@@ -927,8 +928,16 @@ export async function storeUploadedSourceMedia(input: {
   let sizeBytes = 0;
   let header = Buffer.alloc(0);
   let headerChecked = false;
+  const expectedSizeBytes =
+    typeof input.expectedSizeBytes === "number" && Number.isFinite(input.expectedSizeBytes)
+      ? Math.max(0, Math.floor(input.expectedSizeBytes))
+      : 0;
 
   await fs.mkdir(getSourceMediaCacheDir(), { recursive: true });
+  // Machine publishing uploads used to bypass the storage maintenance that
+  // protects ordinary source downloads. Reserve room before consuming the
+  // one-shot request body so a full persistent disk is handled predictably.
+  await pruneSourceMediaCacheForWrite(expectedSizeBytes, "normal");
 
   const counter = new Transform({
     transform(chunk, _encoding, callback) {
@@ -984,6 +993,13 @@ export async function storeUploadedSourceMedia(input: {
     };
   } catch (error) {
     await fs.rm(tmpPath, { force: true }).catch(() => undefined);
+    if (isNoSpaceError(error)) {
+      // The request body cannot be replayed here, but the publishing API marks
+      // this as retryable. Make the retry useful by freeing emergency space
+      // before returning the transient failure to the client.
+      await pruneSourceMediaCacheForWrite(expectedSizeBytes, "emergency");
+      throw new SourceMediaCacheStorageError(error);
+    }
     throw error;
   }
 }

@@ -124,11 +124,15 @@ Content-Length: 18423871
 <raw mp4 bytes>
 ```
 
-The server streams the body to persistent storage, enforces byte length and the
-512 MiB limit, calculates SHA-256, checks the MP4 signature, and runs `ffprobe`
-to require a playable MP4 container with a video stream. No multipart encoding
-is used. Repeating an already completed upload with the same binding is safe.
-Success returns `200` with the same upload object and `status: "uploaded"`.
+Before consuming the one-shot body, the server reserves persistent-storage
+headroom and prunes stale inactive media. It then streams the body to storage,
+enforces byte length and the 512 MiB limit, calculates SHA-256, checks the MP4
+signature, and runs `ffprobe` to require a playable MP4 container with a video
+stream. An `ENOSPC` write triggers emergency cleanup before the retryable `503`
+is returned, so the client can replay the same idempotent upload. No multipart
+encoding is used. Repeating an already completed upload with the same binding
+is safe. Success returns `200` with the same upload object and an `uploaded`
+status.
 
 ### 3. Commit to the existing publication queue
 

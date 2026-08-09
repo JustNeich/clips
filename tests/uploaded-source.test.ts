@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
@@ -14,6 +15,25 @@ import {
   isUploadedSourceUrl
 } from "../lib/uploaded-source";
 
+async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "clips-uploaded-source-test-"));
+  const previousAppDataDir = process.env.APP_DATA_DIR;
+  process.env.APP_DATA_DIR = appDataDir;
+  delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
+
+  try {
+    return await run();
+  } finally {
+    delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
+    if (previousAppDataDir === undefined) {
+      delete process.env.APP_DATA_DIR;
+    } else {
+      process.env.APP_DATA_DIR = previousAppDataDir;
+    }
+    await fs.rm(appDataDir, { recursive: true, force: true });
+  }
+}
+
 test("uploaded source helpers keep a readable file identity", () => {
   const sourceUrl = buildUploadedSourceUrl("upload-123", "final cut.mp4");
   assert.equal(isUploadedSourceUrl(sourceUrl), true);
@@ -22,23 +42,21 @@ test("uploaded source helpers keep a readable file identity", () => {
 });
 
 test("storeUploadedSourceMedia persists an uploaded mp4 into the shared source cache", async () => {
-  const sourceUrl = buildUploadedSourceUrl(`upload-${Date.now()}`, "final-cut.mp4");
-  const stored = await storeUploadedSourceMedia({
-    sourceUrl,
-    fileName: "final-cut.mp4",
-    title: "Final Cut",
-    sourceStream: new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode("video"));
-        controller.close();
-      }
-    })
-  });
+  await withIsolatedAppData(async () => {
+    const sourceUrl = buildUploadedSourceUrl(`upload-${Date.now()}`, "final-cut.mp4");
+    const stored = await storeUploadedSourceMedia({
+      sourceUrl,
+      fileName: "final-cut.mp4",
+      title: "Final Cut",
+      sourceStream: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("video"));
+          controller.close();
+        }
+      })
+    });
 
-  const cached = await ensureSourceMediaCached(sourceUrl);
-  const metaPath = path.join(path.dirname(cached.sourcePath), `${cached.sourceKey}.json`);
-
-  try {
+    const cached = await ensureSourceMediaCached(sourceUrl);
     assert.equal(stored.downloadProvider, "upload");
     assert.equal(cached.cacheState, "hit");
     assert.equal(cached.downloadProvider, "upload");
@@ -46,10 +64,7 @@ test("storeUploadedSourceMedia persists an uploaded mp4 into the shared source c
     assert.equal(cached.title, "Final Cut");
     assert.equal(cached.videoSizeBytes, 5);
     assert.equal(await fs.readFile(cached.sourcePath, "utf-8"), "video");
-  } finally {
-    await fs.rm(cached.sourcePath, { force: true }).catch(() => undefined);
-    await fs.rm(metaPath, { force: true }).catch(() => undefined);
-  }
+  });
 });
 
 test("storeUploadedCompositeSourceMedia combines multipart-uploaded parts into one composite source", async () => {

@@ -714,6 +714,7 @@ export async function uploadPublishingContent(request: Request, uploadId: string
       fileName: row.file_name,
       title: row.title,
       sourceStream: metered,
+      expectedSizeBytes: row.content_length,
       maxBytes: PUBLISHING_API_MAX_UPLOAD_BYTES,
       requireMp4Signature: true
     });
