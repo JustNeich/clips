@@ -204,7 +204,8 @@ function readStorageProtectionSnapshot(): StorageProtectionSnapshot {
       `SELECT DISTINCT r.artifact_file_path, r.source_url
          FROM render_exports r
          JOIN channel_publications p ON p.render_export_id = r.id
-        WHERE p.status IN (${activePublicationPlaceholders})`
+        WHERE p.status IN (${activePublicationPlaceholders})
+          AND NOT (p.status = 'scheduled' AND p.youtube_video_id IS NOT NULL)`
     )
     .all(...ACTIVE_PUBLICATION_STATUSES) as Array<{ artifact_file_path?: string; source_url?: string }>;
   for (const row of activeRenderExports) {

@@ -209,3 +209,88 @@ test("storage cleanup removes old inactive render exports but keeps queued publi
     assert.ok(result.removedFiles.some((file) => file.path === inactivePath));
   });
 });
+
+test("storage cleanup releases old scheduled media only after YouTube has a durable video id", async () => {
+  await withIsolatedAppData(async () => {
+    const { workspaceId, userId, channelId, chatId } = seedWorkspace();
+    const db = getDb();
+    const stamp = nowIso();
+    const renderExportDir = path.join(process.env.APP_DATA_DIR!, "render-exports");
+    const cacheDir = path.join(process.env.APP_DATA_DIR!, "source-media-cache", "sources");
+    const pendingSourceUrl = "upload://scheduled-pending.mp4";
+    const durableSourceUrl = "upload://scheduled-durable.mp4";
+    const pendingSourcePath = path.join(cacheDir, `${getSourceMediaCacheKey(pendingSourceUrl)}.mp4`);
+    const durableSourcePath = path.join(cacheDir, `${getSourceMediaCacheKey(durableSourceUrl)}.mp4`);
+    const pendingRenderPath = path.join(renderExportDir, "scheduled-pending.mp4");
+    const durableRenderPath = path.join(renderExportDir, "scheduled-durable.mp4");
+
+    for (const filePath of [pendingSourcePath, durableSourcePath, pendingRenderPath, durableRenderPath]) {
+      await writeOldFile(filePath, "video");
+    }
+    for (const filePath of [pendingSourcePath, durableSourcePath]) {
+      await writeFile(
+        filePath.replace(/\.mp4$/i, ".json"),
+        JSON.stringify({ sticky: true, downloadProvider: "upload" })
+      );
+    }
+
+    const createScheduled = (label: string, artifactFilePath: string, sourceUrl: string, youtubeVideoId: string | null) => {
+      const jobId = `job-${newId()}`;
+      db.prepare(
+        `INSERT INTO stage3_jobs
+          (id, workspace_id, user_id, kind, status, payload_json, created_at, updated_at, completed_at)
+          VALUES (?, ?, ?, 'render', 'completed', ?, ?, ?, ?)`
+      ).run(jobId, workspaceId, userId, JSON.stringify({ chatId, channelId }), stamp, stamp, stamp);
+      const renderExport = createRenderExport({
+        workspaceId,
+        channelId,
+        chatId,
+        stage3JobId: jobId,
+        artifactFileName: path.basename(artifactFilePath),
+        artifactFilePath,
+        artifactMimeType: "video/mp4",
+        artifactSizeBytes: 5,
+        renderTitle: label,
+        sourceUrl,
+        snapshotJson: "{}",
+        createdByUserId: userId
+      });
+      const publication = createChannelPublication({
+        workspaceId,
+        channelId,
+        chatId,
+        renderExportId: renderExport.id,
+        scheduleMode: "slot",
+        scheduledAt: stamp,
+        uploadReadyAt: stamp,
+        slotDate: "2026-08-09",
+        slotIndex: youtubeVideoId ? 1 : 0,
+        title: label,
+        description: "",
+        tags: [],
+        notifySubscribers: false,
+        needsReview: false,
+        createdByUserId: userId
+      });
+      db.prepare(
+        `UPDATE channel_publications
+            SET status = 'scheduled', youtube_video_id = ?, updated_at = ?
+          WHERE id = ?`
+      ).run(youtubeVideoId, stamp, publication.id);
+    };
+
+    createScheduled("Pending scheduled", pendingRenderPath, pendingSourceUrl, null);
+    createScheduled("Durable scheduled", durableRenderPath, durableSourceUrl, "youtube-durable-id");
+
+    await cleanupAppStorageForWrite({
+      reason: "test-scheduled-durable-cleanup",
+      incomingBytes: 1024,
+      mode: "emergency"
+    });
+
+    assert.equal(existsSync(pendingRenderPath), true, "scheduled render without a YouTube id must remain");
+    assert.equal(existsSync(pendingSourcePath), true, "scheduled source without a YouTube id must remain");
+    assert.equal(existsSync(durableRenderPath), false, "YouTube-durable scheduled render may be released");
+    assert.equal(existsSync(durableSourcePath), false, "YouTube-durable scheduled source may be released");
+  });
+});

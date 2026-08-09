@@ -494,7 +494,7 @@ Publishing / YouTube queue:
 - `YOUTUBE_OAUTH_DEFAULT_CLIENT_KEY` — optional default project key from `YOUTUBE_OAUTH_CLIENTS_JSON`; if omitted, the first configured client is used.
 - `YTDLP_COOKIES` / `YTDLP_COOKIES_PATH` — optional fallback для `yt-dlp` comments/metadata paths и локального worker media path. Для hosted YouTube source download production path теперь использует `Visolix` и не пытается идти в `yt-dlp`.
 - `APP_STORAGE_MIN_FREE_MB` — минимальный свободный запас на persistent disk перед записью нового media-файла. Если места меньше, cleanup автоматически переходит в аварийный режим. Production default: `768`.
-- `APP_STORAGE_RENDER_EXPORT_MAX_AGE_HOURS` / `APP_STORAGE_RENDER_EXPORT_EMERGENCY_MAX_AGE_HOURS` — сколько хранить неактивные render exports. Defaults: `168` часов в обычном режиме, `24` часа в аварийном. Файлы активных queued/uploading/scheduled/paused/failed публикаций защищены.
+- `APP_STORAGE_RENDER_EXPORT_MAX_AGE_HOURS` / `APP_STORAGE_RENDER_EXPORT_EMERGENCY_MAX_AGE_HOURS` — сколько хранить неактивные render exports. Defaults: `168` часов в обычном режиме, `24` часа в аварийном. Файлы queued/uploading/paused/failed и scheduled без `youtube_video_id` защищены; scheduled с устойчивым YouTube id считаются уже переданными и после срока хранения могут быть освобождены вместе с upload-source.
 - `APP_STORAGE_UPLOADED_SOURCE_MAX_AGE_HOURS` / `APP_STORAGE_UPLOADED_SOURCE_EMERGENCY_MAX_AGE_HOURS` — сколько хранить uploaded-source mp4, которые уже не относятся к свежему чату, активному source/stage3 job или активной публикации. Defaults: `168` часов в обычном режиме, `24` часа в аварийном.
 - `APP_STORAGE_RECENT_SOURCE_PROTECTION_HOURS` — сколько времени считать чат свежим для защиты его uploaded source от cleanup. Default: `168`.
 
