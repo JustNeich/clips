@@ -118,8 +118,8 @@ async function seedScenario(appDataDir: string) {
       status: "connected",
       credential: {
         refreshToken: `test-refresh-${current.id}`,
-        accessToken: null,
-        expiryDate: null,
+        accessToken: `test-access-${current.id}`,
+        expiryDate: "2099-01-01T00:00:00.000Z",
         tokenType: "Bearer",
         scopes: ["youtube.upload"]
       },
@@ -334,17 +334,41 @@ test("machine Publishing API commits an allowed MP4 at Oracle's explicit publish
       youtubeVideoUrl: "https://www.youtube.com/watch?v=youtube-video-machine-1"
     });
 
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.includes("/channels?part=snippet&mine=true")) {
+        return Response.json({
+          items: [{
+            id: `youtube-${scenario.channel.id}`,
+            snippet: { title: scenario.channel.name, customUrl: `@${scenario.channel.username}` }
+          }]
+        });
+      }
+      if (url.includes("/videos?part=snippet,status&id=youtube-video-machine-1")) {
+        return Response.json({
+          items: [{
+            snippet: { channelId: `youtube-${scenario.channel.id}` },
+            status: { privacyStatus: "private", uploadStatus: "processed", publishAt: PUBLISH_AT }
+          }]
+        });
+      }
+      throw new Error(`Unexpected fetch GET ${url}`);
+    }) as typeof fetch;
     const statusResponse = await getPublicationRoute(
       new Request(`http://localhost/api/publishing/v1/publications/${committed.body.receipt.publicationId}`, {
         headers: machineHeaders(machine.secret)
       }),
       { params: Promise.resolve({ id: committed.body.receipt.publicationId }) }
-    );
+    ).finally(() => {
+      globalThis.fetch = originalFetch;
+    });
     const statusBody = (await statusResponse.json()) as any;
     assert.equal(statusResponse.status, 200, JSON.stringify(statusBody));
     assert.equal(statusBody.receipt.publicationId, committed.body.receipt.publicationId);
     assert.equal(statusBody.receipt.status, "scheduled");
     assert.equal(statusBody.receipt.youtubeVideoId, "youtube-video-machine-1");
+    assert.equal(statusBody.receipt.remoteVerification.state, "scheduled");
     assert.equal(
       statusBody.receipt.youtubeVideoUrl,
       "https://www.youtube.com/watch?v=youtube-video-machine-1"

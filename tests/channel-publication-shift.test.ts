@@ -13,6 +13,7 @@ import {
 import {
   completeRenderExportAndMaybeQueue,
   moveChannelPublicationToSlot,
+  reconcileChannelPublicationRemoteState,
   updateChannelPublicationFromEditor
 } from "../lib/channel-publication-service";
 import { getDb, newId, nowIso } from "../lib/db/client";
@@ -325,8 +326,6 @@ test("updateChannelPublicationFromEditor removes a source URL from an already pu
       youtubeVideoId: "youtube-video-published",
       youtubeVideoUrl: "https://www.youtube.com/watch?v=youtube-video-published"
     });
-    sweepPublishedChannelPublications("2041-01-01T00:00:00.000Z");
-
     const originalFetch = globalThis.fetch;
     let remoteUpdate: { snippet?: { description?: string }; status?: unknown } | null = null;
     globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -335,6 +334,14 @@ test("updateChannelPublicationFromEditor removes a source URL from an already pu
       if (url.includes("/channels?part=snippet&mine=true")) {
         return Response.json({
           items: [{ id: "youtube-channel-1", snippet: { title: "Daily Dopamine", customUrl: "@dailydopamine" } }]
+        });
+      }
+      if (url.includes("/videos?part=snippet,status&id=youtube-video-published")) {
+        return Response.json({
+          items: [{
+            snippet: { channelId: "youtube-channel-1" },
+            status: { privacyStatus: "public", uploadStatus: "processed" }
+          }]
         });
       }
       if (url.includes("/videos?part=snippet&id=youtube-video-published")) {
@@ -348,6 +355,9 @@ test("updateChannelPublicationFromEditor removes a source URL from an already pu
     }) as typeof fetch;
 
     try {
+      const verified = await reconcileChannelPublicationRemoteState(publicationId);
+      assert.equal(verified.publication.status, "published");
+      assert.equal(verified.remote?.state, "public");
       const updated = await updateChannelPublicationFromEditor({
         publicationId,
         patch: { description: "Source: https://www.instagram.com/reel/example/" }
@@ -360,6 +370,45 @@ test("updateChannelPublicationFromEditor removes a source URL from an already pu
       } | null;
       assert.equal(capturedRemoteUpdate?.snippet?.description, "");
       assert.equal(capturedRemoteUpdate?.status, undefined);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+test("publication time alone never claims YouTube success and a missing remote video is released for replacement", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([0]);
+    connectChannelPublishing(scenario.channelId, true);
+    const publicationId = scenario.publications[0]!.id;
+    markChannelPublicationScheduled({
+      publicationId,
+      youtubeVideoId: "youtube-video-missing",
+      youtubeVideoUrl: "https://www.youtube.com/watch?v=youtube-video-missing"
+    });
+
+    assert.equal(sweepPublishedChannelPublications("2041-01-01T00:00:00.000Z"), 0);
+    assert.equal(listChannelPublications(scenario.channelId)[0]?.status, "scheduled");
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.includes("/channels?part=snippet&mine=true")) {
+        return Response.json({
+          items: [{ id: "youtube-channel-1", snippet: { title: "Daily Dopamine", customUrl: "@dailydopamine" } }]
+        });
+      }
+      if (url.includes("/videos?part=snippet,status&id=youtube-video-missing")) {
+        return Response.json({ items: [] });
+      }
+      throw new Error(`Unexpected fetch GET ${url}`);
+    }) as typeof fetch;
+    try {
+      const reconciled = await reconcileChannelPublicationRemoteState(publicationId);
+      assert.equal(reconciled.remote?.state, "missing");
+      assert.equal(reconciled.publication.status, "canceled");
+      assert.ok(reconciled.publication.remoteDeletedAt);
+      assert.match(reconciled.publication.lastError ?? "", /безопасной замены/i);
     } finally {
       globalThis.fetch = originalFetch;
     }

@@ -18,7 +18,8 @@ import {
 import { buildPublicationSlotCandidateFromDateAndIndex, DEFAULT_CHANNEL_PUBLISH_SETTINGS } from "../lib/channel-publishing";
 import {
   authenticateMcpMachineCredentialForScope,
-  createMcpMachineCredential
+  createMcpMachineCredential,
+  listMcpMachineCredentials
 } from "../lib/mcp-machine-credential-store";
 import { createMcpAccessToken } from "../lib/mcp-token-store";
 import { getDb } from "../lib/db/client";
@@ -214,6 +215,50 @@ test("machine credential can read flows and owner status while short flow token 
       input: {}
     });
     assert.equal(rejected.status, 401);
+  });
+});
+
+test("owner machine rotates the dedicated Oracle publisher only for an exact 25-channel allowlist", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel } = await seedOwnerControl(appDataDir);
+    const channels = [channel];
+    for (let index = 2; index <= 25; index += 1) {
+      channels.push(await createChannel({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        name: `Oracle ${index}`,
+        username: `oracle-${index}`
+      }));
+    }
+    const previous = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "oracle-macbook-publisher",
+      scopes: ["publication:create", "publication:read"],
+      allowedChannelIds: channels.map((item) => item.id)
+    });
+    const ownerMachine = createMcpMachineCredential({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      machineId: "macmini-agent"
+    });
+
+    const response = await postOwnerControl(ownerMachine.secret, {
+      tool: "clips_owner_rotate_publishing_machine",
+      input: {
+        machineId: "oracle-macbook-publisher",
+        allowedChannelIds: channels.map((item) => item.id),
+        intent: "rotate oracle-macbook-publisher after exact destination migration"
+      }
+    });
+    const responseText = await response.text();
+    assert.equal(response.status, 200, responseText);
+    const body = JSON.parse(responseText) as { secret?: string; record?: { id?: string; allowedChannelIds?: string[] } };
+    assert.match(body.secret ?? "", /^clips_machine_[a-f0-9]{64}$/);
+    assert.equal(body.record?.allowedChannelIds?.length, 25);
+    const records = listMcpMachineCredentials(owner.workspace.id);
+    assert.equal(records.find((item) => item.id === previous.record.id)?.status, "revoked");
+    assert.equal(records.find((item) => item.id === body.record?.id)?.status, "active");
   });
 });
 

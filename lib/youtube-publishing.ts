@@ -31,6 +31,18 @@ export class YouTubePublishError extends Error {
   }
 }
 
+export type YouTubeVideoRemoteState = {
+  state: "missing" | "public" | "scheduled" | "processing" | "failed";
+  videoId: string;
+  channelId: string | null;
+  privacyStatus: string | null;
+  uploadStatus: string | null;
+  publishAt: string | null;
+  failureReason: string | null;
+  rejectionReason: string | null;
+  checkedAt: string;
+};
+
 type YouTubeTokenResponse = {
   access_token?: string;
   expires_in?: number;
@@ -678,6 +690,69 @@ export async function updateYouTubePublishedVideo(input: {
       })
     });
   });
+}
+
+export async function inspectYouTubeVideo(input: {
+  accessToken: string;
+  videoId: string;
+}): Promise<YouTubeVideoRemoteState> {
+  const payload = await runWithRetry(() =>
+    youtubeApiJson<{
+      items?: Array<{
+        snippet?: { channelId?: string };
+        status?: {
+          privacyStatus?: string;
+          uploadStatus?: string;
+          publishAt?: string;
+          failureReason?: string;
+          rejectionReason?: string;
+        };
+      }>;
+    }>({
+      accessToken: input.accessToken,
+      url: `${YOUTUBE_API_BASE_URL}/videos?part=snippet,status&id=${encodeURIComponent(input.videoId)}`
+    })
+  );
+  const checkedAt = new Date().toISOString();
+  const item = Array.isArray(payload.items) ? payload.items[0] : undefined;
+  if (!item) {
+    return {
+      state: "missing",
+      videoId: input.videoId,
+      channelId: null,
+      privacyStatus: null,
+      uploadStatus: null,
+      publishAt: null,
+      failureReason: null,
+      rejectionReason: null,
+      checkedAt
+    };
+  }
+  const channelId = typeof item.snippet?.channelId === "string" ? item.snippet.channelId : null;
+  const privacyStatus = typeof item.status?.privacyStatus === "string" ? item.status.privacyStatus : null;
+  const uploadStatus = typeof item.status?.uploadStatus === "string" ? item.status.uploadStatus : null;
+  const publishAt = typeof item.status?.publishAt === "string" ? item.status.publishAt : null;
+  const failureReason = typeof item.status?.failureReason === "string" ? item.status.failureReason : null;
+  const rejectionReason = typeof item.status?.rejectionReason === "string" ? item.status.rejectionReason : null;
+  const state =
+    uploadStatus === "failed" || uploadStatus === "rejected"
+      ? "failed"
+      : privacyStatus === "public" && (!uploadStatus || uploadStatus === "processed")
+        ? "public"
+        : publishAt || privacyStatus === "private"
+          ? "scheduled"
+          : "processing";
+  return {
+    state,
+    videoId: input.videoId,
+    channelId,
+    privacyStatus,
+    uploadStatus,
+    publishAt,
+    failureReason,
+    rejectionReason,
+    checkedAt
+  };
 }
 
 export async function deleteYouTubeVideo(input: {

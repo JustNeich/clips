@@ -2,8 +2,7 @@ import { processQueuedChannelPublication } from "./channel-publication-service";
 import {
   claimNextReadyChannelPublication,
   getNextChannelPublicationWakeAt,
-  recoverInterruptedChannelPublications,
-  sweepPublishedChannelPublications
+  recoverInterruptedChannelPublications
 } from "./publication-store";
 
 type ChannelPublicationRuntimeState = {
@@ -61,12 +60,8 @@ function ensureChannelPublicationRuntime(): void {
   }
   state.initialized = true;
   const recovered = recoverInterruptedChannelPublications();
-  const swept = sweepPublishedChannelPublications();
   if (recovered > 0) {
     logPublicationRuntime("bootstrap_requeue_publications", { count: recovered });
-  }
-  if (swept > 0) {
-    logPublicationRuntime("bootstrap_sweep_published", { count: swept });
   }
 }
 
@@ -105,8 +100,6 @@ function scheduleNextWake(): void {
 }
 
 async function runChannelPublicationLoop(): Promise<void> {
-  sweepPublishedChannelPublications();
-
   while (true) {
     const claimed = claimNextReadyChannelPublication({
       leaseDurationMs: PUBLICATION_LEASE_DURATION_MS

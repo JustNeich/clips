@@ -89,7 +89,10 @@ import {
 } from "../../../../lib/ytdlp";
 import { runCopscopesDailyPool } from "../../../../lib/copscopes-daily-runner";
 import { getFlowObservabilityDetail, listFlowObservability } from "../../../../lib/flow-observability";
-import type { McpMachineCredentialScope } from "../../../../lib/mcp-machine-credential-store";
+import {
+  createMcpMachineCredential,
+  type McpMachineCredentialScope
+} from "../../../../lib/mcp-machine-credential-store";
 import { resolveStage3Execution } from "../../../../lib/stage3-execution";
 import { buildStage3PreviewDedupeKey, type Stage3PreviewRequestBody } from "../../../../lib/stage3-preview-service";
 import { resolveStage3LocalWorkerReadiness } from "../../../../lib/stage3-worker-readiness";
@@ -169,6 +172,7 @@ const TOOL_SCOPES: Record<string, McpMachineCredentialScope> = {
   clips_owner_cancel_publication: "publication:delete",
   clips_owner_list_stage3_workers: "worker:admin",
   clips_owner_pair_stage3_worker: "worker:admin",
+  clips_owner_rotate_publishing_machine: "worker:admin",
   clips_owner_run_video_pipeline: "pipeline:run",
   clips_owner_run_copscopes_daily_pool: "pipeline:run",
   // AGENT-ONLY tools. Additive; the human manual flow does not use these.
@@ -676,6 +680,51 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
 
   if (tool === "clips_owner_get_integrations_readiness") {
     return summarizeIntegrations(auth.workspace.id);
+  }
+
+  if (tool === "clips_owner_rotate_publishing_machine") {
+    const machineId = resolveString(input.machineId);
+    const allowedChannelIds = resolveStringArray(input.allowedChannelIds) ?? [];
+    if (machineId !== "oracle-macbook-publisher") {
+      throw new Response(JSON.stringify({ error: "Only the dedicated Oracle publisher may be rotated here." }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    requireDestructiveIntent(input, machineId, "Publishing credential rotation");
+    if (allowedChannelIds.length !== 25 || new Set(allowedChannelIds).size !== 25) {
+      throw new Response(JSON.stringify({ error: "The Oracle publishing allowlist must contain exactly 25 unique channel ids." }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    for (const channelId of allowedChannelIds) {
+      const channel = await getChannelById(channelId);
+      if (!channel || channel.workspaceId !== auth.workspace.id || channel.archivedAt) {
+        throw new Response(JSON.stringify({ error: `Publishing channel is unavailable: ${channelId}` }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+    }
+    const created = createMcpMachineCredential({
+      workspaceId: auth.workspace.id,
+      ownerUserId: auth.user.id,
+      machineId,
+      scopes: ["publication:create", "publication:read"],
+      allowedChannelIds,
+      rotatesInDays: 180,
+      replaceExisting: true
+    });
+    auditControl({
+      auth,
+      action: "owner_control.publishing_machine.rotated",
+      entityType: "mcp_machine",
+      entityId: created.record.id,
+      status: "succeeded",
+      payload: { machineId, allowedChannelIds, rotatesAt: created.record.rotatesAt }
+    });
+    return created;
   }
 
   if (tool === "clips_owner_list_channels") {

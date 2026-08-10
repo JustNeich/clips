@@ -1885,32 +1885,72 @@ export function publishNowChannelPublication(publicationId: string): ChannelPubl
 }
 
 export function sweepPublishedChannelPublications(now = nowIso()): number {
+  // A wall-clock deadline is not proof that YouTube made a video public.
+  // Kept as a compatibility no-op for callers while remote reconciliation is
+  // performed through inspectYouTubeVideo.
+  void now;
+  return 0;
+}
+
+export function markChannelPublicationRemotePublished(
+  publicationId: string,
+  publishedAt = nowIso()
+): ChannelPublication {
   const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT id
-         FROM channel_publications
-        WHERE status = 'scheduled'
-          AND scheduled_at <= ?`
-    )
-    .all(now) as Array<{ id: string }>;
-  const changed = Number(
-    db.prepare(
+  const stamp = nowIso();
+  db.prepare(
     `UPDATE channel_publications
         SET status = 'published',
-            published_at = COALESCE(published_at, scheduled_at),
+            published_at = COALESCE(published_at, ?),
+            last_error = NULL,
+            remote_deleted_at = NULL,
             updated_at = ?
-      WHERE status = 'scheduled'
-        AND scheduled_at <= ?`
-    ).run(now, now).changes ?? 0
-  );
-  for (const row of rows) {
-    const publication = getChannelPublicationById(String(row.id));
-    if (publication?.status === "published") {
-      auditChannelPublication("publication.published", publication, "published");
-    }
+      WHERE id = ?
+        AND youtube_video_id IS NOT NULL
+        AND status IN ('scheduled', 'published')`
+  ).run(publishedAt, stamp, publicationId);
+  const publication = getChannelPublicationById(publicationId);
+  if (!publication) {
+    throw new PublicationMutationError("Публикация не найдена.", {
+      code: "PUBLICATION_NOT_FOUND",
+      status: 404
+    });
   }
-  return changed;
+  auditChannelPublication("publication.remote_verified_public", publication, "published");
+  return publication;
+}
+
+export function markChannelPublicationRemoteMissing(
+  publicationId: string,
+  errorMessage: string
+): ChannelPublication {
+  const db = getDb();
+  const stamp = nowIso();
+  db.prepare(
+    `UPDATE channel_publications
+        SET status = 'canceled',
+            canceled_at = COALESCE(canceled_at, ?),
+            remote_deleted_at = ?,
+            published_at = NULL,
+            last_error = ?,
+            updated_at = ?,
+            lease_token = NULL,
+            lease_expires_at = NULL
+      WHERE id = ?
+        AND youtube_video_id IS NOT NULL`
+  ).run(stamp, stamp, errorMessage, stamp, publicationId);
+  appendChannelPublicationEvent(publicationId, "error", errorMessage);
+  const publication = getChannelPublicationById(publicationId);
+  if (!publication) {
+    throw new PublicationMutationError("Публикация не найдена.", {
+      code: "PUBLICATION_NOT_FOUND",
+      status: 404
+    });
+  }
+  auditChannelPublication("publication.remote_missing", publication, "canceled", {
+    payload: { errorMessage }
+  });
+  return publication;
 }
 
 export function recoverInterruptedChannelPublications(): number {
@@ -1957,7 +1997,6 @@ export function claimNextReadyChannelPublication(input: {
   const leaseExpiresAt = new Date(now.getTime() + leaseMs).toISOString();
 
   const claimed = runInTransaction((db) => {
-    sweepPublishedChannelPublications(nowString);
     const row = db
       .prepare(
         `SELECT p.id

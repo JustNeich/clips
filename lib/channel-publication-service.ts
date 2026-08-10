@@ -28,6 +28,8 @@ import {
   listChannelPublications,
   listFutureActivePublicationsForChannel,
   markChannelPublicationFailed,
+  markChannelPublicationRemoteMissing,
+  markChannelPublicationRemotePublished,
   markChannelPublishIntegrationReauthRequired,
   markChannelPublicationScheduled,
   persistChannelPublicationUploadSession,
@@ -41,6 +43,7 @@ import {
 } from "./publication-store";
 import {
   deleteYouTubeVideo,
+  inspectYouTubeVideo,
   isYoutubeAccessTokenExpired,
   listManagedYouTubeChannels,
   refreshYouTubeAccessToken,
@@ -49,6 +52,7 @@ import {
   uploadYouTubeVideo,
   YouTubePublishError
 } from "./youtube-publishing";
+import type { YouTubeVideoRemoteState } from "./youtube-publishing";
 import { tryAppendFlowAuditEvent } from "./audit-log-store";
 import { runInTransaction } from "./db/client";
 import { scheduleYouTubeDurableStorageRelease } from "./storage-maintenance";
@@ -517,6 +521,61 @@ async function ensureFreshYouTubeCredential(channelId: string): Promise<{
     credential,
     integration: getChannelPublishIntegration(channelId)!
   };
+}
+
+export async function reconcileChannelPublicationRemoteState(publicationId: string): Promise<{
+  publication: ChannelPublication;
+  remote: YouTubeVideoRemoteState | null;
+}> {
+  const publication = getChannelPublicationById(publicationId);
+  if (!publication) {
+    throw new PublicationMutationError("Публикация не найдена.", {
+      code: "PUBLICATION_NOT_FOUND",
+      status: 404
+    });
+  }
+  if (!publication.youtubeVideoId || !new Set(["scheduled", "published"]).has(publication.status)) {
+    return { publication, remote: null };
+  }
+  const { credential, integration } = await ensureFreshYouTubeCredential(publication.channelId);
+  const remote = await inspectYouTubeVideo({
+    accessToken: credential.accessToken!,
+    videoId: publication.youtubeVideoId
+  });
+  if (
+    remote.channelId &&
+    integration.selectedYoutubeChannelId &&
+    remote.channelId !== integration.selectedYoutubeChannelId
+  ) {
+    throw new YouTubePublishError("YouTube video id принадлежит другому целевому каналу.", {
+      recoverable: false
+    });
+  }
+  if (remote.state === "missing") {
+    return {
+      publication: markChannelPublicationRemoteMissing(
+        publication.id,
+        `YouTube больше не возвращает видео ${publication.youtubeVideoId}; публикация освобождена для безопасной замены.`
+      ),
+      remote
+    };
+  }
+  if (remote.state === "public") {
+    return {
+      publication: markChannelPublicationRemotePublished(publication.id, remote.checkedAt),
+      remote
+    };
+  }
+  if (remote.state === "failed") {
+    return {
+      publication: markChannelPublicationFailed(
+        publication.id,
+        `YouTube отклонил обработку видео ${publication.youtubeVideoId}: ${remote.rejectionReason || remote.failureReason || remote.uploadStatus || "unknown reason"}.`
+      ),
+      remote
+    };
+  }
+  return { publication: getChannelPublicationById(publication.id)!, remote };
 }
 
 type PublicationDraftPatch = Omit<Parameters<typeof updateChannelPublicationDraft>[0], "publicationId">;

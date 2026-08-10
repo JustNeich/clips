@@ -921,7 +921,17 @@ export async function getPublishingPublication(request: Request, publicationId: 
     throw new PublishingApiError("PUBLICATION_NOT_FOUND", "The publication receipt was not found.", { status: 404 });
   }
   await assertAllowedChannel(auth, row.channel_id);
-  return { status: 200, body: { receipt: buildReceipt(row) } };
+  const { reconcileChannelPublicationRemoteState } = await import("./channel-publication-service");
+  const reconciled = await reconcileChannelPublicationRemoteState(publicationId);
+  return {
+    status: 200,
+    body: {
+      receipt: {
+        ...buildReceipt(row),
+        remoteVerification: reconciled.remote
+      }
+    }
+  };
 }
 
 export async function getPublishingUpload(request: Request, uploadId: string) {
