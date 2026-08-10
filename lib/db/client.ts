@@ -23,6 +23,7 @@ import {
   stringifyStage2StyleProfile
 } from "../stage2-channel-learning";
 import { getDefaultStage3ExecutionTarget } from "../stage3-execution";
+import { sanitizeYoutubeDescription } from "../youtube-description-policy";
 import {
   DEFAULT_STAGE3_CLIP_DURATION_SEC,
   MAX_STAGE3_CLIP_DURATION_SEC,
@@ -202,6 +203,24 @@ function makeQueuedMachinePublicationsUploadReady(db: DatabaseSync): void {
              AND machine_upload.status = 'committed'
         )`
   ).run(stamp, stamp, stamp);
+}
+
+function sanitizeStoredYoutubeDescriptions(db: DatabaseSync): void {
+  for (const tableName of ["channel_publications", "publishing_api_uploads"]) {
+    if (!hasTable(db, tableName) || !hasColumn(db, tableName, "description")) {
+      continue;
+    }
+    const rows = db
+      .prepare(`SELECT id, description FROM ${tableName} WHERE description LIKE '%://%' OR description LIKE '%www.%'`)
+      .all() as Array<{ id: string; description: string }>;
+    const update = db.prepare(`UPDATE ${tableName} SET description = ? WHERE id = ?`);
+    for (const row of rows) {
+      const sanitized = sanitizeYoutubeDescription(row.description);
+      if (sanitized !== row.description) {
+        update.run(sanitized, row.id);
+      }
+    }
+  }
 }
 
 function applyDbMigrations(db: DatabaseSync): void {
@@ -413,6 +432,9 @@ function applyDbMigrations(db: DatabaseSync): void {
   // YouTube upload became the default. This is idempotent and only touches the
   // exact committed Publishing API contour.
   makeQueuedMachinePublicationsUploadReady(db);
+  // Link-free YouTube descriptions are a durable invariant, including legacy
+  // records whose former destination credential is no longer available.
+  sanitizeStoredYoutubeDescriptions(db);
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_stage2_runs_workspace_updated ON stage2_runs(workspace_id, updated_at DESC)"
   );
