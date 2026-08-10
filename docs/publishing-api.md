@@ -83,6 +83,11 @@ Required fields are `channelId`, `fileName`, `contentType`, `contentLength`,
 `contentSha256`, `publishAt`, and `title`. `publishAt` must be a future RFC3339
 timestamp with `Z` or an explicit numeric offset.
 
+`description` is always normalized at the server boundary: `http://`,
+`https://`, and `www.` links are removed together with a dangling `Source` or
+`Источник` label. The source URL remains internal evidence and is never sent to
+YouTube.
+
 New requests return `201`; a replay with the same key and canonical payload
 returns `200` and the same `upload.id`. A key bound to different metadata or
 hash returns `409 IDEMPOTENCY_KEY_CONFLICT`.

@@ -1255,7 +1255,7 @@ async function handleOwnerTool(auth: OwnerControlAuth, request: Request, tool: s
     const slotIndex = resolveNumber(input.slotIndex);
     const patch = {
       title: resolveString(input.title),
-      description: resolveString(input.description),
+      description: typeof input.description === "string" ? input.description.trim() : undefined,
       tags: resolveStringArray(input.tags),
       notifySubscribers: typeof input.notifySubscribers === "boolean" ? resolveBoolean(input.notifySubscribers) : undefined,
       ...(scheduledAtLocal

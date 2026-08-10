@@ -10,6 +10,7 @@ import {
   exchangeYouTubeOAuthCode,
   listManagedYouTubeChannels,
   refreshYouTubeAccessToken,
+  updateYouTubePublishedVideo,
   updateYouTubeScheduledVideo,
   uploadYouTubeVideo
 } from "../lib/youtube-publishing";
@@ -446,6 +447,46 @@ test("updateYouTubeScheduledVideo falls back to the default category when YouTub
     assert.ok(updatePayload, "expected metadata update payload");
     const finalUpdatePayload = updatePayload as { snippet?: { categoryId?: string } };
     assert.equal(finalUpdatePayload.snippet?.categoryId, "22");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("updateYouTubePublishedVideo changes only the snippet and preserves category", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; method: string; body: string | null }> = [];
+
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const method = init?.method ?? "GET";
+    requests.push({ url, method, body: typeof init?.body === "string" ? init.body : null });
+    if (url.includes("/videos?part=snippet&id=youtube-video-published")) {
+      return Response.json({ items: [{ snippet: { categoryId: "24" } }] }, { status: 200 });
+    }
+    if (url.includes("/videos?part=snippet") && method === "PUT") {
+      return Response.json({ ok: true }, { status: 200 });
+    }
+    throw new Error(`Unexpected fetch URL: ${url}`);
+  }) as typeof fetch;
+
+  try {
+    await updateYouTubePublishedVideo({
+      accessToken: "token",
+      videoId: "youtube-video-published",
+      title: "Published title",
+      description: "",
+      tags: ["alpha"]
+    });
+    const updateRequest = requests.find((request) => request.method === "PUT");
+    assert.ok(updateRequest);
+    assert.match(updateRequest.url, /videos\?part=snippet$/);
+    const payload = JSON.parse(updateRequest.body ?? "{}") as {
+      snippet?: { categoryId?: string; description?: string };
+      status?: unknown;
+    };
+    assert.equal(payload.snippet?.categoryId, "24");
+    assert.equal(payload.snippet?.description, "");
+    assert.equal(payload.status, undefined);
   } finally {
     globalThis.fetch = originalFetch;
   }

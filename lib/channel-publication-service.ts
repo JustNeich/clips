@@ -44,6 +44,7 @@ import {
   isYoutubeAccessTokenExpired,
   listManagedYouTubeChannels,
   refreshYouTubeAccessToken,
+  updateYouTubePublishedVideo,
   updateYouTubeScheduledVideo,
   uploadYouTubeVideo,
   YouTubePublishError
@@ -51,6 +52,7 @@ import {
 import { tryAppendFlowAuditEvent } from "./audit-log-store";
 import { runInTransaction } from "./db/client";
 import { scheduleYouTubeDurableStorageRelease } from "./storage-maintenance";
+import { sanitizeYoutubeDescription } from "./youtube-description-policy";
 
 const PUBLICATION_LEASE_DURATION_MS = 5 * 60_000;
 import {
@@ -354,7 +356,7 @@ async function moveChannelPublicationIntoSlot(input: {
       scheduleManual: true,
       clearLastError: true
     };
-    const remoteSynced = await syncScheduledPublicationPatchToYouTube(current, patch);
+    const remoteSynced = await syncPublicationPatchToYouTube(current, patch);
     const updated = updateChannelPublicationDraft({
       publicationId: current.id,
       ...patch
@@ -412,11 +414,11 @@ async function moveChannelPublicationIntoSlot(input: {
   let currentRemoteSynced = false;
   let conflictingRemoteSynced = false;
   try {
-    currentRemoteSynced = await syncScheduledPublicationPatchToYouTube(current, currentPatch);
-    conflictingRemoteSynced = await syncScheduledPublicationPatchToYouTube(conflicting, conflictingPatch);
+    currentRemoteSynced = await syncPublicationPatchToYouTube(current, currentPatch);
+    conflictingRemoteSynced = await syncPublicationPatchToYouTube(conflicting, conflictingPatch);
   } catch (error) {
     if (currentRemoteSynced && !conflictingRemoteSynced) {
-      await syncScheduledPublicationPatchToYouTube(current, {
+      await syncPublicationPatchToYouTube(current, {
         scheduledAt: current.scheduledAt
       }).catch(() => undefined);
     }
@@ -519,22 +521,34 @@ async function ensureFreshYouTubeCredential(channelId: string): Promise<{
 
 type PublicationDraftPatch = Omit<Parameters<typeof updateChannelPublicationDraft>[0], "publicationId">;
 
-async function syncScheduledPublicationPatchToYouTube(
+async function syncPublicationPatchToYouTube(
   publication: ChannelPublication,
   patch: PublicationDraftPatch
 ): Promise<boolean> {
-  if (publication.status !== "scheduled" || !publication.youtubeVideoId) {
+  if (!publication.youtubeVideoId) {
     return false;
   }
   const { credential } = await ensureFreshYouTubeCredential(publication.channelId);
-  await updateYouTubeScheduledVideo({
-    accessToken: credential.accessToken!,
-    videoId: publication.youtubeVideoId,
-    title: patch.title ?? publication.title,
-    description: patch.description ?? publication.description,
-    tags: patch.tags ?? publication.tags,
-    publishAt: patch.scheduledAt ?? publication.scheduledAt
-  });
+  if (publication.status === "scheduled") {
+    await updateYouTubeScheduledVideo({
+      accessToken: credential.accessToken!,
+      videoId: publication.youtubeVideoId,
+      title: patch.title ?? publication.title,
+      description: patch.description ?? publication.description,
+      tags: patch.tags ?? publication.tags,
+      publishAt: patch.scheduledAt ?? publication.scheduledAt
+    });
+  } else if (publication.status === "published") {
+    await updateYouTubePublishedVideo({
+      accessToken: credential.accessToken!,
+      videoId: publication.youtubeVideoId,
+      title: patch.title ?? publication.title,
+      description: patch.description ?? publication.description,
+      tags: patch.tags ?? publication.tags
+    });
+  } else {
+    return false;
+  }
   return true;
 }
 
@@ -1001,7 +1015,9 @@ export async function updateChannelPublicationFromEditor(input: {
   const nextTitle = normalizeEditorText(input.patch.title) ?? current.title;
   const draftPatch = {
     title: normalizeEditorText(input.patch.title),
-    description: normalizeEditorText(input.patch.description),
+    description: typeof input.patch.description === "string"
+      ? sanitizeYoutubeDescription(input.patch.description)
+      : undefined,
     tags: input.patch.tags,
     titleManual: typeof input.patch.title === "string",
     descriptionManual: typeof input.patch.description === "string",
@@ -1020,7 +1036,7 @@ export async function updateChannelPublicationFromEditor(input: {
     sourceUrl: current.sourceUrl,
     excludePublicationId: current.id
   });
-  const remoteSynced = await syncScheduledPublicationPatchToYouTube(current, draftPatch);
+  const remoteSynced = await syncPublicationPatchToYouTube(current, draftPatch);
   const updated = runInTransaction(() => {
     assertNoBlockingPublicationDuplicate({
       channelId: current.channelId,

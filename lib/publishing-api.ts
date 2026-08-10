@@ -23,6 +23,7 @@ import {
 import { createReadyVideoPublication } from "./ready-video-publication";
 import { removeUploadedSourceMedia, storeUploadedSourceMedia } from "./source-media-cache";
 import { buildUploadedSourceUrl } from "./uploaded-source";
+import { sanitizeYoutubeDescription } from "./youtube-description-policy";
 
 const execFileAsync = promisify(execFile);
 
@@ -251,7 +252,9 @@ function normalizeCreateInput(
       field: "title"
     });
   }
-  const description = typeof input.description === "string" ? input.description.replace(/\r\n/g, "\n").trim() : "";
+  const description = typeof input.description === "string"
+    ? sanitizeYoutubeDescription(input.description.replace(/\r\n/g, "\n"))
+    : "";
   if (description.length > 5000) {
     throw new PublishingApiError("INVALID_REQUEST", "description must be at most 5000 characters.", {
       field: "description"

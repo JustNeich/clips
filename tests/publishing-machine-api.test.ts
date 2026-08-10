@@ -246,7 +246,10 @@ test("machine Publishing API commits an allowed MP4 at Oracle's explicit publish
     const created = await createUpload({
       secret: machine.secret,
       key,
-      body: createBody(scenario.channel.id, scenario.bytes, scenario.contentSha256)
+      body: {
+        ...createBody(scenario.channel.id, scenario.bytes, scenario.contentSha256),
+        description: "Source: https://www.instagram.com/reel/example/"
+      }
     });
     assert.equal(created.response.status, 201, JSON.stringify(created.body));
     const uploadId = String(created.body.upload.id);
@@ -276,6 +279,7 @@ test("machine Publishing API commits an allowed MP4 at Oracle's explicit publish
     assert.equal(publications[0]?.scheduleMode, "custom");
     assert.equal(publications[0]?.scheduledAt, PUBLISH_AT);
     assert.equal(publications[0]?.slotIndex, -1);
+    assert.equal(publications[0]?.description, "");
     const uploadReadyDelayMs = new Date(publications[0]?.uploadReadyAt ?? "").getTime() - Date.now();
     assert.ok(uploadReadyDelayMs >= 0 && uploadReadyDelayMs <= 5_000, "machine upload must become ready immediately");
 

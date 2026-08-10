@@ -28,7 +28,8 @@ import {
   publishNowChannelPublication,
   restoreCanceledChannelPublication,
   retryChannelPublication,
-  saveChannelPublishIntegration
+  saveChannelPublishIntegration,
+  sweepPublishedChannelPublications
 } from "../lib/publication-store";
 import { PublicationMutationError } from "../lib/publication-mutation-errors";
 
@@ -311,6 +312,57 @@ test("updateChannelPublicationFromEditor blocks notifySubscribers changes after 
     assert.equal(error.code, "NOTIFY_SUBSCRIBERS_LOCKED");
     assert.equal(error.field, "notifySubscribers");
     assert.match(error.message, /только при первой загрузке видео/i);
+  });
+});
+
+test("updateChannelPublicationFromEditor removes a source URL from an already published YouTube video", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([0]);
+    connectChannelPublishing(scenario.channelId, true);
+    const publicationId = scenario.publications[0]!.id;
+    markChannelPublicationScheduled({
+      publicationId,
+      youtubeVideoId: "youtube-video-published",
+      youtubeVideoUrl: "https://www.youtube.com/watch?v=youtube-video-published"
+    });
+    sweepPublishedChannelPublications("2041-01-01T00:00:00.000Z");
+
+    const originalFetch = globalThis.fetch;
+    let remoteUpdate: { snippet?: { description?: string }; status?: unknown } | null = null;
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+      if (url.includes("/channels?part=snippet&mine=true")) {
+        return Response.json({
+          items: [{ id: "youtube-channel-1", snippet: { title: "Daily Dopamine", customUrl: "@dailydopamine" } }]
+        });
+      }
+      if (url.includes("/videos?part=snippet&id=youtube-video-published")) {
+        return Response.json({ items: [{ snippet: { categoryId: "22" } }] });
+      }
+      if (url.endsWith("/videos?part=snippet") && method === "PUT") {
+        remoteUpdate = JSON.parse(String(init?.body ?? "{}"));
+        return Response.json({ ok: true });
+      }
+      throw new Error(`Unexpected fetch ${method} ${url}`);
+    }) as typeof fetch;
+
+    try {
+      const updated = await updateChannelPublicationFromEditor({
+        publicationId,
+        patch: { description: "Source: https://www.instagram.com/reel/example/" }
+      });
+      assert.equal(updated.status, "published");
+      assert.equal(updated.description, "");
+      const capturedRemoteUpdate = remoteUpdate as {
+        snippet?: { description?: string };
+        status?: unknown;
+      } | null;
+      assert.equal(capturedRemoteUpdate?.snippet?.description, "");
+      assert.equal(capturedRemoteUpdate?.status, undefined);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 

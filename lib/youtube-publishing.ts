@@ -651,6 +651,35 @@ export async function updateYouTubeScheduledVideo(input: {
   });
 }
 
+export async function updateYouTubePublishedVideo(input: {
+  accessToken: string;
+  videoId: string;
+  title: string;
+  description: string;
+  tags: string[];
+}): Promise<void> {
+  await runWithRetry(async () => {
+    const categoryId = await resolveYouTubeVideoCategoryId({
+      accessToken: input.accessToken,
+      videoId: input.videoId
+    });
+    await youtubeApiJson<Record<string, unknown>>({
+      accessToken: input.accessToken,
+      url: `${YOUTUBE_API_BASE_URL}/videos?part=snippet`,
+      method: "PUT",
+      body: JSON.stringify({
+        id: input.videoId,
+        snippet: {
+          title: input.title,
+          description: input.description,
+          tags: input.tags,
+          categoryId
+        }
+      })
+    });
+  });
+}
+
 export async function deleteYouTubeVideo(input: {
   accessToken: string;
   videoId: string;

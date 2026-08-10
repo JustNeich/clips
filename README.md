@@ -437,7 +437,8 @@ Publishing / YouTube queue:
 - готовый `mp4`, отправленный из Step 1 через `В очередь YouTube`, использует тот же planner, duplicate guard, slot settings, upload lease и retry/resume path, что и publication после Stage 3 render.
 - channel-level duplicate guard fail-closed блокирует второй upload того же source URL или того же normalized title: проверка срабатывает при queue creation, ручном edit/retry/resume/publish-now и прямо перед YouTube upload.
 - во время `uploading` planner блокирует конфликтующие действия, а сервер не принимает мутации, которые могли бы сбросить lease и породить второй YouTube upload.
-- YouTube metadata sync для уже загруженных роликов теперь сохраняет валидный `snippet.categoryId`, поэтому простое редактирование title/description не ломает `videos.update`.
+- YouTube metadata sync для уже загруженных роликов сохраняет валидный `snippet.categoryId`; title/description можно безопасно исправлять и у scheduled, и у published видео без повторной загрузки и без изменения visibility.
+- Machine Publishing API удаляет URL и пустую подпись `Source`/`Источник` из YouTube description на серверной границе; source URL остаётся только во внутренних receipts.
 - YouTube upload использует сохранённый resumable session URL и lease heartbeat, поэтому после сбоя процесс продолжает тот же upload session вместо открытия дублирующего.
 - YouTube publishing может быть разнесён по нескольким Google OAuth projects: канал сохраняет `oauthClientKey`, подключается и обновляет refresh token через выбранный project, а audit events фиксируют project key/label/number для будущего quota accounting.
 
