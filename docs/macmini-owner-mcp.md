@@ -88,7 +88,7 @@ The healthcheck verifies local tools, GitHub access, production health, and owne
 - orphaned Stage 3 Remotion browser processes;
 - `com.clips.stage3-worker` launchd restart throttling and enabled/disabled state;
 - local SSH (`22`) and Screen Sharing (`5900`) listeners;
-- whether the default public route uses a VPN `utun` interface;
+- whether a default public route exists, recording `direct` or `tunnel` mode without requiring VPN;
 - runaway worker stderr growth.
 
 Exit `1` means at least one fail condition, exit `2` means warnings only, and exit `0` means clean. It prints only token presence/status, never the token itself. Treat `tcp-port-pressure >= 80%`, missing SSH/Screen Sharing listeners, or `KeepAlive=true` without `ThrottleInterval >= 60` as a stop condition before enabling production worker claims.

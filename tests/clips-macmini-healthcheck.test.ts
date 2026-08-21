@@ -2,10 +2,26 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  classifyMacPublicRoute,
   countMacTcpTimeWait,
   findOrphanedStage3Browsers,
   parseMacTcpPortPressure
 } from "../scripts/clips-macmini-healthcheck.mjs";
+
+test("Mac mini healthcheck accepts direct and tunnel public routes", () => {
+  assert.deepEqual(
+    classifyMacPublicRoute({ ok: true, stdout: "route to: 1.1.1.1\ninterface: en1", stderr: "" }),
+    { status: "ok", detail: "interface=en1 mode=direct" }
+  );
+  assert.deepEqual(
+    classifyMacPublicRoute({ ok: true, stdout: "route to: 1.1.1.1\ninterface: utun7", stderr: "" }),
+    { status: "ok", detail: "interface=utun7 mode=tunnel" }
+  );
+  assert.deepEqual(
+    classifyMacPublicRoute({ ok: false, stdout: "", stderr: "route unavailable" }),
+    { status: "warn", detail: "route unavailable" }
+  );
+});
 
 test("Mac mini healthcheck parses ephemeral TCP pressure", () => {
   assert.deepEqual(parseMacTcpPortPressure("8192\n49152\n65535\n"), {

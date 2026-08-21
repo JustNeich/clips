@@ -69,6 +69,18 @@ export function findOrphanedStage3Browsers(output, homeDir) {
     });
 }
 
+export function classifyMacPublicRoute(result) {
+  if (!result?.ok) {
+    return { status: "warn", detail: result?.stderr || "Default public route is unavailable" };
+  }
+  const routeInterface = result.stdout.match(/interface:\s*(\S+)/)?.[1] || "";
+  if (!/^[a-z][a-z0-9]*$/i.test(routeInterface)) {
+    return { status: "warn", detail: "Default public route interface is unknown" };
+  }
+  const mode = /^utun\d+$/.test(routeInterface) ? "tunnel" : "direct";
+  return { status: "ok", detail: `interface=${routeInterface} mode=${mode}` };
+}
+
 function parseBoolean(value) {
   return value.trim().toLowerCase() === "true";
 }
@@ -138,12 +150,8 @@ async function checkMacStability() {
   }
 
   const route = await run("/sbin/route", ["-n", "get", "1.1.1.1"]);
-  const routeInterface = route.ok ? route.stdout.match(/interface:\s*(\S+)/)?.[1] || "unknown" : "unknown";
-  addCheck(
-    "vpn-route",
-    /^utun\d+$/.test(routeInterface) ? "ok" : "warn",
-    route.ok ? `interface=${routeInterface}` : route.stderr
-  );
+  const publicRoute = classifyMacPublicRoute(route);
+  addCheck("public-route", publicRoute.status, publicRoute.detail);
 
   const workerLogPath = `${process.env.HOME || ""}/Library/Logs/Clips Stage3 Worker/stderr.log`;
   if (existsSync(workerLogPath)) {
@@ -230,7 +238,9 @@ export async function runMacMiniHealthcheck() {
   await checkNode();
   await checkCommand("npm", "npm", ["--version"]);
   await checkCommand("git-remote", "git", ["remote", "-v"]);
-  await checkCommand("gh-auth", "gh", ["auth", "status"]);
+  // Production git access is exercised by checkGithubSsh below. Requiring a
+  // separate `gh auth login` here creates a false warning on SSH-only hosts.
+  await checkCommand("gh-cli", "gh", ["--version"]);
   await checkGithubSsh();
   await checkCommand("ffmpeg", "ffmpeg", ["-version"]);
   await checkCommand("ffprobe", "ffprobe", ["-version"]);
